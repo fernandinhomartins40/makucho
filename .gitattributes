@@ -1,0 +1,19 @@
+# Normaliza quebras de linha: o repositorio guarda sempre LF.
+* text=auto eol=lf
+
+# Scripts executados dentro de containers Linux nao podem ter CRLF.
+*.sh text eol=lf
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binarios nao devem ser convertidos.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
