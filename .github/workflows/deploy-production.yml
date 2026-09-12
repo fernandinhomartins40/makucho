@@ -1,0 +1,569 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 72.60.10.112
+  VPS_USER: root
+  APP_ROOT: /opt/makucho
+  # Porta unica publicada no host. As portas 3000 e 3001 do projeto
+  # existem so dentro da rede Docker; na VPS elas ja pertencem a outro app.
+  DEPLOY_PORT: "3096"
+  PRIMARY_DOMAIN: makucho.com.br
+  SECONDARY_DOMAIN: www.makucho.com.br
+  CANONICAL_URL: https://makucho.com.br
+  SSL_EMAIL: admin@makucho.com.br
+  SITE_NAME: makucho
+  SSH_OPTS: -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    environment:
+      name: production
+      url: https://makucho.com.br
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set release version
+        id: release
+        run: echo "version=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
+      - name: Verify VPS password access
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          if [ -z "${SSHPASS:-}" ]; then
+            echo "::error::O secret VPS_PASSWORD esta vazio ou nao foi criado." >&2
+            exit 1
+          fi
+
+          if ! sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "echo SSH OK"; then
+            echo "::error::Autenticacao SSH por senha falhou. Confira o secret VPS_PASSWORD e se PasswordAuthentication/PermitRootLogin estao habilitados em ${{ env.VPS_HOST }}." >&2
+            exit 1
+          fi
+
+      - name: Upload source to VPS
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          RELEASE_DIR="${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}"
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "mkdir -p '$RELEASE_DIR'"
+
+          # Enviamos o codigo-fonte; o build acontece na VPS via Dockerfile.
+          tar \
+            --exclude=.git \
+            --exclude=.claude \
+            --exclude=node_modules \
+            --exclude=.turbo \
+            --exclude=.next \
+            --exclude=dist \
+            --exclude='*.tsbuildinfo' \
+            --exclude=coverage \
+            --exclude=.env \
+            -czf - . | \
+            sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+              "tar -xzf - -C '$RELEASE_DIR'"
+
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "chmod +x '$RELEASE_DIR'/.github/scripts/*.sh '$RELEASE_DIR'/infrastructure/scripts/*.sh '$RELEASE_DIR'/infrastructure/docker/*.sh 2>/dev/null || true"
+
+      - name: Prepare VPS runtime
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "bash -s" <<'ENDSSH'
+            set -euo pipefail
+
+            if ! command -v apt-get >/dev/null 2>&1; then
+              echo "Distribuicao sem apt-get nao suportada" >&2
+              exit 1
+            fi
+
+            export DEBIAN_FRONTEND=noninteractive
+            APT_UPDATED=0
+
+            apt_update_once() {
+              if [ "$APT_UPDATED" -eq 0 ]; then
+                apt-get update
+                APT_UPDATED=1
+              fi
+            }
+
+            ensure_apt_packages() {
+              local missing=0 package_name
+              for package_name in "$@"; do
+                if ! dpkg-query -W -f='${Status}' "$package_name" 2>/dev/null | grep -q 'install ok installed'; then
+                  missing=1
+                  break
+                fi
+              done
+              if [ "$missing" -eq 1 ]; then
+                apt_update_once
+                apt-get install -y --no-install-recommends "$@"
+              fi
+            }
+
+            ensure_apt_packages ca-certificates certbot curl nginx openssl tar
+
+            if ! command -v docker >/dev/null 2>&1; then
+              apt_update_once
+              apt-get install -y --no-install-recommends docker.io
+            fi
+
+            if ! docker compose version >/dev/null 2>&1; then
+              apt_update_once
+              apt-get install -y --no-install-recommends docker-compose-v2 || \
+              apt-get install -y --no-install-recommends docker-compose-plugin
+            fi
+
+            # A VPS hospeda outras aplicacoes: "enable --now" e idempotente e
+            # nao reinicia o docker, o que derrubaria os containers vizinhos.
+            systemctl enable --now docker
+            systemctl enable --now nginx
+
+            docker compose version >/dev/null
+            nginx -v 2>/dev/null
+            certbot --version >/dev/null
+          ENDSSH
+
+      - name: Ensure .env exists on VPS
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "APP_ROOT='${{ env.APP_ROOT }}' CANONICAL_URL='${{ env.CANONICAL_URL }}' DEPLOY_PORT='${{ env.DEPLOY_PORT }}' PRIMARY_DOMAIN='${{ env.PRIMARY_DOMAIN }}' SECONDARY_DOMAIN='${{ env.SECONDARY_DOMAIN }}' SEED_ADMIN_EMAIL='${{ secrets.SEED_ADMIN_EMAIL }}' SEED_ADMIN_PASSWORD='${{ secrets.SEED_ADMIN_PASSWORD }}' bash -s" <<'ENDSSH'
+            set -euo pipefail
+
+            ENV_FILE="$APP_ROOT/.env"
+            mkdir -p "$APP_ROOT/releases"
+            touch "$ENV_FILE"
+            chmod 600 "$ENV_FILE"
+
+            get_env() {
+              local key="$1"
+              awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, "", $0); print $0; exit }' "$ENV_FILE"
+            }
+
+            upsert_env() {
+              local key="$1" value="$2" tmp_file
+              tmp_file="$(mktemp)"
+              awk -v key="$key" -v value="$value" '
+                BEGIN { updated = 0 }
+                index($0, key "=") == 1 { print key "=" value; updated = 1; next }
+                { print }
+                END { if (!updated) print key "=" value }
+              ' "$ENV_FILE" > "$tmp_file"
+              mv "$tmp_file" "$ENV_FILE"
+            }
+
+            ensure_env() {
+              local key="$1" default_value="$2" current_value
+              current_value="$(get_env "$key" | tr -d '\r')"
+              if [ -z "$current_value" ]; then
+                upsert_env "$key" "$default_value"
+              fi
+            }
+
+            # Segredos gerados uma unica vez e preservados entre deploys:
+            # regenerar o JWT_SECRET deslogaria todo mundo a cada publicacao.
+            ensure_random_hex() {
+              local key="$1" bytes="$2" current_value
+              current_value="$(get_env "$key" | tr -d '\r')"
+              if [ -z "$current_value" ]; then
+                upsert_env "$key" "$(openssl rand -hex "$bytes")"
+              fi
+            }
+
+            # ---- Banco ----
+            ensure_env "POSTGRES_USER" "makucho"
+            ensure_env "POSTGRES_DB" "makucho"
+            ensure_random_hex "POSTGRES_PASSWORD" 32
+
+            # ---- Autenticacao ----
+            ensure_random_hex "JWT_ACCESS_SECRET" 48
+            ensure_random_hex "JWT_REFRESH_SECRET" 48
+            ensure_env "JWT_ACCESS_EXPIRES_IN" "15m"
+            ensure_env "JWT_REFRESH_EXPIRES_IN" "7d"
+
+            # ---- Storage de imagens ----
+            ensure_env "STORAGE_BUCKET" "makucho-media"
+            ensure_env "STORAGE_REGION" "us-east-1"
+            ensure_env "STORAGE_ACCESS_KEY" "makucho"
+            ensure_random_hex "STORAGE_SECRET_KEY" 32
+
+            # ---- Analytics (hash anonimo de sessao) ----
+            ensure_random_hex "ANALYTICS_SESSION_SALT" 32
+
+            # ---- Administrador inicial ----
+            ensure_env "SEED_ADMIN_EMAIL" "${SEED_ADMIN_EMAIL:-admin@makucho.com.br}"
+            if [ -n "${SEED_ADMIN_PASSWORD:-}" ]; then
+              ensure_env "SEED_ADMIN_PASSWORD" "$SEED_ADMIN_PASSWORD"
+            else
+              # Sem secret definido, gera uma senha forte na primeira subida.
+              ensure_random_hex "SEED_ADMIN_PASSWORD" 16
+            fi
+            ensure_env "SEED_ADMIN_NAME" "Administrador MAKUCHO"
+
+            # ---- Valores sempre sobrescritos pelo workflow ----
+            upsert_env "NODE_ENV" "production"
+            upsert_env "DEPLOY_PORT" "$DEPLOY_PORT"
+            upsert_env "PUBLIC_APP_URL" "$CANONICAL_URL"
+            upsert_env "NEXT_PUBLIC_SITE_NAME" "MAKUCHO"
+            upsert_env "COOKIE_DOMAIN" "$PRIMARY_DOMAIN"
+            upsert_env "COOKIE_SECURE" "true"
+            # Os dois dominios respondem: o www redireciona, mas uma aba ja
+            # aberta nele continua chamando a API com aquela origem.
+            upsert_env "CORS_ORIGINS" "https://${PRIMARY_DOMAIN},https://${SECONDARY_DOMAIN}"
+
+            POSTGRES_USER_VALUE="$(get_env "POSTGRES_USER" | tr -d '\r')"
+            POSTGRES_PASSWORD_VALUE="$(get_env "POSTGRES_PASSWORD" | tr -d '\r')"
+            POSTGRES_DB_VALUE="$(get_env "POSTGRES_DB" | tr -d '\r')"
+            upsert_env "DATABASE_URL" "postgresql://${POSTGRES_USER_VALUE}:${POSTGRES_PASSWORD_VALUE}@postgres:5432/${POSTGRES_DB_VALUE}?schema=public"
+
+            chmod 600 "$ENV_FILE"
+            echo "Variaveis de ambiente prontas em $ENV_FILE"
+          ENDSSH
+
+      - name: Deploy on VPS
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "APP_ROOT='${{ env.APP_ROOT }}' RELEASE='${{ steps.release.outputs.version }}' DEPLOY_PORT='${{ env.DEPLOY_PORT }}' bash '${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}/.github/scripts/remote-deploy.sh'"
+
+      - name: Configure Nginx (HTTP)
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "DEPLOY_PORT='${{ env.DEPLOY_PORT }}' PRIMARY_DOMAIN='${{ env.PRIMARY_DOMAIN }}' SECONDARY_DOMAIN='${{ env.SECONDARY_DOMAIN }}' SITE_NAME='${{ env.SITE_NAME }}' bash -s" <<'ENDSSH'
+            set -euo pipefail
+
+            mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www/certbot
+
+            {
+              printf '%s\n' 'server {'
+              printf '%s\n' '    listen 80;'
+              printf '%s\n' "    server_name ${PRIMARY_DOMAIN} ${SECONDARY_DOMAIN};"
+              printf '%s\n' ''
+              printf '%s\n' '    client_max_body_size 20m;'
+              printf '%s\n' ''
+              printf '%s\n' '    location /.well-known/acme-challenge/ {'
+              printf '%s\n' '        root /var/www/certbot;'
+              printf '%s\n' '    }'
+              printf '%s\n' ''
+              printf '%s\n' '    location / {'
+              printf '%s\n' "        proxy_pass http://127.0.0.1:${DEPLOY_PORT};"
+              printf '%s\n' '        proxy_http_version 1.1;'
+              printf '%s\n' '        proxy_set_header Upgrade $http_upgrade;'
+              printf '%s\n' '        proxy_set_header Connection "upgrade";'
+              printf '%s\n' '        proxy_set_header Host $host;'
+              printf '%s\n' '        proxy_set_header X-Real-IP $remote_addr;'
+              printf '%s\n' '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
+              printf '%s\n' '        proxy_set_header X-Forwarded-Proto $scheme;'
+              printf '%s\n' '        proxy_read_timeout 120s;'
+              printf '%s\n' '    }'
+              printf '%s\n' '}'
+            } > "/etc/nginx/sites-available/${SITE_NAME}"
+
+            ln -sfn "/etc/nginx/sites-available/${SITE_NAME}" "/etc/nginx/sites-enabled/${SITE_NAME}"
+
+            # nginx -t valida TODOS os vhosts da VPS. Se outro projeto estiver
+            # quebrado, removemos o nosso link para nao piorar e falhamos claro.
+            if ! nginx -t 2>/tmp/nginx-test.log; then
+              cat /tmp/nginx-test.log >&2
+              rm -f "/etc/nginx/sites-enabled/${SITE_NAME}"
+              echo "::error::nginx -t falhou; vhost do makucho removido para nao afetar os demais sites." >&2
+              exit 1
+            fi
+
+            systemctl reload nginx
+            echo "vhost HTTP de ${PRIMARY_DOMAIN} ativo -> 127.0.0.1:${DEPLOY_PORT}"
+          ENDSSH
+
+      - name: Obtain SSL certificate
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "PRIMARY_DOMAIN='${{ env.PRIMARY_DOMAIN }}' SECONDARY_DOMAIN='${{ env.SECONDARY_DOMAIN }}' SSL_EMAIL='${{ env.SSL_EMAIL }}' bash -s" <<'ENDSSH'
+            set -euo pipefail
+
+            mkdir -p /var/www/certbot
+
+            # A VPS hospeda dezenas de dominios e roda timers do certbot.
+            # Um "pkill certbot" aqui abortaria a renovacao de OUTROS sites.
+            # Em vez de matar, esperamos o lock liberar.
+            wait_for_certbot() {
+              local waited=0
+              while pgrep -x certbot >/dev/null 2>&1 || pgrep -f '/usr/bin/certbot' >/dev/null 2>&1; do
+                if [ "$waited" -ge 180 ]; then
+                  echo "Outro certbot segue rodando apos 180s; pulando a emissao." >&2
+                  return 1
+                fi
+                echo "Aguardando outra instancia do certbot (${waited}s)..."
+                sleep 10
+                waited=$((waited + 10))
+              done
+              return 0
+            }
+
+            if [ ! -f "/etc/letsencrypt/live/${PRIMARY_DOMAIN}/fullchain.pem" ]; then
+              if wait_for_certbot; then
+                if ! certbot certonly --webroot \
+                  -w /var/www/certbot \
+                  -d "$PRIMARY_DOMAIN" \
+                  -d "$SECONDARY_DOMAIN" \
+                  --email "$SSL_EMAIL" \
+                  --agree-tos \
+                  --non-interactive; then
+                  echo "Aviso: certbot falhou; mantendo HTTP neste deploy." >&2
+                fi
+              fi
+            else
+              echo "Certificado ja existe para ${PRIMARY_DOMAIN}."
+            fi
+
+            # Sem o deploy-hook o nginx segue servindo o certificado antigo em
+            # memoria ate um reload manual, e o site cai por "certificado
+            # vencido" com o arquivo novo ja gravado em disco.
+            mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+            printf '%s\n' '#!/bin/sh' 'systemctl reload nginx' \
+              > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+            chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+
+            if systemctl list-unit-files | grep -q '^certbot.timer'; then
+              systemctl enable --now certbot.timer
+              echo "certbot.timer ativo."
+            elif [ -f /etc/cron.d/certbot ]; then
+              echo "Renovacao via /etc/cron.d/certbot."
+            else
+              printf '%s\n' \
+                '0 3 * * * root certbot renew --quiet --webroot -w /var/www/certbot' \
+                > /etc/cron.d/certbot-makucho
+              echo "Cron de renovacao criado."
+            fi
+
+            # Conferencia do webroot com um GET simples. Evitamos
+            # "certbot renew --dry-run": ele revalidaria os ~24 dominios da
+            # VPS a cada deploy e falharia por causa de site de terceiro.
+            CHALLENGE_DIR=/var/www/certbot/.well-known/acme-challenge
+            mkdir -p "$CHALLENGE_DIR"
+            TOKEN="deploy-check-$(date +%s)"
+            printf '%s' "$TOKEN" > "$CHALLENGE_DIR/$TOKEN"
+
+            for domain in "$PRIMARY_DOMAIN" "$SECONDARY_DOMAIN"; do
+              if [ "$(curl -fsS --max-time 15 "http://${domain}/.well-known/acme-challenge/${TOKEN}" 2>/dev/null)" = "$TOKEN" ]; then
+                echo "acme-challenge acessivel em ${domain}."
+              else
+                echo "Aviso: acme-challenge nao respondeu em ${domain}." >&2
+              fi
+            done
+            rm -f "$CHALLENGE_DIR/$TOKEN"
+
+            # A aplicacao ja esta no ar; nenhum aviso acima deve derrubar o job.
+            exit 0
+          ENDSSH
+
+      - name: Configure Nginx (HTTPS)
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "DEPLOY_PORT='${{ env.DEPLOY_PORT }}' PRIMARY_DOMAIN='${{ env.PRIMARY_DOMAIN }}' SECONDARY_DOMAIN='${{ env.SECONDARY_DOMAIN }}' CANONICAL_URL='${{ env.CANONICAL_URL }}' SITE_NAME='${{ env.SITE_NAME }}' bash -s" <<'ENDSSH'
+            set -euo pipefail
+
+            if [ ! -f "/etc/letsencrypt/live/${PRIMARY_DOMAIN}/fullchain.pem" ]; then
+              echo "Certificado ausente; mantendo a configuracao HTTP."
+              exit 0
+            fi
+
+            BACKUP_CONF=""
+            if [ -f "/etc/nginx/sites-available/${SITE_NAME}" ]; then
+              BACKUP_CONF="/tmp/${SITE_NAME}.nginx.bak"
+              cp "/etc/nginx/sites-available/${SITE_NAME}" "$BACKUP_CONF"
+            fi
+
+            # HTTP/2 mudou de sintaxe no nginx 1.25.1: antes parametro do
+            # "listen", depois diretiva "http2". A VPS roda 1.18, mas o teste
+            # deixa o script correto caso o nginx seja atualizado.
+            NGINX_VERSION="$(nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9.]*\).*#\1#p')"
+            if [ -n "$NGINX_VERSION" ] && \
+               [ "$(printf '%s\n1.25.1\n' "$NGINX_VERSION" | sort -V | head -n1)" = "1.25.1" ]; then
+              HTTP2_LISTEN='    listen 443 ssl;'
+              HTTP2_DIRECTIVE='    http2 on;'
+            else
+              HTTP2_LISTEN='    listen 443 ssl http2;'
+              HTTP2_DIRECTIVE=''
+            fi
+            echo "nginx ${NGINX_VERSION:-desconhecido} detectado."
+
+            {
+              printf '%s\n' 'server {'
+              printf '%s\n' '    listen 80;'
+              printf '%s\n' "    server_name ${PRIMARY_DOMAIN} ${SECONDARY_DOMAIN};"
+              printf '%s\n' ''
+              printf '%s\n' '    # Vem antes do redirect: um "return 301" solto responderia 301'
+              printf '%s\n' '    # tambem ao desafio do Let'"'"'s Encrypt e a renovacao falharia.'
+              printf '%s\n' '    location /.well-known/acme-challenge/ {'
+              printf '%s\n' '        root /var/www/certbot;'
+              printf '%s\n' '    }'
+              printf '%s\n' ''
+              printf '%s\n' '    location / {'
+              printf '%s\n' "        return 301 ${CANONICAL_URL}\$request_uri;"
+              printf '%s\n' '    }'
+              printf '%s\n' '}'
+              printf '%s\n' ''
+              printf '%s\n' '# www redireciona para o dominio canonico'
+              printf '%s\n' 'server {'
+              printf '%s\n' "$HTTP2_LISTEN"
+              if [ -n "$HTTP2_DIRECTIVE" ]; then printf '%s\n' "$HTTP2_DIRECTIVE"; fi
+              printf '%s\n' "    server_name ${SECONDARY_DOMAIN};"
+              printf '%s\n' ''
+              printf '%s\n' "    ssl_certificate /etc/letsencrypt/live/${PRIMARY_DOMAIN}/fullchain.pem;"
+              printf '%s\n' "    ssl_certificate_key /etc/letsencrypt/live/${PRIMARY_DOMAIN}/privkey.pem;"
+              printf '%s\n' '    ssl_protocols TLSv1.2 TLSv1.3;'
+              printf '%s\n' '    ssl_ciphers HIGH:!aNULL:!MD5;'
+              printf '%s\n' ''
+              printf '%s\n' "    return 301 ${CANONICAL_URL}\$request_uri;"
+              printf '%s\n' '}'
+              printf '%s\n' ''
+              printf '%s\n' 'server {'
+              printf '%s\n' "$HTTP2_LISTEN"
+              if [ -n "$HTTP2_DIRECTIVE" ]; then printf '%s\n' "$HTTP2_DIRECTIVE"; fi
+              printf '%s\n' "    server_name ${PRIMARY_DOMAIN};"
+              printf '%s\n' ''
+              printf '%s\n' "    ssl_certificate /etc/letsencrypt/live/${PRIMARY_DOMAIN}/fullchain.pem;"
+              printf '%s\n' "    ssl_certificate_key /etc/letsencrypt/live/${PRIMARY_DOMAIN}/privkey.pem;"
+              printf '%s\n' '    ssl_protocols TLSv1.2 TLSv1.3;'
+              printf '%s\n' '    ssl_ciphers HIGH:!aNULL:!MD5;'
+              printf '%s\n' '    ssl_prefer_server_ciphers off;'
+              printf '%s\n' '    ssl_session_cache shared:SSL:10m;'
+              printf '%s\n' '    ssl_session_timeout 1d;'
+              printf '%s\n' ''
+              printf '%s\n' '    # HSTS: so aqui, onde o TLS termina.'
+              printf '%s\n' '    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;'
+              printf '%s\n' ''
+              printf '%s\n' '    # Upload de imagem no CMS'
+              printf '%s\n' '    client_max_body_size 20m;'
+              printf '%s\n' ''
+              printf '%s\n' '    location /.well-known/acme-challenge/ {'
+              printf '%s\n' '        root /var/www/certbot;'
+              printf '%s\n' '    }'
+              printf '%s\n' ''
+              printf '%s\n' '    # Porta unica do stack; o roteamento para web:3000 e api:3001'
+              printf '%s\n' '    # acontece no nginx interno do container.'
+              printf '%s\n' '    location / {'
+              printf '%s\n' "        proxy_pass http://127.0.0.1:${DEPLOY_PORT};"
+              printf '%s\n' '        proxy_http_version 1.1;'
+              printf '%s\n' '        proxy_set_header Upgrade $http_upgrade;'
+              printf '%s\n' '        proxy_set_header Connection "upgrade";'
+              printf '%s\n' '        proxy_set_header Host $host;'
+              printf '%s\n' '        proxy_set_header X-Real-IP $remote_addr;'
+              printf '%s\n' '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
+              printf '%s\n' '        proxy_set_header X-Forwarded-Proto $scheme;'
+              printf '%s\n' '        proxy_set_header X-Forwarded-Port 443;'
+              printf '%s\n' '        proxy_read_timeout 120s;'
+              printf '%s\n' '        proxy_send_timeout 120s;'
+              printf '%s\n' '    }'
+              printf '%s\n' '}'
+            } > "/etc/nginx/sites-available/${SITE_NAME}"
+
+            ln -sfn "/etc/nginx/sites-available/${SITE_NAME}" "/etc/nginx/sites-enabled/${SITE_NAME}"
+
+            if ! nginx -t 2>/tmp/nginx-test.log; then
+              cat /tmp/nginx-test.log >&2
+              if [ -n "$BACKUP_CONF" ] && [ -f "$BACKUP_CONF" ]; then
+                echo "nginx -t falhou: restaurando a config anterior do ${SITE_NAME}." >&2
+                cp "$BACKUP_CONF" "/etc/nginx/sites-available/${SITE_NAME}"
+              fi
+              exit 1
+            fi
+
+            systemctl reload nginx
+            echo "HTTPS configurado para ${PRIMARY_DOMAIN} e ${SECONDARY_DOMAIN}."
+          ENDSSH
+
+      - name: Post-deploy health check
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+        run: |
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "APP_ROOT='${{ env.APP_ROOT }}' DEPLOY_PORT='${{ env.DEPLOY_PORT }}' RELEASE='${{ steps.release.outputs.version }}' bash '${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}/.github/scripts/remote-health-check.sh'"
+
+      # ───────────────────────────────────────────────────────────────────────
+      # Verificacao pelo dominio publico
+      #
+      # O health check anterior fala com 127.0.0.1 e por isso enxergaria tudo
+      # "no ar" mesmo com o site inacessivel de fora (por exemplo se o step de
+      # SSL abortar e o dominio cair no certificado de outro projeto da VPS).
+      # Este passo roda do runner, atravessando DNS, TLS e nginx de verdade.
+      # ───────────────────────────────────────────────────────────────────────
+      - name: Verify public HTTPS
+        run: |
+          set -uo pipefail
+          fail=0
+
+          echo "Certificado servido em ${{ env.PRIMARY_DOMAIN }}:"
+          cert_subject="$(echo | openssl s_client \
+            -connect "${{ env.PRIMARY_DOMAIN }}:443" \
+            -servername "${{ env.PRIMARY_DOMAIN }}" 2>/dev/null \
+            | openssl x509 -noout -subject 2>/dev/null || true)"
+          echo "  $cert_subject"
+          if ! printf '%s' "$cert_subject" | grep -q "${{ env.PRIMARY_DOMAIN }}"; then
+            echo "::error::A porta 443 esta servindo certificado de outro dominio. O vhost HTTPS provavelmente nao foi aplicado." >&2
+            fail=1
+          fi
+
+          check_public() {
+            local url="$1" label="$2" code
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$url" 2>/dev/null || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "  ok      $label -> $url"
+            else
+              echo "::error::$label respondeu HTTP $code em $url" >&2
+              fail=1
+            fi
+          }
+
+          check_public "${{ env.CANONICAL_URL }}/" "portal publico"
+          check_public "${{ env.CANONICAL_URL }}/api/health" "api"
+
+          echo "Redirecionamento HTTP -> HTTPS:"
+          redirect_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 \
+            "http://${{ env.PRIMARY_DOMAIN }}/" 2>/dev/null || echo 000)"
+          if [ "$redirect_code" = "301" ] || [ "$redirect_code" = "308" ]; then
+            echo "  ok      HTTP redireciona ($redirect_code)"
+          else
+            echo "::warning::HTTP respondeu $redirect_code em vez de redirecionar." >&2
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo "O site nao esta acessivel pelo dominio publico." >&2
+            exit 1
+          fi
+
+          echo "Site acessivel por HTTPS com o certificado correto."
+
+      - name: Notify success
+        run: |
+          echo "Deploy ${{ steps.release.outputs.version }} concluido"
+          echo "URL: ${{ env.CANONICAL_URL }}"
+          echo "Porta unica no host: 127.0.0.1:${{ env.DEPLOY_PORT }}"

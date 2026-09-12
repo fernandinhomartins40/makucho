@@ -1,0 +1,254 @@
+# ============================================================
+# MAKUCHO - Producao (VPS compartilhada)
+#
+# ARQUITETURA DE PORTAS
+#   Uma unica porta publicada no host: 127.0.0.1:${DEPLOY_PORT}
+#   Todo o resto vive na rede interna e nao e alcancavel de fora:
+#       web   :3000   Next.js
+#       api   :3001   NestJS
+#       postgres:5432  redis:6379  minio:9000
+#
+#   Internet -> nginx do host (TLS) -> 127.0.0.1:3096 -> nginx interno
+#                                                        |-- /      web:3000
+#                                                        |-- /api   api:3001
+#                                                        +-- /files minio:9000
+#
+# MEMORIA
+#   A VPS hospeda ~12 aplicacoes e nao tem swap. Todo servico declara
+#   mem_limit para que um pico do MAKUCHO nao mate o app de outro cliente.
+# ============================================================
+
+name: makucho
+
+services:
+  # ---------------- Roteador: unica porta exposta ----------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: makucho-nginx
+    restart: unless-stopped
+    # O bind em 127.0.0.1 e deliberado: so o nginx do host alcanca esta porta.
+    ports:
+      - '127.0.0.1:${DEPLOY_PORT:-3096}:80'
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infrastructure/nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      web:
+        condition: service_started
+      api:
+        condition: service_started
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost/nginx-health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: 128m
+    networks:
+      - makucho-net
+
+  # ---------------- Frontend (Next.js) ----------------
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-MAKUCHO}
+    image: makucho-web:${RELEASE:-latest}
+    container_name: makucho-web
+    restart: unless-stopped
+    # Sem "ports": apenas a rede interna enxerga a 3000.
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOSTNAME: '0.0.0.0'
+      # No servidor o Next fala com a API pelo nome do servico,
+      # sem sair para a internet.
+      INTERNAL_API_URL: http://api:3001/api
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
+      NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-MAKUCHO}
+      NEXT_TELEMETRY_DISABLED: '1'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    mem_limit: 640m
+    networks:
+      - makucho-net
+
+  # ---------------- Backend (NestJS) ----------------
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    image: makucho-api:${RELEASE:-latest}
+    container_name: makucho-api
+    restart: unless-stopped
+    expose:
+      - '3001'
+    environment:
+      NODE_ENV: production
+      API_PORT: '3001'
+      API_PREFIX: api
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      COOKIE_SECURE: 'true'
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      # nginx do host + nginx do compose = 2 saltos ate o IP real do visitante
+      TRUST_PROXY_HOPS: '2'
+      STORAGE_PROVIDER: minio
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-makucho-media}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
+      STORAGE_FORCE_PATH_STYLE: 'true'
+      # Imagens servidas pelo proprio dominio, via /files do nginx interno
+      STORAGE_PUBLIC_URL: ${PUBLIC_APP_URL}/files
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL}
+      ANALYTICS_SESSION_SALT: ${ANALYTICS_SESSION_SALT}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrador MAKUCHO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 768m
+    networks:
+      - makucho-net
+
+  # ---------------- Banco de dados ----------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: makucho-postgres
+    restart: unless-stopped
+    # Sem "ports": inacessivel de fora da rede do compose.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 512m
+    networks:
+      - makucho-net
+
+  # ---------------- Cache / rate limit ----------------
+  redis:
+    image: redis:7-alpine
+    container_name: makucho-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 192m
+    networks:
+      - makucho-net
+
+  # ---------------- Storage de imagens ----------------
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: makucho-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
+      # Console desligado em producao: acesso apenas pela rede interna.
+      MINIO_BROWSER: 'off'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    mem_limit: 384m
+    networks:
+      - makucho-net
+
+  # Cria o bucket na primeira subida e encerra.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: makucho-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-makucho-media}
+    entrypoint: /bin/sh
+    command: /scripts/init-minio.sh
+    volumes:
+      - ./infrastructure/scripts/init-minio.sh:/scripts/init-minio.sh:ro
+    mem_limit: 128m
+    networks:
+      - makucho-net
+    restart: 'no'
+
+networks:
+  makucho-net:
+    driver: bridge
+    name: makucho-net
+
+volumes:
+  postgres_data:
+    name: makucho-postgres-data
+  redis_data:
+    name: makucho-redis-data
+  minio_data:
+    name: makucho-minio-data
+  nginx_logs:
+    name: makucho-nginx-logs
