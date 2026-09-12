@@ -44,3 +44,5 @@ packages/database/.env
 
 # Build info do TypeScript
 *.tsbuildinfo
+apps/api/.env
+.tsbuildinfo-typecheck
