@@ -1,3 +1,13 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# argon2 e sharp compilam binario nativo na instalacao; sem autorizar o
+# script, o hash de senha e o processamento de imagem nao funcionam.
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - argon2
+  - sharp
+  - '@prisma/client'
+  - prisma
+  - esbuild
