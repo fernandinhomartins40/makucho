@@ -16,7 +16,7 @@
     "db:generate": "pnpm --filter @makucho/database db:generate",
     "db:migrate": "pnpm --filter @makucho/database db:migrate",
     "db:deploy": "pnpm --filter @makucho/database db:deploy",
-    "db:seed": "pnpm --filter @makucho/database db:seed",
+    "db:seed": "pnpm --filter @makucho/api seed",
     "db:studio": "pnpm --filter @makucho/database db:studio",
     "db:reset": "pnpm --filter @makucho/database db:reset",
     "docker:up": "docker compose up -d",
