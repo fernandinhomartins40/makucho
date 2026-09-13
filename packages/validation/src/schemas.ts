@@ -315,6 +315,19 @@ export const criarVideoSchema = z.object({
 
 export const atualizarVideoSchema = criarVideoSchema.partial();
 
+export const filtroVideosSchema = paginacaoSchema.extend({
+  platform: plataformaVideoSchema.optional(),
+  categorySlug: z.string().max(140).optional(),
+  isFeatured: z.coerce.boolean().optional(),
+});
+
+/** Reordenacao por arrastar e soltar; serve para videos e anuncios. */
+export const reordenarSchema = z.object({
+  items: z
+    .array(z.object({ id: uuidSchema, position: z.number().int().min(0) }))
+    .min(1),
+});
+
 // ============================================================
 // MIDIA (secoes 12, 14)
 // ============================================================
@@ -397,6 +410,11 @@ export const criarAnuncioSchema = camposAnuncioSchema.refine(
 );
 
 export const atualizarAnuncioSchema = camposAnuncioSchema.partial();
+
+export const filtroAnunciosSchema = paginacaoSchema.extend({
+  status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'EXPIRED']).optional(),
+  placement: posicaoAnuncioSchema.optional(),
+});
 
 export const eventoAnuncioSchema = z.object({
   adId: uuidSchema,
@@ -490,6 +508,21 @@ export const atualizarConfiguracoesSchema = z.object({
       }),
     )
     .min(1),
+});
+
+export const redeSocialSchema = z.object({
+  platform: z.string().min(1).max(40).trim().toLowerCase(),
+  label: z.string().min(1).max(80).trim(),
+  url: urlExternaSchema,
+  handle: z.string().max(120).nullish(),
+  icon: z.string().max(60).nullish(),
+  followerCount: z.number().int().min(0).nullish(),
+  followerLabel: z.string().max(60).nullish(),
+  position: z.number().int().min(0).default(0),
+  isActive: z.boolean().default(true),
+  showInHeader: z.boolean().default(true),
+  showInFooter: z.boolean().default(true),
+  showInSidebar: z.boolean().default(true),
 });
 
 // ============================================================
