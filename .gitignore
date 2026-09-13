@@ -46,3 +46,6 @@ packages/database/.env
 *.tsbuildinfo
 apps/api/.env
 .tsbuildinfo-typecheck
+
+# Permissoes locais do Claude Code: sao da maquina de cada um
+.claude/settings.local.json
