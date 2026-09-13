@@ -1,6 +1,9 @@
 # ============================================================
-# MAKUCHO - Orquestracao de desenvolvimento
-# Unica porta publica: Nginx (80). Web e API nao sao expostos.
+# MAKUCHO - Servicos de apoio ao desenvolvimento
+#
+# So o banco: a API e o frontend rodam na maquina, com "pnpm dev".
+# As imagens ficam em apps/api/storage/media e a propria API as serve
+# em /files enquanto se desenvolve; em producao quem entrega e o nginx.
 # ============================================================
 
 name: makucho
@@ -34,64 +37,6 @@ services:
       - makucho-net
 
   # ---------------- Cache / rate limit ----------------
-  redis:
-    image: redis:7-alpine
-    container_name: makucho-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - makucho-net
-
-  # ---------------- Storage de imagens (S3-compativel) ----------------
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: makucho-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-makucho_minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-makucho_minio_password_change_me}
-    ports:
-      - '${MINIO_API_PORT:-9000}:9000'
-      - '${MINIO_CONSOLE_PORT:-9001}:9001'
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
-    networks:
-      - makucho-net
-
-  # Cria o bucket e libera leitura publica das imagens; sai apos concluir
-  minio-init:
-    image: quay.io/minio/mc:latest
-    container_name: makucho-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-makucho_minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-makucho_minio_password_change_me}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-makucho-media}
-    entrypoint: /bin/sh
-    command: /scripts/init-minio.sh
-    volumes:
-      - ./infrastructure/scripts/init-minio.sh:/scripts/init-minio.sh:ro
-    networks:
-      - makucho-net
-    restart: 'no'
-
 networks:
   makucho-net:
     driver: bridge
@@ -100,7 +45,3 @@ networks:
 volumes:
   postgres_data:
     name: makucho-postgres-data
-  redis_data:
-    name: makucho-redis-data
-  minio_data:
-    name: makucho-minio-data

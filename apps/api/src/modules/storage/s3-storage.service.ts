@@ -42,6 +42,11 @@ export class S3StorageService implements StorageProvider, OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
+    // Ambos os providers ficam registrados no container, mas so um esta
+    // em uso. Sem esta guarda o S3 tentaria alcancar um MinIO que nem
+    // sobe quando STORAGE_PROVIDER=disk, poluindo o log com erro.
+    if (this.config.get('storage', { infer: true }).provider === 'disk') return;
+
     try {
       await this.ensureBucket();
     } catch (erro) {

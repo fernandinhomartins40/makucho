@@ -6,12 +6,12 @@
 #   Todo o resto vive na rede interna e nao e alcancavel de fora:
 #       web   :3000   Next.js
 #       api   :3001   NestJS
-#       postgres:5432  redis:6379  minio:9000
+#       postgres:5432
 #
 #   Internet -> nginx do host (TLS) -> 127.0.0.1:3096 -> nginx interno
 #                                                        |-- /      web:3000
 #                                                        |-- /api   api:3001
-#                                                        +-- /files minio:9000
+#                                                        +-- /files volume de midia
 #
 # MEMORIA
 #   A VPS hospeda ~12 aplicacoes e nao tem swap. Todo servico declara
@@ -33,6 +33,7 @@ services:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
       - ./infrastructure/nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+      - media_data:/var/www/media:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       web:
@@ -45,7 +46,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    mem_limit: 128m
+    mem_limit: 96m
     networks:
       - makucho-net
 
@@ -88,7 +89,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    mem_limit: 640m
+    mem_limit: 448m
     networks:
       - makucho-net
 
@@ -107,9 +108,6 @@ services:
       API_PORT: '3001'
       API_PREFIX: api
       DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: redis://redis:6379
-      REDIS_HOST: redis
-      REDIS_PORT: '6379'
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
@@ -119,14 +117,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       # nginx do host + nginx do compose = 2 saltos ate o IP real do visitante
       TRUST_PROXY_HOPS: '2'
-      STORAGE_PROVIDER: minio
-      STORAGE_ENDPOINT: http://minio:9000
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-makucho-media}
-      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
-      STORAGE_FORCE_PATH_STYLE: 'true'
-      # Imagens servidas pelo proprio dominio, via /files do nginx interno
+      # Imagens no proprio volume; o nginx interno as entrega em /files,
+      # direto do disco, sem passar por processo nenhum.
+      STORAGE_PROVIDER: disk
+      STORAGE_DISK_PATH: /app/storage/media
       STORAGE_PUBLIC_URL: ${PUBLIC_APP_URL}/files
       PUBLIC_APP_URL: ${PUBLIC_APP_URL}
       ANALYTICS_SESSION_SALT: ${ANALYTICS_SESSION_SALT}
@@ -135,10 +129,6 @@ services:
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrador MAKUCHO}
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
         condition: service_healthy
     healthcheck:
       test:
@@ -150,7 +140,9 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    mem_limit: 768m
+    volumes:
+      - media_data:/app/storage/media
+    mem_limit: 512m
     networks:
       - makucho-net
 
@@ -173,70 +165,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    mem_limit: 512m
-    networks:
-      - makucho-net
-
-  # ---------------- Cache / rate limit ----------------
-  redis:
-    image: redis:7-alpine
-    container_name: makucho-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    mem_limit: 192m
-    networks:
-      - makucho-net
-
-  # ---------------- Storage de imagens ----------------
-  minio:
-    image: quay.io/minio/minio:latest
-    container_name: makucho-minio
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
-      # Console desligado em producao: acesso apenas pela rede interna.
-      MINIO_BROWSER: 'off'
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     mem_limit: 384m
     networks:
       - makucho-net
-
-  # Cria o bucket na primeira subida e encerra.
-  minio-init:
-    image: quay.io/minio/mc:latest
-    container_name: makucho-minio-init
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY}
-      STORAGE_BUCKET: ${STORAGE_BUCKET:-makucho-media}
-    entrypoint: /bin/sh
-    command: /scripts/init-minio.sh
-    volumes:
-      - ./infrastructure/scripts/init-minio.sh:/scripts/init-minio.sh:ro
-    mem_limit: 128m
-    networks:
-      - makucho-net
-    restart: 'no'
 
 networks:
   makucho-net:
@@ -246,9 +177,9 @@ networks:
 volumes:
   postgres_data:
     name: makucho-postgres-data
-  redis_data:
-    name: makucho-redis-data
-  minio_data:
-    name: makucho-minio-data
+  # Imagens do CMS. Montado na api para escrita e no nginx, so leitura,
+  # para entrega direta do disco.
+  media_data:
+    name: makucho-media-data
   nginx_logs:
     name: makucho-nginx-logs

@@ -28,12 +28,6 @@ const envSchema = z
     // ---- Banco ----
     DATABASE_URL: z.string().min(1, 'DATABASE_URL é obrigatória'),
 
-    // ---- Redis ----
-    REDIS_URL: z.string().default('redis://localhost:6379'),
-    REDIS_HOST: z.string().default('localhost'),
-    REDIS_PORT: z.coerce.number().int().default(6379),
-    REDIS_PASSWORD: z.string().optional(),
-
     // ---- Autenticacao ----
     // Exigimos 32 caracteres: um segredo curto torna o JWT quebravel
     // por forca bruta offline.
@@ -49,13 +43,17 @@ const envSchema = z
     AUTH_LOCKOUT_MINUTES: z.coerce.number().int().min(1).default(15),
 
     // ---- Storage ----
-    STORAGE_PROVIDER: z.enum(['minio', 's3', 'r2', 'b2']).default('minio'),
+    // "disk" e o padrao: guarda no proprio volume e deixa o nginx servir.
+    // Os demais valem quando o volume justificar um provedor de objetos.
+    STORAGE_PROVIDER: z.enum(['disk', 'minio', 's3', 'r2', 'b2']).default('disk'),
+    STORAGE_DISK_PATH: z.string().default('./storage/media'),
+    STORAGE_PUBLIC_URL: z.string().default('http://localhost:3001/files'),
+    // Só usados pelos provedores S3-compativeis.
     STORAGE_BUCKET: z.string().default('makucho-media'),
     STORAGE_REGION: z.string().default('us-east-1'),
-    STORAGE_ENDPOINT: z.string().default('http://localhost:9000'),
-    STORAGE_PUBLIC_URL: z.string().default('http://localhost:9000/makucho-media'),
-    STORAGE_ACCESS_KEY: z.string().min(1, 'STORAGE_ACCESS_KEY é obrigatória'),
-    STORAGE_SECRET_KEY: z.string().min(1, 'STORAGE_SECRET_KEY é obrigatória'),
+    STORAGE_ENDPOINT: z.string().optional(),
+    STORAGE_ACCESS_KEY: z.string().optional(),
+    STORAGE_SECRET_KEY: z.string().optional(),
     STORAGE_FORCE_PATH_STYLE: booleanoTexto(true),
 
     // ---- Upload e imagens ----
@@ -183,12 +181,13 @@ export function construirConfiguracao() {
 
     storage: {
       provider: env.STORAGE_PROVIDER,
+      diskPath: env.STORAGE_DISK_PATH,
       bucket: env.STORAGE_BUCKET,
       region: env.STORAGE_REGION,
-      endpoint: env.STORAGE_ENDPOINT,
+      endpoint: env.STORAGE_ENDPOINT ?? '',
       publicUrl: env.STORAGE_PUBLIC_URL.replace(/\/+$/, ''),
-      accessKey: env.STORAGE_ACCESS_KEY,
-      secretKey: env.STORAGE_SECRET_KEY,
+      accessKey: env.STORAGE_ACCESS_KEY ?? '',
+      secretKey: env.STORAGE_SECRET_KEY ?? '',
       forcePathStyle: env.STORAGE_FORCE_PATH_STYLE,
     },
 
@@ -202,13 +201,6 @@ export function construirConfiguracao() {
       webpQuality: env.IMAGE_WEBP_QUALITY,
       avifQuality: env.IMAGE_AVIF_QUALITY,
       generateAvif: env.IMAGE_GENERATE_AVIF,
-    },
-
-    redis: {
-      url: env.REDIS_URL,
-      host: env.REDIS_HOST,
-      port: env.REDIS_PORT,
-      password: env.REDIS_PASSWORD,
     },
 
     rateLimit: {

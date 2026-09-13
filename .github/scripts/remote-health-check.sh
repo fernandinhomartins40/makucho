@@ -29,7 +29,7 @@ compose() {
 # 1. Estado dos containers
 # ------------------------------------------------------------
 log "--- containers ---"
-for svc in postgres redis minio api web nginx; do
+for svc in postgres api web nginx; do
   cid="$(compose ps -q "$svc" 2>/dev/null || true)"
   if [ -z "$cid" ]; then
     bad "$svc nao esta rodando"

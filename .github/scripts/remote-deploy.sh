@@ -80,7 +80,7 @@ log "aguardando healthchecks..."
 DEADLINE=$((SECONDS + 240))
 while [ "$SECONDS" -lt "$DEADLINE" ]; do
   UNHEALTHY=0
-  for svc in postgres redis minio api web nginx; do
+  for svc in postgres api web nginx; do
     cid="$(compose ps -q "$svc" 2>/dev/null || true)"
     [ -z "$cid" ] && continue
     state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo unknown)"

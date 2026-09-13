@@ -203,10 +203,8 @@ jobs:
             ensure_env "JWT_REFRESH_EXPIRES_IN" "7d"
 
             # ---- Storage de imagens ----
-            ensure_env "STORAGE_BUCKET" "makucho-media"
-            ensure_env "STORAGE_REGION" "us-east-1"
-            ensure_env "STORAGE_ACCESS_KEY" "makucho"
-            ensure_random_hex "STORAGE_SECRET_KEY" 32
+            # Guardadas no volume makucho-media-data e entregues pelo
+            # nginx direto do disco: sem servidor de objetos, sem chaves.
 
             # ---- Analytics (hash anonimo de sessao) ----
             ensure_random_hex "ANALYTICS_SESSION_SALT" 32

@@ -49,3 +49,7 @@ apps/api/.env
 
 # Permissoes locais do Claude Code: sao da maquina de cada um
 .claude/settings.local.json
+
+# Imagens enviadas pelo CMS: dado da instalacao, recriado pelo seed.
+# Em producao vivem no volume makucho-media-data.
+apps/api/storage/

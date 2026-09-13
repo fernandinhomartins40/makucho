@@ -54,6 +54,26 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(servidor.prefix);
 
+  /**
+   * Imagens em /files durante o desenvolvimento.
+   *
+   * Em producao quem entrega e o nginx, direto do volume — mais rapido e
+   * sem ocupar o event loop do Node. Mas em desenvolvimento nao ha nginx
+   * na frente, e sem isto as imagens do CMS apareceriam quebradas.
+   */
+  const storage = config.get('storage', { infer: true });
+  if (!producao && storage.provider === 'disk') {
+    const { resolve } = await import('node:path');
+    app.useStaticAssets(resolve(storage.diskPath), {
+      prefix: '/files',
+      index: false,
+      // Os nomes carregam hash do conteudo: nunca mudam sem mudar de nome.
+      maxAge: '30d',
+      immutable: true,
+    });
+    logger.log(`Imagens servidas em /files a partir de ${resolve(storage.diskPath)}`);
+  }
+
   // ---- Swagger (secao 5) ----
   if (!producao) {
     const documento = new DocumentBuilder()
