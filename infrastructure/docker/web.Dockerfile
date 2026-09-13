@@ -6,7 +6,7 @@
 # ============================================================
 
 FROM node:22-alpine AS base
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
@@ -17,7 +17,6 @@ ENV NEXT_TELEMETRY_DISABLED=1
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/package.json ./apps/web/
-COPY packages/ui/package.json ./packages/ui/
 COPY packages/types/package.json ./packages/types/
 COPY packages/validation/package.json ./packages/validation/
 COPY packages/database/package.json ./packages/database/
@@ -27,10 +26,14 @@ RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
 FROM base AS builder
+# Mesma ordem do api.Dockerfile: o fonte primeiro, os node_modules
+# depois, para que o COPY do fonte nao apague os links do pnpm.
+COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
-COPY --from=deps /app/packages ./packages
-COPY . .
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=deps /app/packages/validation/node_modules ./packages/validation/node_modules
 
 # Variaveis NEXT_PUBLIC_* sao inlined no bundle durante o build:
 # precisam existir aqui, nao apenas em tempo de execucao.
@@ -48,11 +51,15 @@ ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=3072
 
 RUN pnpm --filter @makucho/database exec prisma generate
+
+# Mesma razao do api.Dockerfile: os pacotes compartilhados sao resolvidos
+# pelo dist/, que so existe depois de compilados.
+RUN pnpm --filter "@makucho/web^..." build
 RUN pnpm --filter @makucho/web build
 
 # ---------- Imagem final ----------
 FROM node:22-alpine AS runner
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 ENV NODE_ENV=production

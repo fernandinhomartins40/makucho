@@ -1,0 +1,43 @@
+# Sem este arquivo, o "COPY . ." do builder envia os node_modules da
+# maquina de quem builda para dentro da imagem, sobrescrevendo os que o
+# pnpm instalou no container. Em uma maquina Windows isso quebra de vez:
+# os binarios nativos (prisma, sharp, argon2) sao de outra plataforma.
+node_modules
+**/node_modules
+
+# Artefatos de build: sao gerados dentro da imagem.
+dist
+.next
+out
+build
+*.tsbuildinfo
+.tsbuildinfo*
+.turbo
+
+# Segredos e configuracao local. As variaveis de producao chegam pelo
+# ambiente do container, nunca por arquivo copiado.
+.env
+.env.*
+!.env.example
+
+# Imagens enviadas pelo CMS: vivem em volume, nao na imagem.
+apps/api/storage
+
+# Controle de versao e metadados
+.git
+.github
+.gitignore
+.gitattributes
+
+# Ferramentas de desenvolvimento
+.vscode
+.idea
+.claude
+coverage
+*.log
+
+# Documentacao e infraestrutura que nao entram no build da aplicacao
+*.md
+!README.md
+docker-compose*.yml
+infrastructure/nginx

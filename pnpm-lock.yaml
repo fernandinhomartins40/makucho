@@ -165,6 +165,9 @@ importers:
       '@prisma/client':
         specifier: ^5.22.0
         version: 5.22.0(prisma@5.22.0)
+      prisma:
+        specifier: ^5.22.0
+        version: 5.22.0
     devDependencies:
       '@makucho/typescript-config':
         specifier: workspace:*
@@ -172,9 +175,9 @@ importers:
       '@types/node':
         specifier: ^22.7.5
         version: 22.20.2
-      prisma:
-        specifier: ^5.22.0
-        version: 5.22.0
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
       tsx:
         specifier: ^4.19.1
         version: 4.23.13
@@ -199,6 +202,9 @@ importers:
       '@makucho/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
@@ -217,6 +223,9 @@ importers:
       '@makucho/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
       tsx:
         specifier: ^4.19.1
         version: 4.23.13

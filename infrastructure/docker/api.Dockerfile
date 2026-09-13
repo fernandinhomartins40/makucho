@@ -7,7 +7,9 @@
 # ---------- Base comum ----------
 FROM node:22-alpine AS base
 # libc6-compat: binarios nativos (Sharp, Prisma engines) esperam glibc.
-RUN apk add --no-cache libc6-compat
+# openssl: os engines do Prisma sao ligados a libssl; sem ele o schema
+# engine falha na subida, e o aviso sobre a versao da libssl e o sintoma.
+RUN apk add --no-cache libc6-compat openssl
 RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
@@ -28,13 +30,24 @@ RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
 FROM base AS builder
+# O codigo-fonte entra primeiro: os node_modules vem depois, para que o
+# COPY do fonte nunca sobrescreva o que o pnpm instalou. Na ordem
+# inversa, "COPY . ." apagava os links do pnpm em ./packages e o
+# binario do prisma sumia.
+COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=deps /app/packages ./packages
-COPY . .
+COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=deps /app/packages/validation/node_modules ./packages/validation/node_modules
 # O client do Prisma precisa existir antes da compilacao do Nest.
 RUN pnpm --filter @makucho/database exec prisma generate
-RUN pnpm --filter @makucho/database build
+
+# Os pacotes compartilhados publicam dist/ e sao resolvidos por ele: sem
+# compilar todos antes, o tsc da API nao encontra @makucho/types nem
+# @makucho/validation. "^..." compila cada um com suas dependencias na
+# ordem certa, sem precisar listar uma a uma aqui.
+RUN pnpm --filter "@makucho/api^..." build
 RUN pnpm --filter @makucho/api build
 
 # ---------- Dependencias de producao ----------
@@ -51,7 +64,7 @@ RUN pnpm install --frozen-lockfile --prod
 
 # ---------- Imagem final ----------
 FROM node:22-alpine AS runner
-RUN apk add --no-cache libc6-compat wget
+RUN apk add --no-cache libc6-compat openssl wget
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -68,10 +81,34 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/package.json ./apps/api/
 COPY --from=builder --chown=nestjs:nodejs /app/packages/database/dist ./packages/database/dist
 COPY --from=builder --chown=nestjs:nodejs /app/packages/database/package.json ./packages/database/
+# O estagio prod-deps traz so os package.json dos pacotes compartilhados;
+# o dist/ e produzido no builder. Sem estas copias, o require de
+# @makucho/types e @makucho/validation falha ao iniciar a API.
+COPY --from=builder --chown=nestjs:nodejs /app/packages/types/dist ./packages/types/dist
+COPY --from=builder --chown=nestjs:nodejs /app/packages/validation/dist ./packages/validation/dist
 # schema + migrations: o entrypoint roda "migrate deploy" na subida.
 COPY --from=builder --chown=nestjs:nodejs /app/packages/database/prisma ./packages/database/prisma
-# Engines do Prisma gerados no build.
-COPY --from=builder --chown=nestjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
+
+# O client e gerado aqui, contra a arvore de producao.
+#
+# Copiar os engines do builder nao funciona com pnpm: eles ficam dentro
+# de node_modules/.pnpm/@prisma+client@<versao>_<hash>/node_modules/.prisma,
+# um caminho que muda a cada atualizacao de versao. Gerar de novo custa
+# poucos segundos e nao depende do formato interno do store.
+#
+# Chamado pelo binario que o pnpm publica em .bin: este estagio parte do
+# node puro, sem o corepack do estagio base. O .bin e o unico caminho
+# estavel — o modulo em si fica sob .pnpm/prisma@<versao>/, que muda a
+# cada atualizacao.
+WORKDIR /app/packages/database
+RUN ./node_modules/.bin/prisma generate
+WORKDIR /app
+
+# Diretorio das imagens do CMS. Criado aqui, ja com o dono certo: em
+# producao o volume e montado sobre ele, e um volume nomeado herda a
+# propriedade do ponto de montagem. Sem isto o usuario sem privilegios
+# nao consegue criar a pasta e a API nao sobe.
+RUN mkdir -p /app/storage/media && chown -R nestjs:nodejs /app/storage
 
 COPY --chown=nestjs:nodejs infrastructure/docker/api-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "prisma generate && tsc",
+    "build": "prisma generate && rimraf dist tsconfig.tsbuildinfo && tsc",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
@@ -24,13 +24,14 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
     "@makucho/typescript-config": "workspace:*",
     "@types/node": "^22.7.5",
-    "prisma": "^5.22.0",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "rimraf": "^6.0.1"
   }
 }
