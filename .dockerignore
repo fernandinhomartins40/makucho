@@ -16,9 +16,16 @@ build
 
 # Segredos e configuracao local. As variaveis de producao chegam pelo
 # ambiente do container, nunca por arquivo copiado.
+#
+# O padrao com ** e o que importa: sem ele, packages/database/.env
+# entrava na imagem e o Prisma passava a ler as credenciais de
+# desenvolvimento de dentro do container.
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
 # Imagens enviadas pelo CMS: vivem em volume, nao na imagem.
 apps/api/storage

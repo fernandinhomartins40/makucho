@@ -66,6 +66,14 @@ fi
 log "baixando imagens (release $RELEASE)..."
 export RELEASE
 if ! compose pull --quiet; then
+  # A causa quase sempre e uma so: o build do workflow falhou e as
+  # imagens desta release nunca foram publicadas. O "denied" que o
+  # Docker devolve nesse caso parece erro de permissao e manda quem
+  # depura para o lado errado.
+  log "ERRO: imagens da release $RELEASE indisponiveis no registro."
+  log "      Confira se as etapas de build do workflow concluiram."
+  log "      Esperado: $REGISTRY_IMAGE_API:$RELEASE"
+  log "                $REGISTRY_IMAGE_WEB:$RELEASE"
   fail "nao foi possivel baixar as imagens; a versao anterior segue no ar"
 fi
 

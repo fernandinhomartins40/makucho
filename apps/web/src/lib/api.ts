@@ -1,4 +1,13 @@
-import type { HomepagePayload, PaginatedResponse, PostDto, PostSummaryDto } from '@makucho/types';
+import type {
+  AuthorDto,
+  CategoryDto,
+  HomepagePayload,
+  PaginatedResponse,
+  PostDto,
+  PostSummaryDto,
+  TagDto,
+  VideoDto,
+} from '@makucho/types';
 
 /**
  * Cliente da API (secoes 3 e 32).
@@ -31,6 +40,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Teto para qualquer chamada. Sem ele, uma API lenta ou fora do ar
+ * deixa a pagina pendurada ate o timeout do sistema — e no build isso
+ * trava a compilacao inteira em vez de falhar rapido.
+ */
+const TIMEOUT_MS = 10_000;
+
 async function buscar<T>(caminho: string, opcoes: OpcoesBusca = {}): Promise<T> {
   const { revalidate = 60, ...init } = opcoes;
   const base = naoENavegador ? BASE_SERVIDOR : BASE_NAVEGADOR;
@@ -40,6 +56,7 @@ async function buscar<T>(caminho: string, opcoes: OpcoesBusca = {}): Promise<T> 
     headers: { 'Content-Type': 'application/json', ...init.headers },
     // O cookie de sessao precisa acompanhar as chamadas do painel.
     credentials: 'include',
+    signal: AbortSignal.timeout(TIMEOUT_MS),
     next: revalidate > 0 ? { revalidate } : undefined,
     cache: revalidate > 0 ? undefined : 'no-store',
   });
@@ -84,6 +101,18 @@ export const api = {
       `/posts/most-read?limit=${limite}${dias ? `&days=${dias}` : ''}`,
       { revalidate: 300 },
     ),
+
+  categorias: () => buscar<CategoryDto[]>('/categories', { revalidate: 300 }),
+
+  tags: () => buscar<TagDto[]>('/tags', { revalidate: 300 }),
+
+  tag: (slug: string) => buscar<TagDto>(`/tags/slug/${encodeURIComponent(slug)}`, { revalidate: 300 }),
+
+  autor: (slug: string) =>
+    buscar<AuthorDto>(`/authors/slug/${encodeURIComponent(slug)}`, { revalidate: 300 }),
+
+  videos: (page = 1) =>
+    buscar<PaginatedResponse<VideoDto>>(`/videos?page=${page}&perPage=12`, { revalidate: 120 }),
 
   busca: (q: string, page = 1) =>
     buscar<PaginatedResponse<PostSummaryDto> & { term: string }>(

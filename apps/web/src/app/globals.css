@@ -755,6 +755,40 @@ select {
 }
 
 /* ============================================================
+   PAGINACAO
+   ============================================================ */
+
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 1px solid var(--borda);
+}
+
+.paginacao-link {
+  padding: 9px 18px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--texto-suave);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.paginacao-link:hover {
+  border-color: var(--azul);
+  color: var(--azul);
+}
+
+.paginacao-info {
+  font-size: 0.85rem;
+  color: var(--texto-claro);
+}
+
+/* ============================================================
    UTILITARIOS
    ============================================================ */
 
