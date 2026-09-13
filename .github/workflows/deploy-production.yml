@@ -9,6 +9,12 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# packages: write permite publicar as imagens no GHCR. O build acontece
+# aqui, no runner do GitHub; a VPS so baixa o resultado pronto.
+permissions:
+  contents: read
+  packages: write
+
 env:
   VPS_HOST: 72.60.10.112
   VPS_USER: root
@@ -21,6 +27,9 @@ env:
   CANONICAL_URL: https://makucho.com.br
   SSL_EMAIL: admin@makucho.com.br
   SITE_NAME: makucho
+  REGISTRY: ghcr.io
+  IMAGE_WEB: ghcr.io/${{ github.repository_owner }}/makucho-web
+  IMAGE_API: ghcr.io/${{ github.repository_owner }}/makucho-api
   SSH_OPTS: -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
 
 jobs:
@@ -40,6 +49,55 @@ jobs:
       - name: Set release version
         id: release
         run: echo "version=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      # ----------------------------------------------------------
+      # Build das imagens no runner
+      #
+      # O build do Next.js pede ~1,5 GB de RAM e os dois vCPUs por
+      # varios minutos. Rodando na VPS, disputava recursos com as
+      # aplicacoes dos outros clientes; sem swap, isso convida o OOM
+      # killer. O runner do GitHub tem 4 vCPUs e 16 GB, de graca.
+      # ----------------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/api.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_API }}:${{ steps.release.outputs.version }}
+            ${{ env.IMAGE_API }}:latest
+          # O cache do registro evita recompilar as camadas de
+          # dependencia a cada deploy: leva o build de minutos a segundos
+          # quando so o codigo mudou.
+          cache-from: type=registry,ref=${{ env.IMAGE_API }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_API }}:buildcache,mode=max
+
+      - name: Build and push Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/web.Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_SITE_URL=${{ env.CANONICAL_URL }}
+            NEXT_PUBLIC_API_URL=/api
+            NEXT_PUBLIC_SITE_NAME=MAKUCHO
+          tags: |
+            ${{ env.IMAGE_WEB }}:${{ steps.release.outputs.version }}
+            ${{ env.IMAGE_WEB }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache,mode=max
 
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
@@ -239,12 +297,24 @@ jobs:
             echo "Variaveis de ambiente prontas em $ENV_FILE"
           ENDSSH
 
+      # A VPS precisa de credencial para baixar do GHCR. O token do proprio
+      # workflow serve e expira ao final dele; entra por stdin para nao
+      # aparecer na lista de processos do servidor.
+      - name: Authenticate VPS with GHCR
+        env:
+          SSHPASS: ${{ secrets.VPS_PASSWORD }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | sshpass -e ssh ${{ env.SSH_OPTS }} \
+            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "docker login ${{ env.REGISTRY }} -u '${{ github.actor }}' --password-stdin"
+
       - name: Deploy on VPS
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "APP_ROOT='${{ env.APP_ROOT }}' RELEASE='${{ steps.release.outputs.version }}' DEPLOY_PORT='${{ env.DEPLOY_PORT }}' bash '${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}/.github/scripts/remote-deploy.sh'"
+            "APP_ROOT='${{ env.APP_ROOT }}' RELEASE='${{ steps.release.outputs.version }}' DEPLOY_PORT='${{ env.DEPLOY_PORT }}' REGISTRY_IMAGE_WEB='${{ env.IMAGE_WEB }}' REGISTRY_IMAGE_API='${{ env.IMAGE_API }}' bash '${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}/.github/scripts/remote-deploy.sh'"
 
       - name: Configure Nginx (HTTP)
         env:

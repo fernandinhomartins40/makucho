@@ -46,20 +46,15 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    mem_limit: 96m
+    mem_limit: 48m
     networks:
       - makucho-net
 
   # ---------------- Frontend (Next.js) ----------------
   web:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/web.Dockerfile
-      args:
-        NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
-        NEXT_PUBLIC_API_URL: /api
-        NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-MAKUCHO}
-    image: makucho-web:${RELEASE:-latest}
+    # Imagem pronta, compilada pelo runner do GitHub Actions. A VPS nao
+    # compila nada: o build do Next.js sozinho pede ~1,5 GB de RAM.
+    image: ${REGISTRY_IMAGE_WEB:-ghcr.io/fernandinhomartins40/makucho-web}:${RELEASE:-latest}
     container_name: makucho-web
     restart: unless-stopped
     # Sem "ports": apenas a rede interna enxerga a 3000.
@@ -76,6 +71,16 @@ services:
       NEXT_PUBLIC_SITE_URL: ${PUBLIC_APP_URL}
       NEXT_PUBLIC_SITE_NAME: ${NEXT_PUBLIC_SITE_NAME:-MAKUCHO}
       NEXT_TELEMETRY_DISABLED: '1'
+      # O V8 nao enxerga o mem_limit do container: sem este teto ele
+      # dimensiona o heap pela RAM do host (7,8 GB) e so devolve memoria
+      # quando ja passou do limite — e ai o container morre. O valor fica
+      # abaixo do mem_limit para sobrar espaco ao resto do processo.
+      NODE_OPTIONS: --max-old-space-size=192
+    volumes:
+      # Cache do next/image. Sem persistir, toda reimplantacao reprocessa
+      # as mesmas imagens — e decodificar imagem e das operacoes que mais
+      # consomem memoria num servidor web.
+      - next_image_cache:/app/apps/web/.next/cache/images
     depends_on:
       api:
         condition: service_healthy
@@ -89,16 +94,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    mem_limit: 448m
+    mem_limit: 256m
     networks:
       - makucho-net
 
   # ---------------- Backend (NestJS) ----------------
   api:
-    build:
-      context: .
-      dockerfile: infrastructure/docker/api.Dockerfile
-    image: makucho-api:${RELEASE:-latest}
+    image: ${REGISTRY_IMAGE_API:-ghcr.io/fernandinhomartins40/makucho-api}:${RELEASE:-latest}
     container_name: makucho-api
     restart: unless-stopped
     expose:
@@ -127,6 +129,10 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Administrador MAKUCHO}
+      # Mesmo motivo do web. O Sharp trabalha fora do heap do V8, entao a
+      # folga entre este valor e o mem_limit tambem serve ao processamento
+      # de imagem.
+      NODE_OPTIONS: --max-old-space-size=128
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,7 +148,7 @@ services:
       start_period: 60s
     volumes:
       - media_data:/app/storage/media
-    mem_limit: 512m
+    mem_limit: 192m
     networks:
       - makucho-net
 
@@ -165,7 +171,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
-    mem_limit: 384m
+    mem_limit: 256m
     networks:
       - makucho-net
 
@@ -181,5 +187,7 @@ volumes:
   # para entrega direta do disco.
   media_data:
     name: makucho-media-data
+  next_image_cache:
+    name: makucho-next-image-cache
   nginx_logs:
     name: makucho-nginx-logs

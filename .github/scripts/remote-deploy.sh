@@ -16,6 +16,11 @@ APP_ROOT="${APP_ROOT:?APP_ROOT nao informado}"
 RELEASE="${RELEASE:?RELEASE nao informado}"
 DEPLOY_PORT="${DEPLOY_PORT:-3096}"
 
+# Imagens prontas no registro. O compose le estas variaveis no lugar de
+# uma secao "build": quem compila e o runner do GitHub Actions.
+export REGISTRY_IMAGE_WEB="${REGISTRY_IMAGE_WEB:-ghcr.io/fernandinhomartins40/makucho-web}"
+export REGISTRY_IMAGE_API="${REGISTRY_IMAGE_API:-ghcr.io/fernandinhomartins40/makucho-api}"
+
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE"
 CURRENT_LINK="$APP_ROOT/current"
 ENV_FILE="$APP_ROOT/.env"
@@ -48,15 +53,20 @@ if [ -L "$CURRENT_LINK" ]; then
 fi
 
 # ------------------------------------------------------------
-# Build
+# Imagens
 #
-# Feito antes de derrubar o que esta no ar: se a compilacao falhar,
-# o site continua funcionando na versao anterior.
+# As imagens ja vem prontas do registro: quem compila e o runner do
+# GitHub Actions, nao a VPS.
+#
+# O build do Next.js pede ~1,5 GB de RAM e os dois vCPUs por varios
+# minutos. Rodando aqui, ele disputava recursos com as aplicacoes dos
+# outros clientes, e num servidor sem swap isso convida o OOM killer a
+# escolher uma vitima. Baixar a imagem custa rede e alguns segundos.
 # ------------------------------------------------------------
-log "compilando imagens (release $RELEASE)..."
+log "baixando imagens (release $RELEASE)..."
 export RELEASE
-if ! compose build --pull; then
-  fail "build falhou; a versao anterior segue no ar"
+if ! compose pull --quiet; then
+  fail "nao foi possivel baixar as imagens; a versao anterior segue no ar"
 fi
 
 # ------------------------------------------------------------

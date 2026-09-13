@@ -42,9 +42,10 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SITE_NAME=$NEXT_PUBLIC_SITE_NAME
 ENV NODE_ENV=production
 
-# A VPS tem 2 vCPUs e pouca RAM livre; sem o teto o build do Next
-# chega a estourar a memoria e derrubar containers vizinhos.
-ENV NODE_OPTIONS=--max-old-space-size=1536
+# Este build roda no runner do GitHub Actions (4 vCPUs, 16 GB), nunca na
+# VPS. O teto existe para o build falhar de forma clara se algo comecar a
+# consumir memoria demais, em vez de arrastar a maquina inteira.
+ENV NODE_OPTIONS=--max-old-space-size=3072
 
 RUN pnpm --filter @makucho/database exec prisma generate
 RUN pnpm --filter @makucho/web build
