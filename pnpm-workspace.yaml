@@ -10,4 +10,5 @@ onlyBuiltDependencies:
   - sharp
   - '@prisma/client'
   - prisma
+  - next
   - esbuild

@@ -36,7 +36,8 @@
       "argon2",
       "sharp",
       "@prisma/client",
-      "prisma"
+      "prisma",
+      "next"
     ]
   }
 }
