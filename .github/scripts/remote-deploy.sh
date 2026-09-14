@@ -138,6 +138,35 @@ ln -sfn "$RELEASE_DIR" "$CURRENT_LINK"
 log "release $RELEASE ativa"
 
 # ------------------------------------------------------------
+# Conteudo inicial
+#
+# O entrypoint aplica as migrations, que criam as tabelas vazias. Sem
+# esta etapa a primeira instalacao sobe um portal sem editorias, sem
+# configuracoes e sem conta de acesso ao CMS — o site responde 200 e
+# nao mostra nada.
+#
+# O seed e idempotente: reexecutar nao duplica artigo nem midia, e
+# preserva as secoes da home ja ajustadas pela redacao. Por isso pode
+# rodar a cada deploy sem condicional.
+#
+# Nao derruba o deploy se falhar: a aplicacao ja esta no ar e
+# verificada; conteudo inicial e complemento, nao pre-requisito.
+#
+# Roda em container efemero, nao dentro da api:
+# O seed gera as imagens de demonstracao pelo pipeline Sharp, que
+# trabalha fora do heap do V8. Dentro do container de servico, limitado
+# a 192 MB, o cgroup mata o processo na fase dos artigos — medido:
+# OOMKilled=true, com o kernel registrando "Memory cgroup out of
+# memory". Elevar o limite da api resolveria o seed e deixaria a VPS
+# desprotegida o ano inteiro por causa de uma tarefa que roda uma vez.
+log "aplicando conteudo inicial (seed)..."
+if docker run --rm   --network "${COMPOSE_PROJECT}-net"   --env-file "$ENV_FILE"   -e NODE_OPTIONS=--max-old-space-size=512   --memory 640m   -v "${COMPOSE_PROJECT}-media-data:/app/storage/media"   "${REGISTRY_IMAGE_API}:${RELEASE}"   node apps/api/dist/seed/seed.js >/dev/null 2>&1; then
+  log "seed aplicado"
+else
+  log "AVISO: o seed nao concluiu; o portal pode ficar sem conteudo inicial"
+fi
+
+# ------------------------------------------------------------
 # Limpeza
 #
 # Mantem as 3 ultimas releases. A poda de imagens usa filtro por
