@@ -157,14 +157,27 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/
       fi
     done
 
-# Imagens orfas apenas deste projeto
-docker image ls --filter 'reference=makucho-*' --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null \
-  | grep -v ":${RELEASE}" \
-  | grep -v ':latest' \
-  | awk '{print $2}' \
-  | sort -u \
-  | while read -r img; do
-      docker image rm "$img" >/dev/null 2>&1 || true
-    done
+# Imagens orfas apenas deste projeto.
+#
+# O filtro casa os nomes do registro (ghcr.io/<dono>/makucho-*): desde
+# que o build passou para o CI, as imagens nao se chamam mais
+# "makucho-api", e o filtro antigo nao encontrava nenhuma.
+#
+# O "|| true" no fim do pipeline e o que importa: com set -euo pipefail,
+# um grep -v que filtra todas as linhas devolve 1 e derrubava o script
+# aqui — depois de subir os servicos, verificar a porta e promover a
+# release. O deploy funcionava e mesmo assim a etapa era marcada como
+# falha, com o site no ar.
+{
+  docker image ls --filter "reference=*/${REGISTRY_OWNER:-fernandinhomartins40}/makucho-*" \
+    --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null \
+    | grep -v ":${RELEASE}" \
+    | grep -v ':latest' \
+    | awk '{print $2}' \
+    | sort -u \
+    | while read -r img; do
+        docker image rm "$img" >/dev/null 2>&1 || true
+      done
+} || true
 
 log "concluido: release $RELEASE em 127.0.0.1:$DEPLOY_PORT"
