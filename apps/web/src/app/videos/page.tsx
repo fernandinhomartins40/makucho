@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { api, urlDaImagem } from '@/lib/api';
 import { Moldura } from '@/components/moldura';
+import { IconeRede, Play } from '@/components/icones';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 120;
@@ -30,44 +31,94 @@ export default async function PaginaVideos({ searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="secao-titulo">
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Vídeos MAKUCHO</h1>
-          <p>Análises rápidas no YouTube, Instagram e TikTok</p>
-        </div>
-        {resultado && <p>{resultado.meta.total} vídeo(s)</p>}
+      <header className="cabecalho-pagina">
+        <h1>Vídeos MAKUCHO</h1>
+        <p>Análises rápidas no YouTube, Instagram e TikTok</p>
       </header>
 
       {!resultado || resultado.data.length === 0 ? (
         <p className="vazio">Nenhum vídeo publicado ainda.</p>
       ) : (
         <>
-          <div className="grade grade-2 grade-3">
+          <div className="grade-cards">
             {resultado.data.map((v) => {
               const capa = urlDaImagem(v.thumbnail, 'SMALL');
               const duracao = duracaoLegivel(v.durationSeconds);
+              const rotulo =
+                v.platform === 'INSTAGRAM'
+                  ? 'Assistir no Instagram'
+                  : v.platform === 'TIKTOK'
+                    ? 'Assistir no TikTok'
+                    : 'Assistir no YouTube';
 
               return (
-                <a
-                  key={v.id}
-                  href={v.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="video-card"
-                >
-                  {capa && (
-                    <Image
-                      src={capa}
-                      alt={v.thumbnail?.alt ?? v.title}
-                      width={640}
-                      height={360}
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                    />
-                  )}
-                  <span className="video-play" aria-hidden="true">▶</span>
-                  {duracao && <span className="video-duracao">{duracao}</span>}
-                  <span className="video-info">{v.title}</span>
-                </a>
+                <article key={v.id} className="card">
+                  <a href={v.url} target="_blank" rel="noopener noreferrer">
+                    <div className="card-capa">
+                      {capa && (
+                        <Image
+                          src={capa}
+                          alt={v.thumbnail?.alt ?? v.title}
+                          width={640}
+                          height={400}
+                          sizes="(max-width: 700px) 100vw, 25vw"
+                        />
+                      )}
+                      <span className="play" aria-hidden="true">
+                        <Play />
+                      </span>
+                      {duracao && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 9,
+                            right: 9,
+                            padding: '2px 7px',
+                            borderRadius: 4,
+                            background: 'rgb(0 0 0 / 72%)',
+                            color: '#fff',
+                            fontSize: '0.68rem',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {duracao}
+                        </span>
+                      )}
+                    </div>
+                  </a>
+
+                  <div className="card-corpo">
+                    {v.category && (
+                      <span
+                        className="etiqueta"
+                        style={v.category.color ? { background: v.category.color } : undefined}
+                      >
+                        {v.category.name}
+                      </span>
+                    )}
+                    <h3 className="card-titulo">{v.title}</h3>
+                    <a
+                      href={v.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="botao-plataforma"
+                    >
+                      <span
+                        className={
+                          v.platform === 'INSTAGRAM'
+                            ? 'icone-instagram'
+                            : v.platform === 'TIKTOK'
+                              ? 'icone-tiktok'
+                              : 'icone-youtube'
+                        }
+                        style={{ display: 'flex' }}
+                      >
+                        <IconeRede platform={v.platform} size={15} />
+                      </span>
+                      {rotulo}
+                    </a>
+                  </div>
+                </article>
               );
             })}
           </div>

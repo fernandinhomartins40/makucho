@@ -50,12 +50,10 @@ export default async function PaginaCategoria({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="secao-titulo">
-        <div>
-          <h1 style={{ fontSize: '1.7rem', fontWeight: 800 }}>{categoria.name}</h1>
-          {categoria.description && <p>{categoria.description}</p>}
-        </div>
-        <p>{resultado.meta.total} artigo(s)</p>
+      <header className="cabecalho-pagina">
+        <h1>{categoria.name}</h1>
+        {categoria.description && <p>{categoria.description}</p>}
+        <p>{resultado.meta.total} artigo(s) publicado(s)</p>
       </header>
 
       <Listagem

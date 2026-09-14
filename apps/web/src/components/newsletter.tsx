@@ -2,19 +2,25 @@
 
 import { useState } from 'react';
 import { api } from '@/lib/api';
+import { LogoM } from '@/components/icones';
 
 /**
  * Inscricao na newsletter (secao 29).
  *
- * Este e um dos poucos componentes de cliente do portal: precisa de
- * estado para o retorno do envio. O resto das paginas e renderizado no
+ * Um dos poucos componentes de cliente do portal: precisa de estado
+ * para o retorno do envio. O resto das paginas e renderizado no
  * servidor e nao manda JavaScript ao leitor.
+ *
+ * Duas apresentacoes, como no layout: o bloco azul da coluna do hero
+ * (variante "lateral") e a faixa de largura total antes do rodape.
  */
 export function Newsletter({
-  titulo = 'Receba as análises do MAKUCHO',
-  descricao = 'Um resumo diário do que move a economia, direto no seu e-mail.',
+  variante = 'faixa',
+  titulo,
+  descricao,
   origem = 'homepage',
 }: {
+  variante?: 'lateral' | 'faixa';
   titulo?: string;
   descricao?: string;
   origem?: string;
@@ -29,61 +35,98 @@ export function Newsletter({
 
     setEstado('enviando');
     try {
-      const r = await api.inscreverNewsletter({
-        email,
-        consent: true,
-        source: origem,
-      });
+      const r = await api.inscreverNewsletter({ email, consent: true, source: origem });
       setEstado('ok');
       setMensagem(r.message);
       setEmail('');
     } catch (erro) {
       setEstado('erro');
-      setMensagem(
-        erro instanceof Error ? erro.message : 'Não foi possível concluir a inscrição.',
-      );
+      setMensagem(erro instanceof Error ? erro.message : 'Não foi possível concluir a inscrição.');
     }
   }
 
+  const campo = (
+    <>
+      <label htmlFor={`news-${variante}`} className="so-leitor-de-tela">
+        Seu e-mail
+      </label>
+      <input
+        id={`news-${variante}`}
+        className={variante === 'lateral' ? 'news-campo' : undefined}
+        type="email"
+        name="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Seu melhor e-mail"
+        required
+        autoComplete="email"
+      />
+    </>
+  );
+
+  if (variante === 'lateral') {
+    return (
+      <aside className="news-lateral">
+        <h2>{titulo ?? 'Economia sem complicação'}</h2>
+        <p>{descricao ?? 'Análises, insights e conteúdos exclusivos no seu e-mail.'}</p>
+
+        {estado === 'ok' ? (
+          <p role="status" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+            {mensagem}
+          </p>
+        ) : (
+          <form onSubmit={enviar}>
+            {campo}
+            <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
+              {estado === 'enviando' ? 'Enviando…' : 'Quero receber'}
+            </button>
+            {estado === 'erro' && (
+              <p role="alert" style={{ marginTop: 8, fontSize: '0.76rem' }}>
+                {mensagem}
+              </p>
+            )}
+          </form>
+        )}
+
+        <div className="news-marca">
+          <LogoM size={46} />
+          <strong>MAKUCHO</strong>
+          <span>Conhecimento que gera liberdade</span>
+        </div>
+      </aside>
+    );
+  }
+
   return (
-    <section className="newsletter">
-      <h2>{titulo}</h2>
-      <p>{descricao}</p>
+    <section className="news-faixa" id="newsletter">
+      <div className="news-faixa-marca">
+        <LogoM size={44} />
+        <div>
+          <h2>{titulo ?? 'Economia sem complicação, direto no seu e-mail.'}</h2>
+          <p>
+            {descricao ??
+              'Receba análises, conteúdos exclusivos, novidades e os principais destaques da semana.'}
+          </p>
+        </div>
+      </div>
 
       {estado === 'ok' ? (
-        <p role="status" style={{ fontWeight: 600 }}>
+        <p role="status" style={{ fontWeight: 600, flex: '1 1 380px' }}>
           {mensagem}
         </p>
       ) : (
-        <form className="newsletter-form" onSubmit={enviar}>
-          <label htmlFor="newsletter-email" className="so-leitor-de-tela">
-            Seu e-mail
-          </label>
-          <input
-            id="newsletter-email"
-            type="email"
-            name="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="seu@email.com.br"
-            required
-            autoComplete="email"
-          />
-          <button className="botao" type="submit" disabled={estado === 'enviando'}>
+        <form className="news-faixa-form" onSubmit={enviar}>
+          {campo}
+          <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
             {estado === 'enviando' ? 'Enviando…' : 'Quero receber'}
           </button>
-
           {estado === 'erro' && (
-            <p role="alert" style={{ flexBasis: '100%', fontSize: '0.85rem' }}>
+            <p role="alert" style={{ flexBasis: '100%', fontSize: '0.78rem' }}>
               {mensagem}
             </p>
           )}
         </form>
       )}
-
-      <p style={{ marginTop: 14, fontSize: '0.78rem', opacity: 0.7 }}>
-        Ao assinar você concorda em receber nossos e-mails. Pode cancelar quando quiser.
-      </p>
     </section>
   );
 }

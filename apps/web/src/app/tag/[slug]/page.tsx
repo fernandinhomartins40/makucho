@@ -43,11 +43,9 @@ export default async function PaginaTag({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="secao-titulo">
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>#{tag.name}</h1>
-        </div>
-        <p>{resultado.meta.total} artigo(s)</p>
+      <header className="cabecalho-pagina">
+        <h1>#{tag.name}</h1>
+        <p>{resultado.meta.total} artigo(s) sobre este assunto</p>
       </header>
 
       <Listagem

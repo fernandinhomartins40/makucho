@@ -6,9 +6,10 @@ import { Rodape } from '@/components/rodape';
 /**
  * Cabecalho e rodape em volta do conteudo.
  *
- * Os dois precisam das editorias, do ticker e das configuracoes, que
- * vem do mesmo /api/homepage. Buscar aqui evita repetir a chamada em
- * cada pagina — e o fetch do Next deduplica dentro da mesma requisicao.
+ * Os dois precisam das editorias, do ticker, das redes e das
+ * configuracoes, que vem do mesmo /api/homepage. Buscar aqui evita
+ * repetir a chamada em cada pagina — e o fetch do Next deduplica dentro
+ * da mesma requisicao.
  */
 export async function Moldura({ children }: { children: React.ReactNode }) {
   let dados: HomepagePayload;
@@ -35,14 +36,13 @@ export async function Moldura({ children }: { children: React.ReactNode }) {
       <Cabecalho
         categorias={dados.categories}
         indicadores={dados.indicators}
+        socials={dados.socials}
         nomeDoSite={nomeDoSite}
       />
-      <main className="container secao">{children}</main>
-      <Rodape
-        categorias={dados.categories}
-        socials={dados.socials}
-        settings={dados.settings}
-      />
+      <main>
+        <div className="container">{children}</div>
+      </main>
+      <Rodape categorias={dados.categories} socials={dados.socials} settings={dados.settings} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import { Cabecalho } from '@/components/cabecalho';
 import { Rodape } from '@/components/rodape';
 import { CardArtigo, formatarData } from '@/components/card-artigo';
 import { ContadorDeLeitura } from '@/components/contador-leitura';
+import { Calendario, Relogio } from '@/components/icones';
 
 // Mesma razao da home: a API nao esta no ar durante o build.
 export const dynamic = 'force-dynamic';
@@ -94,11 +95,11 @@ export default async function PaginaArtigo({ params }: Props) {
       <Cabecalho
         categorias={dados.categories}
         indicadores={dados.indicators}
+        socials={dados.socials}
         nomeDoSite={nomeDoSite}
       />
 
-      {/* O conteudo ja foi sanitizado no servidor pelo DOMPurify antes
-          de ser gravado; aqui so serializamos o proprio objeto. */}
+      {/* Serializamos um objeto proprio; nada aqui vem do editor. */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -106,8 +107,8 @@ export default async function PaginaArtigo({ params }: Props) {
 
       <ContadorDeLeitura postId={post.id} />
 
-      <main className="container secao">
-        <div className="grade grade-conteudo">
+      <main>
+        <div className="container com-sidebar">
           <article className="artigo">
             <Link
               href={`/categoria/${post.category.slug}`}
@@ -127,24 +128,32 @@ export default async function PaginaArtigo({ params }: Props) {
                 </Link>
               )}
               {post.publishedAt && (
-                <time dateTime={post.publishedAt}>{formatarData(post.publishedAt)}</time>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Calendario />
+                  <time dateTime={post.publishedAt}>{formatarData(post.publishedAt)}</time>
+                </span>
               )}
-              <span>{post.readingTimeMinutes} min de leitura</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Relogio />
+                {post.readingTimeMinutes} min de leitura
+              </span>
             </div>
 
             {capa && (
-              <figure style={{ marginBlock: 24 }}>
+              <figure style={{ marginBlock: 20 }}>
                 <Image
                   src={capa}
                   alt={post.coverImage?.alt ?? post.title}
                   width={1200}
                   height={675}
                   priority
-                  sizes="(max-width: 1024px) 100vw, 720px"
+                  sizes="(max-width: 1040px) 100vw, 700px"
                   style={{ borderRadius: 'var(--raio)' }}
                 />
                 {post.coverImage?.credit && (
-                  <figcaption style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--texto-claro)' }}>
+                  <figcaption
+                    style={{ marginTop: 6, fontSize: '0.76rem', color: 'var(--texto-claro)' }}
+                  >
                     {post.coverImage.credit}
                   </figcaption>
                 )}
@@ -159,19 +168,9 @@ export default async function PaginaArtigo({ params }: Props) {
             />
 
             {post.tags && post.tags.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 28 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 24 }}>
                 {post.tags.map((t) => (
-                  <Link
-                    key={t.id}
-                    href={`/tag/${t.slug}`}
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: 999,
-                      background: 'var(--fundo-alt)',
-                      fontSize: '0.82rem',
-                      color: 'var(--texto-suave)',
-                    }}
-                  >
+                  <Link key={t.id} href={`/tag/${t.slug}`} className="etiqueta etiqueta-clara">
                     #{t.name}
                   </Link>
                 ))}
@@ -179,34 +178,52 @@ export default async function PaginaArtigo({ params }: Props) {
             )}
           </article>
 
-          <aside>
-            <div className="secao-titulo">
-              <h2 style={{ fontSize: '1.1rem' }}>Mais lidas</h2>
-            </div>
-            <div className="ranking">
-              {dados.mostRead.slice(0, 5).map((p, i) => (
-                <Link key={p.id} href={`/artigo/${p.slug}`} className="ranking-item">
-                  <span className="ranking-numero" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  <h3 className="ranking-titulo">{p.title}</h3>
-                </Link>
-              ))}
-            </div>
+          <aside className="sidebar">
+            <section>
+              <div className="secao-cabecalho">
+                <h2 className="secao-titulo">Mais lidas</h2>
+              </div>
+              <div className="ranking">
+                {dados.mostRead.slice(0, 5).map((p, i) => {
+                  const mini = urlDaImagem(p.coverImage, 'THUMBNAIL');
+                  return (
+                    <Link key={p.id} href={`/artigo/${p.slug}`} className="ranking-item">
+                      <span className="ranking-numero" aria-hidden="true">
+                        {i + 1}
+                      </span>
+                      <span className="ranking-capa">
+                        {mini && (
+                          <Image
+                            src={mini}
+                            alt={p.coverImage?.alt ?? p.title}
+                            width={104}
+                            height={84}
+                            sizes="56px"
+                          />
+                        )}
+                      </span>
+                      <span className="ranking-titulo">{p.title}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
           </aside>
         </div>
 
         {relacionados.length > 0 && (
-          <section className="secao">
-            <div className="secao-titulo">
-              <h2>Leia também</h2>
-            </div>
-            <div className="grade grade-2 grade-4">
-              {relacionados.map((p) => (
-                <CardArtigo key={p.id} post={p} />
-              ))}
-            </div>
-          </section>
+          <div className="container">
+            <section className="secao" style={{ marginTop: 32 }}>
+              <div className="secao-cabecalho">
+                <h2 className="secao-titulo">Leia também</h2>
+              </div>
+              <div className="grade-cards">
+                {relacionados.map((p) => (
+                  <CardArtigo key={p.id} post={p} />
+                ))}
+              </div>
+            </section>
+          </div>
         )}
       </main>
 

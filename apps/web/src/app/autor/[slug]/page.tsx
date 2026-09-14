@@ -45,7 +45,10 @@ export default async function PaginaAutor({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header style={{ display: 'flex', gap: 18, alignItems: 'center', marginBottom: 28 }}>
+      <header
+        className="cabecalho-pagina"
+        style={{ display: 'flex', gap: 16, alignItems: 'center' }}
+      >
         {avatar && (
           <Image
             src={avatar}
@@ -56,13 +59,9 @@ export default async function PaginaAutor({ params, searchParams }: Props) {
           />
         )}
         <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>{autor.name}</h1>
-          {autor.role && <p style={{ color: 'var(--texto-suave)' }}>{autor.role}</p>}
-          {autor.bio && (
-            <p style={{ marginTop: 6, maxWidth: '60ch', color: 'var(--texto-suave)' }}>
-              {autor.bio}
-            </p>
-          )}
+          <h1>{autor.name}</h1>
+          {autor.role && <p>{autor.role}</p>}
+          {autor.bio && <p style={{ maxWidth: '62ch' }}>{autor.bio}</p>}
         </div>
       </header>
 

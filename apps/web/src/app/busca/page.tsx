@@ -23,7 +23,9 @@ export default async function PaginaBusca({ searchParams }: Props) {
   if (termo.length < 2) {
     return (
       <Moldura>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 12 }}>Busca</h1>
+        <header className="cabecalho-pagina">
+          <h1>Busca</h1>
+        </header>
         <p className="vazio">Digite ao menos dois caracteres para buscar.</p>
       </Moldura>
     );
@@ -34,7 +36,9 @@ export default async function PaginaBusca({ searchParams }: Props) {
   if (!resultado) {
     return (
       <Moldura>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>Busca</h1>
+        <header className="cabecalho-pagina">
+          <h1>Busca</h1>
+        </header>
         <p className="vazio">Não foi possível buscar agora. Tente novamente em instantes.</p>
       </Moldura>
     );
@@ -42,14 +46,11 @@ export default async function PaginaBusca({ searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="secao-titulo">
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>
-            Resultados para “{termo}”
-          </h1>
-        </div>
+      <header className="cabecalho-pagina">
+        <h1>Resultados para “{termo}”</h1>
         <p>
-          {resultado.meta.total} resultado{resultado.meta.total === 1 ? '' : 's'}
+          {resultado.meta.total} resultado{resultado.meta.total === 1 ? '' : 's'} encontrado
+          {resultado.meta.total === 1 ? '' : 's'}
         </p>
       </header>
 

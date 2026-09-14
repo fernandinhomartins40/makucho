@@ -27,9 +27,9 @@ export function Listagem({
 
   return (
     <>
-      <div className="grade grade-2 grade-3">
+      <div className="grade-cards">
         {data.map((post, i) => (
-          <CardArtigo key={post.id} post={post} prioridade={i < 3} />
+          <CardArtigo key={post.id} post={post} prioridade={i < 4} />
         ))}
       </div>
 

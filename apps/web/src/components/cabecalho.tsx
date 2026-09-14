@@ -1,47 +1,76 @@
 import Link from 'next/link';
-import type { CategoryDto, MarketIndicatorDto } from '@makucho/types';
+import type { CategoryDto, MarketIndicatorDto, SocialProfileDto } from '@makucho/types';
+import { IconeIndicador, IconeRede, LogoM, Lupa, TriEmAlta, TriEmBaixa } from '@/components/icones';
 
 /**
- * Cabecalho com ticker e menu (secoes 19 e 20).
+ * Cabecalho e ticker (secoes 19 e 20).
  *
  * Componente de servidor: nao envia JavaScript ao navegador. O unico
- * elemento interativo e o formulario de busca, que funciona por GET
- * nativo — sem JS, continua funcionando.
+ * elemento interativo e a busca, que funciona por GET nativo — sem JS,
+ * continua funcionando.
  */
 
 function formatarValor(valor: number, unidade: string | null): string {
-  const casas = Math.abs(valor) >= 1000 ? 0 : 2;
+  const casas = Math.abs(valor) >= 1000 ? 2 : 2;
   const numero = valor.toLocaleString('pt-BR', {
     minimumFractionDigits: casas,
     maximumFractionDigits: casas,
   });
-  return unidade === 'R$' || unidade === 'US$' ? `${unidade} ${numero}` : numero;
+
+  if (unidade === 'R$' || unidade === 'US$') return `${unidade} ${numero}`;
+  if (unidade === 'a.a.' || unidade === '%') return `${numero}%`;
+  return numero;
 }
 
 function Ticker({ indicadores }: { indicadores: MarketIndicatorDto[] }) {
   if (indicadores.length === 0) return null;
 
+  const hoje = new Date().toLocaleDateString('pt-BR', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
   return (
     <div className="ticker">
-      <div className="container">
-        <div className="ticker-lista">
-          {indicadores.map((i) => {
-            const variacao = i.changePercent ?? 0;
-            const subindo = variacao > 0;
-            const parado = variacao === 0;
+      <div className="container ticker-linha">
+        {indicadores.map((i) => {
+          const variacao = i.changePercent ?? 0;
+          const classe = variacao > 0 ? 'sobe' : variacao < 0 ? 'desce' : 'neutro';
 
-            return (
-              <div key={i.id} className="ticker-item">
-                <strong>{i.label}</strong>
-                <span className="ticker-valor">{formatarValor(i.value, i.unit)}</span>
-                {!parado && (
-                  <span className={`ticker-var ${subindo ? 'sobe' : 'desce'}`}>
-                    {subindo ? '▲' : '▼'} {Math.abs(variacao).toFixed(2)}%
+          return (
+            <div key={i.id} className="ticker-item">
+              <span className="ticker-icone">
+                <IconeIndicador symbol={i.symbol} icon={i.icon} />
+              </span>
+              <span className="ticker-dados">
+                <span className="ticker-nome">
+                  {i.label}
+                  {i.unit && i.unit !== 'pts' ? ` (${i.unit})` : ''}
+                </span>
+                <span className="ticker-valor-linha">
+                  <span className="ticker-valor">{formatarValor(i.value, i.unit)}</span>
+                  <span className={`ticker-var ${classe}`}>
+                    {variacao > 0 && <TriEmAlta />}
+                    {variacao < 0 && <TriEmBaixa />}
+                    {variacao === 0 ? '— 0,00%' : `${Math.abs(variacao).toFixed(2).replace('.', ',')}%`}
                   </span>
-                )}
-              </div>
-            );
-          })}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+
+        <div className="ticker-item ticker-data">
+          <span className="ticker-icone">
+            <IconeIndicador symbol="IPCA" icon={null} />
+          </span>
+          <span className="ticker-dados">
+            <span className="ticker-nome">Mercado hoje</span>
+            <span className="ticker-valor" style={{ fontSize: '0.74rem', fontWeight: 500 }}>
+              {hoje}
+            </span>
+          </span>
         </div>
       </div>
     </div>
@@ -51,53 +80,77 @@ function Ticker({ indicadores }: { indicadores: MarketIndicatorDto[] }) {
 export function Cabecalho({
   categorias,
   indicadores,
+  socials = [],
   nomeDoSite = 'MAKUCHO',
 }: {
   categorias: CategoryDto[];
   indicadores: MarketIndicatorDto[];
+  socials?: SocialProfileDto[];
   nomeDoSite?: string;
 }) {
-  // O menu mostra so as editorias marcadas para aparecer, e no maximo
-  // seis: alem disso a barra quebra em telas medias.
   const doMenu = categorias.filter((c) => c.showInMenu).slice(0, 6);
 
   return (
     <>
-      <Ticker indicadores={indicadores} />
-
-      <header className="cabecalho">
-        <div className="container cabecalho-linha">
+      <header className="topo">
+        <div className="container topo-linha">
           <Link href="/" className="marca" aria-label={`${nomeDoSite}, página inicial`}>
-            <span className="marca-sigla" aria-hidden="true">
-              M
-            </span>
+            <LogoM size={30} />
             {nomeDoSite}
           </Link>
 
           <nav className="menu" aria-label="Editorias">
+            <Link href="/" className="ativo">
+              Início
+            </Link>
             {doMenu.map((c) => (
               <Link key={c.id} href={`/categoria/${c.slug}`}>
                 {c.name}
               </Link>
             ))}
+            <Link href="/videos">Vídeos</Link>
           </nav>
 
-          <form className="busca-form" action="/busca" role="search">
-            <label htmlFor="busca" className="so-leitor-de-tela">
-              Buscar no portal
-            </label>
-            <input
-              id="busca"
-              className="busca-input"
-              type="search"
-              name="q"
-              placeholder="Buscar…"
-              minLength={2}
-              required
-            />
-          </form>
+          <div className="topo-direita">
+            <form className="busca" action="/busca" role="search">
+              <label htmlFor="busca" className="so-leitor-de-tela">
+                Buscar no portal
+              </label>
+              <Lupa />
+              <input
+                id="busca"
+                type="search"
+                name="q"
+                placeholder="Buscar conteúdos..."
+                minLength={2}
+                required
+              />
+            </form>
+
+            {socials.length > 0 && (
+              <div className="redes-topo">
+                {socials.slice(0, 3).map((s) => (
+                  <a
+                    key={s.id}
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={s.label}
+                  >
+                    <IconeRede platform={s.platform} size={17} />
+                  </a>
+                ))}
+              </div>
+            )}
+
+            <Link href="/#newsletter" className="botao-inscrever">
+              Inscreva-se
+            </Link>
+          </div>
         </div>
       </header>
+
+      <Ticker indicadores={indicadores} />
     </>
   );
 }

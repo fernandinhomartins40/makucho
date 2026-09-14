@@ -10,7 +10,7 @@ export default function NaoEncontrado() {
       <p style={{ color: 'var(--texto-suave)', marginBottom: 24 }}>
         O endereço que você procurou não existe ou foi movido.
       </p>
-      <Link href="/" className="botao botao-primario" style={{ display: 'inline-block' }}>
+      <Link href="/" className="botao-azul" style={{ display: 'inline-block' }}>
         Voltar para a home
       </Link>
     </main>

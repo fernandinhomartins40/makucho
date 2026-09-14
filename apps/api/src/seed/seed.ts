@@ -155,6 +155,7 @@ async function main(): Promise<void> {
           altura: 900,
           titulo: cat.nome,
           etiqueta: 'Editoria',
+          semTexto: true,
         }),
         originalFilename: `categoria-${cat.nome}.jpg`,
         mimeType: 'image/jpeg',
@@ -213,6 +214,7 @@ async function main(): Promise<void> {
           largura: 512,
           altura: 512,
           titulo: autor.nome,
+          semTexto: true,
         }),
         originalFilename: `autor-${autor.nome}.jpg`,
         mimeType: 'image/jpeg',
@@ -281,6 +283,10 @@ async function main(): Promise<void> {
           isFeatured: pauta.destaque ?? false,
           isTrending: pauta.emAlta ?? false,
           isPinned: pauta.fixado ?? false,
+          // O card do layout traz um botao "Assistir no <plataforma>";
+          // ele depende destes dois campos no artigo.
+          videoPlatform: pauta.plataformaVideo ?? null,
+          videoUrl: pauta.urlVideo ?? null,
         },
         usuario,
         requisicaoFicticia,

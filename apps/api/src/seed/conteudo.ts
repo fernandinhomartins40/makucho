@@ -19,6 +19,9 @@ export interface PautaSeed {
   fixado?: boolean;
   /** Dias atrás em que foi publicada; controla a ordem na home. */
   diasAtras: number;
+  /** Plataforma do video complementar, exibida no botao do card. */
+  plataformaVideo?: 'INSTAGRAM' | 'TIKTOK' | 'YOUTUBE';
+  urlVideo?: string;
 }
 
 export const CATEGORIAS = [
@@ -108,6 +111,8 @@ export const PAUTAS: PautaSeed[] = [
     destaque: true,
     fixado: true,
     diasAtras: 0,
+    plataformaVideo: 'YOUTUBE',
+    urlVideo: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     paragrafos: [
       'O Comitê de Política Monetária do Banco Central decidiu manter a taxa Selic no patamar atual, em decisão unânime. No comunicado, o colegiado afirmou que a desinflação segue em curso, mas destacou a resistência dos preços de serviços, o item mais sensível ao mercado de trabalho aquecido.',
       'A leitura do comitê é que o cenário externo segue incerto e que a atividade doméstica surpreendeu positivamente no trimestre, o que reduz a pressa por novos cortes. Economistas ouvidos pelo MAKUCHO avaliam que a porta segue aberta, mas que o próximo passo depende dos dados de inflação dos próximos dois meses.',
@@ -123,6 +128,8 @@ export const PAUTAS: PautaSeed[] = [
     destaque: true,
     emAlta: true,
     diasAtras: 0,
+    plataformaVideo: 'INSTAGRAM',
+    urlVideo: 'https://www.instagram.com/reel/CxYzAbCdEfG/',
     paragrafos: [
       'O principal índice da B3 fechou em alta e renovou a máxima histórica, sustentado pelo desempenho das ações de bancos e pela recuperação dos preços das commodities no exterior.',
       'O movimento acompanha a retomada do apetite por mercados emergentes. Dados da própria bolsa mostram entrada líquida de capital estrangeiro no mês, revertendo a tendência do trimestre anterior.',
@@ -136,6 +143,8 @@ export const PAUTAS: PautaSeed[] = [
     tags: ['Dólar', 'Ibovespa'],
     emAlta: true,
     diasAtras: 1,
+    plataformaVideo: 'TIKTOK',
+    urlVideo: 'https://www.tiktok.com/@makucho/video/7300000000000000000',
     paragrafos: [
       'A moeda americana encerrou o pregão em queda, no menor nível desde o início do semestre, refletindo o enfraquecimento global do dólar e a entrada de recursos na bolsa local.',
       'O real acumula valorização no ano e figura entre as moedas de melhor desempenho entre os emergentes, apesar da volatilidade provocada pelo debate fiscal.',
@@ -148,6 +157,8 @@ export const PAUTAS: PautaSeed[] = [
     tags: ['PIB', 'Juros'],
     destaque: true,
     diasAtras: 1,
+    plataformaVideo: 'YOUTUBE',
+    urlVideo: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     paragrafos: [
       'A economia brasileira cresceu acima das projeções do mercado no trimestre, impulsionada pelo setor de serviços e pelo consumo das famílias, segundo os dados divulgados nesta semana.',
       'O resultado leva casas de análise a revisar para cima a projeção do ano. Por outro lado, atividade mais forte pressiona a inflação de serviços e complica o calendário de cortes da Selic.',
@@ -162,6 +173,8 @@ export const PAUTAS: PautaSeed[] = [
     tags: ['Renda fixa', 'Tesouro Direto', 'Investimentos'],
     emAlta: true,
     diasAtras: 2,
+    plataformaVideo: 'INSTAGRAM',
+    urlVideo: 'https://www.instagram.com/reel/CxYzAbCdEfG/',
     paragrafos: [
       'Com a Selic elevada, a reserva de emergência voltou a render de forma relevante. A escolha do produto, porém, faz diferença no resultado líquido — sobretudo por causa da tributação e das taxas.',
       'O Tesouro Selic é o mais previsível: acompanha a taxa básica e tem liquidez diária garantida pelo Tesouro Nacional. CDBs de bancos médios pagam mais, mas exigem atenção ao limite de cobertura do FGC.',
@@ -174,6 +187,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Negócios',
     tags: ['Varejo'],
     diasAtras: 2,
+    plataformaVideo: 'TIKTOK',
+    urlVideo: 'https://www.tiktok.com/@makucho/video/7300000000000000000',
     paragrafos: [
       'O número de operações de fusões e aquisições no varejo cresceu de forma expressiva no ano, com destaque para a consolidação de redes regionais de supermercados e farmácias.',
       'Especialistas atribuem o movimento à combinação de margens pressionadas e custo de capital ainda alto, que empurra empresas menores para a mesa de negociação.',
@@ -185,6 +200,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Tecnologia',
     tags: ['Startups', 'Investimentos'],
     diasAtras: 3,
+    plataformaVideo: 'YOUTUBE',
+    urlVideo: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     paragrafos: [
       'O volume de capital investido em startups brasileiras voltou a crescer, mas o padrão mudou: rodadas menores, avaliações mais conservadoras e exigência de métricas de rentabilidade.',
       'Fundos que antes priorizavam crescimento a qualquer custo agora pedem previsibilidade de receita e controle de queima de caixa antes de assinar um cheque.',
@@ -196,6 +213,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Internacional',
     tags: ['Fed', 'Juros'],
     diasAtras: 3,
+    plataformaVideo: 'INSTAGRAM',
+    urlVideo: 'https://www.instagram.com/reel/CxYzAbCdEfG/',
     paragrafos: [
       'O banco central americano manteve a taxa de juros inalterada e reforçou que decisões futuras dependerão dos dados de inflação e do mercado de trabalho.',
       'A leitura levou investidores a adiar a expectativa do primeiro corte, movimento que se refletiu nos juros dos títulos de dez anos e, por tabela, nos mercados emergentes.',
@@ -206,6 +225,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Negócios',
     tags: ['Petrobras', 'Investimentos'],
     diasAtras: 4,
+    plataformaVideo: 'TIKTOK',
+    urlVideo: 'https://www.tiktok.com/@makucho/video/7300000000000000000',
     paragrafos: [
       'A companhia apresentou o plano de investimentos para os próximos cinco anos, com a maior parte dos recursos destinada a exploração e produção, especialmente no pré-sal.',
       'O documento também detalha metas de redução de emissões e a política de distribuição de dividendos, tema acompanhado de perto pelos acionistas minoritários.',
@@ -216,6 +237,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Economia',
     tags: ['Inflação'],
     diasAtras: 5,
+    plataformaVideo: 'YOUTUBE',
+    urlVideo: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     paragrafos: [
       'O grupo alimentação registrou a menor variação dos últimos meses, puxado pela safra e pela queda dos preços de itens in natura.',
       'O alívio é sentido com mais força nas faixas de menor renda, onde a alimentação pesa proporcionalmente mais no orçamento doméstico.',
@@ -226,6 +249,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Finanças Pessoais',
     tags: ['Renda fixa', 'Tesouro Direto'],
     diasAtras: 6,
+    plataformaVideo: 'INSTAGRAM',
+    urlVideo: 'https://www.instagram.com/reel/CxYzAbCdEfG/',
     paragrafos: [
       'A captação líquida em produtos de renda fixa alcançou o maior valor da série histórica, com destaque para títulos isentos de imposto de renda.',
       'O movimento acompanha o juro elevado, que permite ganhos reais expressivos com risco baixo — algo raro no histórico recente do investidor brasileiro.',
@@ -237,6 +262,8 @@ export const PAUTAS: PautaSeed[] = [
     categoria: 'Tecnologia',
     tags: ['Startups'],
     diasAtras: 7,
+    plataformaVideo: 'TIKTOK',
+    urlVideo: 'https://www.tiktok.com/@makucho/video/7300000000000000000',
     paragrafos: [
       'Empresas brasileiras que adotaram ferramentas de inteligência artificial em processos internos relatam ganhos de produtividade acima de dois dígitos, segundo levantamento setorial.',
       'Os setores financeiro e de atendimento lideram a adoção. O gargalo apontado pelas companhias não é tecnológico, mas de qualificação das equipes.',
