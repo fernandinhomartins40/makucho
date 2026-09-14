@@ -74,6 +74,19 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 
+# Diretorio de cache do Next, criado aqui ja com o dono certo.
+#
+# O servidor escreve em .next/cache/fetch-cache (respostas das chamadas
+# a API) e em .next/cache/images (next/image). Sem isto o usuario sem
+# privilegios nao consegue criar as pastas e o log enche de
+# "EACCES: permission denied, mkdir" — o portal continua servindo, mas
+# refaz todo fetch a cada requisicao, sem cachear nada.
+#
+# O volume de imagens monta sobre cache/images e herda a propriedade
+# deste ponto de montagem.
+RUN mkdir -p /app/apps/web/.next/cache/images /app/apps/web/.next/cache/fetch-cache \
+  && chown -R nextjs:nodejs /app/apps/web/.next/cache
+
 USER nextjs
 EXPOSE 3000
 

@@ -80,8 +80,8 @@ jobs:
           # O cache do registro evita recompilar as camadas de
           # dependencia a cada deploy: leva o build de minutos a segundos
           # quando so o codigo mudou.
-          cache-from: type=registry,ref=${{ env.IMAGE_API }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_API }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.IMAGE_API }}:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_API }}:buildcache,mode=max,ignore-error=true
 
       - name: Build and push Web image
         uses: docker/build-push-action@v6
@@ -96,8 +96,8 @@ jobs:
           tags: |
             ${{ env.IMAGE_WEB }}:${{ steps.release.outputs.version }}
             ${{ env.IMAGE_WEB }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache
-          cache-to: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_WEB }}:buildcache,mode=max,ignore-error=true
 
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
