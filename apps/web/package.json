@@ -12,9 +12,15 @@
   "dependencies": {
     "@makucho/types": "workspace:*",
     "@makucho/validation": "workspace:*",
+    "@tiptap/extension-image": "^2.27.3",
+    "@tiptap/extension-link": "^2.27.3",
+    "@tiptap/extension-placeholder": "^2.27.3",
+    "@tiptap/react": "^2.27.3",
+    "@tiptap/starter-kit": "^2.27.3",
     "next": "^15.0.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-easy-crop": "^5.5.7"
   },
   "devDependencies": {
     "@makucho/eslint-config": "workspace:*",

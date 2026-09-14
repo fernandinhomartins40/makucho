@@ -1316,6 +1316,25 @@ main {
   color: rgb(255 255 255 / 52%);
 }
 
+.rodape-base-fim {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.rodape-painel {
+  color: rgb(255 255 255 / 62%);
+  text-decoration: none;
+  border-bottom: 1px solid rgb(255 255 255 / 22%);
+  padding-bottom: 1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.rodape-painel:hover {
+  color: #fff;
+  border-color: rgb(255 255 255 / 55%);
+}
+
 /* ============================================================
    ARTIGO
    ============================================================ */

@@ -33,6 +33,7 @@ export class TagsService {
       id: t.id,
       name: t.name,
       slug: t.slug,
+      description: t.description,
       postCount: t._count.posts,
     }));
   }
@@ -41,7 +42,13 @@ export class TagsService {
     const tags = await this.prisma.tag.findMany({ include: this.contagem });
 
     return tags
-      .map((t) => ({ id: t.id, name: t.name, slug: t.slug, postCount: t._count.posts }))
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        description: t.description,
+        postCount: t._count.posts,
+      }))
       .filter((t) => (t.postCount ?? 0) > 0)
       .sort((a, b) => (b.postCount ?? 0) - (a.postCount ?? 0))
       .slice(0, limite);
@@ -55,7 +62,13 @@ export class TagsService {
     if (!tag) {
       throw new NotFoundException({ code: 'TAG_NOT_FOUND', message: 'Tag não encontrada' });
     }
-    return { id: tag.id, name: tag.name, slug: tag.slug, postCount: tag._count.posts };
+    return {
+      id: tag.id,
+      name: tag.name,
+      slug: tag.slug,
+      description: tag.description,
+      postCount: tag._count.posts,
+    };
   }
 
   async criar(
@@ -77,7 +90,7 @@ export class TagsService {
       request,
     });
 
-    return { id: tag.id, name: tag.name, slug: tag.slug, postCount: 0 };
+    return { id: tag.id, name: tag.name, slug: tag.slug, description: tag.description, postCount: 0 };
   }
 
   /**
@@ -127,7 +140,7 @@ export class TagsService {
       request,
     });
 
-    return { id: tag.id, name: tag.name, slug: tag.slug };
+    return { id: tag.id, name: tag.name, slug: tag.slug, description: tag.description };
   }
 
   async excluir(id: string, userId: string, request: Request): Promise<void> {

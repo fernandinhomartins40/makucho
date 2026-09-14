@@ -86,7 +86,14 @@ export function Rodape({
           <span>
             © {new Date().getFullYear()} {copyright}
           </span>
-          <span>Feito para quem acredita em um futuro melhor.</span>
+          <span className="rodape-base-fim">
+            Feito para quem acredita em um futuro melhor.
+            {/* Acesso da redacao. O painel valida a sessao no servidor;
+                o link aqui e so a porta de entrada. */}
+            <Link href="/painel" className="rodape-painel" rel="nofollow">
+              Painel
+            </Link>
+          </span>
         </div>
       </div>
     </footer>

@@ -1,0 +1,250 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import type { TagDto } from '@makucho/types';
+import { gerarSlug } from '@makucho/validation';
+import { ErroApi, painel } from '@/lib/painel';
+import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
+import {
+  Aviso,
+  Botao,
+  Campo,
+  Carregando,
+  Confirmacao,
+  Entrada,
+  Modal,
+  AreaTexto,
+  Vazio,
+  useRecado,
+} from '@/components/painel/ui';
+
+interface Formulario {
+  id?: string;
+  name: string;
+  slug: string;
+  description: string;
+}
+
+function Tags() {
+  const recado = useRecado();
+  const [itens, setItens] = useState<TagDto[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState('');
+  const [form, setForm] = useState<Formulario | null>(null);
+  const [excluir, setExcluir] = useState<TagDto | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const [slugTocado, setSlugTocado] = useState(false);
+
+  async function carregar() {
+    setCarregando(true);
+    try {
+      setItens(await painel.tags());
+    } catch (e) {
+      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  useEffect(() => {
+    void carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Lista pequena: filtrar no cliente evita uma ida ao servidor por tecla.
+  const visiveis = busca.trim()
+    ? itens.filter((t) => t.name.toLowerCase().includes(busca.trim().toLowerCase()))
+    : itens;
+
+  async function salvar() {
+    if (!form) return;
+    setErro('');
+
+    if (!form.name.trim()) {
+      setErro('Informe o nome da tag.');
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const corpo = {
+        name: form.name.trim(),
+        slug: form.slug.trim() || gerarSlug(form.name),
+        description: form.description.trim() || null,
+      };
+
+      if (form.id) await painel.atualizarTag(form.id, corpo);
+      else await painel.criarTag(corpo);
+
+      recado.ok(form.id ? 'Tag atualizada.' : 'Tag criada.');
+      setForm(null);
+      void carregar();
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : 'Não foi possível salvar.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  function abrir(t?: TagDto) {
+    setErro('');
+    setSlugTocado(Boolean(t));
+    setForm(
+      t
+        ? { id: t.id, name: t.name, slug: t.slug, description: t.description ?? '' }
+        : { name: '', slug: '', description: '' },
+    );
+  }
+
+  return (
+    <>
+      <TituloPagina
+        titulo="Tags"
+        descricao={`${itens.length} cadastrada${itens.length === 1 ? '' : 's'}`}
+        acoes={
+          <Botao variante="primario" onClick={() => abrir()}>
+            + Nova tag
+          </Botao>
+        }
+      />
+
+      <div className="pn-filtros">
+        <Entrada
+          className="pn-busca"
+          placeholder="Filtrar tags…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+      </div>
+
+      <div className="pn-bloco">
+        {carregando ? (
+          <Carregando />
+        ) : visiveis.length === 0 ? (
+          <Vazio
+            titulo={busca ? 'Nenhuma tag encontrada' : 'Nenhuma tag'}
+            descricao={busca ? 'Tente outro termo.' : 'As tags ajudam a agrupar assuntos.'}
+          />
+        ) : (
+          <div className="pn-tabela-area">
+            <table className="pn-tabela">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Endereço</th>
+                  <th>Artigos</th>
+                  <th style={{ textAlign: 'right' }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      <button type="button" className="pn-link" onClick={() => abrir(t)}>
+                        {t.name}
+                      </button>
+                    </td>
+                    <td style={{ color: 'var(--pn-suave)' }}>/{t.slug}</td>
+                    <td>{t.postCount ?? 0}</td>
+                    <td>
+                      <div className="pn-acoes">
+                        <Botao variante="fantasma" onClick={() => abrir(t)}>
+                          Editar
+                        </Botao>
+                        <Botao variante="fantasma" onClick={() => setExcluir(t)}>
+                          Excluir
+                        </Botao>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal
+        titulo={form?.id ? 'Editar tag' : 'Nova tag'}
+        aberto={form !== null}
+        aoFechar={() => setForm(null)}
+        largura={460}
+        rodape={
+          <>
+            <Botao variante="fantasma" onClick={() => setForm(null)}>
+              Cancelar
+            </Botao>
+            <Botao variante="primario" carregando={salvando} onClick={salvar}>
+              Salvar
+            </Botao>
+          </>
+        }
+      >
+        {form && (
+          <>
+            <Aviso tipo="erro">{erro}</Aviso>
+
+            <Campo rotulo="Nome" obrigatorio>
+              <Entrada
+                value={form.name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setForm({ ...form, name, slug: slugTocado ? form.slug : gerarSlug(name) });
+                }}
+                autoFocus
+                maxLength={80}
+              />
+            </Campo>
+
+            <Campo rotulo="Endereço (slug)" dica={`makucho.com.br/tag/${form.slug || '…'}`}>
+              <Entrada
+                value={form.slug}
+                onChange={(e) => {
+                  setSlugTocado(true);
+                  setForm({ ...form, slug: e.target.value });
+                }}
+              />
+            </Campo>
+
+            <Campo rotulo="Descrição">
+              <AreaTexto
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                maxLength={400}
+              />
+            </Campo>
+          </>
+        )}
+      </Modal>
+
+      <Confirmacao
+        aberto={excluir !== null}
+        titulo="Excluir tag"
+        mensagem={`"${excluir?.name}" será removida dos artigos que a usam.`}
+        aoConfirmar={async () => {
+          if (!excluir) return;
+          try {
+            await painel.excluirTag(excluir.id);
+            recado.ok('Tag excluída.');
+            setExcluir(null);
+            void carregar();
+          } catch (e) {
+            recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível excluir.');
+          }
+        }}
+        aoCancelar={() => setExcluir(null)}
+      />
+
+      {recado.elemento}
+    </>
+  );
+}
+
+export default function PaginaTags() {
+  return (
+    <MolduraPainel>
+      <Tags />
+    </MolduraPainel>
+  );
+}

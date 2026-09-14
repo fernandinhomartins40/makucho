@@ -885,7 +885,7 @@ export class PostsService {
       content: unknown;
       contentHtml: unknown;
       wordCount: number;
-      tags: Array<{ tag: { id: string; name: string; slug: string } }>;
+      tags: Array<{ tag: { id: string; name: string; slug: string; description: string | null } }>;
       seoTitle: string | null;
       seoDescription: string | null;
       canonicalUrl: string | null;
@@ -905,7 +905,12 @@ export class PostsService {
       content: p.content,
       contentHtml: typeof p.contentHtml === 'string' ? p.contentHtml : null,
       wordCount: p.wordCount,
-      tags: (p.tags ?? []).map((t) => ({ id: t.tag.id, name: t.tag.name, slug: t.tag.slug })),
+      tags: (p.tags ?? []).map((t) => ({
+        id: t.tag.id,
+        name: t.tag.name,
+        slug: t.tag.slug,
+        description: t.tag.description,
+      })),
       seoTitle: p.seoTitle,
       seoDescription: p.seoDescription,
       canonicalUrl: p.canonicalUrl,
