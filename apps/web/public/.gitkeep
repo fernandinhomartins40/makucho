@@ -1,6 +1,0 @@
-Mantem apps/web/public no controle de versao.
-
-O Git nao versiona diretorio vazio. Sem este arquivo a pasta existe na
-maquina de quem desenvolve mas nao no checkout do CI, e o
-"COPY apps/web/public" do web.Dockerfile falha com
-"/app/apps/web/public: not found" — erro que so aparece no runner.

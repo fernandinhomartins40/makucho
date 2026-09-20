@@ -1,0 +1,308 @@
+# ============================================================
+# MAKUCHO STUDIO - Producao (VPS compartilhada)
+#
+# ARQUITETURA DE PORTAS
+#   Uma unica porta publicada no host: 127.0.0.1:${STUDIO_DEPLOY_PORT}
+#   O restante vive na rede interna:
+#       studio-web   :3000   Next.js PWA
+#       studio-api   :3001   NestJS
+#       studio-redis :6379   fila BullMQ
+#
+#   Internet -> nginx do host (TLS) -> 127.0.0.1:3097 -> nginx interno
+#                                              |-- /      studio-web:3000
+#                                              |-- /api   studio-api:3001
+#                                              +-- /media volume de midia
+#
+# MEMORIA — leia o ADR 0003 antes de mexer nos limites.
+#   A VPS hospeda ~12 aplicacoes e nao tem swap. Os mem_limit daqui sao
+#   o que impede um render de matar o portal e os apps dos outros
+#   clientes. A soma dos picos cabe no que sobra porque a concorrencia
+#   global e 1: nunca ha dois jobs pesados ao mesmo tempo.
+#
+# BANCO
+#   Reaproveita o Postgres do portal, em banco separado (ADR 0004). Por
+#   isso os servicos que falam com o banco participam tambem da rede
+#   makucho-net.
+# ============================================================
+
+name: makucho-studio
+
+services:
+  # ---------------- Roteador: unica porta exposta ----------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: makucho-studio-nginx
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${STUDIO_DEPLOY_PORT:-3097}:80'
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infrastructure/nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+      - studio_media:/var/www/studio-media:ro
+      - studio_nginx_logs:/var/log/nginx
+    depends_on:
+      studio-web:
+        condition: service_started
+      studio-api:
+        condition: service_started
+    healthcheck:
+      # 127.0.0.1 e nao "localhost": o wget do BusyBox resolve localhost
+      # para ::1 e nao tenta IPv4 depois, enquanto este nginx escuta so
+      # em IPv4. Mesma armadilha ja enfrentada no stack do portal.
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/nginx-health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    mem_limit: 32m
+    networks:
+      - studio-net
+
+  # ---------------- Frontend (Next.js PWA) ----------------
+  studio-web:
+    image: ${REGISTRY_IMAGE_STUDIO_WEB:-ghcr.io/fernandinhomartins40/makucho-studio-web}:${RELEASE:-latest}
+    container_name: makucho-studio-web
+    restart: unless-stopped
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      HOSTNAME: '0.0.0.0'
+      INTERNAL_API_URL: http://studio-api:3001/api
+      NEXT_PUBLIC_API_URL: /api
+      NEXT_PUBLIC_STUDIO_URL: ${STUDIO_PUBLIC_URL}
+      NEXT_TELEMETRY_DISABLED: '1'
+      # O V8 nao enxerga o mem_limit do container: sem este teto ele
+      # dimensiona o heap pela RAM do host e so devolve memoria depois
+      # de ja ter passado do limite — quando o container ja morreu.
+      NODE_OPTIONS: --max-old-space-size=192
+    volumes:
+      - studio_next_image_cache:/app/studio/apps/web/.next/cache/images
+    depends_on:
+      studio-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    mem_limit: 256m
+    networks:
+      - studio-net
+
+  # ---------------- Backend (NestJS) ----------------
+  studio-api:
+    image: ${REGISTRY_IMAGE_STUDIO_API:-ghcr.io/fernandinhomartins40/makucho-studio-api}:${RELEASE:-latest}
+    container_name: makucho-studio-api
+    restart: unless-stopped
+    expose:
+      - '3001'
+    environment:
+      NODE_ENV: production
+      API_PORT: '3001'
+      API_PREFIX: api
+      STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL}
+      REDIS_URL: redis://studio-redis:6379
+      JWT_ACCESS_SECRET: ${STUDIO_JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${STUDIO_JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      # Subdominio proprio: a sessao do studio nao vale no portal.
+      COOKIE_DOMAIN: ${STUDIO_DOMAIN}
+      COOKIE_SECURE: 'true'
+      CORS_ORIGINS: ${STUDIO_CORS_ORIGINS}
+      # nginx do host + nginx do compose = 2 saltos ate o IP real.
+      TRUST_PROXY_HOPS: '2'
+      STORAGE_PROVIDER: disk
+      STORAGE_DISK_PATH: /app/storage/media
+      STORAGE_PUBLIC_URL: ${STUDIO_PUBLIC_URL}/media
+      PUBLIC_APP_URL: ${STUDIO_PUBLIC_URL}
+      # Limites de produto do piloto (ADR 0003). Recusados na criacao da
+      # sessao de upload, antes de o arquivo comecar a subir.
+      MAX_UPLOAD_BYTES: '524288000'
+      MAX_VIDEO_DURATION_MS: '900000'
+      AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      AI_API_KEY: ${AI_API_KEY}
+      NODE_OPTIONS: --max-old-space-size=128
+    depends_on:
+      studio-redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - studio_media:/app/storage/media
+    mem_limit: 192m
+    networks:
+      - studio-net
+      # Alcanca o Postgres do portal (ADR 0004).
+      - makucho-net
+
+  # ---------------- Fila ----------------
+  studio-redis:
+    image: redis:7-alpine
+    container_name: makucho-studio-redis
+    restart: unless-stopped
+    # A fila e reconstruivel a partir do banco: um job perdido e
+    # reenfileirado pelo estado do projeto. Persistir custaria escrita
+    # em disco continua, que nesta VPS disputa I/O com o render.
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 64mb
+      --maxmemory-policy noeviction
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 96m
+    networks:
+      - studio-net
+
+  # ---------------- Worker: midia (ffprobe, proxy, audio) ----------------
+  worker-media:
+    image: ${REGISTRY_IMAGE_STUDIO_WORKER:-ghcr.io/fernandinhomartins40/makucho-studio-worker}:${RELEASE:-latest}
+    container_name: makucho-studio-worker-media
+    restart: unless-stopped
+    command: ['node', 'studio/workers/media/dist/main.js']
+    environment:
+      NODE_ENV: production
+      WORKER_KIND: media
+      STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL}
+      REDIS_URL: redis://studio-redis:6379
+      STORAGE_DISK_PATH: /app/storage/media
+      # Trabalho pesado fora do heap do V8 (FFmpeg e processo proprio);
+      # o teto baixo aqui deixa folga para ele dentro do mem_limit.
+      NODE_OPTIONS: --max-old-space-size=256
+      # Lock global compartilhado pelas tres filas: e o que garante
+      # UM job pesado por vez em todo o stack (ADR 0003). Tres workers
+      # com concorrencia 1 cada ainda dariam tres jobs simultaneos.
+      GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
+      TMP_DIR: /tmp/studio
+    depends_on:
+      studio-redis:
+        condition: service_healthy
+    volumes:
+      - studio_media:/app/storage/media
+      # Temporarios em tmpfs: morrem com o container e nunca enchem o
+      # disco da VPS, que e o recurso mais escasso aqui. O teto e
+      # deliberado — um video que nao caiba falha de forma explicita,
+      # em vez de travar o servidor inteiro.
+      - type: tmpfs
+        target: /tmp/studio
+        tmpfs:
+          size: 2g
+    mem_limit: 512m
+    networks:
+      - studio-net
+
+  # ---------------- Worker: transcricao (faster-whisper) ----------------
+  worker-transcription:
+    image: ${REGISTRY_IMAGE_STUDIO_WHISPER:-ghcr.io/fernandinhomartins40/makucho-studio-whisper}:${RELEASE:-latest}
+    container_name: makucho-studio-worker-transcription
+    restart: unless-stopped
+    environment:
+      WORKER_KIND: transcription
+      STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL}
+      REDIS_URL: redis://studio-redis:6379
+      STORAGE_DISK_PATH: /app/storage/media
+      # "small" com int8: o large-v3 nao cabe na memoria disponivel
+      # (ADR 0003). int8 reduz o modelo sem perda relevante em pt-BR.
+      WHISPER_MODEL: small
+      WHISPER_COMPUTE_TYPE: int8
+      WHISPER_DEVICE: cpu
+      # 2 vCPU no host, compartilhados com ~12 aplicacoes: deixar o
+      # whisper usar os dois torna o servidor inteiro irresponsivo.
+      WHISPER_THREADS: '1'
+      GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
+      TMP_DIR: /tmp/studio
+    depends_on:
+      studio-redis:
+        condition: service_healthy
+    volumes:
+      - studio_media:/app/storage/media
+      # O modelo baixa uma vez e fica: sem isto, cada reinicio puxa
+      # centenas de MB da internet antes do primeiro job.
+      - studio_whisper_models:/models
+      - type: tmpfs
+        target: /tmp/studio
+        tmpfs:
+          size: 1g
+    # 768m com o lock global ativo cobre o whisper small int8 com folga.
+    # O teto tambem limita o estrago caso o lock falhe: ver o calculo de
+    # pior caso no ADR 0003.
+    mem_limit: 768m
+    cpus: 1.0
+    networks:
+      - studio-net
+
+  # ---------------- Worker: render (Remotion + FFmpeg) ----------------
+  worker-render:
+    image: ${REGISTRY_IMAGE_STUDIO_RENDER:-ghcr.io/fernandinhomartins40/makucho-studio-render}:${RELEASE:-latest}
+    container_name: makucho-studio-worker-render
+    restart: unless-stopped
+    command: ['node', 'studio/workers/render/dist/main.js']
+    environment:
+      NODE_ENV: production
+      WORKER_KIND: render
+      STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL}
+      REDIS_URL: redis://studio-redis:6379
+      STORAGE_DISK_PATH: /app/storage/media
+      NODE_OPTIONS: --max-old-space-size=448
+      # O Remotion abre um Chromium headless por worker de render.
+      # Mais de um esgota a memoria antes de acelerar qualquer coisa.
+      REMOTION_CONCURRENCY: '1'
+      GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
+      TMP_DIR: /tmp/studio
+    depends_on:
+      studio-redis:
+        condition: service_healthy
+    volumes:
+      - studio_media:/app/storage/media
+      - type: tmpfs
+        target: /tmp/studio
+        tmpfs:
+          size: 3g
+    mem_limit: 896m
+    cpus: 1.5
+    networks:
+      - studio-net
+
+networks:
+  studio-net:
+    driver: bridge
+    name: makucho-studio-net
+  # Rede do stack do portal, onde vive o Postgres. Declarada como
+  # externa: este compose nao a cria nem a remove — derruba-la levaria
+  # junto o portal em producao.
+  makucho-net:
+    external: true
+    name: makucho-net
+
+volumes:
+  # Originais, proxies, audio, thumbnails e renders.
+  studio_media:
+    name: makucho-studio-media
+  studio_whisper_models:
+    name: makucho-studio-whisper-models
+  studio_next_image_cache:
+    name: makucho-studio-next-image-cache
+  studio_nginx_logs:
+    name: makucho-studio-nginx-logs
