@@ -1,0 +1,14 @@
+// ============================================================
+// MAKUCHO STUDIO - Contratos compartilhados
+//
+// Consumido por studio-api, studio-web e pelos tres workers. E o
+// unico lugar onde os formatos trocados entre eles sao definidos:
+// se o EditPlan mudar, muda aqui e o typecheck aponta todos os
+// pontos afetados.
+// ============================================================
+
+export * from './vocabulary';
+export * from './edit-plan';
+export * from './ai-proposal';
+export * from './semantic-safety';
+export * from './events';

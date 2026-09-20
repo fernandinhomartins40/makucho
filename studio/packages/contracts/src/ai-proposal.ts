@@ -1,0 +1,131 @@
+// ============================================================
+// MAKUCHO STUDIO - Proposta editorial da IA
+//
+// Esta e a UNICA forma pela qual uma saida de modelo entra no
+// sistema. Deliberadamente mais pobre que o EditPlan: a IA escolhe
+// trechos e ordem; quem decide codec, asset, overlay e parametro de
+// render e o compilador proprio.
+//
+// Regra da secao 22 do contexto mestre:
+//     DeepSeek -> JSON -> parser -> Zod -> validadores -> compiler
+// Nao existe caminho do modelo para o FFmpeg sem passar por aqui.
+// ============================================================
+
+import { z } from 'zod';
+import { clipRoleSchema, frameworkSchema, semanticRiskSchema } from './vocabulary';
+
+const msSchema = z.number().int().nonnegative();
+
+// ---------- Segmento proposto ----------
+export const proposedSegmentSchema = z
+  .object({
+    sourceStartMs: msSchema,
+    sourceEndMs: msSchema,
+    role: clipRoleSchema,
+    score: z.number().min(0).max(1),
+    // Outros segmentos que precisam vir ANTES deste para o sentido se
+    // manter. E como o modelo declara "a segunda coisa" depende da
+    // primeira (contexto mestre, secao 5). O validador semantico
+    // confere; nao confia na palavra do modelo.
+    dependencies: z.array(z.number().int().nonnegative()).max(10),
+    reason: z.string().min(1).max(500),
+    semanticRisk: semanticRiskSchema,
+  })
+  .refine((segment) => segment.sourceEndMs > segment.sourceStartMs, {
+    message: 'sourceEndMs deve ser maior que sourceStartMs',
+    path: ['sourceEndMs'],
+  });
+
+export type ProposedSegment = z.infer<typeof proposedSegmentSchema>;
+
+// ---------- Proposta ----------
+//
+// `.strict()` e essencial: qualquer chave extra vinda do modelo faz o
+// parse falhar em vez de ser ignorada silenciosamente. Um campo
+// inesperado e sinal de prompt injection ou de modelo trocado.
+export const aiProposalV1Schema = z
+  .object({
+    schemaVersion: z.literal('1.0'),
+    framework: frameworkSchema,
+    targetDurationMs: msSchema.min(5000).max(180000),
+    segments: z.array(proposedSegmentSchema).min(1).max(60),
+    // Observacoes para o usuario, nunca instrucoes para o sistema.
+    warnings: z.array(z.string().max(300)).max(20),
+    // Blocos que o roteiro previa e a gravacao nao tem. Declarar a
+    // ausencia e obrigatorio; preenche-la e proibido (secao 9 do
+    // contexto mestre).
+    missingBlocks: z.array(clipRoleSchema).max(13),
+  })
+  .strict()
+  // Indices de dependencia precisam existir na propria lista.
+  .superRefine((proposal, ctx) => {
+    proposal.segments.forEach((segment, index) => {
+      segment.dependencies.forEach((dependency) => {
+        if (dependency >= proposal.segments.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['segments', index, 'dependencies'],
+            message: `dependencia ${dependency} nao existe na proposta`,
+          });
+        }
+        if (dependency === index) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['segments', index, 'dependencies'],
+            message: 'segmento nao pode depender de si mesmo',
+          });
+        }
+      });
+    });
+  });
+
+export type AiProposalV1 = z.infer<typeof aiProposalV1Schema>;
+
+// ---------- Resultado do parse ----------
+export type ProposalParseResult =
+  | { ok: true; proposal: AiProposalV1 }
+  | { ok: false; error: string; repairable: boolean };
+
+/**
+ * Le a saida bruta do modelo.
+ *
+ * Modelos costumam embrulhar o JSON em cerca de markdown mesmo quando o
+ * prompt pede JSON puro. Removemos a cerca; nao tentamos "consertar" o
+ * JSON alem disso. O plano (secao 7.2) autoriza no maximo UMA rotina
+ * controlada de reparo, executada pelo chamador — persistindo o erro, o
+ * job falha de forma explicavel, que e melhor que renderizar um plano
+ * adivinhado.
+ */
+export function parseAiProposal(raw: string): ProposalParseResult {
+  const trimmed = raw.trim();
+  const withoutFence = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(withoutFence);
+  } catch (error) {
+    return {
+      ok: false,
+      error: `JSON invalido: ${error instanceof Error ? error.message : 'erro desconhecido'}`,
+      // Erro de sintaxe e o caso que uma segunda tentativa costuma
+      // resolver; violacao de schema e erro de conteudo e nao adianta.
+      repairable: true,
+    };
+  }
+
+  const result = aiProposalV1Schema.safeParse(parsed);
+  if (!result.success) {
+    return {
+      ok: false,
+      error: result.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; '),
+      repairable: false,
+    };
+  }
+
+  return { ok: true, proposal: result.data };
+}

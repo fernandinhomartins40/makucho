@@ -1,0 +1,571 @@
+// ============================================================
+// MAKUCHO STUDIO - Schema do banco
+// Editor inteligente de videos (plano, secao 6.1)
+//
+// Banco proprio (makucho_studio), separado do portal: ADR 0004.
+//
+// Isolamento multi-tenant: toda tabela de dado do cliente carrega
+// workspaceId ou so e alcancavel por uma relacao que o imponha.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/studio-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("STUDIO_DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum StudioUserRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum ProjectState {
+  DRAFT
+  UPLOADING
+  INGESTING
+  TRANSCRIBING
+  ANALYZING
+  PROPOSAL_READY
+  USER_EDITING
+  READY_TO_RENDER
+  RENDERING
+  QUALITY_CHECK
+  COMPLETED
+  FAILED_RETRYABLE
+  FAILED_FINAL
+  CANCEL_REQUESTED
+  CANCELLED
+  ARCHIVED
+}
+
+enum MediaKind {
+  ORIGINAL
+  PROXY
+  AUDIO
+  THUMBNAIL
+  KEYFRAME
+}
+
+enum AssetKind {
+  LOGO
+  LOGO_NEGATIVE
+  LOGO_COMPACT
+  WATERMARK
+  FONT
+  IMAGE
+  VIDEO
+  LOTTIE
+  MUSIC
+  SOUND_EFFECT
+  INTRO
+  OUTRO
+  TRANSITION
+}
+
+enum ScriptMode {
+  FULL
+  TOPICS
+  BULLETS
+  GUIDED_IMPROV
+  STORYTELLING
+}
+
+enum ClipRole {
+  HOOK
+  PROBLEM
+  CONTEXT
+  CURIOSITY_GAP
+  AUTHORITY
+  INTRODUCTION
+  PROOF
+  INSIGHT
+  SOLUTION
+  PATTERN_INTERRUPT
+  PAYOFF
+  OFFER
+  CTA
+}
+
+enum SemanticRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum JobState {
+  WAITING
+  ACTIVE
+  RETRY_DELAY
+  COMPLETED
+  FAILED
+  CANCEL_REQUESTED
+  CANCELLED
+}
+
+enum JobType {
+  MEDIA_INGEST
+  MEDIA_PROXY
+  TRANSCRIPTION_RUN
+  ANALYSIS_RUN
+  RENDER_RUN
+}
+
+// ============================================================
+// IDENTIDADE E TENANT
+// ============================================================
+
+model StudioUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+
+  @@map("studio_users")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships          Membership[]
+  brandProfiles        BrandProfile[]
+  communicationProfile CommunicationProfile?
+  assets               Asset[]
+  scripts              Script[]
+  projects             Project[]
+  auditEvents          AuditEvent[]
+
+  @@map("workspaces")
+}
+
+model Membership {
+  id          String         @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        StudioUserRole @default(EDITOR)
+  createdAt   DateTime       @default(now())
+
+  user      StudioUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+  @@map("memberships")
+}
+
+// ============================================================
+// BRAND STUDIO (plano, secao 10)
+// ============================================================
+
+model BrandProfile {
+  id          String   @id @default(cuid())
+  workspaceId String
+  // Versionado: um projeto ja renderizado deve continuar apontando para
+  // a identidade vigente na epoca, nao para a atual.
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  name        String
+  colors      Json
+  fontPrimary String?
+  fontSecond  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  captionStyles CaptionStyle[]
+
+  @@unique([workspaceId, version])
+  @@index([workspaceId, isActive])
+  @@map("brand_profiles")
+}
+
+model CaptionStyle {
+  id             String  @id @default(cuid())
+  brandProfileId String
+  name           String
+  fontFamily     String
+  fontSizePx     Int
+  color          String
+  strokeColor    String?
+  strokeWidthPx  Int     @default(0)
+  highlightColor String?
+  wordsPerBlock  Int     @default(3)
+  position       String  @default("bottom")
+
+  brandProfile BrandProfile @relation(fields: [brandProfileId], references: [id], onDelete: Cascade)
+
+  @@index([brandProfileId])
+  @@map("caption_styles")
+}
+
+model Asset {
+  id          String    @id @default(cuid())
+  workspaceId String
+  kind        AssetKind
+  // MIME verificado pelos BYTES, nao pela extensao (plano, secao 10.2).
+  mimeType    String
+  // Nome interno aleatorio; o nome enviado pelo usuario nunca vira caminho.
+  storageKey  String    @unique
+  originalName String
+  sizeBytes   Int
+  widthPx     Int?
+  heightPx    Int?
+  durationMs  Int?
+  hasAlpha    Boolean   @default(false)
+  // Licenca, autor e restricoes: exigido para fonte e musica.
+  license     Json?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind, isActive])
+  @@map("assets")
+}
+
+// ============================================================
+// COMMUNICATION PROFILE (plano, secao 11.1)
+// ============================================================
+
+model CommunicationProfile {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  tone        String
+  energy      String
+  sentenceLen String
+  preferredOpening String
+  allowedHooks     Json
+  allowedFrameworks Json
+  selfIntroPolicy  String
+  storytellingLevel String
+  humorLevel       String
+  allowProfanity   Boolean @default(false)
+  ctaStyle         String
+  targetDurationMinMs Int  @default(45000)
+  targetDurationMaxMs Int  @default(75000)
+  cutAggressiveness   String @default("medium")
+  bannedWords         Json?
+  removableFillers    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("communication_profiles")
+}
+
+// ============================================================
+// SCRIPT STUDIO (plano, secao 11.2)
+// ============================================================
+
+model Script {
+  id          String     @id @default(cuid())
+  workspaceId String
+  title       String
+  mode        ScriptMode
+  framework   String
+  targetDurationMs Int
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  blocks    ScriptBlock[]
+  projects  Project[]
+
+  @@index([workspaceId])
+  @@map("scripts")
+}
+
+model ScriptBlock {
+  id       String   @id @default(cuid())
+  scriptId String
+  role     ClipRole
+  goal     String?
+  text     String
+  position Int
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@unique([scriptId, position])
+  @@map("script_blocks")
+}
+
+// ============================================================
+// PROJETO E MIDIA
+// ============================================================
+
+model Project {
+  id          String       @id @default(cuid())
+  workspaceId String
+  scriptId    String?
+  title       String
+  state       ProjectState @default(DRAFT)
+  objective   String?
+  framework   String?
+  targetDurationMs Int?
+  // Mensagem segura para o usuario quando o estado e de falha.
+  publicError String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  script            Script?            @relation(fields: [scriptId], references: [id], onDelete: SetNull)
+  mediaSources      MediaSource[]
+  transcription     Transcription?
+  aiAnalyses        AiAnalysis[]
+  editPlans         EditPlan[]
+  engagementReports EngagementReport[]
+  renders           Render[]
+  jobs              Job[]
+
+  @@index([workspaceId, state])
+  @@map("projects")
+}
+
+model MediaSource {
+  id        String    @id @default(cuid())
+  projectId String
+  kind      MediaKind
+  storageKey String   @unique
+  mimeType  String
+  sizeBytes BigInt
+  durationMs Int?
+  widthPx   Int?
+  heightPx  Int?
+  fps       Float?
+  videoCodec String?
+  audioCodec String?
+  // Confirma que o arquivo no storage e o que foi enviado.
+  checksumSha256 String?
+  createdAt DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, kind])
+  @@map("media_sources")
+}
+
+// ============================================================
+// TRANSCRICAO (plano, secao 8, passos 10-12)
+// ============================================================
+
+model Transcription {
+  id         String   @id @default(cuid())
+  projectId  String   @unique
+  language   String
+  model      String
+  // Confianca media; a minima por palavra vive em TranscriptWord.
+  confidence Float?
+  createdAt  DateTime @default(now())
+
+  project  Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  segments TranscriptSegment[]
+  regions  DetectedRegion[]
+
+  @@map("transcriptions")
+}
+
+model TranscriptSegment {
+  id              String @id @default(cuid())
+  transcriptionId String
+  startMs         Int
+  endMs           Int
+  text            String
+  confidence      Float?
+  position        Int
+
+  transcription Transcription   @relation(fields: [transcriptionId], references: [id], onDelete: Cascade)
+  words         TranscriptWord[]
+
+  @@unique([transcriptionId, position])
+  @@index([transcriptionId, startMs])
+  @@map("transcript_segments")
+}
+
+model TranscriptWord {
+  id        String @id @default(cuid())
+  segmentId String
+  startMs   Int
+  endMs     Int
+  word      String
+  // Usada pela seguranca semantica: corte em palavra incerta cai no
+  // meio da silaba vizinha.
+  confidence Float
+
+  segment TranscriptSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([segmentId, startMs])
+  @@map("transcript_words")
+}
+
+model DetectedRegion {
+  id              String @id @default(cuid())
+  transcriptionId String
+  // speech, silence, scene
+  kind            String
+  startMs         Int
+  endMs           Int
+  metadata        Json?
+
+  transcription Transcription @relation(fields: [transcriptionId], references: [id], onDelete: Cascade)
+
+  @@index([transcriptionId, kind])
+  @@map("detected_regions")
+}
+
+// ============================================================
+// INTELIGENCIA EDITORIAL
+// ============================================================
+
+model AiAnalysis {
+  id        String   @id @default(cuid())
+  projectId String
+  provider  String
+  model     String
+  promptVersion String
+  // Proposta bruta devolvida pelo modelo, para auditoria. Guardar o
+  // que o modelo disse e o que permite depurar uma decisao editorial
+  // meses depois.
+  rawOutput Json
+  parsedOk  Boolean
+  parseError String?
+  inputTokens  Int?
+  outputTokens Int?
+  costCents    Int?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("ai_analyses")
+}
+
+model EditPlan {
+  id        String   @id @default(cuid())
+  projectId String
+  version   Int
+  // EditPlanV1 validado pelo Zod. Fonte de verdade de preview e render.
+  document  Json
+  // "ai" ou "user": distingue a proposta original dos ajustes manuais.
+  origin    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  renders Render[]
+
+  @@unique([projectId, version])
+  @@index([projectId, isActive])
+  @@map("edit_plans")
+}
+
+model EngagementReport {
+  id        String   @id @default(cuid())
+  projectId String
+  scores    Json
+  warnings  Json
+  // Justificativas exibidas na tela de sugestao (contexto mestre, secao 13).
+  explanations Json
+  overallRisk  SemanticRisk @default(LOW)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("engagement_reports")
+}
+
+// ============================================================
+// RENDER E JOBS
+// ============================================================
+
+model Render {
+  id         String   @id @default(cuid())
+  projectId  String
+  editPlanId String
+  storageKey String?
+  sizeBytes  BigInt?
+  durationMs Int?
+  widthPx    Int?
+  heightPx   Int?
+  // Resultado do quality check (plano, secao 8, passo 29).
+  qualityCheck Json?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  editPlan EditPlan @relation(fields: [editPlanId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@map("renders")
+}
+
+model Job {
+  id        String   @id @default(cuid())
+  projectId String
+  type      JobType
+  state     JobState @default(WAITING)
+  // Mesma chave = mesmo efeito: um retry apos conclusao nao gera
+  // segundo render (plano, secao 6.3).
+  idempotencyKey String @unique
+  correlationId  String
+  attempt     Int      @default(1)
+  maxAttempts Int      @default(3)
+  percent     Int?
+  step        String?
+  // Ultimo sinal de vida; sem ele nao ha como distinguir job travado
+  // de job lento.
+  heartbeatAt DateTime?
+  errorCode       String?
+  errorInternal   String?
+  errorPublic     String?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, state])
+  @@index([state, type])
+  @@map("jobs")
+}
+
+// ============================================================
+// AUDITORIA (plano, secao 15)
+// ============================================================
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String?
+  correlationId String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_events")
+}
