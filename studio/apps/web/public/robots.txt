@@ -1,0 +1,4 @@
+# O studio e uma aplicacao logada: nao ha conteudo publico a indexar,
+# e as telas internas nao devem aparecer em busca.
+User-agent: *
+Disallow: /
