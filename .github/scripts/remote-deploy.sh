@@ -65,16 +65,55 @@ fi
 # ------------------------------------------------------------
 log "baixando imagens (release $RELEASE)..."
 export RELEASE
-if ! compose pull --quiet; then
-  # A causa quase sempre e uma so: o build do workflow falhou e as
-  # imagens desta release nunca foram publicadas. O "denied" que o
-  # Docker devolve nesse caso parece erro de permissao e manda quem
-  # depura para o lado errado.
-  log "ERRO: imagens da release $RELEASE indisponiveis no registro."
-  log "      Confira se as etapas de build do workflow concluiram."
-  log "      Esperado: $REGISTRY_IMAGE_API:$RELEASE"
-  log "                $REGISTRY_IMAGE_WEB:$RELEASE"
-  fail "nao foi possivel baixar as imagens; a versao anterior segue no ar"
+
+# ------------------------------------------------------------
+# Download com timeout e retry
+#
+# Sem timeout, um "compose pull" numa rede degradada fica pendurado
+# indefinidamente: o job do Actions corre ate o limite de 45 min com o
+# deploy parado, e o log so aparece quando o step termina -- entao nem
+# da para ver onde travou. Ja aconteceu: em 14/09 o GHCR respondeu
+# "TLS handshake timeout" a partir desta VPS.
+#
+# 10 min por tentativa cobre com folga o download das duas imagens numa
+# rede saudavel. Tres tentativas com espera crescente absorvem uma
+# instabilidade passageira do registro.
+# ------------------------------------------------------------
+PULL_OK=0
+for attempt in 1 2 3; do
+  log "tentativa $attempt/3 de baixar as imagens..."
+  if timeout 600 docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" \
+       --env-file "$ENV_FILE" pull --quiet; then
+    PULL_OK=1
+    break
+  fi
+
+  rc=$?
+  # 124 e o codigo com que o timeout mata o comando: distingue rede
+  # lenta de imagem inexistente, que falha rapido.
+  if [ "$rc" -eq 124 ]; then
+    log "a tentativa $attempt excedeu 10 min (rede lenta ou registro instavel)"
+  else
+    log "a tentativa $attempt falhou (codigo $rc)"
+  fi
+
+  if [ "$attempt" -lt 3 ]; then
+    wait_s=$((attempt * 20))
+    log "nova tentativa em ${wait_s}s..."
+    sleep "$wait_s"
+  fi
+done
+
+if [ "$PULL_OK" -ne 1 ]; then
+  # Duas causas possiveis, e a mensagem do Docker nao distingue: o
+  # "denied" que ele devolve para imagem inexistente parece erro de
+  # permissao e manda quem depura para o lado errado.
+  log "ERRO: nao foi possivel baixar as imagens da release $RELEASE."
+  log "      1) O build do workflow publicou estas tags?"
+  log "         $REGISTRY_IMAGE_API:$RELEASE"
+  log "         $REGISTRY_IMAGE_WEB:$RELEASE"
+  log "      2) A VPS alcanca o ghcr.io? Teste: curl -sS -m 20 https://ghcr.io/v2/"
+  fail "download das imagens falhou; a versao anterior segue no ar"
 fi
 
 # ------------------------------------------------------------

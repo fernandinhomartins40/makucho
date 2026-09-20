@@ -43,7 +43,7 @@ permissions:
   packages: write
 
 env:
-  VPS_HOST: 72.60.10.112
+  VPS_HOST: 72.60.10.108
   VPS_USER: root
   # Raiz propria: nao compartilha releases com o portal.
   APP_ROOT: /opt/makucho-studio
@@ -59,7 +59,7 @@ env:
   IMAGE_STUDIO_WORKER: ghcr.io/${{ github.repository_owner }}/makucho-studio-worker
   IMAGE_STUDIO_WHISPER: ghcr.io/${{ github.repository_owner }}/makucho-studio-whisper
   IMAGE_STUDIO_RENDER: ghcr.io/${{ github.repository_owner }}/makucho-studio-render
-  SSH_OPTS: -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
+  SSH_OPTS: -T -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
 
 jobs:
   deploy:
@@ -268,42 +268,49 @@ jobs:
             ensure_random_hex "STUDIO_POSTGRES_PASSWORD" 32
             STUDIO_DB_PASSWORD="$(get_env "STUDIO_POSTGRES_PASSWORD" | tr -d '\r')"
 
-            PORTAL_USER="$(docker exec makucho-postgres printenv POSTGRES_USER)"
+            PORTAL_USER="$(docker exec makucho-postgres printenv POSTGRES_USER </dev/null)"
 
             # Papel: cria se faltar, atualiza a senha se ja existir. A
             # senha entra por variavel do psql, nao interpolada na SQL,
             # para nao quebrar com caractere especial.
-            # Um heredoc aninhado exigiria o delimitador na coluna 0,
-            # o que quebraria o bloco YAML deste step. Comandos com -c
-            # fazem o mesmo e mantem a senha fora da linha de comando:
-            # ela entra por variavel do psql (-v), citada com :'...'
-            # para nao quebrar com caractere especial.
+            # Todo "docker exec" aqui fecha a entrada com </dev/null,
+            # menos o ALTER ROLE logo abaixo. Este script chega ao ssh
+            # PELO stdin (heredoc ENDSSH); um docker exec sem
+            # redirecionamento le do mesmo fluxo e engole o resto.
             ROLE_EXISTS="$(docker exec makucho-postgres \
               psql -tAU "$PORTAL_USER" -d postgres \
-              -c "SELECT 1 FROM pg_roles WHERE rolname = 'makucho_studio'" | tr -d '[:space:]')"
+              -c "SELECT 1 FROM pg_roles WHERE rolname = 'makucho_studio'" </dev/null | tr -d '[:space:]')"
 
             if [ "$ROLE_EXISTS" != "1" ]; then
               docker exec makucho-postgres \
                 psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-                -c "CREATE ROLE makucho_studio LOGIN"
+                -c "CREATE ROLE makucho_studio LOGIN" </dev/null
               echo "papel makucho_studio criado"
             fi
 
-            docker exec makucho-postgres \
-              psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-              -v new_password="$STUDIO_DB_PASSWORD" \
-              -c "ALTER ROLE makucho_studio WITH PASSWORD :'new_password'" >/dev/null
+            # A senha vai por variavel do psql (-v), nunca interpolada
+            # na SQL nem passada como argumento -- um argumento
+            # apareceria no "ps" da VPS enquanto o comando roda.
+            #
+            # A SQL entra por stdin com "-f -" e NAO por "-c": o psql
+            # so expande :'variavel' em script lido de arquivo ou
+            # stdin. Com -c a string vai crua ao servidor, que responde
+            # 'syntax error at or near ":"'.
+            printf '%s\n' "ALTER ROLE makucho_studio WITH PASSWORD :'new_password';" \
+              | docker exec -i makucho-postgres \
+                  psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
+                  -v new_password="$STUDIO_DB_PASSWORD" -f - >/dev/null
 
             # CREATE DATABASE nao roda dentro de DO/transacao: por isso
             # o teste vem antes, em comando separado.
             DB_EXISTS="$(docker exec makucho-postgres \
               psql -tAU "$PORTAL_USER" -d postgres \
-              -c "SELECT 1 FROM pg_database WHERE datname = 'makucho_studio'")"
+              -c "SELECT 1 FROM pg_database WHERE datname = 'makucho_studio'" </dev/null | tr -d '[:space:]')"
 
             if [ "$DB_EXISTS" != "1" ]; then
               docker exec makucho-postgres \
                 psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-                -c "CREATE DATABASE makucho_studio OWNER makucho_studio"
+                -c "CREATE DATABASE makucho_studio OWNER makucho_studio" </dev/null
               echo "banco makucho_studio criado"
             else
               echo "banco makucho_studio ja existe"

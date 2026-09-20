@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  VPS_HOST: 72.60.10.112
+  VPS_HOST: 72.60.10.108
   VPS_USER: root
   APP_ROOT: /opt/makucho
   # Porta unica publicada no host. As portas 3000 e 3001 do projeto

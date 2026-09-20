@@ -69,7 +69,11 @@ fi
 # ------------------------------------------------------------
 log "baixando imagens (release $RELEASE)..."
 export RELEASE
-if ! compose pull --quiet; then
+# timeout: sem ele, uma rede degradada deixa o pull pendurado ate o
+# limite do job, com o log invisivel porque so sai quando o step acaba.
+# Mesma protecao do script do portal.
+if ! timeout 900 docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" \
+       --env-file "$ENV_FILE" pull --quiet; then
   # A causa quase sempre e uma so: o build do workflow falhou e as
   # imagens desta release nunca foram publicadas. O "denied" do
   # Docker nesse caso parece erro de permissao e manda quem depura
