@@ -4,6 +4,7 @@
 
 import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/prisma.service';
 
 @ApiTags('health')
@@ -11,6 +12,11 @@ import { PrismaService } from '../../common/prisma.service';
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Publica de proposito: quem consulta esta rota e o healthcheck do
+  // Docker, o nginx e o deploy -- nenhum deles tem token. Com o guard
+  // global fechando tudo por padrao, sem este decorator o proprio
+  // healthcheck recebe 401 e o container nunca fica healthy.
+  @Public()
   @Get()
   async check() {
     // Confere o banco de verdade: um processo que responde mas nao
