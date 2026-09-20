@@ -150,7 +150,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      # 120s, nao 60s: o entrypoint espera o Postgres e aplica as
+      # migrations ANTES de o Nest comecar a subir. Medido em
+      # producao, esse caminho levou 53s -- margem apertada demais
+      # para um deploy simultaneo, em que o banco ainda esta subindo.
+      start_period: 120s
     volumes:
       - studio_media:/app/storage/media
     mem_limit: 192m

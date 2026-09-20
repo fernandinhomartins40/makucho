@@ -3,7 +3,7 @@
 // ============================================================
 
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -39,15 +39,13 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(env.API_PREFIX);
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      // Campo desconhecido no corpo faz a requisicao falhar em vez de
-      // ser ignorado em silencio.
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  // Sem ValidationPipe global: ele depende de class-validator, que este
+  // projeto nao usa. A validacao aqui e feita com Zod nos proprios
+  // handlers (`schema.parse(body)`), o que mantem um so jeito de
+  // validar -- o mesmo dos contratos em @makucho/studio-contracts.
+  //
+  // Instalar class-validator so para satisfazer o pipe adicionaria uma
+  // dependencia sem uso e dois modelos de validacao convivendo.
 
   app.enableCors({
     origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : false,
