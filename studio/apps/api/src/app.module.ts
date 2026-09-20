@@ -6,6 +6,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PrismaModule } from './common/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BrandModule } from './modules/brand/brand.module';
+import { ScriptsModule } from './modules/scripts/scripts.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -21,6 +22,7 @@ import { loadEnv } from './config/env';
     PrismaModule,
     AuthModule,
     BrandModule,
+    ScriptsModule,
   ],
   controllers: [HealthController],
   providers: [

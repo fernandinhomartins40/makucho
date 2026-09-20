@@ -11,8 +11,8 @@
 |---|---|---|
 | 0 | Fundação e contratos | **concluída** |
 | 1 | Plataforma base | **concluída** |
-| 2 | Brand e Communication Studio | em construção |
-| 3 | Script e Record Studio | pendente |
+| 2 | Brand e Communication Studio | **contratos e API** |
+| 3 | Script e Record Studio | **em construção** |
 | 4 | Ingestão e transcrição | pendente |
 | 5 | Inteligência editorial | pendente |
 | 6 | Preview e composição | pendente |
