@@ -12,8 +12,8 @@
 | 0 | Fundação e contratos | **concluída** |
 | 1 | Plataforma base | **concluída** |
 | 2 | Brand e Communication Studio | **contratos e API** |
-| 3 | Script e Record Studio | **em construção** |
-| 4 | Ingestão e transcrição | pendente |
+| 3 | Script e Record Studio | **contratos, API e teleprompter** |
+| 4 | Ingestão e transcrição | **contratos prontos**; workers pendentes |
 | 5 | Inteligência editorial | pendente |
 | 6 | Preview e composição | pendente |
 | 7 | Render e entrega | pendente |
@@ -109,9 +109,9 @@ isso e sobe o stack sem eles (perfil `workers` no compose).
 
 | Item | Impacto |
 |---|---|
-| Decisão de storage: disco vs. R2 | o plano prevê R2; hoje há volume em disco. Vídeo de 500 MB por projeto muda o cálculo |
+| ~~Storage: disco vs. R2~~ | **decidido**: disco da VPS, 10 GB em dois baldes (4 GB permanente + 6 GB edição), com retenção e aviso antes de remover |
 | Fixtures de mídia | os golden tests da seção 18.4 dependem de vídeo autorizado |
-| Chave da API de IA | `AI_API_KEY` vazio; a Fase 5 não roda sem ela |
+| ~~Chave da API de IA~~ | **decidido**: cadastrada pelo painel e cifrada em AES-256-GCM, uma por workspace |
 | Threat model | previsto na Fase 0 |
 | Métricas e alertas | seção 16 do plano |
 
@@ -129,3 +129,40 @@ sobrescrevem **com que ferramenta**, quando divergem.
   2 vCPU e 90,6% de steal da anterior. É a configuração que a seção 17.1 do
   plano recomenda.
 - **ADR 0004** — banco separado na instância Postgres do portal.
+
+
+---
+
+## Armazenamento — decisão de 2026-09-20
+
+10 GB no disco da VPS, em dois baldes com regras distintas.
+
+| Balde | Cota | Conteúdo | Expira? |
+|---|---|---|---|
+| Permanente | 4 GB | logo, fonte, música, intro, outro | não |
+| Edição | 6 GB | original, proxy, áudio, render | sim |
+
+Os baldes são separados porque misturar faria um upload de vídeo de 500 MB
+apagar a trilha sonora da marca para caber.
+
+**No balde permanente** nada é apagado automaticamente: o sistema não escolhe
+qual material do cliente descartar. Ao encher, o upload é recusado com
+explicação.
+
+**No balde de edição** o espaço não acaba — os arquivos mais antigos cedem
+lugar aos novos. O aviso começa em 75%, antes de qualquer perda, e diz o que
+fazer: baixar ou fixar. Arquivo fixado nunca cede lugar.
+
+Retenção por tempo: original e proxy 30 dias, render 60, derivados 15. Três
+avisos (7, 3 e 1 dia), porque quem abre o app uma vez por semana perderia um
+aviso único.
+
+## Credencial de IA — decisão de 2026-09-20
+
+Cadastrada no painel, não por variável de ambiente: cada workspace usa a
+própria conta e o próprio crédito.
+
+Guardada com AES-256-GCM. Em texto puro, um dump de banco — backup, log de
+erro, acesso indevido — entregaria a chave de faturamento do cliente. A rota
+devolve apenas o prefixo (`sk-ab…9f12`), o bastante para reconhecer qual está
+ativa. Só OWNER pode trocá-la: chave de API é custo.
