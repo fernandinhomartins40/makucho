@@ -78,8 +78,10 @@ COPY --from=prod-deps --chown=worker:nodejs /app/studio/packages ./studio/packag
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/render/dist ./studio/workers/render/dist
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/render/package.json ./studio/workers/render/
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/contracts/dist ./studio/packages/contracts/dist
-COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/dist ./studio/packages/database/dist
-COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/node_modules/.prisma ./studio/packages/database/node_modules/.prisma
+# O client Prisma sai em src/generated (ver schema.prisma), e nao
+# em node_modules/.prisma: de dentro do pacote o TypeScript
+# consegue nomear os tipos em quem o consome.
+COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 
 # Composicoes Remotion: a IA escolhe entre estes componentes, nunca
 # escreve animacao (contexto mestre, secao 21).

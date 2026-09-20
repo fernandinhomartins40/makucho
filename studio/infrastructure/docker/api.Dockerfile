@@ -78,11 +78,13 @@ COPY --from=prod-deps --chown=nestjs:nodejs /app/studio/packages ./studio/packag
 COPY --from=builder --chown=nestjs:nodejs /app/studio/apps/api/dist ./studio/apps/api/dist
 COPY --from=builder --chown=nestjs:nodejs /app/studio/apps/api/package.json ./studio/apps/api/
 COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/contracts/dist ./studio/packages/contracts/dist
-COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/dist ./studio/packages/database/dist
 
 # O client gerado e o schema: o primeiro para a aplicacao rodar, o
 # segundo para o entrypoint aplicar as migrations na subida.
-COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/node_modules/.prisma ./studio/packages/database/node_modules/.prisma
+# O client Prisma sai em src/generated (ver schema.prisma), e nao
+# em node_modules/.prisma: de dentro do pacote o TypeScript
+# consegue nomear os tipos em quem o consome.
+COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/prisma ./studio/packages/database/prisma
 
 # Midia do studio. Vira volume em producao; criar aqui garante o dono

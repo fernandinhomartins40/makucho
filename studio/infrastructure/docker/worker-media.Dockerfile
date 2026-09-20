@@ -67,8 +67,10 @@ COPY --from=prod-deps --chown=worker:nodejs /app/studio/packages ./studio/packag
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/media/dist ./studio/workers/media/dist
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/media/package.json ./studio/workers/media/
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/contracts/dist ./studio/packages/contracts/dist
-COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/dist ./studio/packages/database/dist
-COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/node_modules/.prisma ./studio/packages/database/node_modules/.prisma
+# O client Prisma sai em src/generated (ver schema.prisma), e nao
+# em node_modules/.prisma: de dentro do pacote o TypeScript
+# consegue nomear os tipos em quem o consome.
+COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 
 RUN mkdir -p /app/storage/media /tmp/studio && chown -R worker:nodejs /app/storage /tmp/studio
 
