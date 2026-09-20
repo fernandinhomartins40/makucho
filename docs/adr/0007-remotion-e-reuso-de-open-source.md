@@ -28,8 +28,31 @@ Verificado em `remotion.dev/docs/license/faq` em 2026-09-20:
 
 ## Decisão
 
-**Manter o Remotion.** A empresa do cliente tem até 3 pessoas (confirmado em
+**Manter o Remotion.** Duas razões, uma jurídica e uma de produto.
+
+**Licença.** A empresa do cliente tem até 3 pessoas (confirmado em
 2026-09-20), o que enquadra o uso na licença gratuita, inclusive comercial.
+
+**Produto.** O cliente quer legenda animada palavra por palavra -- o estilo de
+Reels em que cada palavra aparece destacada no instante exato em que é falada.
+É o caso em que o Remotion ganha do FFmpeg de forma clara: desenhar 1.800
+frames com estado próprio é natural em React e trabalhoso em filtergraph.
+
+Isso valida uma decisão da Fase 4: `transcript_words` guarda `startMs` e
+`endMs` por palavra, e não só por segmento. É exatamente o dado que a legenda
+animada consome -- sem ele, o destaque cairia na palavra errada.
+
+### O que cada ferramenta faz
+
+| Camada | Ferramenta | Por quê |
+|---|---|---|
+| Corte, concatenação, áudio, encoding | FFmpeg | é o que ele faz melhor, e sem custo de memória |
+| Legenda animada, lower third, contador | Remotion | precisa de estado por frame |
+| Montagem final | FFmpeg | sempre: o Remotion entrega frames, não vídeo |
+
+O Remotion NÃO substitui o FFmpeg. Ele desenha as camadas gráficas; o FFmpeg
+junta tudo. Se o Remotion saísse do stack, o vídeo ainda sairia -- sem as
+animações.
 
 ### Gatilho de revisão
 
@@ -40,9 +63,18 @@ cliente chegar a 4 pessoas**, é preciso escolher entre:
    código Remotion — hoje, uma pessoa); ou
 2. migrar as composições para FFmpeg puro (`drawtext`, legendas ASS).
 
-A segunda opção tem um efeito colateral positivo já medido no desenho: sem o
-Chromium headless do Remotion, o worker de render dispensa ~900 MB de RAM e a
-lista de bibliotecas do `worker-render.Dockerfile` encolhe bastante.
+A segunda opção tem um efeito colateral positivo: sem o Chromium headless, o
+worker de render fica bem mais leve e a lista de 14 bibliotecas gráficas do
+`worker-render.Dockerfile` desaparece.
+
+A estimativa de ~900 MB para o Chromium vem do consumo típico dessa classe de
+processo, NÃO de medição nossa -- a documentação do Remotion não publica
+requisitos de hardware. O número real entra no baseline quando o worker
+existir, conforme os critérios de revisão do ADR 0003.
+
+Um dado que a documentação confirma: o `renderMedia()` usa por padrão metade
+dos threads disponíveis. Nos 4 vCPUs da VPS isso dá 2, coerente com o
+`cpus: 2.0` já declarado para o worker no compose.
 
 Para manter a saída em aberto, o compilador do EditPlan trata Remotion como
 **um backend de composição, não como a única forma de renderizar**: legendas e
