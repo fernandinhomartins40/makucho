@@ -28,7 +28,9 @@ build
 !**/.env.example
 
 # Imagens enviadas pelo CMS: vivem em volume, nao na imagem.
-apps/api/storage
+portal/apps/api/storage
+# Temporarios de video do studio: vivem em disco efemero por job.
+studio/**/tmp
 
 # Controle de versao e metadados
 .git
@@ -46,5 +48,7 @@ coverage
 # Documentacao e infraestrutura que nao entram no build da aplicacao
 *.md
 !README.md
-docker-compose*.yml
-infrastructure/nginx
+**/docker-compose*.yml
+portal/infrastructure/nginx
+studio/infrastructure/nginx
+.kilo

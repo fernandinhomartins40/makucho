@@ -17,9 +17,9 @@ FAIL=0
 log()  { echo "[health] $*"; }
 bad()  { echo "[health] FALHOU: $*" >&2; FAIL=1; }
 
-COMPOSE_FILE="$APP_ROOT/current/docker-compose.prod.yml"
-[ -n "$RELEASE" ] && [ -f "$APP_ROOT/releases/$RELEASE/docker-compose.prod.yml" ] \
-  && COMPOSE_FILE="$APP_ROOT/releases/$RELEASE/docker-compose.prod.yml"
+COMPOSE_FILE="$APP_ROOT/current/portal/docker-compose.prod.yml"
+[ -n "$RELEASE" ] && [ -f "$APP_ROOT/releases/$RELEASE/portal/docker-compose.prod.yml" ] \
+  && COMPOSE_FILE="$APP_ROOT/releases/$RELEASE/portal/docker-compose.prod.yml"
 
 compose() {
   docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$APP_ROOT/.env" "$@"

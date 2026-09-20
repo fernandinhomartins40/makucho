@@ -1,11 +1,17 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [".env"],
+  // Variaveis que invalidam o cache quando mudam. Uma variavel ausente
+  // daqui faz o turbo reaproveitar um build feito com outro valor — no
+  // Next isso e grave, porque NEXT_PUBLIC_* fica embutida no bundle.
   "globalEnv": [
     "NODE_ENV",
     "DATABASE_URL",
     "NEXT_PUBLIC_API_URL",
-    "NEXT_PUBLIC_SITE_URL"
+    "NEXT_PUBLIC_SITE_URL",
+    "STUDIO_DATABASE_URL",
+    "NEXT_PUBLIC_STUDIO_API_URL",
+    "NEXT_PUBLIC_STUDIO_URL"
   ],
   "tasks": {
     "build": {

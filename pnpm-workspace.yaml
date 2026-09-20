@@ -1,6 +1,24 @@
+# ============================================================
+# Duas aplicacoes do mesmo cliente, um repositorio (ADR 0001):
+#
+#   portal/   makucho.com.br          portal editorial + CMS
+#   studio/   studio.makucho.com.br   editor inteligente de videos
+#   shared/   configuracao usada pelos dois
+#
+# Cada produto e autocontido: apps, packages e infra proprios. So o
+# que e genuinamente comum vive em shared/.
+# ============================================================
+
 packages:
-  - "apps/*"
-  - "packages/*"
+  - "portal/apps/*"
+  - "portal/packages/*"
+  - "studio/apps/*"
+  - "studio/packages/*"
+  # Workers do studio: processos assincronos de midia, transcricao e
+  # render. Ficam fora de apps/ porque nao servem HTTP — sao consumidores
+  # de fila, publicados e escalados separadamente (ADR 0003).
+  - "studio/workers/*"
+  - "shared/*"
 
 # argon2 e sharp compilam binario nativo na instalacao; sem autorizar o
 # script, o hash de senha e o processamento de imagem nao funcionam.

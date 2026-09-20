@@ -24,7 +24,7 @@ export REGISTRY_IMAGE_API="${REGISTRY_IMAGE_API:-ghcr.io/fernandinhomartins40/ma
 RELEASE_DIR="$APP_ROOT/releases/$RELEASE"
 CURRENT_LINK="$APP_ROOT/current"
 ENV_FILE="$APP_ROOT/.env"
-COMPOSE_FILE="$RELEASE_DIR/docker-compose.prod.yml"
+COMPOSE_FILE="$RELEASE_DIR/portal/docker-compose.prod.yml"
 COMPOSE_PROJECT="makucho"
 
 log() { echo "[deploy] $*"; }
@@ -83,9 +83,9 @@ fi
 log "subindo os servicos..."
 if ! compose up -d --remove-orphans; then
   log "falha ao subir; tentando restaurar a versao anterior"
-  if [ -n "$PREVIOUS_RELEASE" ] && [ -f "$APP_ROOT/releases/$PREVIOUS_RELEASE/docker-compose.prod.yml" ]; then
+  if [ -n "$PREVIOUS_RELEASE" ] && [ -f "$APP_ROOT/releases/$PREVIOUS_RELEASE/portal/docker-compose.prod.yml" ]; then
     RELEASE="$PREVIOUS_RELEASE" docker compose -p "$COMPOSE_PROJECT" \
-      -f "$APP_ROOT/releases/$PREVIOUS_RELEASE/docker-compose.prod.yml" \
+      -f "$APP_ROOT/releases/$PREVIOUS_RELEASE/portal/docker-compose.prod.yml" \
       --env-file "$ENV_FILE" up -d || true
   fi
   fail "deploy abortado"
@@ -160,7 +160,7 @@ log "release $RELEASE ativa"
 # memory". Elevar o limite da api resolveria o seed e deixaria a VPS
 # desprotegida o ano inteiro por causa de uma tarefa que roda uma vez.
 log "aplicando conteudo inicial (seed)..."
-if docker run --rm   --network "${COMPOSE_PROJECT}-net"   --env-file "$ENV_FILE"   -e NODE_OPTIONS=--max-old-space-size=512   --memory 640m   -v "${COMPOSE_PROJECT}-media-data:/app/storage/media"   "${REGISTRY_IMAGE_API}:${RELEASE}"   node apps/api/dist/seed/seed.js >/dev/null 2>&1; then
+if docker run --rm   --network "${COMPOSE_PROJECT}-net"   --env-file "$ENV_FILE"   -e NODE_OPTIONS=--max-old-space-size=512   --memory 640m   -v "${COMPOSE_PROJECT}-media-data:/app/storage/media"   "${REGISTRY_IMAGE_API}:${RELEASE}"   node portal/apps/api/dist/seed/seed.js >/dev/null 2>&1; then
   log "seed aplicado"
 else
   log "AVISO: o seed nao concluiu; o portal pode ficar sem conteudo inicial"
