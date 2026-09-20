@@ -20,11 +20,27 @@
 
 name: makucho
 
+# ------------------------------------------------------------
+# Rotacao de log, aplicada a todos os servicos abaixo.
+#
+# O driver json-file do Docker nao tem teto por padrao: um container
+# em loop de erro escreve ate encher o disco -- e o disco aqui e
+# compartilhado com as outras aplicacoes da VPS.
+#
+# 10 MB x 3 arquivos = 30 MB por servico, no pior caso.
+# ------------------------------------------------------------
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ---------------- Roteador: unica porta exposta ----------------
   nginx:
     image: nginx:1.27-alpine
     container_name: makucho-nginx
+    logging: *logging
     restart: unless-stopped
     # O bind em 127.0.0.1 e deliberado: so o nginx do host alcanca esta porta.
     ports:
@@ -62,6 +78,7 @@ services:
     # compila nada: o build do Next.js sozinho pede ~1,5 GB de RAM.
     image: ${REGISTRY_IMAGE_WEB:-ghcr.io/fernandinhomartins40/makucho-web}:${RELEASE:-latest}
     container_name: makucho-web
+    logging: *logging
     restart: unless-stopped
     # Sem "ports": apenas a rede interna enxerga a 3000.
     expose:
@@ -108,6 +125,7 @@ services:
   api:
     image: ${REGISTRY_IMAGE_API:-ghcr.io/fernandinhomartins40/makucho-api}:${RELEASE:-latest}
     container_name: makucho-api
+    logging: *logging
     restart: unless-stopped
     expose:
       - '3001'
@@ -162,6 +180,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: makucho-postgres
+    logging: *logging
     restart: unless-stopped
     # Sem "ports": inacessivel de fora da rede do compose.
     environment:

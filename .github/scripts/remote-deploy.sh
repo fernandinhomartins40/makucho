@@ -231,6 +231,10 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/
 # que o build passou para o CI, as imagens nao se chamam mais
 # "makucho-api", e o filtro antigo nao encontrava nenhuma.
 #
+# O grep -v 'makucho-studio' e essencial: "makucho-*" tambem casa as
+# imagens do studio, e um deploy do portal apagaria a imagem que o
+# studio esta USANDO. Os dois stacks dividem o mesmo daemon Docker.
+#
 # O "|| true" no fim do pipeline e o que importa: com set -euo pipefail,
 # um grep -v que filtra todas as linhas devolve 1 e derrubava o script
 # aqui — depois de subir os servicos, verificar a porta e promover a
@@ -239,6 +243,7 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/
 {
   docker image ls --filter "reference=*/${REGISTRY_OWNER:-fernandinhomartins40}/makucho-*" \
     --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null \
+    | grep -v 'makucho-studio' \
     | grep -v ":${RELEASE}" \
     | grep -v ':latest' \
     | awk '{print $2}' \
@@ -247,5 +252,17 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/
         docker image rm "$img" >/dev/null 2>&1 || true
       done
 } || true
+
+# ------------------------------------------------------------
+# Cache de build
+#
+# Medido em 2026-09-20: 4,67 GB acumulados, com ZERO em uso. O build
+# acontece no runner do GitHub (ADR 0003), entao o cache aqui nunca e
+# reaproveitado -- so ocupa disco compartilhado com os outros clientes.
+#
+# O filtro por idade e conservador de proposito: "prune -a" sem
+# ressalva atingiria cache de build de OUTRAS aplicacoes da VPS.
+# ------------------------------------------------------------
+docker builder prune --force --filter 'until=168h' >/dev/null 2>&1 || true
 
 log "concluido: release $RELEASE em 127.0.0.1:$DEPLOY_PORT"

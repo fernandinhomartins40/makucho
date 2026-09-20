@@ -16,7 +16,10 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      // src/generated: o client Prisma do studio sai ali, e nao em
+      // dist/. Sem declarar, o turbo avisa que a tarefa nao produziu
+      // saida e refaz o generate a cada execucao.
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "src/generated/**"]
     },
     "dev": {
       "cache": false,

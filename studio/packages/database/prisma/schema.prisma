@@ -10,7 +10,15 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/studio-client"
+  // Dentro do pacote, nao em node_modules/.prisma: de la o TypeScript
+  // nao consegue NOMEAR os tipos inferidos em quem consome o client, e
+  // todo metodo que devolve entidade falha com TS2742 ("cannot be named
+  // without a reference to ...").
+  //
+  // Caminho proprio (e nao o padrao) porque o client do portal ja ocupa
+  // node_modules/@prisma/client: gerar os dois no mesmo lugar faz um
+  // sobrescrever o outro.
+  output   = "../src/generated"
 }
 
 datasource db {

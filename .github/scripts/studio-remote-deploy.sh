@@ -211,4 +211,16 @@ find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/
       done
 } || true
 
+# ------------------------------------------------------------
+# Cache de build
+#
+# Medido em 2026-09-20: 4,67 GB acumulados, com ZERO em uso. O build
+# acontece no runner do GitHub (ADR 0003), entao o cache aqui nunca e
+# reaproveitado -- so ocupa disco compartilhado com os outros clientes.
+#
+# O filtro por idade e conservador de proposito: "prune -a" sem
+# ressalva atingiria cache de build de OUTRAS aplicacoes da VPS.
+# ------------------------------------------------------------
+docker builder prune --force --filter 'until=168h' >/dev/null 2>&1 || true
+
 log "concluido: release $RELEASE em 127.0.0.1:$STUDIO_DEPLOY_PORT"

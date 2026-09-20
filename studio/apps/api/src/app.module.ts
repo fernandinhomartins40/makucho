@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PrismaModule } from './common/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BrandModule } from './modules/brand/brand.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -19,6 +20,7 @@ import { loadEnv } from './config/env';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
     AuthModule,
+    BrandModule,
   ],
   controllers: [HealthController],
   providers: [

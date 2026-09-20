@@ -2,22 +2,22 @@
   "name": "@makucho/studio-database",
   "version": "0.1.0",
   "private": true,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/generated/index.js",
+  "types": "./src/generated/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./src/generated/index.d.ts",
+      "default": "./src/generated/index.js"
     }
   },
   "scripts": {
-    "build": "prisma generate && rimraf dist tsconfig.tsbuildinfo && tsc",
+    "build": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
-    "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck"
+    "typecheck": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
