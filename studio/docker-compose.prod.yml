@@ -14,10 +14,17 @@
 #                                              +-- /media volume de midia
 #
 # MEMORIA — leia o ADR 0003 antes de mexer nos limites.
-#   A VPS hospeda ~12 aplicacoes e nao tem swap. Os mem_limit daqui sao
-#   o que impede um render de matar o portal e os apps dos outros
-#   clientes. A soma dos picos cabe no que sobra porque a concorrencia
-#   global e 1: nunca ha dois jobs pesados ao mesmo tempo.
+#   A VPS (72.60.10.108) hospeda outras 5 aplicacoes. Medicao de
+#   2026-09-20: 16 GB totais, 13,2 GB disponiveis, 5,6 GB ja declarados
+#   pelos 18 containers existentes.
+#
+#   Os mem_limit sao teto de protecao, nao reserva: memoria nao usada
+#   continua disponivel ao host. Eles existem para que um render nao
+#   mate o portal nem as aplicacoes dos outros clientes.
+#
+#   Com a concorrencia global em 1, o pico real do studio e ~1,5 GB.
+#   Mesmo no pior caso (lock falho, tres workers juntos), o host fecha
+#   em 55% -- dentro da folga.
 #
 # BANCO
 #   Reaproveita o Postgres do portal, em banco separado (ADR 0004). Por
@@ -228,9 +235,10 @@ services:
       WHISPER_MODEL: small
       WHISPER_COMPUTE_TYPE: int8
       WHISPER_DEVICE: cpu
-      # 2 vCPU no host, compartilhados com ~12 aplicacoes: deixar o
-      # whisper usar os dois torna o servidor inteiro irresponsivo.
-      WHISPER_THREADS: '1'
+      # Acompanha o cpus: 1.5 do container. Mais threads que o limite do
+      # cgroup nao acelera: o kernel apenas reparte a mesma fatia entre
+      # elas e ainda paga a troca de contexto.
+      WHISPER_THREADS: '2'
       GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
       TMP_DIR: /tmp/studio
     depends_on:
@@ -245,11 +253,16 @@ services:
         target: /tmp/studio
         tmpfs:
           size: 1g
-    # 768m com o lock global ativo cobre o whisper small int8 com folga.
-    # O teto tambem limita o estrago caso o lock falhe: ver o calculo de
-    # pior caso no ADR 0003.
-    mem_limit: 768m
-    cpus: 1.0
+    # Medido no host (2026-09-20): 16 GB totais, 13,2 GB disponiveis e
+    # 5,6 GB ja declarados pelos outros 18 containers. Mesmo no pior caso
+    # -- lock global falho, tres workers juntos -- o studio fecha em 55%
+    # do host. O teto aperta o whisper sem necessidade; 1 GB da folga
+    # para o modelo small int8 sem ameacar as aplicacoes vizinhas.
+    mem_limit: 1024m
+    # 4 vCPUs no host (medido) contra os 2 da VPS anterior. Ainda assim
+    # o teto fica abaixo do total: transcricao e tarefa de fundo e nao
+    # pode monopolizar a maquina durante uma requisicao do portal.
+    cpus: 1.5
     networks:
       - studio-net
 
@@ -265,7 +278,7 @@ services:
       STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL}
       REDIS_URL: redis://studio-redis:6379
       STORAGE_DISK_PATH: /app/storage/media
-      NODE_OPTIONS: --max-old-space-size=448
+      NODE_OPTIONS: --max-old-space-size=512
       # O Remotion abre um Chromium headless por worker de render.
       # Mais de um esgota a memoria antes de acelerar qualquer coisa.
       REMOTION_CONCURRENCY: '1'
@@ -280,8 +293,10 @@ services:
         target: /tmp/studio
         tmpfs:
           size: 3g
-    mem_limit: 896m
-    cpus: 1.5
+    mem_limit: 1024m
+    # O render e o job mais pesado e o que mais se beneficia de CPU.
+    # 2 de 4 vCPUs deixa metade da maquina para o resto.
+    cpus: 2.0
     networks:
       - studio-net
 

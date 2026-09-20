@@ -26,13 +26,15 @@ on:
         type: boolean
         default: false
 
-  # Habilitar quando o studio tiver aplicacao:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - 'studio/**'
-  #     - 'shared/**'
-  #     - '.github/workflows/deploy-studio.yml'
+  # Habilitado em 2026-09-20, quando studio/apps/{api,web} passaram a
+  # existir. O filtro por path evita redeploy do studio a cada commit
+  # que toque apenas no portal.
+  push:
+    branches: [main]
+    paths:
+      - 'studio/**'
+      - 'shared/**'
+      - '.github/workflows/deploy-studio.yml'
 
 concurrency:
   group: deploy-studio

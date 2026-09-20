@@ -56,8 +56,10 @@ inviavel na pratica: FFmpeg e faster-whisper sao limitados por CPU.
 infraestrutura: chamado ao provedor, migracao de host ou troca de plano.
 Decisao do cliente em 2026-09-20: migrar para `72.60.10.108`.
 
-**Pendencia.** Medir o steal da `.108` antes da migracao. Se estiver na
-mesma faixa, o problema e do host fisico e a migracao nao resolve.
+**Resolvido em 2026-09-20 19:50.** Medida a `72.60.10.108`
+(`srv953800`, maquina distinta): **steal de 0,2%**, idle 99,3%, fila de
+execucao 0. O problema era do host fisico daquela VPS, nao do provedor
+nem das aplicacoes. Migracao concluida; ver BL-005.
 
 ---
 
@@ -162,3 +164,67 @@ porque a CPU nao e entregue. Timeout e retry no `docker pull` (ja
 escritos, nao commitados) tratam o sintoma; a causa e o steal time.
 
 **Proxima medicao obrigatoria:** steal time da `.108`, antes de migrar.
+
+
+---
+
+## BL-005 — VPS 72.60.10.108: migração concluída
+
+**Status:** VERIFIED
+**Coleta:** 2026-09-20 19:50 UTC, via Paramiko (`srv953800`)
+
+```text
+%Cpu(s):  0.2 us,  0.2 sy,  0.0 ni, 99.3 id,  0.0 wa,  0.0 hi,  0.0 si,  0.2 st
+
+ r  b   swpd   free   buff   cache  ...  us sy id wa st
+ 0  0   4096 479192 917448 12681560 ...   1  1 96  0  2
+ 0  0   4096 479952 917448 12681600 ...   1  1 98  0  0
+```
+
+### Comparação
+
+| Métrica | `.112` (`srv953808`) | `.108` (`srv953800`) |
+|---|---|---|
+| **Steal time** | **90,6%** | **0,2%** |
+| Idle | 0,0% | 99,3% |
+| vCPUs | 2 | 4 |
+| Load average | 9,53 | 0,21 |
+| RAM total | 7,8 GB | 15 GB |
+| RAM disponível | 4,3 GB | 12 GB |
+| Swap | ausente | 2 GB |
+| Disco | 97 GB (35%) | 194 GB (21%) |
+| Fila de execução (`r`) | 12–24 | 0 |
+| Containers no host | 20 | 18 |
+
+**Confirmacao pratica.** No deploy da release `7406439`, o
+`docker pull` concluiu em **menos de 2 segundos** e os servicos ficaram
+saudaveis em 21s. Na `.112`, o mesmo passo ficou **mais de uma hora**
+sem concluir. O gargalo era CPU indisponivel, nao banda.
+
+### Containers do makucho
+
+| Container | Estado | CPU | Memória |
+|---|---|---|---|
+| makucho-nginx | healthy | 0,00% | 4,7 MiB / 48 MiB |
+| makucho-web | healthy | 0,00% | 54,6 MiB / 256 MiB |
+| makucho-api | healthy | 0,00% | 84,9 MiB / 192 MiB |
+| makucho-postgres | healthy | 0,00% | 39,0 MiB / 256 MiB |
+
+### Efeito sobre decisões anteriores
+
+**ADR 0003 volta a ser viável.** Ele aceitava processar video numa VPS
+de 2 vCPU/8 GB sem swap, com risco declarado. A `.108` entrega 4 vCPU e
+15 GB — exatamente a recomendacao da secao 17.1 do plano — e ainda tem
+2 GB de swap como protecao. Os `mem_limit` apertados continuam validos
+como defesa contra pico, mas deixam de ser o fator limitante.
+
+**Revisar:** os tetos dos workers do studio foram reduzidos (768m/896m)
+por causa do orcamento apertado da `.112`. Com 12 GB disponiveis, cabe
+reavaliar — preferencialmente com medicao sob carga real, nao por
+estimativa.
+
+### Outras aplicações no host
+
+aprenderia (4), digiurban (3), ferraco (2), ultrazend (5), makucho (4).
+Total 18 containers. O protocolo proibe consolidar bancos de clientes
+por conveniencia: registrado como fato, nao como proposta.

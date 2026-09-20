@@ -1,0 +1,35 @@
+/* ============================================================
+   MAKUCHO Studio - base
+   Mobile-first: o celular e a interface de controle; o servidor
+   faz o trabalho pesado.
+   ============================================================ */
+
+:root {
+  --azul-profundo: #0a1a3c;
+  --azul: #1e5aff;
+  --texto: #f5f7fa;
+  --texto-suave: #9aa8c4;
+  --superficie: #12224a;
+  --borda: #1f3566;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--azul-profundo);
+  color: var(--texto);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Area segura do notch em telas de celular. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
