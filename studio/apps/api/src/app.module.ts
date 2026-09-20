@@ -3,7 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
-import { PrismaService } from './common/prisma.service';
+import { PrismaModule } from './common/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
@@ -17,17 +17,16 @@ import { loadEnv } from './config/env';
       validate: () => loadEnv(),
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    PrismaModule,
     AuthModule,
   ],
   controllers: [HealthController],
   providers: [
-    PrismaService,
     // Guards globais: o padrao e fechado. Uma rota so fica publica com
     // @Public() explicito, entao esquecer de proteger deixa de ser
     // possivel.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
-  exports: [PrismaService],
 })
 export class AppModule {}
