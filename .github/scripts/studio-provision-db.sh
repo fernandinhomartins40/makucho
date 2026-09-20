@@ -57,9 +57,32 @@ ensure_secret() {
 # ------------------------------------------------------------
 # O Postgres pertence ao stack do portal: este script nunca o cria
 # nem o reinicia, apenas usa.
+#
+# A espera existe porque os dois deploys podem rodar em paralelo --
+# um commit que toque portal/ e studio/ dispara os dois workflows ao
+# mesmo tempo. Se o portal estiver recriando o container neste
+# instante, o docker exec falha com "container ... is not running"
+# e o deploy do studio morre por um motivo transitorio.
 # ------------------------------------------------------------
-docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER" \
-  || fail "container $PG_CONTAINER nao esta no ar; o studio depende dele (ADR 0004)"
+esperar_postgres() {
+  local esperado=0
+  while [ "$esperado" -lt 180 ]; do
+    if docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
+      # No ar nao basta: durante a subida ele recusa conexao.
+      if docker exec "$PG_CONTAINER" pg_isready -q </dev/null 2>/dev/null; then
+        [ "$esperado" -gt 0 ] && log "postgres disponivel apos ${esperado}s"
+        return 0
+      fi
+    fi
+    [ "$esperado" -eq 0 ] && log "aguardando o postgres do portal..."
+    sleep 5
+    esperado=$((esperado + 5))
+  done
+  return 1
+}
+
+esperar_postgres \
+  || fail "container $PG_CONTAINER indisponivel apos 180s; o studio depende dele (ADR 0004)"
 
 PORTAL_USER="$(docker exec "$PG_CONTAINER" printenv POSTGRES_USER </dev/null)"
 [ -n "$PORTAL_USER" ] || fail "nao foi possivel ler POSTGRES_USER do $PG_CONTAINER"
