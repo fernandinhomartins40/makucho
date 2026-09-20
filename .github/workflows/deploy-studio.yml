@@ -3,38 +3,39 @@ name: Deploy Studio
 # ============================================================
 # MAKUCHO STUDIO - studio.makucho.com.br
 #
-# Stack independente do portal (ADR 0001): outra porta, outro
-# projeto Compose, outro ciclo de deploy. Um render travado aqui
-# nao derruba makucho.com.br.
+# DOIS JOBS, mesmo desenho do portal:
+#   build   compila no runner do GitHub e publica no GHCR
+#   deploy  na VPS, apenas baixa a imagem pronta e sobe
 #
-# ACIONAMENTO
-#   Enquanto o studio nao tiver aplicacao, este workflow roda
-#   SOMENTE por workflow_dispatch. O gatilho por push esta descrito
-#   abaixo e deve ser habilitado quando studio/apps/api e
-#   studio/apps/web existirem — antes disso, um push so produziria
-#   um build vazio que falha.
+# A VPS nao compila nada (ADR 0003).
 #
-#   O job confere a existencia dos apps e para com mensagem clara
-#   em vez de estourar no meio do docker build.
+# A separacao resolve um problema concreto: o job de deploy recebe do
+# build, por output, QUAIS imagens existem. Antes ele tentava baixar
+# as tres dos workers sempre -- e uma imagem faltando interrompe o
+# download de TODAS as outras, derrubando um deploy que so precisava
+# de api, web, redis e nginx (release b9e6f18).
+#
+# Stack independente do portal (ADR 0001): outra porta, outro projeto
+# Compose, outro ciclo. Um render travado aqui nao derruba
+# makucho.com.br.
 # ============================================================
 
 on:
-  workflow_dispatch:
-    inputs:
-      infra_only:
-        description: 'Preparar apenas infraestrutura (vhost, SSL, banco), sem publicar imagens'
-        type: boolean
-        default: false
-
-  # Habilitado em 2026-09-20, quando studio/apps/{api,web} passaram a
-  # existir. O filtro por path evita redeploy do studio a cada commit
-  # que toque apenas no portal.
   push:
     branches: [main]
     paths:
       - 'studio/**'
       - 'shared/**'
       - '.github/workflows/deploy-studio.yml'
+      - '.github/scripts/provision-host.sh'
+      - '.github/scripts/studio-provision-db.sh'
+      - '.github/scripts/studio-remote-deploy.sh'
+  workflow_dispatch:
+    inputs:
+      infra_only:
+        description: 'Somente infraestrutura (vhost, SSL, banco), sem publicar imagens'
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-studio
@@ -45,616 +46,275 @@ permissions:
   packages: write
 
 env:
-  VPS_HOST: 72.60.10.108
-  VPS_USER: root
-  # Raiz propria: nao compartilha releases com o portal.
-  APP_ROOT: /opt/makucho-studio
-  # 3096 e do portal; 3097 e a porta unica deste stack.
-  STUDIO_DEPLOY_PORT: "3097"
-  STUDIO_DOMAIN: studio.makucho.com.br
-  STUDIO_PUBLIC_URL: https://studio.makucho.com.br
-  SSL_EMAIL: admin@makucho.com.br
-  SITE_NAME: makucho-studio
   REGISTRY: ghcr.io
-  IMAGE_STUDIO_WEB: ghcr.io/${{ github.repository_owner }}/makucho-studio-web
-  IMAGE_STUDIO_API: ghcr.io/${{ github.repository_owner }}/makucho-studio-api
-  IMAGE_STUDIO_WORKER: ghcr.io/${{ github.repository_owner }}/makucho-studio-worker
-  IMAGE_STUDIO_WHISPER: ghcr.io/${{ github.repository_owner }}/makucho-studio-whisper
-  IMAGE_STUDIO_RENDER: ghcr.io/${{ github.repository_owner }}/makucho-studio-render
-  SSH_OPTS: -T -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/makucho-studio
 
 jobs:
-  deploy:
-    name: Deploy Studio to VPS
+  # ============================================================
+  # JOB 1 - Build
+  # ============================================================
+  build:
+    name: Build e publicar no GHCR
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
+    if: ${{ !inputs.infra_only }}
 
-    environment:
-      name: studio-production
-      url: https://studio.makucho.com.br
+    outputs:
+      release: ${{ steps.meta.outputs.release }}
+      apps_ready: ${{ steps.meta.outputs.apps_ready }}
+      # O deploy le isto para decidir se ativa o profile "workers".
+      workers_ready: ${{ steps.workers.outputs.published }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ----------------------------------------------------------
-      # O studio ja tem aplicacao?
-      #
-      # Sem esta checagem, um acionamento prematuro falharia dentro
-      # do docker build, com erro do pnpm sobre filtro sem resultado
-      # — mensagem que nao explica a causa real.
-      # ----------------------------------------------------------
-      - name: Check studio applications exist
-        id: apps
+      - name: Preparar metadados
+        id: meta
         run: |
+          echo "release=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+          # Sem esta checagem, um acionamento antes de as aplicacoes
+          # existirem falharia dentro do docker build, com erro do pnpm
+          # sobre filtro sem resultado -- mensagem que nao explica a causa.
           if [ -f studio/apps/api/package.json ] && [ -f studio/apps/web/package.json ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "Aplicacoes do studio encontradas."
+            echo "apps_ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::studio/apps/api e studio/apps/web ainda nao existem; apenas a infraestrutura sera preparada."
+            echo "apps_ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::studio/apps ainda vazio; apenas a infraestrutura sera preparada."
           fi
 
-      - name: Set release version
-        id: release
-        run: echo "version=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+        if: steps.meta.outputs.apps_ready == 'true'
 
-      # ----------------------------------------------------------
-      # Build das imagens no runner
-      #
-      # A VPS nao compila nada: o build do Next pede ~1,5 GB e os
-      # dois vCPUs por minutos, disputando recursos com as
-      # aplicacoes dos outros clientes (ADR 0003).
-      # ----------------------------------------------------------
-      - name: Set up Docker Buildx
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
+        if: steps.meta.outputs.apps_ready == 'true'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Studio API image
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Build da API
+        if: steps.meta.outputs.apps_ready == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: studio/infrastructure/docker/api.Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_STUDIO_API }}:${{ steps.release.outputs.version }}
-            ${{ env.IMAGE_STUDIO_API }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_STUDIO_API }}:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_STUDIO_API }}:buildcache,mode=max,ignore-error=true
+            ${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.release }}
+            ${{ env.IMAGE_PREFIX }}-api:latest
+          # O cache do registro leva o build de minutos a segundos
+          # quando so o codigo mudou. ignore-error porque no primeiro
+          # build o cache ainda nao existe.
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,mode=max,ignore-error=true
 
-      - name: Build and push Studio Web image
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Build do Web
+        if: steps.meta.outputs.apps_ready == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: studio/infrastructure/docker/web.Dockerfile
           push: true
+          # Variaveis NEXT_PUBLIC_* sao embutidas no bundle durante o
+          # build: precisam existir aqui, nao apenas em runtime.
           build-args: |
-            NEXT_PUBLIC_STUDIO_URL=${{ env.STUDIO_PUBLIC_URL }}
+            NEXT_PUBLIC_STUDIO_URL=https://studio.makucho.com.br
             NEXT_PUBLIC_API_URL=/api
           tags: |
-            ${{ env.IMAGE_STUDIO_WEB }}:${{ steps.release.outputs.version }}
-            ${{ env.IMAGE_STUDIO_WEB }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_STUDIO_WEB }}:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_STUDIO_WEB }}:buildcache,mode=max,ignore-error=true
+            ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.release }}
+            ${{ env.IMAGE_PREFIX }}-web:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,mode=max,ignore-error=true
 
-      - name: Build and push worker images
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Build dos workers
+        id: workers
+        if: steps.meta.outputs.apps_ready == 'true'
         run: |
           set -euo pipefail
+          RELEASE='${{ steps.meta.outputs.release }}'
 
-          # Cada worker so e publicado se existir. Durante a construcao
-          # por fases, o de midia costuma chegar antes do de render.
-          build_worker() {
-            local dir="$1" dockerfile="$2" image="$3"
-            if [ ! -f "studio/workers/${dir}/package.json" ]; then
-              echo "::notice::worker ${dir} ainda nao existe; pulando."
-              return 0
-            fi
-            echo "Publicando ${image}..."
+          # Os tres sobem juntos ou nenhum sobe: o compose ativa o
+          # profile inteiro, e um worker faltando no meio repetiria o
+          # erro que esta separacao existe para evitar.
+          existentes=0
+          for w in media transcription render; do
+            [ -f "studio/workers/${w}/package.json" ] && existentes=$((existentes + 1))
+          done
+
+          if [ "$existentes" -ne 3 ]; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::workers incompletos (${existentes}/3); o stack sobe sem eles."
+            exit 0
+          fi
+
+          publicar() {
+            local dockerfile="$1" imagem="$2"
+            echo "publicando ${imagem}..."
             docker buildx build \
               --file "studio/infrastructure/docker/${dockerfile}" \
-              --tag "${image}:${{ steps.release.outputs.version }}" \
-              --tag "${image}:latest" \
-              --cache-from "type=registry,ref=${image}:buildcache" \
-              --cache-to "type=registry,ref=${image}:buildcache,mode=max" \
+              --tag "${imagem}:${RELEASE}" \
+              --tag "${imagem}:latest" \
+              --cache-from "type=registry,ref=${imagem}:buildcache" \
+              --cache-to "type=registry,ref=${imagem}:buildcache,mode=max" \
               --push .
           }
 
-          build_worker media        worker-media.Dockerfile        "${{ env.IMAGE_STUDIO_WORKER }}"
-          build_worker transcription worker-transcription.Dockerfile "${{ env.IMAGE_STUDIO_WHISPER }}"
-          build_worker render       worker-render.Dockerfile       "${{ env.IMAGE_STUDIO_RENDER }}"
+          publicar worker-media.Dockerfile         '${{ env.IMAGE_PREFIX }}-worker'
+          publicar worker-transcription.Dockerfile '${{ env.IMAGE_PREFIX }}-whisper'
+          publicar worker-render.Dockerfile        '${{ env.IMAGE_PREFIX }}-render'
 
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
-      - name: Verify VPS password access
+  # ============================================================
+  # JOB 2 - Deploy
+  # ============================================================
+  deploy:
+    name: Deploy na VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+    # "always" para que o modo infra_only rode com o build pulado;
+    # a condicao interna barra o caso de build falho.
+    if: ${{ always() && (needs.build.result == 'success' || inputs.infra_only) }}
+
+    environment:
+      name: studio-production
+      url: https://studio.makucho.com.br
+
+    env:
+      VPS_HOST: 72.60.10.108
+      VPS_USER: root
+      APP_ROOT: /opt/makucho-studio
+      # 3096 e do portal; 3097 e a porta unica deste stack.
+      DEPLOY_PORT: '3097'
+      PRIMARY_DOMAIN: studio.makucho.com.br
+      CANONICAL_URL: https://studio.makucho.com.br
+      SITE_NAME: makucho-studio
+      SSL_EMAIL: admin@makucho.com.br
+      SSH_OPTS: -T -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no -o NumberOfPasswordPrompts=1 -o ConnectTimeout=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar sshpass
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+
+      - name: Verificar acesso a VPS
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           if [ -z "${SSHPASS:-}" ]; then
-            echo "::error::O secret VPS_PASSWORD esta vazio ou nao foi criado." >&2
+            echo "::error::secret VPS_PASSWORD vazio ou inexistente." >&2
             exit 1
           fi
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "echo ok" >/dev/null \
+            || { echo "::error::autenticacao SSH falhou; confira o secret VPS_PASSWORD." >&2; exit 1; }
 
-          if ! sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "echo SSH OK"; then
-            echo "::error::Autenticacao SSH por senha falhou." >&2
-            exit 1
-          fi
-
-      - name: Upload source to VPS
+      - name: Enviar infraestrutura para a VPS
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
-          RELEASE_DIR="${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}"
-          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "mkdir -p '$RELEASE_DIR'"
+          set -euo pipefail
+          RELEASE='${{ needs.build.outputs.release || github.sha }}'
+          DIR="${{ env.APP_ROOT }}/releases/${RELEASE}"
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p '$DIR'"
 
-          # Vai so o necessario para subir o stack: compose, infra e
-          # scripts. As imagens ja estao no registro.
-          tar \
-            --exclude=.git \
-            --exclude=node_modules \
-            --exclude=.turbo \
-            --exclude=.next \
-            --exclude=dist \
-            --exclude='*.tsbuildinfo' \
-            --exclude=coverage \
-            --exclude=.env \
-            -czf - studio/docker-compose.prod.yml studio/infrastructure .github/scripts | \
-            sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-              "tar -xzf - -C '$RELEASE_DIR'"
+          # So o necessario para subir o stack: compose, nginx interno e
+          # scripts. O codigo-fonte ja virou imagem no job anterior.
+          tar -czf - \
+            studio/docker-compose.prod.yml \
+            studio/infrastructure/nginx \
+            .github/scripts \
+            | sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+                "tar -xzf - -C '$DIR' && chmod +x '$DIR'/.github/scripts/*.sh"
 
-          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "chmod +x '$RELEASE_DIR'/.github/scripts/*.sh 2>/dev/null || true"
-
-      # ----------------------------------------------------------
-      # Banco do studio no Postgres do portal (ADR 0004)
-      #
-      # Idempotente: cria papel e banco apenas se faltarem. Roda
-      # dentro do container makucho-postgres, que pertence ao outro
-      # stack — por isso nada aqui o reinicia.
-      # ----------------------------------------------------------
-      - name: Ensure studio database exists
+      - name: Preparar banco e segredos
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
+          RELEASE='${{ needs.build.outputs.release || github.sha }}'
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "APP_ROOT='${{ env.APP_ROOT }}' bash -s" <<'ENDSSH'
-            set -euo pipefail
+            "APP_ROOT='${{ env.APP_ROOT }}' \
+             STUDIO_DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
+             STUDIO_DOMAIN='${{ env.PRIMARY_DOMAIN }}' \
+             STUDIO_PUBLIC_URL='${{ env.CANONICAL_URL }}' \
+             AI_API_KEY='${{ secrets.AI_API_KEY }}' \
+             bash '${{ env.APP_ROOT }}/releases/${RELEASE}/.github/scripts/studio-provision-db.sh'"
 
-            ENV_FILE="$APP_ROOT/.env"
-            mkdir -p "$APP_ROOT/releases"
-            touch "$ENV_FILE"
-            chmod 600 "$ENV_FILE"
-
-            get_env() {
-              awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, "", $0); print $0; exit }' "$ENV_FILE"
-            }
-
-            upsert_env() {
-              local key="$1" value="$2" tmp_file
-              tmp_file="$(mktemp)"
-              awk -v key="$key" -v value="$value" '
-                BEGIN { updated = 0 }
-                index($0, key "=") == 1 { print key "=" value; updated = 1; next }
-                { print }
-                END { if (!updated) print key "=" value }
-              ' "$ENV_FILE" > "$tmp_file"
-              mv "$tmp_file" "$ENV_FILE"
-            }
-
-            ensure_random_hex() {
-              local current_value
-              current_value="$(get_env "$1" | tr -d '\r')"
-              if [ -z "$current_value" ]; then
-                upsert_env "$1" "$(openssl rand -hex "$2")"
-              fi
-            }
-
-            if ! docker ps --format '{{.Names}}' | grep -q '^makucho-postgres$'; then
-              echo "::error::container makucho-postgres nao esta no ar; o studio depende dele (ADR 0004)." >&2
-              exit 1
-            fi
-
-            # Senha gerada uma vez e preservada entre deploys.
-            ensure_random_hex "STUDIO_POSTGRES_PASSWORD" 32
-            STUDIO_DB_PASSWORD="$(get_env "STUDIO_POSTGRES_PASSWORD" | tr -d '\r')"
-
-            PORTAL_USER="$(docker exec makucho-postgres printenv POSTGRES_USER </dev/null)"
-
-            # Papel: cria se faltar, atualiza a senha se ja existir. A
-            # senha entra por variavel do psql, nao interpolada na SQL,
-            # para nao quebrar com caractere especial.
-            # Todo "docker exec" aqui fecha a entrada com </dev/null,
-            # menos o ALTER ROLE logo abaixo. Este script chega ao ssh
-            # PELO stdin (heredoc ENDSSH); um docker exec sem
-            # redirecionamento le do mesmo fluxo e engole o resto.
-            ROLE_EXISTS="$(docker exec makucho-postgres \
-              psql -tAU "$PORTAL_USER" -d postgres \
-              -c "SELECT 1 FROM pg_roles WHERE rolname = 'makucho_studio'" </dev/null | tr -d '[:space:]')"
-
-            if [ "$ROLE_EXISTS" != "1" ]; then
-              docker exec makucho-postgres \
-                psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-                -c "CREATE ROLE makucho_studio LOGIN" </dev/null
-              echo "papel makucho_studio criado"
-            fi
-
-            # A senha vai por variavel do psql (-v), nunca interpolada
-            # na SQL nem passada como argumento -- um argumento
-            # apareceria no "ps" da VPS enquanto o comando roda.
-            #
-            # A SQL entra por stdin com "-f -" e NAO por "-c": o psql
-            # so expande :'variavel' em script lido de arquivo ou
-            # stdin. Com -c a string vai crua ao servidor, que responde
-            # 'syntax error at or near ":"'.
-            printf '%s\n' "ALTER ROLE makucho_studio WITH PASSWORD :'new_password';" \
-              | docker exec -i makucho-postgres \
-                  psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-                  -v new_password="$STUDIO_DB_PASSWORD" -f - >/dev/null
-
-            # CREATE DATABASE nao roda dentro de DO/transacao: por isso
-            # o teste vem antes, em comando separado.
-            DB_EXISTS="$(docker exec makucho-postgres \
-              psql -tAU "$PORTAL_USER" -d postgres \
-              -c "SELECT 1 FROM pg_database WHERE datname = 'makucho_studio'" </dev/null | tr -d '[:space:]')"
-
-            if [ "$DB_EXISTS" != "1" ]; then
-              docker exec makucho-postgres \
-                psql -v ON_ERROR_STOP=1 -U "$PORTAL_USER" -d postgres \
-                -c "CREATE DATABASE makucho_studio OWNER makucho_studio" </dev/null
-              echo "banco makucho_studio criado"
-            else
-              echo "banco makucho_studio ja existe"
-            fi
-
-            # ---- Segredos proprios do studio ----
-            # Independentes dos do portal: vazar um nao compromete o outro.
-            ensure_random_hex "STUDIO_JWT_ACCESS_SECRET" 48
-            ensure_random_hex "STUDIO_JWT_REFRESH_SECRET" 48
-
-            # ---- Sempre sobrescritos pelo workflow ----
-            upsert_env "NODE_ENV" "production"
-            upsert_env "STUDIO_DEPLOY_PORT" "3097"
-            upsert_env "STUDIO_PUBLIC_URL" "https://studio.makucho.com.br"
-            upsert_env "STUDIO_DOMAIN" "studio.makucho.com.br"
-            upsert_env "STUDIO_CORS_ORIGINS" "https://studio.makucho.com.br"
-            upsert_env "JWT_ACCESS_EXPIRES_IN" "15m"
-            upsert_env "JWT_REFRESH_EXPIRES_IN" "7d"
-            # postgres:5432 e o nome do servico na rede makucho-net.
-            upsert_env "STUDIO_DATABASE_URL" \
-              "postgresql://makucho_studio:${STUDIO_DB_PASSWORD}@postgres:5432/makucho_studio?schema=public"
-
-            chmod 600 "$ENV_FILE"
-            echo "Ambiente do studio pronto em $ENV_FILE"
-          ENDSSH
-
-      - name: Set AI provider secret
+      - name: Preparar host, vhost e SSL
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: |
-          # A chave e opcional enquanto a integracao com a IA nao
-          # existe. "secrets" nao e acessivel em "if:" de step, entao a
-          # checagem fica aqui dentro.
-          if [ -z "${AI_API_KEY:-}" ]; then
-            echo "AI_API_KEY nao configurada; pulando."
-            exit 0
-          fi
+          RELEASE='${{ needs.build.outputs.release || github.sha }}'
+          # Upload de video, nao de imagem: 520m contra os 20m do
+          # portal, e timeout longo para upload em rede movel e para o
+          # stream de progresso do job.
+          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
+            "APP_ROOT='${{ env.APP_ROOT }}' \
+             DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
+             PRIMARY_DOMAIN='${{ env.PRIMARY_DOMAIN }}' \
+             CANONICAL_URL='${{ env.CANONICAL_URL }}' \
+             SITE_NAME='${{ env.SITE_NAME }}' \
+             SSL_EMAIL='${{ env.SSL_EMAIL }}' \
+             CLIENT_MAX_BODY='520m' \
+             PROXY_TIMEOUT='900s' \
+             REQUEST_BUFFERING='off' \
+             bash '${{ env.APP_ROOT }}/releases/${RELEASE}/.github/scripts/provision-host.sh'"
 
-          # Entra por stdin: um argumento apareceria na lista de
-          # processos da VPS.
-          printf '%s' "$AI_API_KEY" | sshpass -e ssh ${{ env.SSH_OPTS }} \
-            ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "APP_ROOT='${{ env.APP_ROOT }}' bash -c '
-              read -r key
-              tmp=\$(mktemp)
-              grep -v \"^AI_API_KEY=\" \"\$APP_ROOT/.env\" > \"\$tmp\" || true
-              printf \"AI_API_KEY=%s\n\" \"\$key\" >> \"\$tmp\"
-              mv \"\$tmp\" \"\$APP_ROOT/.env\"
-              chmod 600 \"\$APP_ROOT/.env\"
-            '"
-
-      - name: Authenticate VPS with GHCR
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Autenticar VPS no GHCR
+        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # O token entra por stdin: como argumento apareceria na lista
+          # de processos da VPS. Expira ao fim deste workflow.
           printf '%s' "$GHCR_TOKEN" | sshpass -e ssh ${{ env.SSH_OPTS }} \
             ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
             "docker login ${{ env.REGISTRY }} -u '${{ github.actor }}' --password-stdin"
 
-      - name: Deploy studio stack
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Subir o stack
+        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
+          RELEASE='${{ needs.build.outputs.release }}'
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "APP_ROOT='${{ env.APP_ROOT }}' RELEASE='${{ steps.release.outputs.version }}' STUDIO_DEPLOY_PORT='${{ env.STUDIO_DEPLOY_PORT }}' REGISTRY_IMAGE_STUDIO_WEB='${{ env.IMAGE_STUDIO_WEB }}' REGISTRY_IMAGE_STUDIO_API='${{ env.IMAGE_STUDIO_API }}' REGISTRY_IMAGE_STUDIO_WORKER='${{ env.IMAGE_STUDIO_WORKER }}' REGISTRY_IMAGE_STUDIO_WHISPER='${{ env.IMAGE_STUDIO_WHISPER }}' REGISTRY_IMAGE_STUDIO_RENDER='${{ env.IMAGE_STUDIO_RENDER }}' bash '${{ env.APP_ROOT }}/releases/${{ steps.release.outputs.version }}/.github/scripts/studio-remote-deploy.sh'"
+            "APP_ROOT='${{ env.APP_ROOT }}' \
+             RELEASE='${RELEASE}' \
+             STUDIO_DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
+             STUDIO_WORKERS='${{ needs.build.outputs.workers_ready == 'true' && '1' || '0' }}' \
+             REGISTRY_IMAGE_STUDIO_API='${{ env.IMAGE_PREFIX }}-api' \
+             REGISTRY_IMAGE_STUDIO_WEB='${{ env.IMAGE_PREFIX }}-web' \
+             REGISTRY_IMAGE_STUDIO_WORKER='${{ env.IMAGE_PREFIX }}-worker' \
+             REGISTRY_IMAGE_STUDIO_WHISPER='${{ env.IMAGE_PREFIX }}-whisper' \
+             REGISTRY_IMAGE_STUDIO_RENDER='${{ env.IMAGE_PREFIX }}-render' \
+             bash '${{ env.APP_ROOT }}/releases/${RELEASE}/.github/scripts/studio-remote-deploy.sh'"
 
-      # ----------------------------------------------------------
-      # vhost HTTP do subdominio
-      #
-      # A VPS hospeda ~24 dominios: "nginx -t" valida TODOS. Se outro
-      # projeto estiver quebrado, removemos o nosso link para nao
-      # piorar e falhamos com mensagem clara.
-      # ----------------------------------------------------------
-      - name: Configure Nginx (HTTP)
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
-        run: |
-          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "STUDIO_DEPLOY_PORT='${{ env.STUDIO_DEPLOY_PORT }}' STUDIO_DOMAIN='${{ env.STUDIO_DOMAIN }}' SITE_NAME='${{ env.SITE_NAME }}' bash -s" <<'ENDSSH'
-            set -euo pipefail
-
-            mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www/certbot
-
-            {
-              printf '%s\n' 'server {'
-              printf '%s\n' '    listen 80;'
-              printf '%s\n' "    server_name ${STUDIO_DOMAIN};"
-              printf '%s\n' ''
-              printf '%s\n' '    # Upload de video, nao de imagem.'
-              printf '%s\n' '    client_max_body_size 520m;'
-              printf '%s\n' ''
-              printf '%s\n' '    location /.well-known/acme-challenge/ {'
-              printf '%s\n' '        root /var/www/certbot;'
-              printf '%s\n' '    }'
-              printf '%s\n' ''
-              printf '%s\n' '    location / {'
-              printf '%s\n' "        proxy_pass http://127.0.0.1:${STUDIO_DEPLOY_PORT};"
-              printf '%s\n' '        proxy_http_version 1.1;'
-              printf '%s\n' '        proxy_set_header Upgrade $http_upgrade;'
-              printf '%s\n' '        proxy_set_header Connection "upgrade";'
-              printf '%s\n' '        proxy_set_header Host $host;'
-              printf '%s\n' '        proxy_set_header X-Real-IP $remote_addr;'
-              printf '%s\n' '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
-              printf '%s\n' '        proxy_set_header X-Forwarded-Proto $scheme;'
-              printf '%s\n' '        proxy_read_timeout 600s;'
-              printf '%s\n' '    }'
-              printf '%s\n' '}'
-            } > "/etc/nginx/sites-available/${SITE_NAME}"
-
-            ln -sfn "/etc/nginx/sites-available/${SITE_NAME}" "/etc/nginx/sites-enabled/${SITE_NAME}"
-
-            if ! nginx -t 2>/tmp/nginx-studio-test.log; then
-              cat /tmp/nginx-studio-test.log >&2
-              rm -f "/etc/nginx/sites-enabled/${SITE_NAME}"
-              echo "::error::nginx -t falhou; vhost do studio removido para nao afetar os demais sites." >&2
-              exit 1
-            fi
-
-            systemctl reload nginx
-            echo "vhost HTTP de ${STUDIO_DOMAIN} ativo -> 127.0.0.1:${STUDIO_DEPLOY_PORT}"
-          ENDSSH
-
-      - name: Obtain SSL certificate
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
-        run: |
-          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "STUDIO_DOMAIN='${{ env.STUDIO_DOMAIN }}' SSL_EMAIL='${{ env.SSL_EMAIL }}' bash -s" <<'ENDSSH'
-            set -euo pipefail
-
-            mkdir -p /var/www/certbot
-
-            # A VPS roda timers do certbot para dezenas de dominios. Um
-            # "pkill certbot" aqui abortaria a renovacao de OUTROS sites;
-            # em vez de matar, esperamos o lock liberar.
-            wait_for_certbot() {
-              local waited=0
-              while pgrep -x certbot >/dev/null 2>&1 || pgrep -f '/usr/bin/certbot' >/dev/null 2>&1; do
-                if [ "$waited" -ge 180 ]; then
-                  echo "Outro certbot segue rodando apos 180s; pulando a emissao." >&2
-                  return 1
-                fi
-                echo "Aguardando outra instancia do certbot (${waited}s)..."
-                sleep 10
-                waited=$((waited + 10))
-              done
-              return 0
-            }
-
-            # Certificado proprio do subdominio: o do portal cobre
-            # makucho.com.br e www, nao studio.
-            if [ ! -f "/etc/letsencrypt/live/${STUDIO_DOMAIN}/fullchain.pem" ]; then
-              if wait_for_certbot; then
-                if ! certbot certonly --webroot \
-                  -w /var/www/certbot \
-                  -d "$STUDIO_DOMAIN" \
-                  --email "$SSL_EMAIL" \
-                  --agree-tos \
-                  --non-interactive; then
-                  echo "::warning::certbot falhou; mantendo HTTP neste deploy." >&2
-                fi
-              fi
-            else
-              echo "Certificado ja existe para ${STUDIO_DOMAIN}."
-            fi
-
-            # Sem o deploy-hook o nginx segue servindo o certificado
-            # antigo em memoria ate um reload manual.
-            mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-            printf '%s\n' '#!/bin/sh' 'systemctl reload nginx' \
-              > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-            chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-
-            # A aplicacao nao depende deste passo; avisos nao derrubam o job.
-            exit 0
-          ENDSSH
-
-      - name: Configure Nginx (HTTPS)
-        env:
-          SSHPASS: ${{ secrets.VPS_PASSWORD }}
-        run: |
-          sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
-            "STUDIO_DEPLOY_PORT='${{ env.STUDIO_DEPLOY_PORT }}' STUDIO_DOMAIN='${{ env.STUDIO_DOMAIN }}' STUDIO_PUBLIC_URL='${{ env.STUDIO_PUBLIC_URL }}' SITE_NAME='${{ env.SITE_NAME }}' bash -s" <<'ENDSSH'
-            set -euo pipefail
-
-            if [ ! -f "/etc/letsencrypt/live/${STUDIO_DOMAIN}/fullchain.pem" ]; then
-              echo "Certificado ausente; mantendo a configuracao HTTP."
-              exit 0
-            fi
-
-            BACKUP_CONF=""
-            if [ -f "/etc/nginx/sites-available/${SITE_NAME}" ]; then
-              BACKUP_CONF="/tmp/${SITE_NAME}.nginx.bak"
-              cp "/etc/nginx/sites-available/${SITE_NAME}" "$BACKUP_CONF"
-            fi
-
-            # HTTP/2 mudou de sintaxe no nginx 1.25.1: antes parametro do
-            # "listen", depois diretiva propria.
-            NGINX_VERSION="$(nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9.]*\).*#\1#p')"
-            if [ -n "$NGINX_VERSION" ] && \
-               [ "$(printf '%s\n1.25.1\n' "$NGINX_VERSION" | sort -V | head -n1)" = "1.25.1" ]; then
-              HTTP2_LISTEN='    listen 443 ssl;'
-              HTTP2_DIRECTIVE='    http2 on;'
-            else
-              HTTP2_LISTEN='    listen 443 ssl http2;'
-              HTTP2_DIRECTIVE=''
-            fi
-
-            {
-              printf '%s\n' 'server {'
-              printf '%s\n' '    listen 80;'
-              printf '%s\n' "    server_name ${STUDIO_DOMAIN};"
-              printf '%s\n' ''
-              printf '%s\n' '    # Vem antes do redirect: um "return 301" solto responderia'
-              printf '%s\n' '    # 301 tambem ao desafio do Let'"'"'s Encrypt.'
-              printf '%s\n' '    location /.well-known/acme-challenge/ {'
-              printf '%s\n' '        root /var/www/certbot;'
-              printf '%s\n' '    }'
-              printf '%s\n' ''
-              printf '%s\n' '    location / {'
-              printf '%s\n' "        return 301 ${STUDIO_PUBLIC_URL}\$request_uri;"
-              printf '%s\n' '    }'
-              printf '%s\n' '}'
-              printf '%s\n' ''
-              printf '%s\n' 'server {'
-              printf '%s\n' "$HTTP2_LISTEN"
-              if [ -n "$HTTP2_DIRECTIVE" ]; then printf '%s\n' "$HTTP2_DIRECTIVE"; fi
-              printf '%s\n' "    server_name ${STUDIO_DOMAIN};"
-              printf '%s\n' ''
-              printf '%s\n' "    ssl_certificate /etc/letsencrypt/live/${STUDIO_DOMAIN}/fullchain.pem;"
-              printf '%s\n' "    ssl_certificate_key /etc/letsencrypt/live/${STUDIO_DOMAIN}/privkey.pem;"
-              printf '%s\n' '    ssl_protocols TLSv1.2 TLSv1.3;'
-              printf '%s\n' '    ssl_ciphers HIGH:!aNULL:!MD5;'
-              printf '%s\n' '    ssl_prefer_server_ciphers off;'
-              printf '%s\n' '    ssl_session_cache shared:SSL:10m;'
-              printf '%s\n' '    ssl_session_timeout 1d;'
-              printf '%s\n' ''
-              printf '%s\n' '    # HSTS: so aqui, onde o TLS termina.'
-              printf '%s\n' '    add_header Strict-Transport-Security "max-age=31536000" always;'
-              printf '%s\n' ''
-              printf '%s\n' '    # Upload de video.'
-              printf '%s\n' '    client_max_body_size 520m;'
-              printf '%s\n' ''
-              printf '%s\n' '    location /.well-known/acme-challenge/ {'
-              printf '%s\n' '        root /var/www/certbot;'
-              printf '%s\n' '    }'
-              printf '%s\n' ''
-              printf '%s\n' '    # Porta unica do stack; o roteamento interno acontece'
-              printf '%s\n' '    # no nginx do compose.'
-              printf '%s\n' '    location / {'
-              printf '%s\n' "        proxy_pass http://127.0.0.1:${STUDIO_DEPLOY_PORT};"
-              printf '%s\n' '        proxy_http_version 1.1;'
-              printf '%s\n' '        proxy_set_header Upgrade $http_upgrade;'
-              printf '%s\n' '        proxy_set_header Connection "upgrade";'
-              printf '%s\n' '        proxy_set_header Host $host;'
-              printf '%s\n' '        proxy_set_header X-Real-IP $remote_addr;'
-              printf '%s\n' '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;'
-              printf '%s\n' '        proxy_set_header X-Forwarded-Proto $scheme;'
-              printf '%s\n' '        proxy_set_header X-Forwarded-Port 443;'
-              printf '%s\n' ''
-              printf '%s\n' '        # Upload longo e acompanhamento de job por stream:'
-              printf '%s\n' '        # o timeout do portal (120s) cortaria os dois.'
-              printf '%s\n' '        proxy_read_timeout 900s;'
-              printf '%s\n' '        proxy_send_timeout 900s;'
-              printf '%s\n' '        proxy_request_buffering off;'
-              printf '%s\n' '    }'
-              printf '%s\n' '}'
-            } > "/etc/nginx/sites-available/${SITE_NAME}"
-
-            ln -sfn "/etc/nginx/sites-available/${SITE_NAME}" "/etc/nginx/sites-enabled/${SITE_NAME}"
-
-            if ! nginx -t 2>/tmp/nginx-studio-test.log; then
-              cat /tmp/nginx-studio-test.log >&2
-              if [ -n "$BACKUP_CONF" ] && [ -f "$BACKUP_CONF" ]; then
-                echo "nginx -t falhou: restaurando a config anterior." >&2
-                cp "$BACKUP_CONF" "/etc/nginx/sites-available/${SITE_NAME}"
-              fi
-              exit 1
-            fi
-
-            systemctl reload nginx
-            echo "HTTPS configurado para ${STUDIO_DOMAIN}."
-          ENDSSH
-
-      - name: Verify public HTTPS
-        if: steps.apps.outputs.ready == 'true' && !inputs.infra_only
+      - name: Verificar pelo dominio publico
+        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
         run: |
           set -uo pipefail
-          fail=0
+          falhou=0
 
-          # O certificado servido precisa ser o do subdominio: se o vhost
-          # nao foi aplicado, a porta 443 cai no certificado de outro
-          # projeto da VPS e o erro passaria despercebido.
-          echo "Certificado servido em ${{ env.STUDIO_DOMAIN }}:"
-          cert_subject="$(echo | openssl s_client \
-            -connect "${{ env.STUDIO_DOMAIN }}:443" \
-            -servername "${{ env.STUDIO_DOMAIN }}" 2>/dev/null \
-            | openssl x509 -noout -subject 2>/dev/null || true)"
-          echo "  $cert_subject"
-          if ! printf '%s' "$cert_subject" | grep -q "${{ env.STUDIO_DOMAIN }}"; then
-            echo "::error::A porta 443 esta servindo certificado de outro dominio." >&2
-            fail=1
-          fi
-
-          check_public() {
-            local url="$1" label="$2" code
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$url" 2>/dev/null || echo 000)"
+          checar() {
+            local code
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$1" 2>/dev/null || echo 000)"
             if [ "$code" = "200" ]; then
-              echo "  ok      $label -> $url"
+              echo "  ok      $2"
             else
-              echo "::error::$label respondeu HTTP $code em $url" >&2
-              fail=1
+              echo "::error::$2 respondeu HTTP $code" >&2
+              falhou=1
             fi
           }
 
-          check_public "${{ env.STUDIO_PUBLIC_URL }}/" "studio"
-          check_public "${{ env.STUDIO_PUBLIC_URL }}/api/health" "api do studio"
+          checar "${{ env.CANONICAL_URL }}/" "studio"
+          checar "${{ env.CANONICAL_URL }}/api/health" "api do studio"
 
-          # O portal nao pode ter sido afetado: os dois stacks dividem a
-          # mesma VPS e o mesmo nginx de host.
-          portal_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 \
-            "https://makucho.com.br/" 2>/dev/null || echo 000)"
-          if [ "$portal_code" = "200" ]; then
-            echo "  ok      portal segue no ar"
-          else
-            echo "::error::o portal respondeu HTTP $portal_code apos o deploy do studio." >&2
-            fail=1
-          fi
+          # Os dois stacks dividem VPS e nginx do host: um deploy do
+          # studio nao pode derrubar o portal, que esta em producao.
+          checar "https://makucho.com.br/" "portal (nao pode quebrar)"
 
-          if [ "$fail" -ne 0 ]; then exit 1; fi
-          echo "Studio acessivel por HTTPS com o certificado correto."
-
-      - name: Summary
-        run: |
-          if [ "${{ steps.apps.outputs.ready }}" != "true" ]; then
-            echo "Infraestrutura preparada. O stack sobe quando studio/apps/{api,web} existirem."
-          else
-            echo "Deploy ${{ steps.release.outputs.version }} concluido"
-          fi
-          echo "URL: ${{ env.STUDIO_PUBLIC_URL }}"
-          echo "Porta no host: 127.0.0.1:${{ env.STUDIO_DEPLOY_PORT }}"
+          [ "$falhou" -eq 0 ] || exit 1
+          echo "deploy ${{ needs.build.outputs.release }} verificado em ${{ env.CANONICAL_URL }}"

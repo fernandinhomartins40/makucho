@@ -50,8 +50,29 @@ fi
 
 cd "$RELEASE_DIR/studio"
 
+# ------------------------------------------------------------
+# Perfil dos workers
+#
+# Os workers so entram no stack quando o WORKFLOW confirma que as
+# imagens foram publicadas (STUDIO_WORKERS=1). Enquanto nao tem
+# codigo, a imagem nao existe no registro -- e um "compose pull" que
+# falha em UMA imagem interrompe o download de TODAS as outras,
+# derrubando um deploy que so precisava de api, web, redis e nginx.
+#
+# Foi exatamente o que aconteceu na release b9e6f18: makucho-studio-
+# worker not found, e as seis demais imagens marcadas "Interrupted".
+# ------------------------------------------------------------
+PROFILE_ARGS=()
+if [ "${STUDIO_WORKERS:-0}" = "1" ]; then
+  PROFILE_ARGS=(--profile workers)
+  log "workers habilitados neste deploy"
+else
+  log "workers ainda sem imagem; subindo apenas api, web, redis e nginx"
+fi
+
 compose() {
-  docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+  docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+    "${PROFILE_ARGS[@]}" "$@"
 }
 
 PREVIOUS_RELEASE=""

@@ -185,6 +185,11 @@ services:
 
   # ---------------- Worker: midia (ffprobe, proxy, audio) ----------------
   worker-media:
+    # Sobe apenas com --profile workers. Enquanto o worker nao
+    # tiver codigo, sua imagem nao existe no registro: sem o profile,
+    # o "compose pull" falha nela e INTERROMPE o download das demais,
+    # derrubando um deploy que so precisava de api, web, redis e nginx.
+    profiles: ["workers"]
     image: ${REGISTRY_IMAGE_STUDIO_WORKER:-ghcr.io/fernandinhomartins40/makucho-studio-worker}:${RELEASE:-latest}
     container_name: makucho-studio-worker-media
     restart: unless-stopped
@@ -222,6 +227,11 @@ services:
 
   # ---------------- Worker: transcricao (faster-whisper) ----------------
   worker-transcription:
+    # Sobe apenas com --profile workers. Enquanto o worker nao
+    # tiver codigo, sua imagem nao existe no registro: sem o profile,
+    # o "compose pull" falha nela e INTERROMPE o download das demais,
+    # derrubando um deploy que so precisava de api, web, redis e nginx.
+    profiles: ["workers"]
     image: ${REGISTRY_IMAGE_STUDIO_WHISPER:-ghcr.io/fernandinhomartins40/makucho-studio-whisper}:${RELEASE:-latest}
     container_name: makucho-studio-worker-transcription
     restart: unless-stopped
@@ -268,6 +278,11 @@ services:
 
   # ---------------- Worker: render (Remotion + FFmpeg) ----------------
   worker-render:
+    # Sobe apenas com --profile workers. Enquanto o worker nao
+    # tiver codigo, sua imagem nao existe no registro: sem o profile,
+    # o "compose pull" falha nela e INTERROMPE o download das demais,
+    # derrubando um deploy que so precisava de api, web, redis e nginx.
+    profiles: ["workers"]
     image: ${REGISTRY_IMAGE_STUDIO_RENDER:-ghcr.io/fernandinhomartins40/makucho-studio-render}:${RELEASE:-latest}
     container_name: makucho-studio-worker-render
     restart: unless-stopped
