@@ -71,6 +71,7 @@ Antes de mudar estrutura, stack ou infraestrutura, leia `docs/adr/`:
 | [0004](docs/adr/0004-banco-separado-na-mesma-instancia.md) | Banco `makucho_studio` separado, na mesma instancia |
 | [0005](docs/adr/0005-organizacao-por-aplicacao.md) | Monorepo organizado por aplicacao |
 | [0006](docs/adr/0006-deploy-do-subdominio.md) | Deploy do studio como stack independente |
+| [0007](docs/adr/0007-remotion-e-reuso-de-open-source.md) | Licenca do Remotion e reuso de open source |
 
 O ADR 0003 e leitura obrigatoria antes de mexer em `mem_limit`, concorrencia
 de fila ou modelo de transcricao: a VPS e compartilhada com outras aplicacoes
