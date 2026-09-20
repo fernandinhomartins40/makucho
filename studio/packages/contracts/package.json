@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/edit-plan.test.ts && tsx test/ai-proposal.test.ts && tsx test/brand.test.ts && tsx test/script.test.ts && tsx test/ingest.test.ts && tsx test/retention.test.ts",
+    "test": "tsx test/edit-plan.test.ts && tsx test/ai-proposal.test.ts && tsx test/brand.test.ts && tsx test/script.test.ts && tsx test/ingest.test.ts && tsx test/retention.test.ts && tsx test/timeline.test.ts",
     "build": "rimraf dist tsconfig.tsbuildinfo && tsc"
   },
   "dependencies": {

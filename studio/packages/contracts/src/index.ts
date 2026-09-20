@@ -16,4 +16,5 @@ export * from './file-signature';
 export * from './script';
 export * from './ingest';
 export * from './retention';
+export * from './timeline';
 export * from './events';
