@@ -158,6 +158,8 @@ model Workspace {
   scripts              Script[]
   projects             Project[]
   auditEvents          AuditEvent[]
+  aiCredential         AiCredential?
+  retentionPolicy      RetentionSettings?
 
   @@map("workspaces")
 }
@@ -175,6 +177,70 @@ model Membership {
   @@unique([userId, workspaceId])
   @@index([workspaceId])
   @@map("memberships")
+}
+
+// ============================================================
+// CREDENCIAL DA IA
+//
+// A chave e cadastrada pelo usuario no painel, nao por variavel de
+// ambiente: cada workspace usa a propria conta e o proprio credito.
+//
+// Guardada CIFRADA (AES-256-GCM). Em texto puro, um dump de banco --
+// backup, log de erro, acesso indevido -- entregaria a chave de
+// faturamento do cliente. O que volta para a interface e apenas o
+// prefixo, o bastante para conferir qual chave esta ativa.
+// ============================================================
+
+model AiCredential {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  provider    String
+  // Ciphertext em base64. Nunca a chave em claro.
+  encryptedKey String
+  // IV e authTag do AES-GCM: sem eles nao ha como decifrar nem
+  // verificar a integridade.
+  iv          String
+  authTag     String
+  // Primeiros caracteres, para o usuario reconhecer a chave na tela.
+  keyPrefix   String
+  model       String?
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("ai_credentials")
+}
+
+// ============================================================
+// RETENCAO DE MIDIA
+//
+// O video fica no disco da VPS, compartilhado com outras aplicacoes.
+// A midia expira, e o usuario e avisado antes.
+// ============================================================
+
+model RetentionSettings {
+  id          String   @id @default(cuid())
+  workspaceId String   @unique
+  originalDays Int     @default(30)
+  renderDays   Int     @default(60)
+  derivedDays  Int     @default(15)
+  // 10 GB no total: 4 GB de material de apoio (logo, fonte, musica,
+  // intro) que nao expira, e 6 GB de edicao, onde os videos mais
+  // antigos cedem lugar aos novos.
+  //
+  // Os baldes sao separados porque misturar faria um upload de 500 MB
+  // apagar a trilha sonora da marca para caber.
+  permanentQuotaBytes BigInt @default(4294967296)
+  editingQuotaBytes   BigInt @default(6442450944)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("retention_settings")
 }
 
 // ============================================================
@@ -361,6 +427,11 @@ model MediaSource {
   audioCodec String?
   // Confirma que o arquivo no storage e o que foi enviado.
   checksumSha256 String?
+  // Quando o arquivo expira. Nulo = nao expira (material de apoio ou
+  // projeto fixado pelo usuario).
+  expiresAt DateTime?
+  // Fixado: nao cede lugar quando falta espaco no balde de edicao.
+  pinned    Boolean   @default(false)
   createdAt DateTime  @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
