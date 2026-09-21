@@ -6,12 +6,21 @@
 // O diagnóstico do guia apontou que o tutorial dominava a tela e o
 // trabalho ficava em segundo plano. Aqui a ordem se inverte: hero
 // compacto com a ação principal, projetos recentes em destaque e o
-// checklist como apoio recolhível.
+// checklist como apoio.
+//
+// Os projetos vêm da API. Enquanto não vêm, a tela mostra esqueletos
+// com a forma do cartão — não um "carregando…" centralizado, que faz
+// o layout saltar quando os dados chegam.
 // ============================================================
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ROTULO_DE_ESTADO, podeEditar } from '@makucho/studio-contracts';
+import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../components/shell/Topbar';
+import { projetos as apiProjetos, type Projeto } from '../lib/api';
+import { useDados } from '../lib/useDados';
 import {
   IconeBusca,
   IconeMais,
@@ -20,57 +29,12 @@ import {
   IconeRelogio,
   IconeMenu,
   IconeCheck,
-  IconeAvancar,
+  IconeAviso,
+  IconeVideo,
+  IconeGravar,
+  IconeEnviar,
+  IconeLixeira,
 } from '../components/icones';
-
-type Status = 'concluido' | 'edicao' | 'rascunho';
-
-interface Projeto {
-  id: string;
-  nome: string;
-  duracao: string;
-  status: Status;
-  editadoEm: string;
-  thumb: string;
-  legenda: string[];
-}
-
-// Demonstração até a API de projetos existir (Fase 4).
-const PROJETOS: Projeto[] = [
-  {
-    id: '1',
-    nome: 'Dicas de produtividade',
-    duracao: '00:58',
-    status: 'concluido',
-    editadoEm: 'há 2 horas',
-    thumb: '/assets/makucho-studio/thumbnail-productivity.webp',
-    legenda: ['3 DICAS', 'PARA PRODUTIVIDADE'],
-  },
-  {
-    id: '2',
-    nome: 'IA no dia a dia',
-    duracao: '01:24',
-    status: 'edicao',
-    editadoEm: 'há 1 dia',
-    thumb: '/assets/makucho-studio/thumbnail-ai.webp',
-    legenda: ['INTELIGÊNCIA', 'ARTIFICIAL'],
-  },
-  {
-    id: '3',
-    nome: 'Apresentação da marca',
-    duracao: '00:37',
-    status: 'rascunho',
-    editadoEm: 'há 3 dias',
-    thumb: '/assets/makucho-studio/thumbnail-brand-bottle.webp',
-    legenda: ['SUA MARCA', 'EM MOVIMENTO'],
-  },
-];
-
-const ROTULO_DE_STATUS: Record<Status, { texto: string; tom: string }> = {
-  concluido: { texto: 'Concluído', tom: 'sucesso' },
-  edicao: { texto: 'Em edição', tom: 'info' },
-  rascunho: { texto: 'Rascunho', tom: 'neutro' },
-};
 
 const PASSOS = [
   {
@@ -91,41 +55,61 @@ const PASSOS = [
 ];
 
 export default function ProjetosPage() {
+  const router = useRouter();
   const [busca, setBusca] = useState('');
-  // Concluídos de verdade viriam da API; aqui o primeiro passo já
-  // conta como feito para o checklist não nascer zerado.
-  const [concluidos] = useState(1);
+  const [criando, setCriando] = useState(false);
+  const [erroDeAcao, setErroDeAcao] = useState<string | null>(null);
 
-  const filtrados = PROJETOS.filter((p) =>
-    p.nome.toLowerCase().includes(busca.trim().toLowerCase()),
+  const { dados, carregando, erro, recarregar, definir } = useDados<Projeto[]>(() =>
+    apiProjetos.listar(),
   );
+
+  const lista = dados ?? [];
+  const filtrados = lista.filter((p) =>
+    p.title.toLowerCase().includes(busca.trim().toLowerCase()),
+  );
+
+  // O checklist mede progresso real: ter projeto conta como primeiro
+  // passo. Um contador fixo seria decoração.
+  const concluidos = lista.length > 0 ? 1 : 0;
+
+  const novoProjeto = async () => {
+    setCriando(true);
+    setErroDeAcao(null);
+    try {
+      const projeto = await apiProjetos.criar({ title: 'Vídeo sem título' });
+      router.push(`/gravar?projeto=${projeto.id}`);
+    } catch (e) {
+      setErroDeAcao(e instanceof Error ? e.message : 'não foi possível criar o projeto.');
+      setCriando(false);
+    }
+  };
+
+  const arquivar = async (id: string) => {
+    // Some da lista na hora; se o servidor recusar, volta.
+    const antes = lista;
+    definir(lista.filter((p) => p.id !== id));
+    try {
+      await apiProjetos.arquivar(id);
+    } catch (e) {
+      definir(antes);
+      setErroDeAcao(e instanceof Error ? e.message : 'não foi possível arquivar.');
+    }
+  };
 
   return (
     <>
       <Topbar busca onBuscar={setBusca}>
-        <button type="button" className="botao-icone" aria-label="Ajuda">
+        <Link href="/ajuda" className="botao-icone" aria-label="Ajuda">
           <IconeAjuda size={20} />
-        </button>
+        </Link>
         <button
           type="button"
           className="botao-icone"
-          aria-label="Notificações (1 não lida)"
+          aria-label="Notificações"
           style={{ position: 'relative' }}
         >
           <IconeNotificacao size={20} />
-          <span
-            aria-hidden
-            style={{
-              position: 'absolute',
-              top: 9,
-              right: 10,
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: 'var(--danger)',
-              border: '1.5px solid var(--bg-canvas)',
-            }}
-          />
         </button>
         <button
           type="button"
@@ -149,35 +133,30 @@ export default function ProjetosPage() {
       <div className="conteudo">
         <h1 style={{ marginBottom: 'var(--e5)' }}>Projetos</h1>
 
+        {erroDeAcao && (
+          <div className="aviso aviso--erro" role="alert" style={{ marginBottom: 'var(--e4)' }}>
+            <IconeAviso size={16} />
+            <span>{erroDeAcao}</span>
+          </div>
+        )}
+
         {/* ---------- Hero ---------- */}
         <section className="hero" style={{ marginBottom: 'var(--e6)' }}>
           <div style={{ maxWidth: 560 }}>
             <h2 style={{ fontSize: 40, letterSpacing: -1, marginBottom: 'var(--e3)' }}>
               Crie vídeos melhores, mais rápido
             </h2>
-            <p
-              className="texto-secundario"
-              style={{ fontSize: 16, marginBottom: 'var(--e5)' }}
-            >
+            <p className="texto-secundario" style={{ fontSize: 16, marginBottom: 'var(--e5)' }}>
               Planeje, grave e edite com IA. Do seu jeito, para o seu público.
             </p>
-            <Link href="/editor" className="botao">
+            <button type="button" className="botao" onClick={novoProjeto} disabled={criando}>
               <IconeMais size={18} weight="bold" />
-              Novo vídeo
-            </Link>
+              {criando ? 'Criando…' : 'Novo vídeo'}
+            </button>
           </div>
 
-          {/* Ilustração decorativa: aria-hidden porque não carrega
-              informação, e some abaixo de 900px pelo CSS.
-
-              A classe vai no <picture>, que é o filho do flex — no
-              <img> ela ficava um nível abaixo do que o layout mede,
-              e a arte estourava o hero. */}
           <picture className="hero__arte">
-            <source
-              srcSet="/assets/makucho-studio/hero-clapperboard.webp"
-              type="image/webp"
-            />
+            <source srcSet="/assets/makucho-studio/hero-clapperboard.webp" type="image/webp" />
             <img
               src="/assets/makucho-studio/hero-clapperboard.png"
               alt=""
@@ -201,34 +180,75 @@ export default function ProjetosPage() {
           <section>
             <div className="linha entre" style={{ marginBottom: 'var(--e4)' }}>
               <h2>Meus projetos recentes</h2>
-              <Link
-                href="/"
-                className="linha"
-                style={{
-                  gap: 4,
-                  fontSize: 13,
-                  color: 'var(--accent)',
-                  textDecoration: 'none',
-                }}
-              >
-                Ver todos
-                <IconeAvancar size={14} />
-              </Link>
+              {lista.length > 0 && (
+                <span className="texto-secundario" style={{ fontSize: 13 }}>
+                  {lista.length} {lista.length === 1 ? 'projeto' : 'projetos'}
+                </span>
+              )}
             </div>
 
-            {filtrados.length === 0 ? (
+            {carregando && <Esqueletos />}
+
+            {erro && !carregando && (
+              <div className="cartao vazio">
+                <div className="vazio__icone">
+                  <IconeAviso size={26} />
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: 4 }}>Não foi possível carregar</h3>
+                  <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
+                    {erro}
+                  </p>
+                  <button type="button" className="botao botao--secundario" onClick={recarregar}>
+                    Tentar de novo
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!carregando && !erro && lista.length === 0 && (
+              <div className="cartao vazio">
+                <div className="vazio__icone">
+                  <IconeVideo size={26} />
+                </div>
+                <div>
+                  <h3 style={{ marginBottom: 4 }}>Nenhum projeto ainda</h3>
+                  <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
+                    Comece gravando pelo teleprompter ou enviando um vídeo que você já
+                    tem.
+                  </p>
+                  <div className="linha" style={{ gap: 'var(--e3)' }}>
+                    <Link href="/gravar" className="botao">
+                      <IconeGravar size={16} weight="fill" />
+                      Gravar agora
+                    </Link>
+                    <button
+                      type="button"
+                      className="botao botao--secundario"
+                      onClick={novoProjeto}
+                      disabled={criando}
+                    >
+                      <IconeEnviar size={16} />
+                      Enviar vídeo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!carregando && !erro && lista.length > 0 && filtrados.length === 0 && (
               <div className="cartao vazio">
                 <div className="vazio__icone">
                   <IconeBusca size={26} />
                 </div>
                 <div>
                   <h3 style={{ marginBottom: 4 }}>Nenhum projeto encontrado</h3>
-                  <p className="texto-secundario">
-                    Tente outro termo ou comece um vídeo novo.
-                  </p>
+                  <p className="texto-secundario">Tente outro termo.</p>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {filtrados.length > 0 && (
               <div
                 style={{
                   display: 'grid',
@@ -237,7 +257,11 @@ export default function ProjetosPage() {
                 }}
               >
                 {filtrados.map((projeto) => (
-                  <CartaoDeProjeto key={projeto.id} projeto={projeto} />
+                  <CartaoDeProjeto
+                    key={projeto.id}
+                    projeto={projeto}
+                    onArquivar={() => arquivar(projeto.id)}
+                  />
                 ))}
               </div>
             )}
@@ -273,8 +297,8 @@ export default function ProjetosPage() {
 
                 return (
                   <li key={passo.titulo} style={{ display: 'flex', gap: 'var(--e3)' }}>
-                    {/* Número vira check quando concluído: a forma
-                        muda, não só a cor. */}
+                    {/* Número vira check quando concluído: a forma muda,
+                        não só a cor. */}
                     <span
                       aria-hidden
                       style={{
@@ -286,7 +310,7 @@ export default function ProjetosPage() {
                         flexShrink: 0,
                         background: feito ? 'var(--success)' : 'var(--surface-2)',
                         border: feito ? 'none' : '1px solid var(--border-forte)',
-                        color: feito ? '#06132d' : 'var(--text-secondary)',
+                        color: feito ? '#041735' : 'var(--text-secondary)',
                         fontSize: 12,
                         fontWeight: 700,
                       }}
@@ -324,52 +348,96 @@ export default function ProjetosPage() {
   );
 }
 
-function CartaoDeProjeto({ projeto }: { projeto: Projeto }) {
-  const status = ROTULO_DE_STATUS[projeto.status];
+/** Esqueletos com a forma do cartão: o layout não salta ao chegar. */
+function Esqueletos() {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
+        gap: 'var(--e4)',
+      }}
+      aria-hidden
+    >
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="cartao" style={{ padding: 'var(--e3)' }}>
+          <div
+            className="esqueleto"
+            style={{ aspectRatio: '9 / 16', borderRadius: 'var(--r-controle)' }}
+          />
+          <div className="esqueleto" style={{ height: 14, marginTop: 'var(--e3)' }} />
+          <div className="esqueleto" style={{ height: 12, width: '60%', marginTop: 6 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CartaoDeProjeto({
+  projeto,
+  onArquivar,
+}: {
+  projeto: Projeto;
+  onArquivar: () => void;
+}) {
+  const [menuAberto, setMenuAberto] = useState(false);
+  const estado = ROTULO_DE_ESTADO[projeto.state as ProjectState];
+  const editavel = podeEditar(projeto.state as ProjectState);
 
   return (
     <article className="cartao" style={{ padding: 'var(--e3)' }}>
-      <div className="projeto__midia" style={{ marginBottom: 'var(--e3)' }}>
-        {/* A thumbnail não traz texto: título e duração são HTML,
-            como o guia dos assets orienta — mantém acessível,
-            responsivo e editável. */}
-        <img
-          src={projeto.thumb}
-          alt={`Prévia do projeto ${projeto.nome}`}
-          width={540}
-          height={960}
-          loading="lazy"
-        />
+      <Link
+        href={editavel ? `/editor?projeto=${projeto.id}` : `/gravar?projeto=${projeto.id}`}
+        className="projeto__midia"
+        style={{ marginBottom: 'var(--e3)', display: 'block' }}
+      >
+        {projeto.thumbnailUrl ? (
+          <img
+            src={projeto.thumbnailUrl}
+            alt={`Prévia de ${projeto.title}`}
+            width={540}
+            height={960}
+            loading="lazy"
+          />
+        ) : (
+          <span
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              width: '100%',
+              height: '100%',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            <IconeVideo size={28} />
+          </span>
+        )}
 
         <span
-          className={`selo selo--${status.tom}`}
+          className={`selo selo--${estado.tom}`}
           style={{ position: 'absolute', top: 8, left: 8, fontSize: 11 }}
         >
           <span className="selo__ponto" aria-hidden />
-          {status.texto}
+          {estado.texto}
         </span>
 
-        <span
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            left: 8,
-            padding: '2px 7px',
-            borderRadius: 5,
-            background: 'rgb(6 19 45 / 82%)',
-            fontSize: 11,
-            fontWeight: 600,
-          }}
-        >
-          {projeto.duracao}
-        </span>
-
-        <div className="projeto__legenda" style={{ fontSize: 17, bottom: 34 }}>
-          {projeto.legenda.map((linha, i) => (
-            <div key={i}>{linha}</div>
-          ))}
-        </div>
-      </div>
+        {projeto.durationMs && (
+          <span
+            style={{
+              position: 'absolute',
+              bottom: 8,
+              left: 8,
+              padding: '2px 7px',
+              borderRadius: 5,
+              background: 'rgb(4 23 53 / 85%)',
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            {formatarDuracao(projeto.durationMs)}
+          </span>
+        )}
+      </Link>
 
       <div className="linha entre" style={{ gap: 'var(--e2)' }}>
         <div style={{ minWidth: 0 }}>
@@ -381,27 +449,76 @@ function CartaoDeProjeto({ projeto }: { projeto: Projeto }) {
               textOverflow: 'ellipsis',
             }}
           >
-            {projeto.nome}
+            {projeto.title}
           </h3>
-          <p
-            className="texto-secundario linha"
-            style={{ fontSize: 12, gap: 4, marginTop: 2 }}
-          >
+          <p className="texto-secundario linha" style={{ fontSize: 12, gap: 4, marginTop: 2 }}>
             <IconeRelogio size={12} />
-            Editado {projeto.editadoEm}
+            {tempoRelativo(projeto.updatedAt)}
           </p>
         </div>
 
-        {/* O menu não esconde a ação principal: abrir o projeto é o
-            clique no card. */}
-        <button
-          type="button"
-          className="botao-icone botao-icone--pequeno"
-          aria-label={`Mais opções de ${projeto.nome}`}
-        >
-          <IconeMenu size={16} />
-        </button>
+        <span style={{ position: 'relative' }}>
+          <button
+            type="button"
+            className="botao-icone botao-icone--pequeno"
+            aria-label={`Mais opções de ${projeto.title}`}
+            aria-expanded={menuAberto}
+            onClick={() => setMenuAberto((v) => !v)}
+          >
+            <IconeMenu size={16} />
+          </button>
+
+          {menuAberto && (
+            <span className="menu">
+              <button
+                type="button"
+                className="menu__item menu__item--perigo"
+                onClick={() => {
+                  setMenuAberto(false);
+                  onArquivar();
+                }}
+              >
+                <IconeLixeira size={15} />
+                Arquivar
+              </button>
+            </span>
+          )}
+        </span>
       </div>
+
+      {/* A falha fica no cartão, não escondida: projeto parado sem
+          explicação é o pior estado possível. */}
+      {projeto.publicError && (
+        <p
+          className="linha"
+          style={{ gap: 4, fontSize: 12, color: 'var(--warning)', marginTop: 'var(--e2)' }}
+        >
+          <IconeAviso size={13} />
+          {projeto.publicError}
+        </p>
+      )}
     </article>
   );
+}
+
+function formatarDuracao(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)
+    .toString()
+    .padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+}
+
+/** "há 2 horas" diz mais que uma data completa numa lista de trabalho. */
+function tempoRelativo(iso: string): string {
+  const minutos = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutos < 1) return 'agora mesmo';
+  if (minutos < 60) return `há ${minutos} min`;
+
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `há ${horas} ${horas === 1 ? 'hora' : 'horas'}`;
+
+  const dias = Math.round(horas / 24);
+  if (dias < 30) return `há ${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+
+  return new Date(iso).toLocaleDateString('pt-BR');
 }

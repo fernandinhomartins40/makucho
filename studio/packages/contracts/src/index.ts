@@ -14,6 +14,7 @@ export * from './semantic-safety';
 export * from './brand';
 export * from './file-signature';
 export * from './script';
+export * from './project';
 export * from './ingest';
 export * from './retention';
 export * from './timeline';

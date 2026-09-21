@@ -7,6 +7,7 @@ import { PrismaModule } from './common/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BrandModule } from './modules/brand/brand.module';
 import { ScriptsModule } from './modules/scripts/scripts.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
@@ -24,6 +25,7 @@ import { loadEnv } from './config/env';
     AuthModule,
     BrandModule,
     ScriptsModule,
+    ProjectsModule,
     SettingsModule,
   ],
   controllers: [HealthController],
