@@ -1,5 +1,5 @@
 /* ============================================================
-   MAKUCHO Studio - base
+   MAKUCHO Studio
    Mobile-first: o celular e a interface de controle; o servidor
    faz o trabalho pesado.
    ============================================================ */
@@ -7,10 +7,15 @@
 :root {
   --azul-profundo: #0a1a3c;
   --azul: #1e5aff;
+  --azul-claro: #4d82ff;
   --texto: #f5f7fa;
   --texto-suave: #9aa8c4;
   --superficie: #12224a;
+  --superficie-alta: #1a2d5c;
   --borda: #1f3566;
+  --verde: #22c55e;
+  --vermelho: #ef4444;
+  --amarelo: #eab308;
 }
 
 * {
@@ -29,7 +34,241 @@ body {
   color: var(--texto);
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
-  /* Area segura do notch em telas de celular. */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right)
-    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Layout que empurra a navegacao para a base da tela. */
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.conteudo {
+  flex: 1;
+  /* Area segura do notch nas laterais e no topo. */
+  padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ---------- Tipografia ---------- */
+
+h1 {
+  font-size: 22px;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+
+h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.subtitulo {
+  color: var(--texto-suave);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+/* ---------- Cartao ---------- */
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.cartao-clicavel {
+  cursor: pointer;
+  transition: border-color 150ms, background 150ms;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.cartao-clicavel:hover,
+.cartao-clicavel:focus-visible {
+  border-color: var(--azul);
+  background: var(--superficie-alta);
+}
+
+/* ---------- Botoes ---------- */
+
+.botao {
+  /* 48px: alvo de toque confortavel, acima do minimo de 44 das
+     diretrizes de acessibilidade. */
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 10px;
+  border: none;
+  background: var(--azul);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  font-family: inherit;
+}
+
+.botao:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.botao-secundario {
+  background: transparent;
+  border: 1px solid var(--borda);
+  color: var(--texto);
+}
+
+.botao-largo {
+  width: 100%;
+}
+
+/* ---------- Formulario ---------- */
+
+.campo {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.campo-rotulo {
+  display: block;
+  font-size: 13px;
+  color: var(--texto-suave);
+  margin-bottom: 6px;
+}
+
+.campo-entrada,
+.campo-area,
+.campo-selecao {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--borda);
+  background: var(--azul-profundo);
+  color: var(--texto);
+  /* 16px evita que o iOS aproxime a tela ao focar o campo. */
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.campo-area {
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.campo-entrada:focus,
+.campo-area:focus,
+.campo-selecao:focus {
+  outline: 2px solid var(--azul);
+  outline-offset: 1px;
+}
+
+.campo-ajuda {
+  font-size: 12px;
+  color: var(--texto-suave);
+  margin-top: 4px;
+}
+
+/* ---------- Estados ---------- */
+
+.vazio {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--texto-suave);
+}
+
+.vazio-icone {
+  font-size: 40px;
+  opacity: 0.4;
+  margin-bottom: 12px;
+}
+
+.aviso {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+
+.aviso-erro {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: var(--vermelho);
+}
+
+.aviso-atencao {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: var(--amarelo);
+}
+
+.aviso-ok {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: var(--verde);
+}
+
+/* ---------- Barra de progresso ---------- */
+
+.barra {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--borda);
+  overflow: hidden;
+}
+
+.barra-preenchida {
+  height: 100%;
+  background: var(--azul);
+  transition: width 300ms;
+}
+
+/* ---------- Etiqueta ---------- */
+
+.etiqueta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--superficie-alta);
+  color: var(--texto-suave);
+}
+
+.ponto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ---------- Utilidades ---------- */
+
+.linha {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.entre {
+  justify-content: space-between;
+}
+
+.pilha {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
