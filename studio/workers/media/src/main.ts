@@ -18,6 +18,7 @@
 import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
+import { FILA_MIDIA, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -31,8 +32,6 @@ import {
 import { copyFile, mkdir, rename, writeFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
-
-const FILA = 'studio:media';
 
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
@@ -221,8 +220,10 @@ async function tamanhoDe(chave: string): Promise<number> {
 
 // ============================================================
 
-const worker = new Worker<DadosDoJob>(FILA, processar, {
+const worker = new Worker<DadosDoJob>(FILA_MIDIA, processar, {
   connection: redis,
+  // O mesmo prefixo da API: sem ele o worker escuta outro lugar.
+  prefix: PREFIXO_DAS_FILAS,
   // UM job por vez. O lock global já serializa, mas a concorrência 1
   // evita que um segundo job fique segurando conexão e memória
   // enquanto espera um lock que não vai soltar tão cedo.
@@ -278,7 +279,7 @@ const pulso = setInterval(bater, 30_000);
 worker.on('active', bater);
 worker.on('progress', bater);
 
-console.log(`[midia] ouvindo a fila ${FILA}`);
+console.log(`[midia] ouvindo a fila ${FILA_MIDIA}`);
 
 // Encerramento limpo: o BullMQ devolve o job em andamento para a fila
 // em vez de deixá-lo travado até o TTL expirar.

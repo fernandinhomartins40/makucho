@@ -14,10 +14,15 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import {
+  FILA_MIDIA,
+  FILA_RENDER,
+  FILA_TRANSCRICAO,
+  FILAS,
+  PREFIXO_DAS_FILAS,
+} from '@makucho/studio-contracts';
 
-export const FILA_MIDIA = 'studio:media';
-export const FILA_TRANSCRICAO = 'studio:transcription';
-export const FILA_RENDER = 'studio:render';
+export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
 @Injectable()
 export class FilaService implements OnModuleDestroy {
@@ -36,6 +41,7 @@ export class FilaService implements OnModuleDestroy {
     if (!fila) {
       fila = new Queue(nome, {
         connection: this.conexao,
+        prefix: PREFIXO_DAS_FILAS,
         defaultJobOptions: {
           // Três tentativas com espera crescente: falha de FFmpeg por
           // disputa de CPU costuma passar sozinha na segunda.
@@ -85,9 +91,8 @@ export class FilaService implements OnModuleDestroy {
 
   /** Quantos jobs esperam em cada fila. Alimenta o painel de status. */
   async situacao() {
-    const nomes = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER];
     const contagens = await Promise.all(
-      nomes.map(async (nome) => {
+      FILAS.map(async (nome) => {
         const fila = this.fila(nome);
         const [esperando, ativos, falhados] = await Promise.all([
           fila.getWaitingCount(),

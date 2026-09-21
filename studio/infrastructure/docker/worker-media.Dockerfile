@@ -20,6 +20,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY studio/workers/media/package.json ./studio/workers/media/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/
+COPY studio/packages/worker-core/package.json ./studio/packages/worker-core/
 COPY shared/typescript-config/package.json ./shared/typescript-config/
 COPY shared/eslint-config/package.json ./shared/eslint-config/
 RUN pnpm install --frozen-lockfile
@@ -31,6 +32,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/studio/workers/media/node_modules ./studio/workers/media/node_modules
 COPY --from=deps /app/studio/packages/contracts/node_modules ./studio/packages/contracts/node_modules
 COPY --from=deps /app/studio/packages/database/node_modules ./studio/packages/database/node_modules
+COPY --from=deps /app/studio/packages/worker-core/node_modules ./studio/packages/worker-core/node_modules
 
 ENV STUDIO_DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN pnpm --filter @makucho/studio-database exec prisma generate
@@ -44,6 +46,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY studio/workers/media/package.json ./studio/workers/media/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/
+COPY studio/packages/worker-core/package.json ./studio/packages/worker-core/
 COPY shared/typescript-config/package.json ./shared/typescript-config/
 COPY shared/eslint-config/package.json ./shared/eslint-config/
 RUN pnpm install --frozen-lockfile --prod
@@ -67,6 +70,7 @@ COPY --from=prod-deps --chown=worker:nodejs /app/studio/packages ./studio/packag
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/media/dist ./studio/workers/media/dist
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/media/package.json ./studio/workers/media/
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/contracts/dist ./studio/packages/contracts/dist
+COPY --from=builder --chown=worker:nodejs /app/studio/packages/worker-core/dist ./studio/packages/worker-core/dist
 # O client Prisma sai em src/generated (ver schema.prisma), e nao
 # em node_modules/.prisma: de dentro do pacote o TypeScript
 # consegue nomear os tipos em quem o consome.

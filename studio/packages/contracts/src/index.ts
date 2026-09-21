@@ -15,6 +15,7 @@ export * from './brand';
 export * from './file-signature';
 export * from './script';
 export * from './project';
+export * from './filas';
 export * from './ingest';
 export * from './retention';
 export * from './timeline';
