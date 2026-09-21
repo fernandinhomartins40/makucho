@@ -17,4 +17,5 @@ export * from './script';
 export * from './ingest';
 export * from './retention';
 export * from './timeline';
+export * from './bridge';
 export * from './events';

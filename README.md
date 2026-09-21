@@ -73,6 +73,7 @@ Antes de mudar estrutura, stack ou infraestrutura, leia `docs/adr/`:
 | [0006](docs/adr/0006-deploy-do-subdominio.md) | Deploy do studio como stack independente |
 | [0007](docs/adr/0007-remotion-e-reuso-de-open-source.md) | Licenca do Remotion e reuso de open source |
 | [0008](docs/adr/0008-timeline-no-mvp1-e-preview-no-navegador.md) | Timeline no MVP 1 e preview no navegador |
+| [0009](docs/adr/0009-base-opencut-e-edicao-no-navegador.md) | Editor sobre a base do OpenCut, edicao no navegador |
 
 O ADR 0003 e leitura obrigatoria antes de mexer em `mem_limit`, concorrencia
 de fila ou modelo de transcricao: a VPS e compartilhada com outras aplicacoes
