@@ -1,27 +1,30 @@
 'use client';
 
 // ============================================================
-// Editor — a tela de sugestão do plano (seção 14.1).
+// Editor — layout de três painéis.
 //
-// Mostra o que a IA propôs, por que propôs, e deixa ajustar. O que
-// o plano pede nessa tela: duração original e sugerida, sequência de
-// blocos, motivo de cada escolha, avisos semânticos, preview e as
-// ações de aceitar, trocar e editar.
+// A organização segue o OpenCut (ADR 0009): um grupo vertical
+// (conteúdo em cima, timeline embaixo) e, dentro dele, um horizontal
+// com ferramentas, preview e propriedades. As divisas são
+// arrastáveis e o tamanho é lembrado entre visitas.
 //
-// A IA dirige; o usuário corrige. Toda mudança passa pelo mesmo
-// schema do EditPlan — a timeline não tem caminho mais permissivo
-// que o da proposta automática.
+// A diferença de fundo está no painel esquerdo: lá são os arquivos
+// que a pessoa importou; aqui é a análise da IA — os trechos que ela
+// achou no bruto, com o motivo de cada escolha. O usuário começa de
+// uma proposta pronta, não de uma timeline vazia.
 // ============================================================
 
 import { useCallback, useMemo, useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { aplicarOperacao } from '@makucho/studio-contracts';
-import { Timeline } from '../../components/timeline/Timeline';
+import { PainelRedimensionavel } from '../../components/editor/PainelRedimensionavel';
+import { PainelDeFerramentas } from '../../components/editor/PainelDeFerramentas';
+import { PainelDePropriedades } from '../../components/editor/PainelDePropriedades';
 import { Preview } from '../../components/editor/Preview';
-import { PainelDoClipe } from '../../components/editor/PainelDoClipe';
+import { Timeline } from '../../components/timeline/Timeline';
 
 // Exemplo da seção 4 do contexto mestre: o bruto de oito minutos que
-// vira um Reel de ~17s. Some quando a Fase 5 trouxer a proposta real.
+// vira um Reel. Substituído pela proposta real na Fase 5.
 const PLANO_DEMO: EditPlanV1 = {
   schemaVersion: '1.0',
   projectId: 'demo',
@@ -89,7 +92,7 @@ export default function EditorPage() {
       setErro(null);
 
       // O trecho removido deixa de existir: manter a seleção mostraria
-      // um painel de algo que não está mais no vídeo.
+      // propriedades de algo que não está mais no vídeo.
       if (operacao.op === 'alternar_clipe' && !operacao.enabled) {
         setSelecionado(null);
       }
@@ -108,137 +111,117 @@ export default function EditorPage() {
   }, []);
 
   const reducao = Math.round((1 - duracaoMs / plano.sourceDurationMs) * 100);
-  const temRiscoAlto = plano.clips.some((c) => c.semanticRisk === 'high');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
-      {/* ---------- Cabeçalho ---------- */}
+      {/* ---------- Barra superior ---------- */}
       <header
         style={{
-          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 14px',
           borderBottom: '1px solid var(--borda)',
           flexShrink: 0,
+          minHeight: 48,
         }}
       >
-        <div className="linha entre">
-          <div>
-            <h1 style={{ fontSize: 17, marginBottom: 2 }}>Sugestão da IA</h1>
-            <div style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
-              {(plano.sourceDurationMs / 60_000).toFixed(0)}min → {(duracaoMs / 1000).toFixed(0)}s
-              {reducao > 0 && ` · ${reducao}% mais curto`}
-            </div>
-          </div>
+        <strong style={{ fontSize: 14 }}>Editor</strong>
 
+        <span style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
+          {Math.round(plano.sourceDurationMs / 60_000)} min → {(duracaoMs / 1000).toFixed(0)}s
+          {reducao > 0 && ` · −${reducao}%`}
+        </span>
+
+        <div className="linha" style={{ marginLeft: 'auto', gap: 8 }}>
           <button
             type="button"
             onClick={desfazer}
             disabled={historico.length === 0}
             className="botao botao-secundario"
-            style={{ minHeight: 40, padding: '0 14px', fontSize: 13 }}
+            style={{ minHeight: 34, padding: '0 12px', fontSize: 12 }}
           >
             ↩ Desfazer
+          </button>
+          <button
+            type="button"
+            className="botao"
+            style={{ minHeight: 34, padding: '0 16px', fontSize: 12 }}
+            onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
+          >
+            Gerar vídeo
           </button>
         </div>
       </header>
 
-      {/* ---------- Área rolável ---------- */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-        {erro && (
-          <div className="aviso aviso-erro" role="alert">
-            {erro}
-          </div>
-        )}
-
-        {temRiscoAlto && (
-          <div className="aviso aviso-atencao">
-            Há trechos que podem mudar de sentido fora do contexto original.
-            Confira antes de finalizar.
-          </div>
-        )}
-
-        <Preview plan={plano} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} />
-
-        {/* Sequência de blocos, como o plano pede na seção 14.1. */}
-        <div style={{ marginTop: 20 }}>
-          <h2 style={{ fontSize: 13, color: 'var(--texto-suave)', marginBottom: 8 }}>
-            ESTRUTURA DO VÍDEO
-          </h2>
-          <div className="pilha">
-            {plano.clips.map((clipe, i) => {
-              const dur = (clipe.sourceEndMs - clipe.sourceStartMs) / 1000;
-              const ativo = clipe.id === selecionado;
-              return (
-                <button
-                  key={clipe.id}
-                  type="button"
-                  onClick={() => setSelecionado(ativo ? null : clipe.id)}
-                  className="cartao cartao-clicavel"
-                  style={{
-                    textAlign: 'left',
-                    marginBottom: 0,
-                    padding: 12,
-                    borderColor: ativo ? 'var(--azul)' : undefined,
-                    cursor: 'pointer',
-                    font: 'inherit',
-                    color: 'inherit',
-                    width: '100%',
-                  }}
-                >
-                  <div className="linha entre">
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>
-                      {i + 1}. {clipe.role}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
-                      {dur.toFixed(1)}s
-                    </span>
-                  </div>
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--texto-suave)',
-                      marginTop: 4,
-                      lineHeight: 1.4,
-                    }}
-                  >
-                    {clipe.reason}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+      {erro && (
+        <div
+          role="alert"
+          className="aviso aviso-erro"
+          style={{ margin: '10px 14px 0', flexShrink: 0 }}
+        >
+          {erro}
         </div>
+      )}
 
-        {selecionado && (
-          <div className="cartao" style={{ marginTop: 16, padding: 0 }}>
-            <PainelDoClipe
+      {/* ---------- Conteúdo | Timeline ---------- */}
+      <div style={{ flex: 1, minHeight: 0, padding: 10 }}>
+        <PainelRedimensionavel
+          direcao="vertical"
+          tamanhosIniciais={[65, 35]}
+          minimos={[30, 15]}
+          id="editor-vertical"
+        >
+          {/* Ferramentas | Preview | Propriedades */}
+          <PainelRedimensionavel
+            direcao="horizontal"
+            tamanhosIniciais={[24, 50, 26]}
+            minimos={[15, 30, 15]}
+            id="editor-horizontal"
+          >
+            <div className="cartao" style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}>
+              <PainelDeFerramentas
+                plan={plano}
+                selecionado={selecionado}
+                onSelecionar={setSelecionado}
+              />
+            </div>
+
+            <div
+              style={{
+                height: '100%',
+                display: 'grid',
+                placeItems: 'center',
+                padding: 10,
+                minWidth: 0,
+              }}
+            >
+              <Preview plan={plano} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} />
+            </div>
+
+            <div className="cartao" style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}>
+              <PainelDePropriedades
+                plan={plano}
+                clipId={selecionado}
+                onOperacao={executar}
+              />
+            </div>
+          </PainelRedimensionavel>
+
+          <div
+            className="cartao"
+            style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}
+          >
+            <Timeline
               plan={plano}
-              clipId={selecionado}
+              posicaoMs={posicaoMs}
+              onSeek={setPosicaoMs}
               onOperacao={executar}
-              onFechar={() => setSelecionado(null)}
+              clipeSelecionado={selecionado}
+              onSelecionar={setSelecionado}
             />
           </div>
-        )}
-
-        <button
-          type="button"
-          className="botao botao-largo"
-          style={{ marginTop: 20 }}
-          onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
-        >
-          Gerar vídeo
-        </button>
-      </div>
-
-      {/* ---------- Timeline ---------- */}
-      <div style={{ flexShrink: 0, borderTop: '1px solid var(--borda)' }}>
-        <Timeline
-          plan={plano}
-          posicaoMs={posicaoMs}
-          onSeek={setPosicaoMs}
-          onOperacao={executar}
-          clipeSelecionado={selecionado}
-          onSelecionar={setSelecionado}
-        />
+        </PainelRedimensionavel>
       </div>
     </div>
   );
