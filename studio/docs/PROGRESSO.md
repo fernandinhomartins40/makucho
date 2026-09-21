@@ -13,7 +13,7 @@
 | 1 | Plataforma base | **concluída** |
 | 2 | Brand e Communication Studio | **contratos e API** |
 | 3 | Script e Record Studio | **contratos, API e teleprompter** |
-| 4 | Ingestão e transcrição | **contratos prontos**; workers pendentes |
+| 4 | Ingestão e transcrição | **contratos + núcleo dos workers**; falta ligar a fila |
 | 5 | Inteligência editorial | pendente |
 | 6 | Preview e composição | pendente |
 | 7 | Render e entrega | pendente |
@@ -98,10 +98,26 @@ As tabelas já existem no schema (`brand_profiles`, `caption_styles`, `assets`,
 
 ---
 
-## Fases 3 a 8 — pendentes
+## Fase 4 — Ingestão e transcrição — EM CONSTRUÇÃO
 
-Sem código ainda. Os diretórios dos workers existem vazios; o workflow detecta
-isso e sobe o stack sem eles (perfil `workers` no compose).
+| Entregável | Estado |
+|---|---|
+| Contratos (upload, proxy, silêncios, transcrição) | feito — 32 testes |
+| Lock global de job pesado | feito — 18 testes |
+| Temporários com limpeza garantida | feito — 21 testes |
+| FFmpeg: proxy, áudio, thumbnail, silêncios | feito — 13 testes |
+| Worker de mídia (consumidor da fila) | pendente |
+| Worker de transcrição (faster-whisper) | pendente |
+| Upload resumível e sessão autorizada | pendente |
+
+O núcleo (`@makucho/studio-worker-core`) traz as duas contenções que o ADR
+0003 exige para processar vídeo numa VPS compartilhada: o lock que serializa
+jobs pesados e o diretório temporário que se limpa sozinho.
+
+## Fases 5 a 8 — pendentes
+
+A 6 ganhou a timeline antecipada (ADR 0008), já pronta e no ar em
+`/editor`.
 
 ---
 
