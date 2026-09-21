@@ -1,29 +1,42 @@
 'use client';
 
 // ============================================================
-// Gravação — teleprompter com verificação de dispositivos.
+// Gravação — teleprompter, câmera e envio (ADR 0010, Fase 4a).
 //
-// O guia pede: preview da câmera à esquerda, roteiro segmentado à
-// direita, verificação de câmera e microfone ANTES de gravar, e modo
-// foco depois que começa.
+// A tela tem quatro momentos, e cada um mostra o que cabe nele:
 //
-// A verificação prévia existe porque descobrir que o microfone
-// estava mudo depois de gravar oito minutos é o tipo de erro que
-// custa a gravação inteira.
+//   verificar  câmera e microfone, ANTES de gravar — descobrir que o
+//              microfone estava mudo depois de oito minutos custa a
+//              gravação inteira;
+//   gravar     teleprompter em foco, controles fora do caminho;
+//   revisar    assistir antes de enviar, porque a primeira tomada
+//              quase nunca é a boa;
+//   enviar     progresso real, com a opção de regravar até o fim.
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Topbar } from '../../components/shell/Topbar';
+import { useGravacao } from '../../lib/useGravacao';
+import { enviar, duracaoDe, validar, formatarBytes } from '../../lib/upload';
+import { projetos as apiProjetos, roteiros as apiRoteiros } from '../../lib/api';
 import {
   IconeCamera,
   IconeMicrofone,
   IconeConfiguracoes,
-  IconeSair,
   IconeCheck,
   IconeAviso,
   IconeAvancar,
+  IconeVoltar,
   IconeTexto,
   IconeRelogio,
+  IconeGravar,
+  IconePausar,
+  IconeTocar,
+  IconeLixeira,
+  IconeEnviar,
+  IconeRoteiro,
 } from '../../components/icones';
 
 interface BlocoDoRoteiro {
@@ -32,29 +45,38 @@ interface BlocoDoRoteiro {
   texto: string;
 }
 
-// Exemplo da seção 7 do contexto mestre. Vem da API quando a tela de
-// roteiros estiver ligada.
-const ROTEIRO: BlocoDoRoteiro[] = [
+const ROTULO: Record<string, string> = {
+  HOOK: 'Hook',
+  PROBLEM: 'Problema',
+  AUTHORITY: 'Autoridade',
+  CTA: 'CTA',
+  CONTEXT: 'Contexto',
+  SOLUTION: 'Solução',
+};
+
+// Exemplo da seção 7 do contexto mestre, usado quando o projeto não
+// tem roteiro associado.
+const ROTEIRO_PADRAO: BlocoDoRoteiro[] = [
   {
-    role: 'hook',
+    role: 'HOOK',
     rotulo: 'Hook',
     texto:
       'Se sua empresa demora para responder no WhatsApp, você pode estar pagando para perder cliente.',
   },
   {
-    role: 'problem',
+    role: 'PROBLEM',
     rotulo: 'Problema',
     texto:
       'Muitas empresas investem em anúncio, conseguem gerar interesse e perdem a venda justamente no atendimento.',
   },
   {
-    role: 'authority',
+    role: 'AUTHORITY',
     rotulo: 'Autoridade',
     texto:
       'Eu vejo isso constantemente quando analiso processos comerciais de pequenas empresas.',
   },
   {
-    role: 'cta',
+    role: 'CTA',
     rotulo: 'CTA',
     texto: 'Salva este vídeo e verifica esses três pontos no seu atendimento hoje.',
   },
@@ -63,17 +85,36 @@ const ROTEIRO: BlocoDoRoteiro[] = [
 type EstadoDosDispositivos = 'verificando' | 'prontos' | 'negado' | 'ausente';
 
 export default function GravarPage() {
+  return (
+    <Suspense fallback={<div className="conteudo" />}>
+      <Gravar />
+    </Suspense>
+  );
+}
+
+function Gravar() {
+  const router = useRouter();
+  const parametros = useSearchParams();
+  const projetoDaUrl = parametros.get('projeto');
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const fluxoRef = useRef<MediaStream | null>(null);
 
+  const [fluxo, setFluxo] = useState<MediaStream | null>(null);
   const [dispositivos, setDispositivos] = useState<EstadoDosDispositivos>('verificando');
   const [erroDeAcesso, setErroDeAcesso] = useState<string | null>(null);
-  const [gravando, setGravando] = useState(false);
-  const [segundos, setSegundos] = useState(0);
+
+  const [roteiro, setRoteiro] = useState<BlocoDoRoteiro[]>(ROTEIRO_PADRAO);
   const [bloco, setBloco] = useState(0);
   const [tamanhoDoTexto, setTamanhoDoTexto] = useState(28);
-  const [velocidade, setVelocidade] = useState(1);
-  const [contagem, setContagem] = useState(true);
+  const [comContagem, setComContagem] = useState(true);
+
+  const [enviando, setEnviando] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [erroDeEnvio, setErroDeEnvio] = useState<string | null>(null);
+
+  const gravacao = useGravacao(fluxo);
+  const gravando = gravacao.estado === 'gravando' || gravacao.estado === 'pausado';
 
   // ---------- Câmera e microfone ----------
   useEffect(() => {
@@ -81,18 +122,19 @@ export default function GravarPage() {
 
     async function pedirAcesso() {
       try {
-        const fluxo = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
+        const obtido = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: { echoCancellation: true, noiseSuppression: true },
         });
 
         if (cancelado) {
-          fluxo.getTracks().forEach((t) => t.stop());
+          obtido.getTracks().forEach((t) => t.stop());
           return;
         }
 
-        fluxoRef.current = fluxo;
-        if (videoRef.current) videoRef.current.srcObject = fluxo;
+        fluxoRef.current = obtido;
+        setFluxo(obtido);
+        if (videoRef.current) videoRef.current.srcObject = obtido;
         setDispositivos('prontos');
       } catch (e) {
         if (cancelado) return;
@@ -126,68 +168,167 @@ export default function GravarPage() {
     };
   }, []);
 
-  // ---------- Cronômetro ----------
+  // ---------- Roteiro do projeto ----------
   useEffect(() => {
-    if (!gravando) return;
-    const id = setInterval(() => setSegundos((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [gravando]);
+    if (!projetoDaUrl) return;
+
+    void apiProjetos
+      .obter(projetoDaUrl)
+      .then(async (projeto) => {
+        const scriptId = (projeto as { script?: { id: string } }).script?.id;
+        if (!scriptId) return;
+
+        const roteiroDoProjeto = await apiRoteiros.obter(scriptId);
+        if (roteiroDoProjeto.blocks?.length) {
+          setRoteiro(
+            roteiroDoProjeto.blocks.map((b) => ({
+              role: b.role,
+              rotulo: ROTULO[b.role] ?? b.role,
+              texto: b.text,
+            })),
+          );
+        }
+      })
+      // O roteiro é um apoio: não conseguir carregá-lo não impede
+      // gravar, então a falha fica silenciosa e o padrão vale.
+      .catch(() => undefined);
+  }, [projetoDaUrl]);
 
   // ---------- Teclado ----------
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
-        setBloco((b) => Math.min(ROTEIRO.length - 1, b + 1));
+        setBloco((b) => Math.min(roteiro.length - 1, b + 1));
       }
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         setBloco((b) => Math.max(0, b - 1));
       }
     };
+
     window.addEventListener('keydown', aoTeclar);
     return () => window.removeEventListener('keydown', aoTeclar);
-  }, []);
+  }, [roteiro.length]);
 
-  const alternarGravacao = useCallback(() => {
-    if (gravando) {
-      setGravando(false);
-      return;
+  // ---------- Envio ----------
+  const enviarGravacao = useCallback(async () => {
+    if (!gravacao.resultado) return;
+
+    setEnviando(true);
+    setErroDeEnvio(null);
+    setProgresso(0);
+
+    try {
+      // Sem projeto na URL, cria um: quem chegou direto em /gravar
+      // não deveria precisar voltar para criar antes.
+      const projectId =
+        projetoDaUrl ??
+        (await apiProjetos.criar({ title: `Gravação de ${new Date().toLocaleDateString('pt-BR')}` }))
+          .id;
+
+      const duracaoMs = (await duracaoDe(gravacao.resultado)) ?? gravacao.segundos * 1000;
+
+      await enviar({
+        projectId,
+        arquivo: gravacao.resultado,
+        nome: `gravacao.${gravacao.mimeType.includes('mp4') ? 'mp4' : 'webm'}`,
+        mimeType: gravacao.mimeType.split(';')[0] ?? 'video/webm',
+        duracaoMs,
+        onProgresso: (p) => setProgresso(p.percentual),
+      });
+
+      router.push('/');
+    } catch (e) {
+      setErroDeEnvio(
+        e instanceof Error ? e.message : 'não foi possível enviar a gravação.',
+      );
+      setEnviando(false);
     }
-    setSegundos(0);
-    setBloco(0);
-    setGravando(true);
-  }, [gravando]);
+  }, [gravacao.resultado, gravacao.mimeType, gravacao.segundos, projetoDaUrl, router]);
 
-  const tempo = `${Math.floor(segundos / 60)
+  // ---------- Envio de arquivo ----------
+  const enviarArquivo = useCallback(
+    async (arquivo: File) => {
+      const problema = await validar(arquivo);
+      if (problema) {
+        setErroDeEnvio(problema);
+        return;
+      }
+
+      setEnviando(true);
+      setErroDeEnvio(null);
+      setProgresso(0);
+
+      try {
+        const projectId =
+          projetoDaUrl ?? (await apiProjetos.criar({ title: arquivo.name })).id;
+
+        await enviar({
+          projectId,
+          arquivo,
+          nome: arquivo.name,
+          mimeType: arquivo.type,
+          duracaoMs: (await duracaoDe(arquivo)) ?? undefined,
+          onProgresso: (p) => setProgresso(p.percentual),
+        });
+
+        router.push('/');
+      } catch (e) {
+        setErroDeEnvio(e instanceof Error ? e.message : 'não foi possível enviar o vídeo.');
+        setEnviando(false);
+      }
+    },
+    [projetoDaUrl, router],
+  );
+
+  const tempo = `${Math.floor(gravacao.segundos / 60)
     .toString()
-    .padStart(2, '0')}:${(segundos % 60).toString().padStart(2, '0')}`;
+    .padStart(2, '0')}:${(gravacao.segundos % 60).toString().padStart(2, '0')}`;
 
   const selo =
-    dispositivos === 'prontos'
-      ? { texto: gravando ? 'Gravando' : 'Pronto para gravar', tom: 'sucesso' as const }
-      : dispositivos === 'verificando'
-        ? { texto: 'Verificando dispositivos…', tom: 'info' as const }
-        : { texto: 'Dispositivo indisponível', tom: 'aviso' as const };
+    gravacao.estado === 'revisando'
+      ? { texto: 'Grave revisada', tom: 'sucesso' as const }
+      : gravando
+        ? { texto: 'Gravando', tom: 'aviso' as const }
+        : dispositivos === 'prontos'
+          ? { texto: 'Pronto para gravar', tom: 'sucesso' as const }
+          : dispositivos === 'verificando'
+            ? { texto: 'Verificando dispositivos…', tom: 'info' as const }
+            : { texto: 'Dispositivo indisponível', tom: 'aviso' as const };
 
   return (
     <>
-      <Topbar trilha={['Projetos', 'Atendimento no WhatsApp']} selo={selo}>
-        <button type="button" className="botao botao--fantasma botao--pequeno">
+      <Topbar trilha={['Projetos', 'Nova gravação']} selo={selo}>
+        <button type="button" className="botao botao--fantasma botao--pequeno" disabled={gravando}>
           <IconeConfiguracoes size={18} />
           Configurações
         </button>
-        <button type="button" className="botao botao--fantasma botao--pequeno">
-          <IconeSair size={18} />
+        <Link href="/" className="botao botao--fantasma botao--pequeno">
+          <IconeVoltar size={18} />
           Sair
-        </button>
+        </Link>
       </Topbar>
 
-      <div className="conteudo" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--e4)' }}>
+      <div
+        className="conteudo"
+        style={{ display: 'flex', flexDirection: 'column', gap: 'var(--e4)' }}
+      >
         {erroDeAcesso && (
           <div className="aviso aviso--atencao" role="alert">
             <IconeAviso size={18} />
             <span>{erroDeAcesso}</span>
+          </div>
+        )}
+
+        {erroDeEnvio && (
+          <div className="aviso aviso--erro" role="alert">
+            <IconeAviso size={18} />
+            <span>{erroDeEnvio}</span>
           </div>
         )}
 
@@ -211,41 +352,53 @@ export default function GravarPage() {
               minHeight: 380,
             }}
           >
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            {gravacao.estado === 'revisando' && gravacao.urlDaPrevia ? (
+              <video
+                src={gravacao.urlDaPrevia}
+                controls
+                playsInline
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            )}
 
-            {/* Área segura: o que sobrevive ao corte 9:16. Enquadrar
-                fora dela significa perder o rosto no resultado. */}
-            <div
-              aria-hidden
-              style={{
-                position: 'absolute',
-                inset: '10% 18%',
-                border: '1px dashed rgb(255 255 255 / 35%)',
-                borderRadius: 6,
-                pointerEvents: 'none',
-              }}
-            />
-            <span
-              style={{
-                position: 'absolute',
-                bottom: 'var(--e4)',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                padding: '5px 12px',
-                borderRadius: 999,
-                background: 'rgb(6 19 45 / 78%)',
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-              }}
-            >
-              Área segura para o vídeo
-            </span>
+            {gravacao.estado !== 'revisando' && (
+              <>
+                {/* Área segura: o que sobrevive ao corte 9:16. */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    inset: '10% 18%',
+                    border: '1px dashed rgb(255 255 255 / 35%)',
+                    borderRadius: 6,
+                    pointerEvents: 'none',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    bottom: 'var(--e4)',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    padding: '5px 12px',
+                    borderRadius: 999,
+                    background: 'rgb(4 23 53 / 82%)',
+                    fontSize: 12,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Área segura para o vídeo
+                </span>
+              </>
+            )}
 
             {gravando && (
               <div
@@ -259,268 +412,292 @@ export default function GravarPage() {
                   gap: 8,
                   padding: '6px 12px',
                   borderRadius: 999,
-                  background: 'rgb(255 77 94 / 92%)',
-                  fontSize: 13,
-                  fontWeight: 600,
+                  background: 'rgb(4 23 53 / 85%)',
                 }}
               >
                 <span
                   aria-hidden
                   style={{
-                    width: 8,
-                    height: 8,
+                    width: 9,
+                    height: 9,
                     borderRadius: '50%',
-                    background: '#fff',
-                    animation: 'pulsar 1.4s infinite',
+                    background: 'var(--danger)',
+                    animation:
+                      gravacao.estado === 'gravando' ? 'pulsar 1.4s infinite' : undefined,
                   }}
                 />
-                REC {tempo}
+                <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                  {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
+                </span>
+              </div>
+            )}
+
+            {/* Contagem regressiva sobre a câmera, grande o bastante
+                para ser vista de longe — quem grava está a um braço
+                de distância da tela. */}
+            {gravacao.estado === 'contando' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  background: 'rgb(4 23 53 / 55%)',
+                  fontSize: 96,
+                  fontWeight: 800,
+                }}
+                role="status"
+                aria-live="assertive"
+              >
+                {gravacao.contagem || 'Já!'}
               </div>
             )}
           </section>
 
           {/* ---------- Roteiro ---------- */}
-          <section className="painel">
-            <div className="painel__cabecalho">
-              <IconeTexto size={18} />
-              <h2 style={{ fontSize: 15 }}>Roteiro</h2>
-              <span className="texto-secundario auto" style={{ fontSize: 12 }}>
-                {ROTEIRO.length} blocos
+          <section className="cartao" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="linha entre" style={{ marginBottom: 'var(--e3)' }}>
+              <h2 className="linha" style={{ gap: 'var(--e2)' }}>
+                <IconeRoteiro size={18} />
+                Roteiro
+              </h2>
+              <span className="texto-secundario" style={{ fontSize: 13 }}>
+                {roteiro.length} blocos
               </span>
             </div>
 
-            {/* Abas dos blocos: dá para pular sem sair da tela. */}
-            <div
-              role="tablist"
-              aria-label="Blocos do roteiro"
-              style={{
-                display: 'flex',
-                gap: 6,
-                padding: 'var(--e3)',
-                borderBottom: '1px solid var(--border)',
-                overflowX: 'auto',
-              }}
-            >
-              {ROTEIRO.map((b, i) => (
+            <div className="linha" style={{ gap: 'var(--e2)', marginBottom: 'var(--e4)' }}>
+              {roteiro.map((b, i) => (
                 <button
-                  key={b.role}
-                  role="tab"
-                  aria-selected={i === bloco}
+                  key={i}
+                  type="button"
+                  className={`botao botao--pequeno ${i === bloco ? '' : 'botao--secundario'}`}
                   onClick={() => setBloco(i)}
-                  className="linha"
-                  style={{
-                    gap: 6,
-                    minHeight: 36,
-                    padding: '0 14px',
-                    borderRadius: 999,
-                    border: '1px solid',
-                    borderColor: i === bloco ? 'var(--primary)' : 'var(--border)',
-                    background: i === bloco ? 'var(--primary)' : 'transparent',
-                    color: i === bloco ? '#fff' : 'var(--text-secondary)',
-                    fontSize: 13,
-                    fontWeight: i === bloco ? 600 : 400,
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={{ flex: 1 }}
                 >
-                  <span
-                    aria-hidden
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: i === bloco ? '#fff' : 'var(--text-secondary)',
-                    }}
-                  />
                   {b.rotulo}
                 </button>
               ))}
             </div>
 
-            <div className="painel__corpo" style={{ padding: 'var(--e5)' }}>
-              {/* A frase atual em destaque; o resto do bloco continua
-                  visível com menos ênfase, como o guia pede. */}
-              <p
-                style={{
-                  fontSize: tamanhoDoTexto,
-                  lineHeight: 1.45,
-                  fontWeight: 500,
-                }}
-              >
-                <mark
-                  style={{
-                    background: 'var(--primary)',
-                    color: '#fff',
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    boxDecorationBreak: 'clone',
-                    WebkitBoxDecorationBreak: 'clone',
-                  }}
-                >
-                  {ROTEIRO[bloco]?.texto.split(' ').slice(0, 5).join(' ')}
-                </mark>{' '}
-                {ROTEIRO[bloco]?.texto.split(' ').slice(5).join(' ')}
-              </p>
+            <div
+              className="crescer"
+              style={{
+                padding: 'var(--e4)',
+                borderRadius: 'var(--r-cartao)',
+                background: 'var(--surface-2)',
+                fontSize: tamanhoDoTexto,
+                lineHeight: 1.45,
+                fontWeight: 600,
+                overflowY: 'auto',
+              }}
+            >
+              {roteiro[bloco]?.texto}
             </div>
 
-            <div
-              className="linha entre"
-              style={{ padding: 'var(--e3) var(--e4)', borderTop: '1px solid var(--border)' }}
-            >
-              <span className="texto-secundario" style={{ fontSize: 12 }}>
-                {bloco + 1} / {ROTEIRO.length}
+            <div className="linha entre" style={{ marginTop: 'var(--e3)' }}>
+              <span className="texto-secundario" style={{ fontSize: 13 }}>
+                {bloco + 1} / {roteiro.length}
               </span>
-              <button
-                type="button"
-                className="botao botao--fantasma botao--pequeno"
-                onClick={() => setBloco((b) => Math.min(ROTEIRO.length - 1, b + 1))}
-                disabled={bloco === ROTEIRO.length - 1}
-              >
+              <span className="linha texto-secundario" style={{ gap: 4, fontSize: 13 }}>
                 Use as setas ou o espaço para avançar
                 <IconeAvancar size={14} />
-              </button>
+              </span>
             </div>
           </section>
         </div>
 
         {/* ---------- Controles ---------- */}
-        <section
-          className="cartao linha"
-          style={{ gap: 'var(--e3)', flexWrap: 'wrap', padding: 'var(--e3) var(--e4)' }}
-        >
-          <Controle icone={<IconeCamera size={18} />} rotulo="Câmera" valor="Padrão do sistema" />
-          <Controle icone={<IconeMicrofone size={18} />} rotulo="Microfone" valor="Padrão do sistema" />
+        <section className="cartao linha" style={{ gap: 'var(--e4)', flexWrap: 'wrap' }}>
+          {gravacao.estado === 'revisando' ? (
+            <>
+              <span className="linha crescer" style={{ gap: 'var(--e2)' }}>
+                <IconeCheck size={18} color="var(--success)" />
+                <span>
+                  Gravação de {tempo}
+                  {gravacao.resultado && (
+                    <span className="texto-secundario">
+                      {' '}
+                      · {formatarBytes(gravacao.resultado.size)}
+                    </span>
+                  )}
+                </span>
+              </span>
 
-          <label className="linha" style={{ gap: 8 }}>
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              Velocidade
-            </span>
-            <select
-              className="campo__selecao"
-              value={velocidade}
-              onChange={(e) => setVelocidade(Number(e.target.value))}
-              style={{ width: 86, minHeight: 40, fontSize: 13 }}
-            >
-              {[0.8, 1, 1.2, 1.5].map((v) => (
-                <option key={v} value={v}>
-                  {v.toFixed(1).replace('.', ',')}×
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="linha" style={{ gap: 8 }}>
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              Tamanho
-            </span>
-            <input
-              type="range"
-              min={18}
-              max={48}
-              value={tamanhoDoTexto}
-              onChange={(e) => setTamanhoDoTexto(Number(e.target.value))}
-              aria-label="Tamanho do texto do teleprompter"
-              style={{ width: 96 }}
-            />
-          </label>
-
-          <label className="linha" style={{ gap: 8, cursor: 'pointer' }}>
-            <IconeRelogio size={16} />
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              Contagem
-            </span>
-            <input
-              type="checkbox"
-              checked={contagem}
-              onChange={(e) => setContagem(e.target.checked)}
-              style={{ width: 18, height: 18 }}
-            />
-          </label>
-
-          <div className="linha auto" style={{ gap: 'var(--e3)' }}>
-            <button
-              type="button"
-              onClick={alternarGravacao}
-              disabled={dispositivos !== 'prontos'}
-              className="linha"
-              style={{
-                gap: 10,
-                minHeight: 52,
-                padding: '0 22px',
-                borderRadius: 999,
-                border: 'none',
-                background: gravando ? 'var(--surface-2)' : 'var(--danger)',
-                color: dispositivos === 'prontos' ? '#fff' : 'var(--text-secondary)',
-                fontSize: 15,
-                fontWeight: 600,
-                cursor: dispositivos === 'prontos' ? 'pointer' : 'not-allowed',
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: gravando ? 3 : '50%',
-                  background: gravando ? 'var(--danger)' : '#fff',
-                  transition: 'border-radius var(--transicao)',
-                }}
-              />
-              {gravando ? 'Finalizar' : 'Gravar'}
-            </button>
-
-            {/* Estado dos dispositivos com ícone e texto, não só cor. */}
-            <span
-              className={`selo selo--${dispositivos === 'prontos' ? 'sucesso' : 'aviso'}`}
-              role="status"
-            >
-              {dispositivos === 'prontos' ? (
-                <IconeCheck size={13} weight="bold" />
+              {enviando ? (
+                <span className="linha" style={{ gap: 'var(--e3)', minWidth: 260 }}>
+                  <div
+                    className="barra crescer"
+                    role="progressbar"
+                    aria-valuenow={progresso}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Progresso do envio"
+                  >
+                    <div className="barra__preenchida" style={{ width: `${progresso}%` }} />
+                  </div>
+                  <span
+                    className="texto-secundario"
+                    style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {progresso}%
+                  </span>
+                </span>
               ) : (
-                <IconeAviso size={13} />
+                <>
+                  {/* Regravar vem ANTES de enviar: a primeira tomada
+                      quase nunca é a boa, e o caminho de volta precisa
+                      ser mais fácil que o de frente. */}
+                  <button
+                    type="button"
+                    className="botao botao--secundario"
+                    onClick={gravacao.descartar}
+                  >
+                    <IconeLixeira size={16} />
+                    Regravar
+                  </button>
+                  <button type="button" className="botao" onClick={enviarGravacao}>
+                    <IconeEnviar size={16} />
+                    Enviar para edição
+                  </button>
+                </>
               )}
-              {dispositivos === 'prontos'
-                ? 'Câmera e microfone prontos'
-                : dispositivos === 'verificando'
-                  ? 'Verificando…'
-                  : 'Indisponível'}
+            </>
+          ) : (
+            <>
+              <Seletor Icone={IconeCamera} rotulo="Câmera" valor="Padrão do sistema" />
+              <Seletor Icone={IconeMicrofone} rotulo="Microfone" valor="Padrão do sistema" />
+
+              <label className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
+                <IconeTexto size={16} />
+                Tamanho
+                <input
+                  type="range"
+                  className="deslizante"
+                  style={{ width: 90 }}
+                  min={18}
+                  max={44}
+                  value={tamanhoDoTexto}
+                  aria-label="Tamanho do texto do teleprompter"
+                  onChange={(e) => setTamanhoDoTexto(Number(e.target.value))}
+                />
+              </label>
+
+              <label className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
+                <IconeRelogio size={16} />
+                Contagem
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={comContagem}
+                  aria-label="Contagem regressiva antes de gravar"
+                  className="chave"
+                  onClick={() => setComContagem((v) => !v)}
+                  disabled={gravando}
+                >
+                  <span className="chave__bola" aria-hidden />
+                </button>
+              </label>
+
+              <span className="auto linha" style={{ gap: 'var(--e3)' }}>
+                {gravando && (
+                  <button
+                    type="button"
+                    className="botao botao--secundario"
+                    onClick={
+                      gravacao.estado === 'pausado' ? gravacao.retomar : gravacao.pausar
+                    }
+                  >
+                    {gravacao.estado === 'pausado' ? (
+                      <>
+                        <IconeTocar size={16} weight="fill" />
+                        Retomar
+                      </>
+                    ) : (
+                      <>
+                        <IconePausar size={16} weight="fill" />
+                        Pausar
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="botao"
+                  disabled={dispositivos !== 'prontos' || gravacao.estado === 'contando'}
+                  onClick={() => (gravando ? gravacao.parar() : gravacao.iniciar(comContagem))}
+                  style={{
+                    background: gravando ? 'var(--danger)' : undefined,
+                    minWidth: 150,
+                  }}
+                >
+                  <IconeGravar size={18} weight="fill" />
+                  {gravando ? 'Parar' : 'Gravar'}
+                </button>
+
+                {/* O outro caminho do ADR 0010, ao lado do primeiro:
+                    quem já tem o vídeo no computador não precisa
+                    regravar para usar a ferramenta. */}
+                <label className="botao botao--secundario" style={{ cursor: 'pointer' }}>
+                  <IconeEnviar size={16} />
+                  Enviar arquivo
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo"
+                    style={{ display: 'none' }}
+                    disabled={gravando || enviando}
+                    onChange={(e) => {
+                      const arquivo = e.target.files?.[0];
+                      if (arquivo) void enviarArquivo(arquivo);
+                    }}
+                  />
+                </label>
+              </span>
+            </>
+          )}
+        </section>
+
+        {enviando && gravacao.estado !== 'revisando' && (
+          <div className="cartao linha" style={{ gap: 'var(--e3)' }}>
+            <div
+              className="barra crescer"
+              role="progressbar"
+              aria-valuenow={progresso}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Progresso do envio"
+            >
+              <div className="barra__preenchida" style={{ width: `${progresso}%` }} />
+            </div>
+            <span className="texto-secundario" style={{ fontSize: 13 }}>
+              Enviando… {progresso}%
             </span>
           </div>
-        </section>
+        )}
       </div>
     </>
   );
 }
 
-function Controle({
-  icone,
+function Seletor({
+  Icone,
   rotulo,
   valor,
 }: {
-  icone: React.ReactNode;
+  Icone: typeof IconeCamera;
   rotulo: string;
   valor: string;
 }) {
   return (
-    <div
-      className="linha"
-      style={{
-        gap: 8,
-        padding: '8px 12px',
-        borderRadius: 'var(--r-controle)',
-        border: '1px solid var(--border)',
-        background: 'var(--bg-canvas)',
-      }}
-    >
-      <span aria-hidden style={{ color: 'var(--text-secondary)', display: 'flex' }}>
-        {icone}
-      </span>
-      <div style={{ lineHeight: 1.2 }}>
-        <div className="texto-secundario" style={{ fontSize: 11 }}>
+    <span className="linha" style={{ gap: 'var(--e2)' }}>
+      <Icone size={18} />
+      <span style={{ lineHeight: 1.2 }}>
+        <span className="texto-secundario" style={{ fontSize: 11, display: 'block' }}>
           {rotulo}
-        </div>
-        <div style={{ fontSize: 12 }}>{valor}</div>
-      </div>
-    </div>
+        </span>
+        <span style={{ fontSize: 13 }}>{valor}</span>
+      </span>
+    </span>
   );
 }
