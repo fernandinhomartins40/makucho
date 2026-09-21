@@ -97,6 +97,22 @@ export default function ProjetosPage() {
     }
   };
 
+  const reprocessar = async (id: string) => {
+    // Otimista como o arquivar: o estado muda na hora para que o
+    // clique tenha resposta visível, e volta se o servidor recusar.
+    const antes = lista;
+    definir(lista.map((p) => (p.id === id ? { ...p, state: 'INGESTING', publicError: null } : p)));
+    try {
+      const atualizado = await apiProjetos.reprocessar(id);
+      // `definir` recebe valor, não função: parte de `antes` para não
+      // depender do estado otimista que acabou de ser aplicado.
+      definir(antes.map((p) => (p.id === id ? atualizado : p)));
+    } catch (e) {
+      definir(antes);
+      setErroDeAcao(e instanceof Error ? e.message : 'não foi possível tentar de novo.');
+    }
+  };
+
   return (
     <>
       <Topbar busca onBuscar={setBusca}>
@@ -261,6 +277,7 @@ export default function ProjetosPage() {
                     key={projeto.id}
                     projeto={projeto}
                     onArquivar={() => arquivar(projeto.id)}
+                    onReprocessar={() => reprocessar(projeto.id)}
                   />
                 ))}
               </div>
@@ -376,9 +393,11 @@ function Esqueletos() {
 function CartaoDeProjeto({
   projeto,
   onArquivar,
+  onReprocessar,
 }: {
   projeto: Projeto;
   onArquivar: () => void;
+  onReprocessar: () => void;
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const estado = ROTULO_DE_ESTADO[projeto.state as ProjectState];
@@ -489,13 +508,34 @@ function CartaoDeProjeto({
       {/* A falha fica no cartão, não escondida: projeto parado sem
           explicação é o pior estado possível. */}
       {projeto.publicError && (
-        <p
-          className="linha"
-          style={{ gap: 4, fontSize: 12, color: 'var(--warning)', marginTop: 'var(--e2)' }}
-        >
-          <IconeAviso size={13} />
-          {projeto.publicError}
-        </p>
+        <div style={{ marginTop: 'var(--e2)' }}>
+          <p
+            className="linha"
+            style={{ gap: 4, fontSize: 12, color: 'var(--warning)' }}
+          >
+            <IconeAviso size={13} />
+            {projeto.publicError}
+          </p>
+
+          {/* O estado já dizia "dá para tentar de novo"; sem este botão
+              a frase era só uma descrição de um beco sem saída. */}
+          {projeto.state === 'FAILED_RETRYABLE' && (
+            <button
+              type="button"
+              className="botao botao--secundario"
+              style={{ marginTop: 'var(--e2)', width: '100%', fontSize: 12 }}
+              onClick={(e) => {
+                // O cartão inteiro é um link para o editor: sem isto,
+                // tentar de novo também navegaria para fora da tela.
+                e.preventDefault();
+                e.stopPropagation();
+                onReprocessar();
+              }}
+            >
+              Tentar de novo
+            </button>
+          )}
+        </div>
       )}
     </article>
   );

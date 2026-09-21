@@ -15,10 +15,10 @@
 //     50 GB de intermediários no disco de 10 GB.
 // ============================================================
 
-import { Worker, type Job } from 'bullmq';
+import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
-import { FILA_MIDIA, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
+import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -52,6 +52,20 @@ const prisma = new PrismaClient();
 // bloqueante: sem isso o ioredis aborta a espera e o worker fica
 // surdo para a fila.
 const redis = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+
+// Este worker também PRODUZ: ao terminar, passa o bastão para a
+// transcrição. O prefixo tem de ser o mesmo da API e do consumidor —
+// divergir aqui manda o job para uma fila que ninguém escuta.
+const filaDeTranscricao = new Queue(FILA_TRANSCRICAO, {
+  connection: redis,
+  prefix: PREFIXO_DAS_FILAS,
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: { type: 'exponential', delay: 30_000 },
+    removeOnComplete: 100,
+    removeOnFail: 500,
+  },
+});
 
 /** Caminho absoluto de uma chave, conferido contra a raiz. */
 function caminhoDe(chave: string): string {
@@ -195,6 +209,33 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
     data: { state: 'TRANSCRIBING', publicError: null },
   });
 
+  // Enfileirar aqui, e não na API, porque só neste ponto o áudio
+  // existe no storage. Enquanto este passo não existiu, todo projeto
+  // ficava preso em TRANSCRIBING para sempre: o estado dizia que a
+  // transcrição tinha começado e nada a havia pedido.
+  //
+  // Uma falha ao enfileirar NÃO invalida o trabalho já feito — proxy,
+  // thumbnail e áudio estão no disco. Vira estado recuperável, com
+  // mensagem que diz o que fazer.
+  try {
+    await filaDeTranscricao.add(
+      'transcrever',
+      { projectId, mediaSourceId },
+      // O mesmo jobId da API: uma retentativa do job de mídia não
+      // produz duas transcrições do mesmo áudio disputando o lock.
+      { jobId: `transcricao-${mediaSourceId}` },
+    );
+  } catch (e) {
+    console.error(`[midia] falha ao enfileirar transcrição do projeto ${projectId}:`, e);
+    await prisma.project.update({
+      where: { id: projectId },
+      data: {
+        state: 'FAILED_RETRYABLE',
+        publicError: 'O vídeo foi preparado, mas a transcrição não pôde começar. Tente novamente.',
+      },
+    });
+  }
+
   await job.updateProgress(100);
 }
 
@@ -289,6 +330,7 @@ for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     clearInterval(pulso);
     void worker
       .close()
+      .then(() => filaDeTranscricao.close())
       .then(() => prisma.$disconnect())
       .then(() => redis.quit())
       .then(() => process.exit(0));

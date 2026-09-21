@@ -40,6 +40,14 @@ export class ProjectsController {
     return this.projects.atualizar(tenant, id, projectPatchSchema.parse(body));
   }
 
+  // A tela diz "Falhou — dá para tentar de novo" desde o redesenho.
+  // Esta rota é o que torna a frase verdadeira.
+  @Post(':id/retry')
+  reprocessar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertCanWrite(tenant);
+    return this.projects.reprocessar(tenant, id);
+  }
+
   // Arquiva em vez de apagar: a gravacao pode ser a unica copia que a
   // pessoa tem, e um clique errado nao deve destrui-la.
   @Delete(':id')

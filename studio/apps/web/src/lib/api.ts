@@ -104,6 +104,9 @@ export const projetos = {
   atualizar: (id: string, dados: Partial<{ title: string; objective: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
   arquivar: (id: string) => api<Projeto>(`/projects/${id}`, { metodo: 'DELETE' }),
+  // Recomeça o processamento do ponto mais adiantado que já tem
+  // insumo pronto; quem decide isso é o servidor.
+  reprocessar: (id: string) => api<Projeto>(`/projects/${id}/retry`, { metodo: 'POST' }),
 };
 
 // ============================================================

@@ -292,6 +292,11 @@ services:
         target: /tmp/studio
         tmpfs:
           size: 1g
+          # 1001 e o uid do usuario "worker" na imagem. A montagem
+          # apaga o mkdir do Dockerfile, entao sem isto o processo nao
+          # escreve nem o heartbeat -- e o container fica unhealthy
+          # mesmo consumindo a fila normalmente.
+          mode: 0o1777
     # Medido no host (2026-09-20): 16 GB totais, 13,2 GB disponiveis e
     # 5,6 GB ja declarados pelos outros 18 containers. Mesmo no pior caso
     # -- lock global falho, tres workers juntos -- o studio fecha em 55%
@@ -338,6 +343,9 @@ services:
         target: /tmp/studio
         tmpfs:
           size: 3g
+          # Mesmo motivo do worker de midia: sem o mode, o tmpfs nasce
+          # root e o processo uid 1001 nao escreve o heartbeat.
+          mode: 0o1777
     mem_limit: 1024m
     # O render e o job mais pesado e o que mais se beneficia de CPU.
     # 2 de 4 vCPUs deixa metade da maquina para o resto.

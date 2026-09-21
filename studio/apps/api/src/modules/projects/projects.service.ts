@@ -14,6 +14,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { canTransition } from '@makucho/studio-contracts';
 import type { ProjectInput, ProjectPatch, ProjectState } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
+import { FilaService } from '../../common/fila.service';
 import { assertOwnership, scopedWhere } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 
@@ -32,7 +33,10 @@ const RESUMO = {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly filas: FilaService,
+  ) {}
 
   async listar(tenant: TenantContext, incluirArquivados = false) {
     const projetos = await this.prisma.project.findMany({
@@ -163,6 +167,64 @@ export class ProjectsService {
       data: { state: 'ARCHIVED' },
       select: RESUMO,
     });
+  }
+
+  /**
+   * Recomeça o processamento de um projeto que falhou.
+   *
+   * A tela promete "Falhou — dá para tentar de novo" desde o primeiro
+   * dia; esta é a rota que cumpre a promessa.
+   *
+   * Recomeça da etapa MAIS ADIANTADA que já tem insumo pronto: se o
+   * áudio foi extraído, a falha foi da transcrição, e refazer proxy e
+   * thumbnail gastaria minutos de FFmpeg para produzir os mesmos
+   * arquivos. O lock global é único na VPS — trabalho repetido aqui é
+   * fila parada para todo mundo.
+   */
+  async reprocessar(tenant: TenantContext, id: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto) throw new NotFoundException();
+
+    if (projeto.state !== 'FAILED_RETRYABLE') {
+      throw new BadRequestException(
+        'só dá para tentar de novo um projeto que falhou e permite retentativa',
+      );
+    }
+
+    const audio = await this.prisma.mediaSource.findFirst({
+      where: { projectId: id, kind: 'AUDIO' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (audio) {
+      const enfileirou = await this.filas.transcrever(id, audio.id);
+      if (!enfileirou) {
+        throw new BadRequestException(
+          'não foi possível recomeçar agora; tente de novo em alguns minutos',
+        );
+      }
+      return this.transicionar(id, 'TRANSCRIBING');
+    }
+
+    const original = await this.prisma.mediaSource.findFirst({
+      where: { projectId: id, kind: 'ORIGINAL' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!original) {
+      throw new BadRequestException(
+        'este projeto não tem vídeo enviado; envie a gravação antes de tentar de novo',
+      );
+    }
+
+    const enfileirou = await this.filas.prepararMidia(id, original.id);
+    if (!enfileirou) {
+      throw new BadRequestException(
+        'não foi possível recomeçar agora; tente de novo em alguns minutos',
+      );
+    }
+    return this.transicionar(id, 'INGESTING');
   }
 
   /**

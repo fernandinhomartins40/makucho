@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (segunda revisão: Fase 4a implementada).
+> Atualizado em 2026-09-21 (terceira revisão: Fase 4 fechada).
 
 ## Panorama
 
@@ -11,11 +11,11 @@
 |---|---|---|
 | 0 | Fundação e contratos | **concluída** |
 | 1 | Plataforma base | **concluída** |
-| 2 | Brand e Communication Studio | **tela ligada**; falta upload de assets |
-| 3 | Script e Record Studio | **concluída** — roteiro salva, gravação grava |
-| 4 | Ingestão e transcrição | worker de mídia rodando; **falta transcrição** |
-| 4a | Entrada de vídeo | **concluída** — gravação e upload funcionam (ADR 0010) |
-| 5a | IA: adapter e travas de custo | pendente |
+| 2 | Brand e Communication Studio | tela ligada; falta upload de assets |
+| 3 | Script e Record Studio | **concluída** |
+| 4 | Ingestão e transcrição | **concluída** — pipeline fecha da câmera à transcrição |
+| 4a | Entrada de vídeo | **concluída** (ADR 0010) |
+| 5a | IA: adapter e travas de custo | pendente — **próximo passo** |
 | 5b | IA: seleção de trechos e risco | pendente |
 | 5c | IA: roteiro e sugestões | pendente |
 | 5d | IA: candidatos e refino | pendente |
@@ -30,24 +30,114 @@ banco conectados.
 
 ## Onde realmente paramos
 
-O caminho da câmera até o editor está fechado. Um vídeo entra — gravado ou
-enviado —, vira proxy e thumbnail, e o projeto aparece na home com o estado
-real. O editor abre esse projeto, toca o proxy e salva cada ajuste como uma
-versão no banco.
+O caminho da câmera até a transcrição está fechado. Um vídeo entra — gravado
+ou enviado —, vira proxy, thumbnail e áudio, é transcrito com timestamps por
+palavra, e o projeto chega a `ANALYZING` com os silêncios já marcados como
+regiões. O editor abre esse projeto, toca o proxy e salva cada ajuste como
+uma versão no banco.
 
 O que ainda **não** funciona, sem rodeio:
 
-- **transcrição**: o áudio é extraído, mas nada o transcreve. Sem transcrição
-  não há origem verificável para os cortes;
 - **IA**: as seis chamadas da seção 26 não existem. O painel "Seleção da IA"
-  mostra o exemplo do plano, não uma proposta real;
+  mostra o exemplo do plano, não uma proposta real. É por isso que o projeto
+  para em `ANALYZING`: o estado está certo, só não há quem analise;
 - **render**: "Exportar vídeo" não gera arquivo. É a Fase 7 inteira;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
 
-A distância entre o que a tela mostra e o que o produto faz diminuiu muito,
-mas não chegou a zero — e os três primeiros itens acima são o que separa
-"ferramenta que organiza vídeo" de "editor com IA".
+A partir daqui, o que falta é inteligência e saída — a entrada e o preparo do
+material estão prontos.
+
+---
+
+## O que mudou nesta revisão
+
+### Um travamento que não aparecia em teste nenhum
+
+`FilaService.transcrever()` existia, estava correto e **ninguém o chamava**.
+O worker de mídia terminava o trabalho, marcava o projeto como `TRANSCRIBING`
+e parava ali. Não havia produtor para a fila de transcrição, e
+`workers/transcription/` era um diretório vazio.
+
+O efeito: **todo vídeo enviado ficava preso em "Transcrevendo" para sempre.**
+A máquina de estados não tem saída desse ponto sem o worker, e o estado dizia
+que a transcrição havia começado quando nada a tinha pedido.
+
+Não aparecia em build, typecheck nem teste — só num vídeo real passando pelo
+pipeline, que era justamente o caminho ainda não exercitado na VPS. É o mesmo
+tipo de falha que motivou mover os nomes de fila para o contrato: **um
+produtor ausente é indistinguível de um consumidor lento.**
+
+### Worker de transcrição
+
+`workers/transcription`, com faster-whisper `small` int8 em CPU. O modelo roda
+em processo Python separado, e não por binding: ele carrega centenas de MB e
+ocasionalmente morre por falta de memória. Num processo filho isso é um código
+de saída que vira falha de job; no mesmo processo, derrubaria a fila inteira.
+
+Decisões que valem registrar:
+
+- **VAD ligado.** Sem ele o whisper alucina texto em trechos mudos — e
+  alucinação aqui viraria fala que a pessoa nunca disse, exatamente o que o
+  produto promete não fazer;
+- **idioma fixo em `pt`.** A detecção automática ocasionalmente devolve
+  espanhol num áudio curto de português, e transcrição no idioma errado não é
+  recuperável por edição;
+- **`condition_on_previous_text` desligado.** Com ele ligado, quando o modelo
+  repete uma frase, ele se prende ao próprio erro e repete até o fim;
+- **stdout só do JSON, log em stderr.** O faster-whisper escreve avisos por
+  conta própria; um aviso no meio do stdout quebraria o parse;
+- **código 3 para áudio sem fala.** É um caso real — microfone errado,
+  gravação muda — e merece mensagem própria, não um erro de validação do Zod.
+
+A saída passa pelo `transcriptionResultSchema` antes de tocar o banco. Não é
+cerimônia: o que vem do modelo é dado externo, e um segmento com `endMs` menor
+que `startMs` viraria clipe de duração negativa na timeline três telas adiante.
+
+Os silêncios que o worker de mídia deixou em `silencios.json` viram
+`DetectedRegion` agora, porque só neste ponto existe a `Transcription` de que
+eles dependem.
+
+### "Tentar de novo" deixou de ser uma frase
+
+O estado `FAILED_RETRYABLE` mostra "Falhou — dá para tentar de novo" desde o
+redesenho, e **não existia rota de retentativa**. O usuário lia a promessa e
+não tinha botão.
+
+`POST /projects/:id/retry` recomeça da etapa mais adiantada que já tem insumo
+pronto: se o áudio foi extraído, a falha foi da transcrição, e refazer proxy e
+thumbnail gastaria minutos de FFmpeg para produzir os mesmos arquivos. O lock
+global é único na VPS — trabalho repetido ali é fila parada para todo mundo.
+
+### Dois containers que subiriam unhealthy
+
+`worker-transcription` e `worker-render` tinham o mesmo defeito de tmpfs já
+corrigido no de mídia: a montagem apaga o `mkdir` do Dockerfile, o tmpfs nasce
+`root` e o processo roda como uid 1001. Sem `mode: 1777` o worker consome a
+fila normalmente e mesmo assim é marcado unhealthy, porque não consegue
+escrever o heartbeat. Corrigido antes de chegar à VPS.
+
+---
+
+## Verificações feitas
+
+Não por inspeção — executando:
+
+| O que | Como |
+|---|---|
+| Script Python roda e produz JSON | duble do `faster_whisper`, script real invocado |
+| A saída real passa no contrato | `transcriptionResultSchema` sobre o JSON produzido |
+| Segmento vazio e de duração zero são descartados | duble devolve os dois; saída tem 2 de 4 |
+| Posições renumeradas sem buraco | `0,1` após os descartes |
+| Áudio sem fala sai com código 3 e stdout vazio | duble que devolve zero segmentos |
+| Erros de uso saem em stderr, stdout limpo | sem argumento e com arquivo inexistente |
+| Build e typecheck | worker compila; API e web limpos |
+| Suíte completa | **380 testes, 0 falhas** |
+
+O que **não** foi verificado: transcrição de um vídeo real na VPS. O
+faster-whisper não roda nesta máquina de desenvolvimento, então a qualidade da
+transcrição em português e o tempo real de processamento ainda são previsão,
+não medição.
 
 ---
 
@@ -59,7 +149,7 @@ pipeline de CI passa.*
 | Entregável | Estado | Onde |
 |---|---|---|
 | Repositório, convenções e CI | feito | dois workflows, build e deploy separados |
-| ADRs | feito | `docs/adr/0001` a `0009` |
+| ADRs | feito | `docs/adr/0001` a `0010` |
 | Modelo de dados | feito | `packages/database/prisma/schema.prisma`, 23 tabelas |
 | Estados de projeto/job | feito | `contracts/src/vocabulary.ts` |
 | Schema `EditPlan` | feito | `contracts/src/edit-plan.ts` |
@@ -69,28 +159,12 @@ pipeline de CI passa.*
 | Threat model | **pendente** | — |
 | Fixtures de mídia | **pendente** | precisa de vídeo autorizado do cliente |
 
-**Verificado:** 280 testes nos contratos, incluindo as pegadinhas semânticas
-da seção 18.5 (negação, enumeração, pronome órfão, dependência fora de ordem)
-e as operações de timeline.
-
 ---
 
 ## Fase 1 — Plataforma base — CONCLUÍDA
 
 Critério do plano: *dois usuários de workspaces distintos não acessam dados ou
 arquivos um do outro.*
-
-| Entregável | Estado | Onde |
-|---|---|---|
-| Autenticação | feito | JWT access+refresh, cookie httpOnly |
-| Workspace e isolamento | feito | `api/src/common/tenant.ts` |
-| Layout | feito | desktop-first (ADR 0009), sete rotas |
-| PostgreSQL | feito | banco `makucho_studio` (ADR 0004) |
-| Redis | feito | container próprio, fila BullMQ declarada |
-| Object storage | **pendente** | volume existe; upload entra na Fase 4 |
-| CRUD de projetos | **pendente** | **bloqueia a tela de Projetos** |
-| URLs de upload | **pendente** | Fase 4 |
-| Observabilidade mínima | parcial | logs do Nest; métricas pendentes |
 
 **Verificado:** 13 testes de isolamento, incluindo a tentativa de sobrescrever
 o `workspaceId` pelo corpo da requisição — o valor vem sempre do token.
@@ -106,69 +180,10 @@ Decisões de segurança que valem registrar:
 
 ---
 
-## A dívida do redesign
+## Fase 4 — Ingestão e transcrição — CONCLUÍDA
 
-Cada tela abaixo está desenhada e navegável. A coluna da direita é o que
-falta para deixar de ser demonstração.
-
-| Tela | O que já funciona de verdade | O que é demonstração |
-|---|---|---|
-| `/` Projetos | busca filtra a lista; navegação | `PROJETOS` é constante no arquivo — **falta `GET /projects`** |
-| `/roteiros` | blocos editáveis, duplicar, remover, reclassificar; contagem de palavras e duração a 150 ppm; checklist com 4 critérios verificáveis | não persiste — **falta ligar em `POST/PATCH /scripts`, que já existe**; "Gerar com IA" é da Fase 5 |
-| `/gravar` | câmera e microfone reais, teleprompter navegável, tratamento de permissão negada e dispositivo ausente | **não grava**: falta `MediaRecorder` e o upload |
-| `/editor` | 9 operações de timeline validadas pelo contrato; desfazer/refazer; seleção, corte, divisão, duplicação | `PLANO_DEMO` é constante — **falta carregar e salvar EditPlan**; sem proxy, o preview é uma caixa preta |
-| `/marca` | preview reage a cor, fonte e estilo na hora | não persiste — **falta ligar em `brand-profile`, que já existe** |
-| `/ajuda` | conteúdo estático, correto | — |
-
-### O que foi fechado
-
-| Módulo | O que faz |
-|---|---|
-| `projects` | CRUD com máquina de estados; arquiva em vez de apagar |
-| `media` | upload resumível em pedaços de 5 MB, quota conferida ao abrir |
-| `edit-plans` | versionamento; operação validada no servidor |
-| `worker-media` | proxy 720p, thumbnail, áudio 16 kHz, silêncios |
-
-O `worker-core` deixou de ser biblioteca sem aplicação: o lock global e o
-diretório temporário do ADR 0003 agora têm um processo que os usa.
-
----
-
-## Fase 2 — Brand e Communication Studio — API PARCIAL
-
-Critério do plano: *perfil versionado é aplicado a um projeto sem expor assets
-de outro workspace.*
-
-| Entregável | Estado |
-|---|---|
-| Perfil visual (cores, fontes) | API existe (`brand-profile`), **tela não usa** |
-| Estilos de captions | API existe (`:id/caption-styles`), **tela não usa** |
-| Perfil de comunicação | API existe (`communication-profile`) |
-| Cadastro e validação de assets | pendente — o logo e a trilha não sobem |
-| Músicas, intros, outros e CTA | pendente |
-| Presets iniciais | pendente |
-
-O trabalho aqui é de ligação, não de construção: a API e a tela existem e não
-se falam.
-
----
-
-## Fase 3 — Script e Record Studio — API PARCIAL
-
-| Entregável | Estado |
-|---|---|
-| CRUD de roteiros | API existe (`scripts`), **tela não usa** |
-| Blocos com função narrativa | feito nos dois lados, desconectados |
-| Teleprompter | feito, com câmera e microfone reais |
-| **Gravação** | **pendente** — o botão Gravar não grava |
-| Geração assistida | Fase 5 |
-
-A gravação é a lacuna mais visível: a tela verifica os dispositivos, mostra o
-preview, conta o tempo e **não produz arquivo**.
-
----
-
-## Fase 4 — Ingestão e transcrição — NÚCLEO PRONTO, FILA PARADA
+Critério do plano: *um vídeo enviado chega a transcrição segmentada sem
+intervenção manual.*
 
 | Entregável | Estado |
 |---|---|
@@ -176,36 +191,24 @@ preview, conta o tempo e **não produz arquivo**.
 | Lock global de job pesado | feito — 18 testes |
 | Temporários com limpeza garantida | feito — 21 testes |
 | FFmpeg: proxy, áudio, thumbnail, silêncios | feito — 13 testes |
-| **Worker de mídia (consumidor da fila)** | **pendente** |
-| **Worker de transcrição (faster-whisper)** | **pendente** |
-| **Upload resumível e sessão autorizada** | **pendente** |
+| Upload resumível e sessão autorizada | feito |
+| Worker de mídia | feito |
+| **Worker de transcrição (faster-whisper)** | **feito** |
+| **Encadeamento mídia → transcrição** | **feito** |
+| Retentativa pelo usuário | feito |
 
-O núcleo traz as duas contenções que o ADR 0003 exige para processar vídeo
-numa VPS compartilhada: o lock que serializa jobs pesados e o diretório
-temporário que se limpa sozinho. Falta o processo que os usa.
+O pipeline fecha: upload → proxy, thumbnail, áudio, silêncios → transcrição
+com palavras → `ANALYZING`.
 
 ---
 
 ## Fase 6 — antecipada em parte
 
 A timeline veio antes (ADR 0008) e está no ar. Nove operações validadas:
-mover, ajustar corte, alternar, **dividir**, **duplicar**, reordenar, editar
-legenda, trocar estilo e trocar música.
+mover, ajustar corte, alternar, dividir, duplicar, reordenar, editar legenda,
+trocar estilo e trocar música.
 
-As duas últimas (dividir e duplicar) nasceram do redesign: a referência
-mostrava os botões, então o contrato ganhou as operações com as regras que
-faltavam — divisão recusada a menos de meio segundo da borda, porque o
-fragmento não daria para ouvir nem selecionar.
-
-O que falta da fase: player com proxy real, captions renderizadas, componentes
-Remotion e o versionamento do EditPlan.
-
----
-
-## Fases 5, 7 e 8 — pendentes
-
-Sem alteração de escopo. A Fase 5 depende da chave de IA, que o painel já
-cadastra e cifra.
+O que falta da fase: captions renderizadas e os componentes Remotion.
 
 ---
 
@@ -213,38 +216,24 @@ cadastra e cifra.
 
 | Item | Impacto |
 |---|---|
-| ~~Storage: disco vs. R2~~ | **decidido**: disco da VPS, 10 GB em dois baldes (4 permanente + 6 edição), com retenção e aviso antes de remover |
-| ~~Chave da API de IA~~ | **decidido**: cadastrada pelo painel, cifrada em AES-256-GCM, uma por workspace |
+| ~~Storage: disco vs. R2~~ | **decidido**: disco da VPS, 10 GB em dois baldes |
+| ~~Chave da API de IA~~ | **decidido**: cadastrada pelo painel, AES-256-GCM |
 | Fixtures de mídia | os golden tests da seção 18.4 dependem de vídeo autorizado |
+| Transcrição real na VPS | qualidade em pt-BR e tempo de processamento ainda não medidos |
 | **Credenciais expostas no chat** | token do GitHub, senha da VPS e duas chaves SSH temporárias **precisam ser revogados** |
 
 ---
 
 ## Ordem sugerida a partir daqui
 
-A sequência abaixo não é o plano reordenado por gosto: é a ordem em que cada
-peça destrava a seguinte, e cada passo deixa algo **verificável pelo cliente**
-em vez de código à espera de integração.
-
-1. **`projects` (CRUD)** — destrava a tela inicial e dá onde pendurar tudo.
-   É o menor dos três módulos e o que mais muda a percepção: a home deixa de
-   mentir.
-2. **Ligar `/roteiros` e `/marca` às APIs que já existem** — trabalho de
-   ligação, sem construção nova. Duas telas deixam de ser demonstração.
-3. **Entrada de vídeo** (`media`, upload resumível, tela de envio,
-   `MediaRecorder`) — os dois caminhos do ADR 0010. É o que transforma o
-   produto de demonstração em ferramenta.
-4. **Worker de mídia consumindo a fila** — proxy, thumbnail e silêncios.
-   A partir daqui o `/editor` tem vídeo de verdade para mostrar.
-5. **Worker de transcrição** — sem transcrição não há origem verificável para
-   os cortes, e a integridade editorial depende disso.
-6. **`edit-plans` com versionamento** — as operações já existem e são
-   validadas; falta persistir.
-7. **Fase 5a (IA: adapter e travas de custo)** — antes de qualquer chamada
-   ligada, porque é onde mora o limite de gasto.
-8. **Fase 5b (seleção e risco)** — consome transcrição e devolve EditPlan, que
-   é por que ela vem depois de tudo acima.
-9. **Fases 5c, 5d, 7 e 8.** A 5c (roteiro) não depende de vídeo e pode sair
-   antes, se o cliente precisar.
-Os passos 1 e 2 somados custam menos que qualquer um dos demais e removem a
-maior parte da distância entre o que a tela mostra e o que o produto faz.
+1. **Fase 5a — adapter, provedor falso, prompts versionados e travas de
+   custo.** Vem primeiro porque as outras três dependem dela, e porque é onde
+   mora o limite de gasto: ligar chamadas de IA sem teto configurado é o tipo
+   de erro que só aparece na fatura.
+2. **Fase 5b — seleção de trechos e risco semântico (#3, #5).** O caminho
+   crítico. Consome a transcrição que agora existe e tira o projeto de
+   `ANALYZING`.
+3. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo; podem
+   sair antes se o cliente precisar.
+4. **Fase 7 — render.** É o que fecha o ciclo e entrega arquivo.
+5. **Fase 5d, upload de assets e Fase 8.**
