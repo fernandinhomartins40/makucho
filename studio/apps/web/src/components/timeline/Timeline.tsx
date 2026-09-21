@@ -18,19 +18,38 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, ItemDeTrack, Track, TimelineOperation } from '@makucho/studio-contracts';
 import { montarVisao, duracaoDoPlano } from '@makucho/studio-contracts';
 import { TimelineRuler } from './TimelineRuler';
-import { corDaFuncao, nomeDaFuncao } from '../editor/funcoes';
-import { IconeZoomMenos, IconeZoomMais } from '../icones';
 import { msParaPx, pxParaMs, alinharAoFrame } from './ruler-utils';
+import { corDaFuncao, nomeDaFuncao } from '../editor/funcoes';
+import {
+  IconeZoomMenos,
+  IconeZoomMais,
+  IconeAjustarZoom,
+  IconeCortar,
+  IconeDividir,
+  IconeCopiar,
+  IconeLixeira,
+  IconeOlho,
+  IconeOlhoFechado,
+  IconeVolume,
+  IconeVideo,
+  IconeTexto,
+  IconeAudio,
+  IconeMidia,
+  IconeLegenda,
+  IconeMais,
+} from '../icones';
+import type { Icon } from '@phosphor-icons/react';
 
 const ALTURA_TRACK = 56;
+const LARGURA_ROTULO = 128;
 
-const ROTULO_TRACK: Record<Track, string> = {
-  video: 'Vídeo',
-  text: 'Legendas',
-  assets: 'Elementos',
-  music: 'Trilha',
-  effects: 'Efeitos',
-};
+const FAIXAS: Array<{ id: Track; rotulo: string; Icone: Icon; som?: boolean }> = [
+  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo },
+  { id: 'text', rotulo: 'Legendas', Icone: IconeTexto },
+  { id: 'music', rotulo: 'Áudio', Icone: IconeAudio, som: true },
+  { id: 'assets', rotulo: 'Elementos', Icone: IconeMidia },
+  { id: 'effects', rotulo: 'Efeitos', Icone: IconeLegenda },
+];
 
 interface Props {
   plan: EditPlanV1;
@@ -51,6 +70,8 @@ export function Timeline({
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const [arrastando, setArrastando] = useState<string | null>(null);
+  const [ocultas, setOcultas] = useState<Set<Track>>(new Set());
+  const [mudas, setMudas] = useState<Set<Track>>(new Set());
   const areaRef = useRef<HTMLDivElement>(null);
   const arrasteRef = useRef<{ clipId: string; xInicial: number; startMsInicial: number } | null>(null);
 
@@ -97,67 +118,124 @@ export function Timeline({
     [zoom],
   );
 
+  const alternar = (conjunto: Set<Track>, set: (s: Set<Track>) => void, track: Track) => {
+    const proximo = new Set(conjunto);
+    if (proximo.has(track)) proximo.delete(track);
+    else proximo.add(track);
+    set(proximo);
+  };
+
+  const semSelecao = clipeSelecionado === null;
+
   return (
     <>
-      {/* ---------- Controles ---------- */}
+      {/* ---------- Barra de acoes ---------- */}
       <div className="timeline__barra">
-        <span className="rotulo-secao">Linha do tempo</span>
-        <span className="texto-secundario" style={{ fontSize: 12 }}>
-          {(duracaoMs / 1000).toFixed(1)}s
-        </span>
+        <Acao Icone={IconeCortar} rotulo="Cortar" desabilitado={semSelecao} />
+        <Acao Icone={IconeDividir} rotulo="Dividir" desabilitado={semSelecao} />
+        <Acao Icone={IconeCopiar} rotulo="Duplicar" desabilitado={semSelecao} />
+        <Acao
+          Icone={IconeLixeira}
+          rotulo="Excluir"
+          desabilitado={semSelecao || plan.clips.length === 1}
+          onClick={() =>
+            clipeSelecionado &&
+            onOperacao?.({ op: 'alternar_clipe', clipId: clipeSelecionado, enabled: false })
+          }
+        />
 
-        <div className="linha auto" style={{ gap: 'var(--e1)' }}>
+        <div className="linha auto" style={{ gap: 'var(--e2)' }}>
           <button
             type="button"
             className="botao-icone botao-icone--pequeno"
             onClick={() => setZoom((z) => Math.max(0.25, z / 1.5))}
             aria-label="Diminuir zoom"
           >
-            <IconeZoomMenos size={16} />
+            <IconeZoomMenos size={17} />
           </button>
-          <button
-            type="button"
-            className="botao botao--fantasma botao--pequeno"
-            onClick={() => setZoom(1)}
-            aria-label="Voltar ao zoom padrão"
-            style={{ minWidth: 54, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {Math.round(zoom * 100)}%
-          </button>
+
+          <input
+            type="range"
+            className="deslizante"
+            style={{ width: 130 }}
+            min={25}
+            max={800}
+            value={Math.round(zoom * 100)}
+            aria-label="Zoom da linha do tempo"
+            onChange={(e) => setZoom(Number(e.target.value) / 100)}
+          />
+
           <button
             type="button"
             className="botao-icone botao-icone--pequeno"
             onClick={() => setZoom((z) => Math.min(8, z * 1.5))}
             aria-label="Aumentar zoom"
           >
-            <IconeZoomMais size={16} />
+            <IconeZoomMais size={17} />
+          </button>
+
+          <button
+            type="button"
+            className="botao botao--secundario botao--pequeno"
+            onClick={() => setZoom(1)}
+          >
+            <IconeAjustarZoom size={15} />
+            Ajustar
           </button>
         </div>
       </div>
 
-      {/* ---------- Área rolável ---------- */}
+      {/* ---------- Area rolavel ---------- */}
       <div className="timeline__corpo" style={{ display: 'flex' }}>
-        {/* Coluna fixa com os nomes das tracks. Fora da rolagem
-            horizontal: rolar e perder de vista qual track e qual
+        {/* Coluna fixa com os nomes das faixas. Fora da rolagem
+            horizontal: rolar e perder de vista qual faixa e qual
             torna a timeline confusa. */}
-        <div style={{ flexShrink: 0, width: 88, borderRight: '1px solid var(--border)' }}>
+        <div
+          style={{
+            flexShrink: 0,
+            width: LARGURA_ROTULO,
+            borderRight: '1px solid var(--border)',
+            position: 'sticky',
+            left: 0,
+            background: 'var(--surface-1)',
+            zIndex: 3,
+          }}
+        >
           <div style={{ height: 28, borderBottom: '1px solid var(--border)' }} />
-          {(Object.keys(ROTULO_TRACK) as Track[]).map((track) => (
-            <div
-              key={track}
-              style={{
-                height: ALTURA_TRACK,
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 10px',
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-                borderBottom: '1px solid var(--border)',
-              }}
-            >
-              {ROTULO_TRACK[track]}
-            </div>
-          ))}
+
+          {FAIXAS.map(({ id, rotulo, Icone, som }) => {
+            const oculta = ocultas.has(id);
+            const muda = mudas.has(id);
+
+            return (
+              <div key={id} className="timeline__faixa" style={{ height: ALTURA_TRACK }}>
+                <Icone size={16} />
+                <span className="crescer">{rotulo}</span>
+
+                <button
+                  type="button"
+                  className="botao-icone botao-icone--pequeno"
+                  aria-pressed={oculta}
+                  aria-label={`${oculta ? 'Mostrar' : 'Ocultar'} a faixa ${rotulo}`}
+                  onClick={() => alternar(ocultas, setOcultas, id)}
+                >
+                  {oculta ? <IconeOlhoFechado size={15} /> : <IconeOlho size={15} />}
+                </button>
+
+                {som && (
+                  <button
+                    type="button"
+                    className="botao-icone botao-icone--pequeno"
+                    aria-pressed={muda}
+                    aria-label={`${muda ? 'Ativar som' : 'Silenciar'} a faixa ${rotulo}`}
+                    onClick={() => alternar(mudas, setMudas, id)}
+                  >
+                    <IconeVolume size={15} weight={muda ? 'regular' : 'fill'} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div
@@ -169,23 +247,32 @@ export function Timeline({
         >
           <TimelineRuler duracaoMs={duracaoMs} zoom={zoom} onSeek={onSeek} />
 
-          {(Object.keys(ROTULO_TRACK) as Track[]).map((track) => (
+          {FAIXAS.map(({ id, som }) => (
             <div
-              key={track}
+              key={id}
               style={{
                 position: 'relative',
                 height: ALTURA_TRACK,
                 minWidth: larguraPx,
                 borderBottom: '1px solid var(--border)',
+                opacity: ocultas.has(id) ? 0.35 : 1,
               }}
             >
-              {visao[track].map((item) => (
-                <ItemNaTrack
+              {/* A trilha de audio mostra a forma de onda do original
+                  inteiro: e a referencia para conferir se um corte
+                  caiu no meio de uma palavra. */}
+              {som && !ocultas.has(id) && (
+                <FormaDeOnda largura={larguraPx} mudo={mudas.has(id)} />
+              )}
+
+              {visao[id].map((item) => (
+                <ClipeNaFaixa
                   key={item.id}
                   item={item}
+                  track={id}
                   zoom={zoom}
                   selecionado={item.id === clipeSelecionado}
-                  arrastavel={track === 'video' && onOperacao !== undefined}
+                  arrastavel={id === 'video' && onOperacao !== undefined}
                   onSelecionar={() => onSelecionar?.(item.id)}
                   onIniciarArraste={(e) => {
                     arrasteRef.current = {
@@ -210,19 +297,74 @@ export function Timeline({
               bottom: 0,
               left: msParaPx(posicaoMs, zoom),
               width: 2,
-              background: 'var(--danger)',
+              background: 'var(--accent)',
               pointerEvents: 'none',
               zIndex: 5,
             }}
           />
         </div>
+
+        <button
+          type="button"
+          className="botao-icone"
+          aria-label="Adicionar faixa"
+          style={{ alignSelf: 'center', flexShrink: 0, margin: '0 var(--e2)' }}
+        >
+          <IconeMais size={18} />
+        </button>
       </div>
     </>
   );
 }
 
-function ItemNaTrack({
+function Acao({
+  Icone,
+  rotulo,
+  desabilitado,
+  onClick,
+}: {
+  Icone: Icon;
+  rotulo: string;
+  desabilitado?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="botao botao--fantasma botao--pequeno"
+      disabled={desabilitado}
+      onClick={onClick}
+    >
+      <Icone size={16} />
+      {rotulo}
+    </button>
+  );
+}
+
+/**
+ * Forma de onda do áudio.
+ *
+ * Enquanto a análise do proxy não existe, o desenho vem de uma
+ * função determinística — a mesma timeline sempre produz a mesma
+ * onda, então ela não "pisca" a cada render. Não é o áudio real, e
+ * por isso não carrega rótulo que sugira precisão.
+ */
+function FormaDeOnda({ largura, mudo }: { largura: number; mudo: boolean }) {
+  const barras = Math.max(1, Math.floor(largura / 4));
+
+  return (
+    <div className="onda" style={{ opacity: mudo ? 0.3 : 1 }} aria-hidden>
+      {Array.from({ length: barras }, (_, i) => {
+        const altura = 25 + Math.abs(Math.sin(i * 0.35) * Math.cos(i * 0.11)) * 65;
+        return <span key={i} className="onda__barra" style={{ height: `${altura}%` }} />;
+      })}
+    </div>
+  );
+}
+
+function ClipeNaFaixa({
   item,
+  track,
   zoom,
   selecionado,
   arrastavel,
@@ -230,6 +372,7 @@ function ItemNaTrack({
   onIniciarArraste,
 }: {
   item: ItemDeTrack;
+  track: Track;
   zoom: number;
   selecionado: boolean;
   arrastavel: boolean;
@@ -238,10 +381,12 @@ function ItemNaTrack({
 }) {
   const cor = corDaFuncao(item.label);
   const largura = Math.max(2, msParaPx(item.endMs - item.startMs, zoom));
+  const legenda = track === 'text';
 
   return (
     <div
       data-clip={item.id}
+      data-selecionado={selecionado || undefined}
       role="button"
       tabIndex={0}
       onClick={onSelecionar}
@@ -252,43 +397,48 @@ function ItemNaTrack({
         }
       }}
       onPointerDown={arrastavel ? onIniciarArraste : undefined}
+      className="clipe"
       style={{
-        position: 'absolute',
         left: msParaPx(item.startMs, zoom),
-        top: 6,
         width: largura,
-        height: ALTURA_TRACK - 12,
-        background: cor,
+        height: ALTURA_TRACK - 10,
+        background: legenda ? cor : 'var(--surface-2)',
+        cursor: arrastavel ? 'grab' : 'pointer',
         // Risco alto ganha borda de alerta: ele exige confirmacao
         // antes do render (plano, secao 9.3), e o usuario precisa
         // ver isso na timeline, nao so num aviso separado.
-        border: selecionado
-          ? '2px solid #fff'
+        borderColor: selecionado
+          ? 'var(--accent)'
           : item.semanticRisk === 'high'
-            ? '2px solid var(--warning)'
-            : '1px solid rgba(0,0,0,0.25)',
-        borderRadius: 6,
-        cursor: arrastavel ? 'grab' : 'pointer',
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 6px',
-        touchAction: 'none',
+            ? 'var(--warning)'
+            : 'transparent',
       }}
     >
-      <span
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          color: '#fff',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
-          overflow: 'hidden',
-        }}
-      >
-        {nomeDaFuncao(item.label)}
+      {/* Tira de frames: enquanto o proxy nao existe, um degrade da
+          cor da funcao ocupa o lugar sem fingir miniaturas que nao
+          temos. */}
+      {!legenda && (
+        <span
+          className="clipe__frames"
+          aria-hidden
+          style={{
+            backgroundImage: `repeating-linear-gradient(90deg, ${cor}55 0 32px, ${cor}22 32px 34px)`,
+          }}
+        />
+      )}
+
+      <span className="clipe__chip" style={{ background: legenda ? 'transparent' : cor }}>
+        {legenda ? (
+          item.label
+        ) : (
+          <>
+            {nomeDaFuncao(item.label)}
+            <span style={{ opacity: 0.75, fontWeight: 500 }}>
+              {((item.endMs - item.startMs) / 1000).toFixed(1)}s
+            </span>
+          </>
+        )}
       </span>
     </div>
   );
 }
-

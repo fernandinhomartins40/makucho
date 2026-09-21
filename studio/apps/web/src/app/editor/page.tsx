@@ -1,11 +1,13 @@
 'use client';
 
 // ============================================================
-// Editor — quatro zonas.
+// Editor.
 //
-// O guia define a anatomia: rail de ferramentas 72px, painel
-// "Seleção da IA" 280px, preview 9:16 ao centro, inspector
-// contextual à direita e timeline na base.
+// Anatomia da referência: rail de ferramentas na coluna esquerda —
+// no lugar da sidebar de navegação, porque ali a coluna pertence ao
+// trabalho —, painel "Seleção da IA", preview 9:16 ao centro,
+// inspector contextual à direita e timeline na base. A volta fica na
+// seta da topbar.
 //
 // A diferença de fundo para o OpenCut (ADR 0009) está no painel
 // esquerdo: lá são os arquivos que a pessoa importou; aqui é a
@@ -15,9 +17,9 @@
 // ============================================================
 
 import { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { aplicarOperacao } from '@makucho/studio-contracts';
-import { Topbar } from '../../components/shell/Topbar';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelVazio } from '../../components/editor/PainelVazio';
@@ -28,12 +30,17 @@ import {
   IconeDesfazer,
   IconeRefazer,
   IconeExportar,
-  IconeOlho,
+  IconeTocar,
   IconeAviso,
+  IconeVoltar,
+  IconeRenomear,
+  IconeSalvo,
+  IconeAbrir,
   IconeMidia,
   IconeTexto,
   IconeAudio,
   IconeMarca,
+  IconeLegenda,
 } from '../../components/icones';
 
 // Exemplo da seção 4 do contexto mestre: o bruto de oito minutos que
@@ -77,12 +84,25 @@ const PLANO_DEMO: EditPlanV1 = {
   },
 };
 
+// Legendas da demonstração. Vêm da transcrição na Fase 5.
+const LEGENDAS = {
+  c1: { texto: 'Atender bem no WhatsApp', destaque: 'pode dobrar suas vendas.' },
+  c2: { texto: 'Isso não é teoria, é o que vejo', destaque: 'nos meus clientes.' },
+  c3: { texto: 'Implemente hoje e veja', destaque: 'o resultado.' },
+};
+
 export default function EditorPage() {
   const [plano, setPlano] = useState<EditPlanV1>(PLANO_DEMO);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [posicaoMs, setPosicaoMs] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<AbaDoEditor>('ia');
+  const [titulo, setTitulo] = useState('Atendimento no WhatsApp');
+  const [editandoTitulo, setEditandoTitulo] = useState(false);
+
+  // Trechos desligados continuam na lista: a seção 13 exige poder
+  // restaurar o que foi descartado.
+  const [desligados, setDesligados] = useState<Set<string>>(new Set());
 
   // Duas pilhas: desfazer empilha o passado, refazer o que foi
   // desfeito. Uma edição nova limpa o futuro — é o comportamento que
@@ -120,6 +140,15 @@ export default function EditorPage() {
     [plano],
   );
 
+  const alternarTrecho = useCallback((clipId: string) => {
+    setDesligados((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(clipId)) proximo.delete(clipId);
+      else proximo.add(clipId);
+      return proximo;
+    });
+  }, []);
+
   const desfazer = useCallback(() => {
     setPassado((h) => {
       const anterior = h[h.length - 1];
@@ -146,13 +175,53 @@ export default function EditorPage() {
 
   return (
     <>
-      <Topbar
-        trilha={['Projetos', 'Atendimento no WhatsApp']}
-        estado="salvo"
-      >
+      <header className="topbar">
+        <Link href="/" className="botao-icone" aria-label="Voltar para Projetos">
+          <IconeVoltar size={20} />
+        </Link>
+
+        {editandoTitulo ? (
+          <input
+            className="campo__entrada"
+            value={titulo}
+            autoFocus
+            aria-label="Nome do projeto"
+            onChange={(e) => setTitulo(e.target.value)}
+            onBlur={() => setEditandoTitulo(false)}
+            onKeyDown={(e) => e.key === 'Enter' && setEditandoTitulo(false)}
+            style={{ maxWidth: 320, fontSize: 19, fontWeight: 600 }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="linha"
+            onClick={() => setEditandoTitulo(true)}
+            aria-label={`Renomear o projeto ${titulo}`}
+            style={{
+              gap: 'var(--e2)',
+              border: 'none',
+              background: 'transparent',
+              color: 'inherit',
+              cursor: 'text',
+              fontSize: 19,
+              fontWeight: 600,
+              padding: 0,
+            }}
+          >
+            {titulo}
+            <IconeRenomear size={16} color="var(--text-secondary)" />
+          </button>
+        )}
+
+        <span className="linha texto-secundario" style={{ gap: 'var(--e1)', fontSize: 14 }}>
+          <IconeSalvo size={17} />
+          Salvo
+          <IconeAbrir size={13} />
+        </span>
+
         <span
-          className="texto-secundario"
-          style={{ fontSize: 12, marginRight: 'var(--e2)' }}
+          className="texto-secundario auto"
+          style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}
         >
           {Math.round(plano.sourceDurationMs / 60_000)} min → {(duracaoMs / 1000).toFixed(0)}s
           {reducao > 0 && ` · −${reducao}%`}
@@ -166,7 +235,7 @@ export default function EditorPage() {
           aria-label="Desfazer"
           title="Desfazer"
         >
-          <IconeDesfazer size={18} />
+          <IconeDesfazer size={19} />
         </button>
         <button
           type="button"
@@ -176,22 +245,22 @@ export default function EditorPage() {
           aria-label="Refazer"
           title="Refazer"
         >
-          <IconeRefazer size={18} />
+          <IconeRefazer size={19} />
         </button>
 
-        <button type="button" className="botao botao--secundario botao--pequeno">
-          <IconeOlho size={16} />
+        <button type="button" className="botao botao--secundario">
+          <IconeTocar size={16} />
           Pré-visualizar
         </button>
         <button
           type="button"
-          className="botao botao--pequeno"
+          className="botao"
           onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
         >
           <IconeExportar size={16} />
           Exportar vídeo
         </button>
-      </Topbar>
+      </header>
 
       {erro && (
         <div
@@ -212,7 +281,10 @@ export default function EditorPage() {
             <PainelDaIA
               plan={plano}
               selecionado={selecionado}
+              desligados={desligados}
               onSelecionar={setSelecionado}
+              onAlternar={alternarTrecho}
+              onOperacao={executar}
             />
           )}
           {aba === 'midia' && (
@@ -225,15 +297,15 @@ export default function EditorPage() {
           {aba === 'texto' && (
             <PainelVazio
               Icone={IconeTexto}
-              titulo="Títulos e legendas"
-              texto="As legendas seguem a transcrição. Estilos entram na composição final."
+              titulo="Títulos e chamadas"
+              texto="Textos sobrepostos ao vídeo, com a fonte do seu kit de marca."
             />
           )}
-          {aba === 'audio' && (
+          {aba === 'legendas' && (
             <PainelVazio
-              Icone={IconeAudio}
-              titulo="Trilha e efeitos"
-              texto="Música de fundo e efeitos, com o volume ajustado à sua voz."
+              Icone={IconeLegenda}
+              titulo="Legendas"
+              texto="Seguem a transcrição. O estilo se ajusta no painel de propriedades."
             />
           )}
           {aba === 'marca' && (
@@ -243,10 +315,22 @@ export default function EditorPage() {
               texto="Logo, cores e fontes cadastrados em Marca aparecem aqui."
             />
           )}
+          {aba === 'audio' && (
+            <PainelVazio
+              Icone={IconeAudio}
+              titulo="Trilha e efeitos"
+              texto="Música de fundo e efeitos, com o volume ajustado à sua voz."
+            />
+          )}
         </section>
 
         <main className="editor__palco">
-          <Palco plan={plano} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} />
+          <Palco
+            plan={plano}
+            posicaoMs={posicaoMs}
+            onPosicao={setPosicaoMs}
+            legendas={LEGENDAS}
+          />
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">

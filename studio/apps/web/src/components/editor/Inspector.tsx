@@ -1,18 +1,52 @@
 'use client';
 
 // ============================================================
-// Inspector contextual — direita do editor.
+// Inspector — "Propriedades", à direita do editor.
 //
-// Sem seleção: propriedades do vídeo. Com um trecho selecionado: as
-// dele, e é aqui que o usuário discorda da IA.
+// Duas abas: Vídeo (formato, fps, aprimoramento) e Legendas
+// (estilo, cor, intensidade). Com um trecho selecionado, ele assume
+// o lugar e mostra as propriedades dele — é aqui que o usuário
+// discorda da IA.
 //
 // "Remover" desativa em vez de apagar: a seção 13 do contexto mestre
 // exige poder restaurar um trecho descartado.
 // ============================================================
 
+import { useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { nomeDaFuncao, corDaFuncao, tempo } from './funcoes';
-import { IconeIA, IconeAviso, IconeLixeira, IconeAvancar, IconeVoltar } from '../icones';
+import {
+  IconeIA,
+  IconeAviso,
+  IconeLixeira,
+  IconeAvancar,
+  IconeVoltar,
+  IconeConfiguracoes,
+} from '../icones';
+
+type AbaDoInspector = 'video' | 'legendas';
+
+/**
+ * Estilos de legenda.
+ *
+ * A amostra mostra a aparência real de cada um, não o nome: quem
+ * escolhe legenda escolhe pelo olho.
+ */
+const ESTILOS = [
+  { id: 'padrao', rotulo: 'Padrão', amostra: { color: '#ff4d8f', fontWeight: 800 } },
+  { id: 'minimal', rotulo: 'Minimal', amostra: { color: '#f7faff', fontWeight: 400 } },
+  {
+    id: 'destaque',
+    rotulo: 'Destaque',
+    amostra: { color: '#06132d', fontWeight: 800, background: '#ffd43b', padding: '1px 7px' },
+  },
+  {
+    id: 'caixa',
+    rotulo: 'Caixa',
+    amostra: { color: '#06132d', fontWeight: 600, background: '#f7faff', padding: '1px 7px' },
+  },
+  { id: 'karaoke', rotulo: 'Karaokê', amostra: { color: '#ff4d8f', fontWeight: 700, fontSize: 13 } },
+] as const;
 
 const NOME_DO_FRAMEWORK: Record<string, string> = {
   authority_education: 'Autoridade educacional',
@@ -29,63 +63,250 @@ interface Props {
 }
 
 export function Inspector({ plan, clipId, onOperacao }: Props) {
+  const [aba, setAba] = useState<AbaDoInspector>('video');
+  const [aprimoramento, setAprimoramento] = useState(true);
+  const [intensidade, setIntensidade] = useState(100);
+
   const clipe = plan.clips.find((c) => c.id === clipId);
 
-  // ---------- Sem seleção: o vídeo inteiro ----------
-  if (!clipe) {
-    const duracao = plan.clips.reduce(
-      (t, c) => t + (c.sourceEndMs - c.sourceStartMs),
-      0,
-    );
-    const reducao = Math.round((1 - duracao / plan.sourceDurationMs) * 100);
+  return (
+    <>
+      <header className="painel__cabecalho">
+        <span className="linha" style={{ gap: 'var(--e2)' }}>
+          <IconeConfiguracoes size={19} />
+          <strong style={{ fontSize: 17 }}>Propriedades</strong>
+        </span>
+      </header>
 
-    return (
-      <div style={{ padding: 'var(--e4)' }}>
-        <h2 className="rotulo-secao" style={{ marginBottom: 'var(--e3)' }}>
-          Vídeo
-        </h2>
+      <div className="painel__corpo">
+        {clipe ? (
+          <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} />
+        ) : (
+          <>
+            <div className="abas" role="tablist">
+              <button
+                role="tab"
+                type="button"
+                className="abas__item"
+                aria-selected={aba === 'video'}
+                onClick={() => setAba('video')}
+              >
+                Vídeo
+              </button>
+              <button
+                role="tab"
+                type="button"
+                className="abas__item"
+                aria-selected={aba === 'legendas'}
+                onClick={() => setAba('legendas')}
+              >
+                Legendas
+              </button>
+            </div>
 
-        <Propriedade rotulo="Duração" valor={`${(duracao / 1000).toFixed(1)}s`} />
-        <Propriedade
-          rotulo="Gravação original"
-          valor={`${Math.round(plan.sourceDurationMs / 60_000)} min`}
-        />
-        <Propriedade rotulo="Redução" valor={`${reducao}%`} />
-        <Propriedade rotulo="Trechos" valor={String(plan.clips.length)} />
-        <Propriedade
-          rotulo="Estrutura"
-          valor={NOME_DO_FRAMEWORK[plan.framework] ?? plan.framework}
-        />
-        <Propriedade rotulo="Formato" valor="1080 × 1920 · 30 fps" />
-
-        <div className="campo" style={{ marginTop: 'var(--e5)' }}>
-          <span className="campo__rotulo">Legendas</span>
-          <button
-            type="button"
-            className="botao botao--secundario botao--largo"
-            onClick={() =>
-              onOperacao({ op: 'trocar_estilo_legenda', styleId: plan.captions.styleId })
-            }
-          >
-            {plan.captions.enabled ? 'Ativadas' : 'Desativadas'} ·{' '}
-            {plan.captions.wordsPerBlock} palavras
-          </button>
-          <p className="campo__ajuda">
-            Cada palavra acende no instante em que é falada.
-          </p>
-        </div>
-
-        <p
-          className="texto-secundario"
-          style={{ marginTop: 'var(--e5)', fontSize: 12, lineHeight: 1.45 }}
-        >
-          Selecione um trecho para ajustá-lo.
-        </p>
+            {aba === 'video' ? (
+              <AbaDeVideo
+                plan={plan}
+                aprimoramento={aprimoramento}
+                onAprimoramento={setAprimoramento}
+              />
+            ) : (
+              <AbaDeLegendas
+                plan={plan}
+                intensidade={intensidade}
+                onIntensidade={setIntensidade}
+                onOperacao={onOperacao}
+              />
+            )}
+          </>
+        )}
       </div>
-    );
-  }
+    </>
+  );
+}
 
-  // ---------- Com seleção: o trecho ----------
+// ============================================================
+// Aba Vídeo
+// ============================================================
+
+function AbaDeVideo({
+  plan,
+  aprimoramento,
+  onAprimoramento,
+}: {
+  plan: EditPlanV1;
+  aprimoramento: boolean;
+  onAprimoramento: (v: boolean) => void;
+}) {
+  const duracao = plan.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const reducao = Math.round((1 - duracao / plan.sourceDurationMs) * 100);
+
+  return (
+    <>
+      <div className="campo">
+        <span className="campo__rotulo">Formato</span>
+        <select className="campo__selecao" defaultValue="9:16">
+          <option value="9:16">1080 × 1920 (9:16)</option>
+        </select>
+        <p className="campo__ajuda">Ideal para Reels, TikTok e Shorts.</p>
+      </div>
+
+      <div className="campo">
+        <span className="campo__rotulo">Taxa de quadros</span>
+        <select className="campo__selecao" defaultValue="30">
+          <option value="24">24 fps</option>
+          <option value="30">30 fps</option>
+          <option value="60">60 fps</option>
+        </select>
+      </div>
+
+      <div className="separador" />
+
+      <Propriedade rotulo="Duração" valor={`${(duracao / 1000).toFixed(1)}s`} />
+      <Propriedade
+        rotulo="Gravação original"
+        valor={`${Math.round(plan.sourceDurationMs / 60_000)} min`}
+      />
+      <Propriedade rotulo="Redução" valor={`${reducao}%`} />
+      <Propriedade rotulo="Trechos" valor={String(plan.clips.length)} />
+      <Propriedade
+        rotulo="Estrutura"
+        valor={NOME_DO_FRAMEWORK[plan.framework] ?? plan.framework}
+      />
+
+      <div className="separador" />
+
+      {/* O aprimoramento diz exatamente o que faz. "Melhorar com IA"
+          sem dizer o quê deixa a pessoa sem saber o que mudou no
+          vídeo dela. */}
+      <div className="linha entre" style={{ gap: 'var(--e3)' }}>
+        <span className="linha" style={{ gap: 'var(--e2)' }}>
+          <IconeIA size={17} weight="fill" color="var(--accent)" />
+          <strong style={{ fontSize: 14 }}>Aprimoramento com IA</strong>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={aprimoramento}
+          aria-label="Aprimoramento com IA"
+          className="chave"
+          onClick={() => onAprimoramento(!aprimoramento)}
+        >
+          <span className="chave__bola" aria-hidden />
+        </button>
+      </div>
+      <p className="campo__ajuda">
+        Melhora cortes, remove silêncios e gera legendas automaticamente.
+      </p>
+    </>
+  );
+}
+
+// ============================================================
+// Aba Legendas
+// ============================================================
+
+function AbaDeLegendas({
+  plan,
+  intensidade,
+  onIntensidade,
+  onOperacao,
+}: {
+  plan: EditPlanV1;
+  intensidade: number;
+  onIntensidade: (v: number) => void;
+  onOperacao: (op: TimelineOperation) => void;
+}) {
+  return (
+    <>
+      <div className="campo">
+        <span className="campo__rotulo">Estilo das legendas</span>
+        <div className="estilos" role="radiogroup" aria-label="Estilo das legendas">
+          {ESTILOS.map((estilo) => (
+            <button
+              key={estilo.id}
+              type="button"
+              role="radio"
+              aria-checked={plan.captions.styleId === estilo.id}
+              className="estilo"
+              onClick={() => onOperacao({ op: 'trocar_estilo_legenda', styleId: estilo.id })}
+            >
+              <span className="estilo__amostra">
+                <span style={{ borderRadius: 3, ...estilo.amostra }}>
+                  {estilo.id === 'karaoke' ? 'Karaokê' : 'Aa'}
+                </span>
+              </span>
+              <span className="estilo__rotulo">{estilo.rotulo}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="campo">
+        <span className="campo__rotulo">Cor da marca</span>
+        <div className="campo__cor">
+          <span aria-hidden className="campo__amostra" style={{ background: '#3dd6d0' }} />
+          <input
+            type="text"
+            className="campo__entrada"
+            defaultValue="#3DD6D0"
+            aria-label="Cor da marca em hexadecimal"
+          />
+        </div>
+        <p className="campo__ajuda">Usada na palavra em destaque de cada bloco.</p>
+      </div>
+
+      <div className="campo">
+        <div className="linha entre">
+          <span className="campo__rotulo" style={{ marginBottom: 0 }}>
+            Intensidade das legendas
+          </span>
+          <span className="texto-secundario" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {intensidade}%
+          </span>
+        </div>
+        <input
+          type="range"
+          className="deslizante"
+          min={0}
+          max={100}
+          value={intensidade}
+          aria-label="Intensidade das legendas"
+          onChange={(e) => onIntensidade(Number(e.target.value))}
+        />
+      </div>
+
+      <div className="campo">
+        <span className="campo__rotulo">Palavras por bloco</span>
+        <select
+          className="campo__selecao"
+          defaultValue={String(plan.captions.wordsPerBlock)}
+        >
+          {[2, 3, 4, 5].map((n) => (
+            <option key={n} value={n}>
+              {n} palavras
+            </option>
+          ))}
+        </select>
+        <p className="campo__ajuda">Cada palavra acende no instante em que é falada.</p>
+      </div>
+    </>
+  );
+}
+
+// ============================================================
+// Propriedades do trecho selecionado
+// ============================================================
+
+function PropriedadesDoTrecho({
+  plan,
+  clipe,
+  onOperacao,
+}: {
+  plan: EditPlanV1;
+  clipe: EditPlanV1['clips'][number];
+  onOperacao: (op: TimelineOperation) => void;
+}) {
   const duracaoMs = clipe.sourceEndMs - clipe.sourceStartMs;
   const posicao = plan.clips.findIndex((c) => c.id === clipe.id);
   const ultimo = plan.clips.length === 1;
@@ -119,12 +340,12 @@ export function Inspector({ plan, clipId, onOperacao }: Props) {
   };
 
   return (
-    <div style={{ padding: 'var(--e4)' }}>
-      <h2 className="rotulo-secao" style={{ marginBottom: 'var(--e2)' }}>
+    <>
+      <span className="rotulo-secao">
         Trecho {posicao + 1} de {plan.clips.length}
-      </h2>
+      </span>
 
-      <div className="linha" style={{ gap: 'var(--e2)', marginBottom: 'var(--e4)' }}>
+      <div className="linha" style={{ gap: 'var(--e2)', margin: 'var(--e2) 0 var(--e4)' }}>
         <span
           aria-hidden
           style={{
@@ -207,7 +428,7 @@ export function Inspector({ plan, clipId, onOperacao }: Props) {
         Remover trecho
       </button>
       {ultimo && <p className="campo__ajuda">O vídeo precisa de ao menos um trecho.</p>}
-    </div>
+    </>
   );
 }
 

@@ -13,13 +13,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { nomeDaFuncao, tempo } from './funcoes';
+import { tempo } from './funcoes';
 import {
   IconeTocar,
   IconePausar,
   IconeAnterior,
   IconeProximo,
   IconeVideo,
+  IconeVolume,
+  IconeTelaCheia,
+  IconeCelular,
+  IconeZonaSegura,
 } from '../icones';
 
 interface Props {
@@ -28,11 +32,16 @@ interface Props {
   proxyUrl?: string;
   posicaoMs: number;
   onPosicao: (ms: number) => void;
+  /** Texto da legenda por trecho, vindo da transcrição. */
+  legendas?: Record<string, { texto: string; destaque?: string }>;
 }
 
-export function Palco({ plan, proxyUrl, posicaoMs, onPosicao }: Props) {
+export function Palco({ plan, proxyUrl, posicaoMs, onPosicao, legendas }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const quadroRef = useRef<HTMLDivElement>(null);
   const [tocando, setTocando] = useState(false);
+  const [mudo, setMudo] = useState(false);
+  const [zonasSeguras, setZonasSeguras] = useState(true);
 
   const duracaoMs = plan.clips.reduce(
     (t, c) => t + (c.sourceEndMs - c.sourceStartMs),
@@ -126,51 +135,56 @@ export function Palco({ plan, proxyUrl, posicaoMs, onPosicao }: Props) {
   };
 
   const atual = paraOriginal(posicaoMs);
+  const legenda = atual ? legendas?.[atual.clipe.id] : undefined;
 
   return (
     <>
-      <div className="palco__quadro">
+      <div className="palco__quadro" ref={quadroRef}>
+        {/* Chips de contexto: o formato de saída e o alternador das
+            zonas seguras. Enquadrar fora delas significa ter o rosto
+            cortado pela interface do Reels — e só descobrir depois. */}
+        <div className="palco__chips">
+          <span className="chip">
+            <IconeCelular size={14} />
+            9:16
+          </span>
+          <button
+            type="button"
+            className="chip chip--acionavel"
+            aria-pressed={zonasSeguras}
+            onClick={() => setZonasSeguras((v) => !v)}
+          >
+            <IconeZonaSegura size={14} />
+            Zonas seguras
+          </button>
+        </div>
+
         {proxyUrl ? (
           <video
             ref={videoRef}
             src={proxyUrl}
             playsInline
+            muted={mudo}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             onEnded={() => setTocando(false)}
           />
         ) : (
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'grid',
-              placeItems: 'center',
-              padding: 'var(--e5)',
-              textAlign: 'center',
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  color: 'var(--text-secondary)',
-                  marginBottom: 'var(--e3)',
-                  display: 'flex',
-                  justifyContent: 'center',
-                }}
-              >
-                <IconeVideo size={40} />
-              </div>
-              <p className="texto-secundario" style={{ fontSize: 13, lineHeight: 1.5 }}>
-                A prévia aparece aqui
-                <br />
-                depois de enviar um vídeo.
-              </p>
-            </div>
+          <div className="palco__vazio">
+            <IconeVideo size={40} />
+            <p className="texto-secundario" style={{ fontSize: 13, lineHeight: 1.5 }}>
+              A prévia aparece aqui
+              <br />
+              depois de enviar um vídeo.
+            </p>
           </div>
         )}
 
-        {/* Legenda posicionada como sairá no render. */}
-        {plan.captions.enabled && atual && (
+        {zonasSeguras && <span className="palco__zonas" aria-hidden />}
+
+        {/* Legenda posicionada como sairá no render. A palavra em
+            destaque usa a cor da marca — é o mesmo realce que o
+            render aplica, então o preview não mente. */}
+        {plan.captions.enabled && legenda && (
           <div
             className="palco__legenda"
             style={
@@ -181,7 +195,13 @@ export function Palco({ plan, proxyUrl, posicaoMs, onPosicao }: Props) {
                   : undefined
             }
           >
-            {nomeDaFuncao(atual.clipe.role).toUpperCase()}
+            {legenda.texto}
+            {legenda.destaque && (
+              <>
+                {' '}
+                <span className="palco__destaque">{legenda.destaque}</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -189,42 +209,57 @@ export function Palco({ plan, proxyUrl, posicaoMs, onPosicao }: Props) {
       <div className="palco__controles">
         <button
           type="button"
-          className="botao-icone"
-          onClick={() => pular(false)}
-          aria-label="Trecho anterior"
+          onClick={alternar}
+          disabled={!proxyUrl}
+          aria-label={tocando ? 'Pausar' : 'Reproduzir'}
+          className="botao palco__play"
         >
-          <IconeAnterior size={20} weight="fill" />
+          {tocando ? (
+            <IconePausar size={22} weight="fill" />
+          ) : (
+            <IconeTocar size={22} weight="fill" />
+          )}
         </button>
 
         <button
           type="button"
-          onClick={alternar}
-          disabled={!proxyUrl}
-          aria-label={tocando ? 'Pausar' : 'Reproduzir'}
-          className="botao"
-          style={{ width: 52, height: 52, borderRadius: 26, padding: 0, minHeight: 0 }}
+          className="botao-icone"
+          onClick={() => pular(false)}
+          aria-label="Trecho anterior"
         >
-          {tocando ? <IconePausar size={22} weight="fill" /> : <IconeTocar size={22} weight="fill" />}
+          <IconeAnterior size={18} weight="fill" />
         </button>
-
         <button
           type="button"
           className="botao-icone"
           onClick={() => pular(true)}
           aria-label="Próximo trecho"
         >
-          <IconeProximo size={20} weight="fill" />
+          <IconeProximo size={18} weight="fill" />
         </button>
 
         {/* Tabular: o número não dança enquanto o tempo corre. */}
-        <span
-          className="texto-secundario"
-          style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', minWidth: 92 }}
-          role="status"
-          aria-live="off"
-        >
+        <span className="palco__tempo" role="status" aria-live="off">
           {tempo(posicaoMs)} / {tempo(duracaoMs)}
         </span>
+
+        <button
+          type="button"
+          className="botao-icone auto"
+          aria-pressed={mudo}
+          aria-label={mudo ? 'Ativar som' : 'Silenciar'}
+          onClick={() => setMudo((v) => !v)}
+        >
+          <IconeVolume size={18} weight={mudo ? 'regular' : 'fill'} />
+        </button>
+        <button
+          type="button"
+          className="botao-icone"
+          aria-label="Tela cheia"
+          onClick={() => void quadroRef.current?.requestFullscreen?.()}
+        >
+          <IconeTelaCheia size={18} />
+        </button>
       </div>
     </>
   );

@@ -1,11 +1,11 @@
 'use client';
 
 // ============================================================
-// Rail de ferramentas — 72px, extrema esquerda do editor.
+// Rail de ferramentas — extrema esquerda do editor.
 //
 // Troca o que o painel ao lado mostra. É o equivalente ao rail do
-// OpenCut, com uma diferença: a primeira aba não é "mídia importada",
-// é a proposta da IA. O trabalho começa dela.
+// OpenCut, com uma diferença: a primeira aba não é "mídia
+// importada", é a proposta da IA. O trabalho começa dela.
 //
 // Rótulo sob o ícone: o guia pede que ícone sozinho só apareça onde
 // o significado é universal. "Elementos" e "Marca" não são.
@@ -16,18 +16,20 @@ import {
   IconeIA,
   IconeMidia,
   IconeTexto,
-  IconeAudio,
+  IconeLegenda,
   IconeMarca,
+  IconeAudio,
 } from '../icones';
 
-export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'audio' | 'marca';
+export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
 
 const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
-  { id: 'ia', rotulo: 'IA', Icone: IconeIA },
+  { id: 'ia', rotulo: 'Ferramentas', Icone: IconeIA },
   { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
   { id: 'texto', rotulo: 'Texto', Icone: IconeTexto },
-  { id: 'audio', rotulo: 'Áudio', Icone: IconeAudio },
+  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
   { id: 'marca', rotulo: 'Marca', Icone: IconeMarca },
+  { id: 'audio', rotulo: 'Áudio', Icone: IconeAudio },
 ];
 
 interface Props {
@@ -45,9 +47,8 @@ export function RailDeFerramentas({ aba, onTrocar }: Props) {
           className="ferramenta"
           aria-pressed={aba === id}
           onClick={() => onTrocar(id)}
-          title={rotulo}
         >
-          <Icone size={20} weight={aba === id ? 'fill' : 'regular'} />
+          <Icone size={22} weight={aba === id ? 'fill' : 'regular'} />
           <span className="ferramenta__rotulo">{rotulo}</span>
         </button>
       ))}

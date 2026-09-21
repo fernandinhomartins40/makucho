@@ -66,6 +66,12 @@ import {
   Warning,
   DotsSixVertical,
   CaretRight,
+  CaretDown,
+  DeviceMobile,
+  Crop,
+  PencilSimple,
+  Sliders,
+  ArrowsOut,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -139,3 +145,13 @@ export const IconeAjustar = ArrowsOutLineHorizontal;
 /** Alça de arrastar: seis pontos é a convenção do Phosphor. */
 export const IconeArrastar = DotsSixVertical;
 export const IconeAvancar = CaretRight;
+export const IconeAbrir = CaretDown;
+export const IconeAjustarZoom = ArrowsOut;
+
+// ---------- Palco ----------
+/** O formato de saida: um celular em pe. */
+export const IconeCelular = DeviceMobile;
+/** Area que sobrevive a interface do Reels. */
+export const IconeZonaSegura = Crop;
+export const IconeRenomear = PencilSimple;
+export const IconeParametros = Sliders;

@@ -51,7 +51,7 @@
   /* ---------- Estrutura ---------- */
   --sidebar-larga: 232px;
   --sidebar-compacta: 72px;
-  --topbar: 64px;
+  --topbar: 68px;
 
   /* 150–220ms, conforme o guia: perceptível sem atrasar a ação. */
   --transicao: 180ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -113,9 +113,6 @@ textarea {
   transition: width var(--transicao);
 }
 
-.sidebar--compacta {
-  width: var(--sidebar-compacta);
-}
 
 .sidebar__marca {
   padding: var(--e5) var(--e4) var(--e4);
@@ -169,14 +166,7 @@ textarea {
   height: 20px;
 }
 
-.sidebar--compacta .nav-item {
-  justify-content: center;
-  padding: 0;
-}
 
-.sidebar--compacta .nav-item__rotulo {
-  display: none;
-}
 
 .principal {
   flex: 1;
@@ -192,7 +182,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: var(--e3);
-  padding: 0 var(--e5);
+  padding: 0 var(--e4) 0 var(--e3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-canvas);
 }
@@ -657,48 +647,137 @@ h3 {
   }
 }
 
+
 /* ============================================================
-   Editor — quatro zonas
+   Sidebar — a mesma em todas as telas de navegação
 
-   O guia define a anatomia: rail de ferramentas 72px, painel da IA
-   280px, preview 9:16 ao centro, inspector à direita e timeline na
-   base.
+   As referências divergiam (232px com tagline, 72px empilhada,
+   rodapés diferentes). Uma navegação que muda de forma entre telas
+   obriga a reaprender onde as coisas estão, então aqui é uma só.
+   ============================================================ */
 
-   O editor não usa .conteudo: ele não rola. Cada zona rola por
-   dentro, e o preview nunca sai de vista. Numa tela de edição,
-   perder o preview de vista é perder a referência do trabalho.
+.sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  text-decoration: none;
+  color: inherit;
+}
+
+.sidebar__sigla {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.sidebar__nome {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  line-height: 1.1;
+}
+
+.sidebar__sub {
+  display: block;
+  font-size: 14px;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.sidebar__tagline {
+  margin-top: var(--e2);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sidebar__rodape {
+  padding: var(--e3);
+  display: grid;
+  gap: var(--e2);
+}
+
+.sidebar__armazenamento {
+  padding: var(--e3);
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+}
+
+.sidebar__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e1);
+  margin-top: var(--e3);
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sidebar__link:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
+   Editor
+
+   Anatomia da referência: rail de ferramentas na coluna esquerda
+   (no lugar da sidebar — ali a coluna pertence ao trabalho), três
+   painéis flutuando sobre o canvas e a timeline na base.
+
+   Os painéis são cards com respiro entre si, não divisórias
+   coladas: é o que separa uma tela de trabalho de um formulário.
    ============================================================ */
 
 .editor {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--sidebar-compacta) 280px minmax(0, 1fr) 300px;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: 100px minmax(0, 540px) minmax(0, 1fr) minmax(0, 420px);
+  grid-template-rows: minmax(0, 1fr) minmax(220px, 40%);
   grid-template-areas:
     'rail ia palco inspector'
     'timeline timeline timeline timeline';
+  gap: var(--e3);
+  padding: 0 var(--e3) var(--e3) 0;
   background: var(--bg-canvas);
 }
 
 .editor__rail {
   grid-area: rail;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--e1);
-  padding: var(--e3) 0;
+  gap: var(--e2);
+  padding: var(--e3) var(--e2);
+  overflow-y: auto;
+}
+
+.editor__ia,
+.editor__inspector {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-destaque);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: var(--e3);
 }
 
 .editor__ia {
   grid-area: ia;
-  background: var(--surface-1);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+}
+
+.editor__inspector {
+  grid-area: inspector;
 }
 
 .editor__palco {
@@ -708,33 +787,27 @@ h3 {
   align-items: center;
   justify-content: center;
   gap: var(--e4);
-  padding: var(--e4);
+  padding: var(--e4) 0;
   min-height: 0;
   min-width: 0;
 }
 
-.editor__inspector {
-  grid-area: inspector;
-  background: var(--surface-1);
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-  min-height: 0;
-}
-
 .editor__timeline {
   grid-area: timeline;
-  background: var(--bg-sidebar);
-  border-top: 1px solid var(--border);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-destaque);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
-/* Abaixo de 1280px o inspector sai: ele é contextual, enquanto o
+/* Abaixo de 1400px o inspector sai: ele é contextual, enquanto o
    painel da IA carrega a proposta — a razão de a tela existir. */
-@media (max-width: 1280px) {
+@media (max-width: 1400px) {
   .editor {
-    grid-template-columns: var(--sidebar-compacta) 260px minmax(0, 1fr);
+    grid-template-columns: 100px minmax(0, 420px) minmax(0, 1fr);
     grid-template-areas:
       'rail ia palco'
       'timeline timeline timeline';
@@ -745,16 +818,16 @@ h3 {
   }
 }
 
-/* ---------- Ferramenta do rail ---------- */
+/* ---------- Rail ---------- */
 
 .ferramenta {
-  width: 48px;
-  height: 48px;
+  width: 84px;
+  padding: var(--e3) 0;
   display: grid;
-  place-items: center;
-  gap: 2px;
+  justify-items: center;
+  gap: var(--e1);
   border: none;
-  border-radius: var(--r-controle);
+  border-radius: var(--r-cartao);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -773,43 +846,158 @@ h3 {
 }
 
 .ferramenta__rotulo {
-  font-size: 9px;
-  letter-spacing: 0.2px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---------- Painel ---------- */
+
+.painel__cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+  padding: var(--e4) var(--e4) var(--e3);
+  flex-shrink: 0;
+}
+
+.painel__corpo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--e4) var(--e4);
 }
 
 /* ---------- Trecho proposto pela IA ---------- */
 
 .trecho {
-  display: block;
-  width: 100%;
-  text-align: left;
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--e3);
   padding: var(--e3);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--cor-funcao, var(--border-forte));
-  border-radius: var(--r-controle);
+  border-radius: var(--r-cartao);
   background: var(--surface-2);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
   transition: border-color var(--transicao), background var(--transicao);
 }
 
-.trecho:hover {
-  background: color-mix(in srgb, var(--surface-2) 70%, var(--primary) 12%);
+.trecho[data-ativo] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface-2));
 }
 
-/* Selecionado: contorno completo, não só a barra lateral. */
-.trecho[aria-pressed='true'] {
-  border-color: var(--primary);
-  border-left-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 16%, var(--surface-2));
+/* Desligado continua legível: some do vídeo, não da lista — a
+   seção 13 exige poder restaurar o que foi descartado. */
+.trecho[data-desligado] {
+  opacity: 0.55;
+}
+
+.trecho__alca {
+  color: var(--text-secondary);
+  cursor: grab;
+  padding-top: var(--e1);
+}
+
+.trecho__miniatura {
+  position: relative;
+  width: 64px;
+  aspect-ratio: 3 / 4;
+  border: none;
+  border-radius: var(--r-controle);
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+}
+
+.trecho__duracao {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgb(6 19 45 / 85%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trecho__texto {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  min-width: 0;
 }
 
 .trecho__motivo {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
   margin-top: var(--e1);
+}
+
+.trecho__origem {
+  display: block;
+  margin-top: var(--e2);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.trecho__acoes {
+  display: grid;
+  justify-items: center;
+  gap: var(--e1);
+}
+
+/* ---------- Chave (toggle) ---------- */
+
+.chave {
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-forte);
+  cursor: pointer;
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+.chave[aria-checked='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.chave__bola {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transicao);
+}
+
+.chave[aria-checked='true'] .chave__bola {
+  transform: translateX(20px);
+}
+
+/* ---------- Botão tracejado ---------- */
+
+.botao--tracejado {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border-forte);
+  color: var(--text-primary);
+}
+
+.botao--tracejado:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--primary);
 }
 
 /* ---------- Palco ---------- */
@@ -818,33 +1006,242 @@ h3 {
   position: relative;
   aspect-ratio: 9 / 16;
   height: 100%;
-  max-height: 100%;
   background: #000;
-  border: 1px solid var(--border);
-  border-radius: var(--r-cartao);
+  border-radius: var(--r-destaque);
   overflow: hidden;
   flex-shrink: 1;
+}
+
+.palco__vazio {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--e3);
+  padding: var(--e5);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.palco__chips {
+  position: absolute;
+  top: var(--e3);
+  left: var(--e3);
+  right: var(--e3);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--e2);
+  z-index: 2;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e1);
+  padding: 5px 10px;
+  border-radius: var(--r-controle);
+  background: rgb(6 19 45 / 78%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(6px);
+}
+
+.chip--acionavel {
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+
+/* Área segura: o que sobrevive à interface do Reels. Enquadrar
+   fora dela significa ter o rosto cortado — e só descobrir depois
+   de publicar. */
+.palco__zonas {
+  position: absolute;
+  inset: 8% 6%;
+  border-left: 1px dashed rgb(255 255 255 / 38%);
+  border-right: 1px dashed rgb(255 255 255 / 38%);
+  pointer-events: none;
 }
 
 .palco__legenda {
   position: absolute;
   left: var(--e4);
   right: var(--e4);
-  bottom: 12%;
+  bottom: 14%;
   text-align: center;
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 800;
-  letter-spacing: 0.3px;
+  line-height: 1.3;
   color: #fff;
-  text-shadow: 0 2px 8px rgb(0 0 0 / 85%);
+  text-shadow: 0 2px 10px rgb(0 0 0 / 90%);
   pointer-events: none;
+}
+
+/* A palavra em destaque usa a cor da marca — o mesmo realce que o
+   render aplica, então o preview não mente. */
+.palco__destaque {
+  color: var(--accent);
 }
 
 .palco__controles {
   display: flex;
   align-items: center;
-  gap: var(--e4);
+  gap: var(--e3);
+  width: 100%;
+  max-width: 420px;
   flex-shrink: 0;
+}
+
+.palco__play {
+  width: 52px;
+  height: 52px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.palco__tempo {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Abas do inspector ---------- */
+
+.abas {
+  display: grid;
+  grid-auto-flow: column;
+  gap: var(--e2);
+  padding: 4px;
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+  margin-bottom: var(--e4);
+}
+
+.abas__item {
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--r-controle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+.abas__item[aria-selected='true'] {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  border-color: var(--primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.separador {
+  height: 1px;
+  background: var(--border);
+  margin: var(--e4) 0;
+}
+
+/* ---------- Estilos de legenda ---------- */
+
+.estilos {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--e2);
+}
+
+.estilo {
+  display: grid;
+  gap: var(--e1);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.estilo__amostra {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  border: 2px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  font-size: 17px;
+  transition: border-color var(--transicao);
+}
+
+.estilo[aria-checked='true'] .estilo__amostra {
+  border-color: var(--primary);
+}
+
+.estilo__rotulo {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.estilo[aria-checked='true'] .estilo__rotulo {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ---------- Cor e deslizante ---------- */
+
+.campo__cor {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: 0 var(--e2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+}
+
+.campo__cor .campo__entrada {
+  border: none;
+  background: transparent;
+}
+
+.campo__amostra {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  border: 1px solid rgb(255 255 255 / 20%);
+}
+
+.deslizante {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  border-radius: 3px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.deslizante::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: grab;
+}
+
+.deslizante::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  cursor: grab;
 }
 
 /* ---------- Timeline ---------- */
@@ -860,6 +1257,71 @@ h3 {
 
 .timeline__corpo {
   flex: 1;
-  overflow: auto;
   min-height: 0;
+  overflow: auto;
+}
+
+.timeline__faixa {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: 0 var(--e3);
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Clipe com tira de frames ao fundo e chip da função na frente. */
+.clipe {
+  position: absolute;
+  top: 5px;
+  border-radius: var(--r-controle);
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--e2);
+  border: 2px solid transparent;
+}
+
+.clipe[data-selecionado] {
+  border-color: var(--accent);
+}
+
+.clipe__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--e1);
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.clipe__frames {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-size: 34px 100%;
+}
+
+.onda {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 var(--e2);
+  overflow: hidden;
+}
+
+.onda__barra {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 1px;
+  background: var(--success);
 }

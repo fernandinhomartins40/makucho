@@ -1,18 +1,19 @@
 'use client';
 
 // ============================================================
-// Navegação lateral.
+// Navegação lateral — a mesma em todas as telas.
 //
-// O diagnóstico do guia apontou a barra inferior como o primeiro
-// problema: ela remete a aplicativo mobile, come altura útil e
-// separa a navegação do contexto de trabalho. Num editor de vídeo,
-// altura é o recurso mais escasso da tela.
+// As referências divergiam entre si: uma trazia 232px com tagline,
+// outra 72px empilhada, e cada uma um rodapé diferente. Uma
+// navegação que muda de forma entre telas obriga a reaprender onde
+// as coisas estão a cada passo, então aqui ela é uma só.
 //
-// Dois modos, como o guia define:
-//   232px  telas administrativas (Projetos, Roteiro, Marca)
-//    72px  telas de foco (Gravar, Editor), onde o conteúdo manda
+// O rodapé ficou com o armazenamento porque é o único que mostra
+// estado real: a cota de 10 GB precisa estar à vista ANTES de
+// encher, já que vídeos antigos cedem lugar aos novos.
 // ============================================================
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { Icon } from '@phosphor-icons/react';
@@ -23,6 +24,8 @@ import {
   IconeEditor,
   IconeMarca,
   IconeAjuda,
+  IconeNuvem,
+  IconeAvancar,
 } from '../icones';
 
 interface ItemDeNavegacao {
@@ -40,35 +43,23 @@ const ITENS: ItemDeNavegacao[] = [
   { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 
-/** As telas de foco usam a barra compacta. */
-const TELAS_DE_FOCO = ['/gravar', '/editor'];
+const GB = 1024 ** 3;
+const QUOTA_TOTAL_BYTES = 10 * GB;
 
 export function Sidebar() {
   const caminho = usePathname();
-  const compacta = TELAS_DE_FOCO.some((rota) => caminho.startsWith(rota));
 
   return (
-    <aside className={`sidebar${compacta ? ' sidebar--compacta' : ''}`}>
+    <aside className="sidebar">
       <div className="sidebar__marca">
-        <Link
-          href="/"
-          aria-label="MAKUCHO Studio — início"
-          style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
-        >
-          {compacta ? (
-            <Logotipo compacto />
-          ) : (
-            <>
-              <Logotipo />
-              <p
-                className="texto-secundario"
-                style={{ fontSize: 12, marginTop: 2 }}
-              >
-                Seus vídeos, editados por IA
-              </p>
-            </>
-          )}
+        <Link href="/" aria-label="MAKUCHO Studio — início" className="sidebar__logo">
+          <Logotipo />
+          <span>
+            <span className="sidebar__nome">MAKUCHO</span>
+            <span className="sidebar__sub">Studio</span>
+          </span>
         </Link>
+        <p className="sidebar__tagline">Seus vídeos, editados por IA</p>
       </div>
 
       <nav className="sidebar__nav" aria-label="Navegação principal">
@@ -81,13 +72,9 @@ export function Sidebar() {
               href={href}
               className="nav-item"
               aria-current={ativo ? 'page' : undefined}
-              // Na barra compacta o rótulo some, então o nome
-              // acessível vem do title e do aria-label.
-              title={compacta ? rotulo : undefined}
-              aria-label={compacta ? rotulo : undefined}
             >
               <span className="nav-item__icone" aria-hidden>
-                <Icone size={20} />
+                <Icone size={20} weight={ativo ? 'fill' : 'regular'} />
               </span>
               <span className="nav-item__rotulo">{rotulo}</span>
             </Link>
@@ -95,17 +82,80 @@ export function Sidebar() {
         })}
       </nav>
 
-      {!compacta && (
-        <div style={{ padding: 'var(--e3)' }}>
-          <Link href="/ajuda" className="nav-item">
-            <span className="nav-item__icone" aria-hidden>
-              <IconeAjuda size={20} />
-            </span>
-            <span className="nav-item__rotulo">Ajuda</span>
-          </Link>
-        </div>
-      )}
+      <div className="sidebar__rodape">
+        <Armazenamento />
+
+        <Link href="/ajuda" className="nav-item">
+          <span className="nav-item__icone" aria-hidden>
+            <IconeAjuda size={20} />
+          </span>
+          <span className="nav-item__rotulo">Ajuda</span>
+        </Link>
+      </div>
     </aside>
+  );
+}
+
+/**
+ * Espaço usado, somando as duas cotas.
+ *
+ * A sidebar mostra o total; a divisão entre materiais permanentes e
+ * vídeos em edição fica em Marca, onde há espaço para explicar que
+ * uma cede lugar e a outra não.
+ */
+function Armazenamento() {
+  const [usadoBytes, setUsadoBytes] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch('/api/settings/storage', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((uso) => {
+        if (!uso) return;
+        setUsadoBytes(uso.permanente.usadoBytes + uso.edicao.usadoBytes);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Sem dado, o bloco não aparece: uma barra vazia sugeriria disco
+  // livre que ninguém verificou.
+  if (usadoBytes === null) return null;
+
+  const pct = Math.min(100, (usadoBytes / QUOTA_TOTAL_BYTES) * 100);
+  const gb = (b: number) => (b / GB).toFixed(1).replace('.', ',');
+
+  return (
+    <div className="sidebar__armazenamento">
+      <span className="linha" style={{ gap: 'var(--e2)' }}>
+        <IconeNuvem size={17} />
+        <strong style={{ fontSize: 13 }}>Armazenamento</strong>
+      </span>
+
+      <p style={{ fontSize: 15, fontWeight: 600, margin: 'var(--e2) 0 var(--e1)' }}>
+        {gb(usadoBytes)} GB de {QUOTA_TOTAL_BYTES / GB} GB
+      </p>
+
+      <div
+        className="barra"
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Armazenamento: ${Math.round(pct)}% usado`}
+      >
+        <div
+          className="barra__preenchida"
+          style={{
+            width: `${pct}%`,
+            background: pct >= 90 ? 'var(--danger)' : undefined,
+          }}
+        />
+      </div>
+
+      <Link href="/marca" className="sidebar__link">
+        Gerenciar armazenamento
+        <IconeAvancar size={13} />
+      </Link>
+    </div>
   );
 }
 
@@ -116,52 +166,10 @@ export function Sidebar() {
  * da marca, não extraído do mockup. Enquanto ele não chega, esta
  * marca tipográfica ocupa o lugar sem inventar um símbolo.
  */
-function Logotipo({ compacto = false }: { compacto?: boolean }) {
-  if (compacto) {
-    return (
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          display: 'grid',
-          placeItems: 'center',
-          borderRadius: 10,
-          background: 'linear-gradient(135deg, var(--primary), var(--accent))',
-          color: '#fff',
-          fontWeight: 800,
-          fontSize: 18,
-          margin: '0 auto',
-        }}
-      >
-        M
-      </div>
-    );
-  }
-
+function Logotipo() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <div
-        style={{
-          width: 34,
-          height: 34,
-          display: 'grid',
-          placeItems: 'center',
-          borderRadius: 9,
-          background: 'linear-gradient(135deg, var(--primary), var(--accent))',
-          color: '#fff',
-          fontWeight: 800,
-          fontSize: 16,
-          flexShrink: 0,
-        }}
-      >
-        M
-      </div>
-      <div style={{ lineHeight: 1.1 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>
-          MAKUCHO
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--accent)' }}>Studio</div>
-      </div>
-    </div>
+    <span className="sidebar__sigla" aria-hidden>
+      M
+    </span>
   );
 }

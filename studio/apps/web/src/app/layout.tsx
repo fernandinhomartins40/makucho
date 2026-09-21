@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Sidebar } from '../components/shell/Sidebar';
+import { Moldura } from '../components/shell/Moldura';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,13 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
-        {/* Sidebar no layout, nao em cada pagina: o guia pede
-            navegacao lateral no desktop, e a barra inferior anterior
-            comia altura util -- o recurso mais escasso num editor. */}
-        <div className="app">
-          <Sidebar />
-          <div className="principal">{children}</div>
-        </div>
+        <Moldura>{children}</Moldura>
       </body>
     </html>
   );
