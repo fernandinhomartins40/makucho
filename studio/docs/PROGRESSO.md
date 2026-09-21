@@ -14,7 +14,11 @@
 | 2 | Brand e Communication Studio | API parcial; **tela pronta, desligada** |
 | 3 | Script e Record Studio | API parcial; **tela pronta, desligada** |
 | 4 | Ingestão e transcrição | contratos + núcleo dos workers; **fila não roda** |
-| 5 | Inteligência editorial | pendente |
+| 4a | **Entrada de vídeo** | pendente — **não há como subir vídeo** (ADR 0010) |
+| 5a | IA: adapter e travas de custo | pendente |
+| 5b | IA: seleção de trechos e risco | pendente |
+| 5c | IA: roteiro e sugestões | pendente |
+| 5d | IA: candidatos e refino | pendente |
 | 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
 | 7 | Render e entrega | pendente |
 | 8 | Hardening e piloto | pendente |
@@ -108,6 +112,19 @@ falta para deixar de ser demonstração.
 | `/editor` | 9 operações de timeline validadas pelo contrato; desfazer/refazer; seleção, corte, divisão, duplicação | `PLANO_DEMO` é constante — **falta carregar e salvar EditPlan**; sem proxy, o preview é uma caixa preta |
 | `/marca` | preview reage a cor, fonte e estilo na hora | não persiste — **falta ligar em `brand-profile`, que já existe** |
 | `/ajuda` | conteúdo estático, correto | — |
+
+### A lacuna que bloqueia tudo
+
+**Nenhuma tela aceita um vídeo.** Não há `input type="file"`, área de soltar
+arquivo nem `MediaRecorder` em lugar nenhum do produto. A `/gravar` verifica
+câmera e microfone, mostra o preview, conta o tempo — e o botão Gravar não
+grava. A aba "Mídia" do editor promete que "a gravação enviada aparece aqui",
+sem caminho por onde ela chegue.
+
+Isso é anterior a qualquer discussão sobre IA: sem vídeo, as seis chamadas da
+seção 26 do plano não têm sobre o que agir, e o produto funciona apenas com as
+constantes escritas nos arquivos. Virou a **Fase 4a**, detalhada na seção 27
+do plano e no ADR 0010.
 
 ### O que não existe por trás
 
@@ -223,17 +240,20 @@ em vez de código à espera de integração.
    mentir.
 2. **Ligar `/roteiros` e `/marca` às APIs que já existem** — trabalho de
    ligação, sem construção nova. Duas telas deixam de ser demonstração.
-3. **Gravação + upload** (`MediaRecorder`, sessão de upload, `media`) —
-   fecha o caminho da câmera até o disco.
+3. **Entrada de vídeo** (`media`, upload resumível, tela de envio,
+   `MediaRecorder`) — os dois caminhos do ADR 0010. É o que transforma o
+   produto de demonstração em ferramenta.
 4. **Worker de mídia consumindo a fila** — proxy, thumbnail e silêncios.
    A partir daqui o `/editor` tem vídeo de verdade para mostrar.
 5. **Worker de transcrição** — sem transcrição não há origem verificável para
    os cortes, e a integridade editorial depende disso.
 6. **`edit-plans` com versionamento** — as operações já existem e são
    validadas; falta persistir.
-7. **Fase 5 (IA)** — só aqui, porque ela consome transcrição e devolve um
-   EditPlan: os dois precisam existir antes.
-8. **Fases 7 e 8.**
-
+7. **Fase 5a (IA: adapter e travas de custo)** — antes de qualquer chamada
+   ligada, porque é onde mora o limite de gasto.
+8. **Fase 5b (seleção e risco)** — consome transcrição e devolve EditPlan, que
+   é por que ela vem depois de tudo acima.
+9. **Fases 5c, 5d, 7 e 8.** A 5c (roteiro) não depende de vídeo e pode sair
+   antes, se o cliente precisar.
 Os passos 1 e 2 somados custam menos que qualquer um dos demais e removem a
 maior parte da distância entre o que a tela mostra e o que o produto faz.
