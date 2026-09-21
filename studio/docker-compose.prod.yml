@@ -245,6 +245,10 @@ services:
         target: /tmp/studio
         tmpfs:
           size: 2g
+          # 1001 e o uid do usuario "worker" na imagem. A montagem
+          # apaga o mkdir do Dockerfile, entao sem isto o processo nao
+          # escreve nem o heartbeat nem os temporarios de FFmpeg.
+          mode: 0o1777
     mem_limit: 512m
     networks:
       - studio-net
