@@ -71,6 +71,32 @@ export const alternarClipeSchema = z.object({
   enabled: z.boolean(),
 });
 
+/**
+ * Parte um clipe em dois no ponto indicado.
+ *
+ * As duas metades continuam apontando para o ORIGINAL: dividir nao
+ * cria conteudo, so escolhe onde um trecho vira dois. E o que
+ * permite descartar o meio de uma fala sem perder as pontas.
+ */
+export const dividirClipeSchema = z.object({
+  op: z.literal('dividir_clipe'),
+  clipId: idSchema,
+  // Ponto do corte no ORIGINAL, nao na timeline: e a unica
+  // referencia que sobrevive a reordenacoes.
+  sourceMs: msSchema,
+});
+
+/**
+ * Repete um clipe logo depois do original.
+ *
+ * A copia aponta para o MESMO trecho da gravacao. Util para repetir
+ * uma frase de efeito sem regravar nada.
+ */
+export const duplicarClipeSchema = z.object({
+  op: z.literal('duplicar_clipe'),
+  clipId: idSchema,
+});
+
 /** Troca a ordem dos clipes. A validacao semantica roda depois. */
 export const reordenarSchema = z.object({
   op: z.literal('reordenar'),
@@ -101,6 +127,8 @@ export const timelineOperationSchema = z
     moverClipeSchema,
     ajustarCorteSchema,
     alternarClipeSchema,
+    dividirClipeSchema,
+    duplicarClipeSchema,
     reordenarSchema,
     editarLegendaSchema,
     trocarEstiloLegendaSchema,
@@ -109,6 +137,14 @@ export const timelineOperationSchema = z
   // As regras que cruzam campos ficam aqui, depois da discriminacao:
   // um .refine() dentro do membro impediria o Zod de ler o campo "op".
   .superRefine((operacao, ctx) => {
+    if (operacao.op === 'dividir_clipe' && operacao.sourceMs === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sourceMs'],
+        message: 'o ponto de divisao precisa cair dentro do trecho',
+      });
+    }
+
     if (operacao.op === 'ajustar_corte' && operacao.sourceEndMs <= operacao.sourceStartMs) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -195,6 +231,52 @@ export function aplicarOperacao(
           clips: recomporTimeline(clips.filter((c) => c.id !== operacao.clipId)),
         };
       }
+      break;
+    }
+
+    case 'dividir_clipe': {
+      const indice = clips.findIndex((c) => c.id === operacao.clipId);
+      const clip = clips[indice];
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+
+      // Uma divisao a menos de meio segundo de qualquer borda produz
+      // um fragmento que nao da para ouvir nem selecionar.
+      const MINIMO_MS = 500;
+      if (
+        operacao.sourceMs <= clip.sourceStartMs + MINIMO_MS ||
+        operacao.sourceMs >= clip.sourceEndMs - MINIMO_MS
+      ) {
+        return {
+          ok: false,
+          erro: 'o ponto de divisao esta perto demais da borda do trecho',
+        };
+      }
+
+      // A segunda metade herda funcao, origem e motivo: ela nasce do
+      // mesmo trecho da gravacao, entao a justificativa da IA
+      // continua valendo para as duas.
+      const segunda = {
+        ...clip,
+        id: `${clip.id}-b${Date.now().toString(36)}`,
+        sourceStartMs: operacao.sourceMs,
+      };
+      clip.sourceEndMs = operacao.sourceMs;
+
+      const divididos = [...clips];
+      divididos.splice(indice + 1, 0, segunda);
+      novo = { ...novo, clips: recomporTimeline(divididos) };
+      break;
+    }
+
+    case 'duplicar_clipe': {
+      const indice = clips.findIndex((c) => c.id === operacao.clipId);
+      const clip = clips[indice];
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+
+      const copia = { ...clip, id: `${clip.id}-c${Date.now().toString(36)}` };
+      const comCopia = [...clips];
+      comCopia.splice(indice + 1, 0, copia);
+      novo = { ...novo, clips: recomporTimeline(comCopia) };
       break;
     }
 

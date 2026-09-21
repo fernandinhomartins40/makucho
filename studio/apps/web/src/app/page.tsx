@@ -198,7 +198,7 @@ export default function ProjetosPage() {
             <div className="linha entre" style={{ marginBottom: 'var(--e4)' }}>
               <h2>Meus projetos recentes</h2>
               <Link
-                href="/projetos"
+                href="/"
                 className="linha"
                 style={{
                   gap: 4,

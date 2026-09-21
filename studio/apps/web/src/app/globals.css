@@ -1325,3 +1325,185 @@ h3 {
   border-radius: 1px;
   background: var(--success);
 }
+
+/* ============================================================
+   Profundidade e luz
+
+   O diagnóstico da referência: as superfícies chapadas deixavam a
+   tela plana e clara demais. Na referência cada painel tem um
+   gradiente sutil, a borda pega luz em cima e o azul da marca
+   ilumina o que está ativo.
+
+   Três camadas, e nenhuma delas é decoração:
+
+   - GRADIENTE nos painéis: dá direção à luz (vem de cima), o que
+     separa um painel do outro sem precisar engrossar a borda;
+   - BORDA CLARA no topo (inset 1px branco a 6%): é o que faz a
+     superfície parecer ter espessura em vez de ser um recorte;
+   - GLOW no que está ativo: o azul vaza para fora do elemento
+     selecionado, então a seleção se lê antes de o olho pousar nela.
+   ============================================================ */
+
+:root {
+  /* Sombras: as três do guia, do repouso ao destaque. */
+  --sombra-1: 0 1px 2px rgb(2 8 23 / 40%);
+  --sombra-2: 0 4px 16px rgb(2 8 23 / 45%);
+  --sombra-3: 0 12px 36px rgb(2 8 23 / 55%);
+
+  /* Luz da marca: usada no que está ativo, nunca no repouso. */
+  --brilho-primario: 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent),
+    0 4px 20px color-mix(in srgb, var(--primary) 28%, transparent);
+  --brilho-accent: 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent);
+
+  /* Topo iluminado: o que dá espessura às superfícies. */
+  --luz-topo: inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+/* O canvas não é uma cor só: escurece para as bordas, o que empurra
+   a atenção para o centro da tela. */
+body {
+  background:
+    radial-gradient(120% 80% at 50% 0%, #0a1c3d 0%, #06132d 55%, #040d20 100%);
+  background-attachment: fixed;
+}
+
+.sidebar {
+  background: linear-gradient(180deg, #0a1f45 0%, #071630 100%);
+  box-shadow: var(--sombra-1);
+}
+
+.topbar {
+  background: linear-gradient(180deg, #0a1c3d 0%, #071734 100%);
+  box-shadow: var(--sombra-1);
+}
+
+/* ---------- Superfícies com espessura ---------- */
+
+.cartao,
+.painel,
+.editor__ia,
+.editor__inspector,
+.editor__timeline,
+.sidebar__armazenamento {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--surface-1) 100%, #ffffff 3%) 0%,
+    var(--surface-1) 100%
+  );
+  box-shadow: var(--luz-topo), var(--sombra-2);
+}
+
+.editor__rail {
+  background: linear-gradient(180deg, #0a1f45 0%, #071630 100%);
+}
+
+/* ---------- Estado ativo com luz ---------- */
+
+.nav-item[aria-current='page'],
+.ferramenta[aria-pressed='true'] {
+  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  box-shadow: var(--brilho-primario);
+}
+
+.botao {
+  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  box-shadow: var(--sombra-1);
+}
+
+.botao:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
+  box-shadow: var(--brilho-primario);
+}
+
+.botao--secundario,
+.botao--fantasma,
+.botao--perigo,
+.botao--tracejado {
+  background: var(--surface-1);
+  box-shadow: var(--luz-topo);
+}
+
+.botao--fantasma,
+.botao--tracejado {
+  background: transparent;
+  box-shadow: none;
+}
+
+.botao--perigo {
+  background: transparent;
+  box-shadow: none;
+}
+
+.botao:disabled {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+/* O trecho selecionado é a informação mais importante do painel:
+   ganha a luz da marca, não só uma borda de 1px. */
+.trecho[data-ativo] {
+  box-shadow: var(--brilho-primario);
+}
+
+.chave[aria-checked='true'] {
+  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.abas__item[aria-selected='true'] {
+  box-shadow: var(--luz-topo);
+}
+
+.estilo[aria-checked='true'] .estilo__amostra {
+  box-shadow: var(--brilho-primario);
+}
+
+/* O preview é o objeto da tela: flutua acima de tudo. */
+.palco__quadro {
+  box-shadow: var(--sombra-3);
+}
+
+.palco__play {
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+/* O playhead precisa ser achado num relance sobre clipes coloridos. */
+.clipe[data-selecionado] {
+  box-shadow: var(--brilho-accent);
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  background:
+    radial-gradient(90% 140% at 88% 12%, rgb(65 200 255 / 22%) 0%, transparent 55%),
+    linear-gradient(120deg, #1546c8 0%, #1231a0 45%, #0d2472 100%);
+  box-shadow: var(--luz-topo), var(--sombra-3);
+}
+
+/* ---------- Cartão de projeto ---------- */
+
+.cartao--clicavel:hover,
+.projeto:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: var(--luz-topo), var(--sombra-3);
+}
+
+/* Movimento só onde ele informa: o card sobe um pouco para dizer
+   que é clicável. Respeita quem pediu menos animação. */
+@media (prefers-reduced-motion: no-preference) {
+  .cartao--clicavel {
+    transition: transform var(--transicao), box-shadow var(--transicao),
+      border-color var(--transicao);
+  }
+
+  .cartao--clicavel:hover {
+    transform: translateY(-2px);
+  }
+}
+
+/* ---------- Selos ---------- */
+
+.selo--sucesso {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--success) 22%, transparent);
+}

@@ -212,5 +212,83 @@ const visaoComMusica = comMusica.plan ? montarVisao(comMusica.plan) : null;
 t('com trilha, a track cobre o video inteiro',
   visaoComMusica?.music[0]?.endMs === 17_400);
 
+
+// ---------- Dividir ----------
+//
+// Dividir nao cria conteudo: parte um trecho em dois, e as duas
+// metades continuam apontando para o original.
+
+const dividido = aplicarOperacao(plano, {
+  op: 'dividir_clipe', clipId: 'c1', sourceMs: 141_000,
+});
+
+t('aceita dividir no meio do trecho', dividido.ok === true);
+t('o video ganha um trecho na divisao', dividido.plan?.clips.length === 4);
+
+const metadeA = dividido.plan?.clips[0];
+const metadeB = dividido.plan?.clips[1];
+
+t('a primeira metade termina no ponto do corte',
+  metadeA?.sourceEndMs === 141_000);
+t('a segunda metade comeca no ponto do corte',
+  metadeB?.sourceStartMs === 141_000);
+t('a segunda metade termina onde o trecho terminava',
+  metadeB?.sourceEndMs === 144_900);
+t('as duas metades herdam a funcao narrativa',
+  metadeA?.role === 'hook' && metadeB?.role === 'hook');
+t('as duas metades mantem a origem na transcricao',
+  (metadeB?.transcriptSegmentIds.length ?? 0) > 0);
+t('a divisao nao muda a duracao total',
+  dividido.plan ? duracaoDoPlano(dividido.plan) === 17_400 : false);
+t('a timeline e recomposta sem buraco apos dividir',
+  metadeB?.timelineStartMs === (metadeA?.sourceEndMs ?? 0) - (metadeA?.sourceStartMs ?? 0));
+
+// Um fragmento de meio segundo nao da para ouvir nem selecionar.
+const divisaoNaBorda = aplicarOperacao(plano, {
+  op: 'dividir_clipe', clipId: 'c1', sourceMs: 138_300,
+});
+t('RECUSA divisao colada na borda', divisaoNaBorda.ok === false);
+t('o erro da divisao explica o motivo',
+  (divisaoNaBorda.erro ?? '').includes('perto demais'));
+
+const divisaoForaDoClipe = aplicarOperacao(plano, {
+  op: 'dividir_clipe', clipId: 'c1', sourceMs: 300_000,
+});
+t('RECUSA divisao fora do trecho', divisaoForaDoClipe.ok === false);
+
+t('RECUSA dividir clipe inexistente',
+  aplicarOperacao(plano, {
+    op: 'dividir_clipe', clipId: 'nao-existe', sourceMs: 141_000,
+  }).ok === false);
+
+// ---------- Duplicar ----------
+
+const duplicado = aplicarOperacao(plano, { op: 'duplicar_clipe', clipId: 'c2' });
+
+t('aceita duplicar', duplicado.ok === true);
+t('o video ganha um trecho na duplicacao', duplicado.plan?.clips.length === 4);
+t('a copia fica logo depois do original',
+  duplicado.plan?.clips[2]?.sourceStartMs === 271_100);
+t('a copia aponta para o mesmo trecho da gravacao',
+  duplicado.plan?.clips[1]?.sourceStartMs === duplicado.plan?.clips[2]?.sourceStartMs);
+t('a copia recebe id proprio',
+  duplicado.plan?.clips[1]?.id !== duplicado.plan?.clips[2]?.id);
+t('duplicar aumenta a duracao total',
+  duplicado.plan ? duracaoDoPlano(duplicado.plan) === 17_400 + 6_500 : false);
+t('a duracao alvo acompanha a duplicacao',
+  duplicado.plan?.targetDurationMs === 23_900);
+
+t('RECUSA duplicar clipe inexistente',
+  aplicarOperacao(plano, { op: 'duplicar_clipe', clipId: 'nao-existe' }).ok === false);
+
+// As duas operacoes passam pelo mesmo schema das demais.
+t('dividir e uma operacao valida',
+  timelineOperationSchema.safeParse({
+    op: 'dividir_clipe', clipId: 'c1', sourceMs: 141_000,
+  }).success);
+t('duplicar e uma operacao valida',
+  timelineOperationSchema.safeParse({
+    op: 'duplicar_clipe', clipId: 'c1',
+  }).success);
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

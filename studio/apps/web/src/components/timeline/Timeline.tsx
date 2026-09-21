@@ -127,17 +127,86 @@ export function Timeline({
 
   const semSelecao = clipeSelecionado === null;
 
+  // ---------- Cortar e dividir ----------
+  //
+  // As duas agem no playhead, entao so fazem sentido quando o cursor
+  // esta DENTRO do trecho selecionado. Habilitar fora disso daria um
+  // botao que falha sem explicar por que.
+  const clipeAtual = plan.clips.find((c) => c.id === clipeSelecionado);
+
+  /** Onde o playhead cai dentro do ORIGINAL, ou null se esta fora. */
+  const pontoNoOriginal = useMemo(() => {
+    if (!clipeAtual) return null;
+
+    let acumulado = 0;
+    for (const c of plan.clips) {
+      const dur = c.sourceEndMs - c.sourceStartMs;
+      if (c.id === clipeAtual.id) {
+        const dentro = posicaoMs - acumulado;
+        if (dentro <= 0 || dentro >= dur) return null;
+        return clipeAtual.sourceStartMs + dentro;
+      }
+      acumulado += dur;
+    }
+    return null;
+  }, [clipeAtual, plan.clips, posicaoMs]);
+
+  const podeDividir = pontoNoOriginal !== null;
+
+  const dividir = useCallback(() => {
+    if (!clipeSelecionado || pontoNoOriginal === null) return;
+    onOperacao?.({
+      op: 'dividir_clipe',
+      clipId: clipeSelecionado,
+      sourceMs: Math.round(pontoNoOriginal),
+    });
+  }, [clipeSelecionado, pontoNoOriginal, onOperacao]);
+
+  /** Apara o comeco do trecho: o que vem antes do cursor sai. */
+  const cortar = useCallback(() => {
+    if (!clipeAtual || pontoNoOriginal === null) return;
+    onOperacao?.({
+      op: 'ajustar_corte',
+      clipId: clipeAtual.id,
+      sourceStartMs: Math.round(pontoNoOriginal),
+      sourceEndMs: clipeAtual.sourceEndMs,
+    });
+  }, [clipeAtual, pontoNoOriginal, onOperacao]);
+
   return (
     <>
       {/* ---------- Barra de acoes ---------- */}
       <div className="timeline__barra">
-        <Acao Icone={IconeCortar} rotulo="Cortar" desabilitado={semSelecao} />
-        <Acao Icone={IconeDividir} rotulo="Dividir" desabilitado={semSelecao} />
-        <Acao Icone={IconeCopiar} rotulo="Duplicar" desabilitado={semSelecao} />
+        {/* Cortar apara o trecho no playhead: o que vem antes do
+            cursor sai, e o trecho passa a comecar ali. */}
+        <Acao
+          Icone={IconeCortar}
+          rotulo="Cortar"
+          desabilitado={!podeDividir}
+          atalho="C"
+          onClick={cortar}
+        />
+        <Acao
+          Icone={IconeDividir}
+          rotulo="Dividir"
+          desabilitado={!podeDividir}
+          atalho="S"
+          onClick={dividir}
+        />
+        <Acao
+          Icone={IconeCopiar}
+          rotulo="Duplicar"
+          desabilitado={semSelecao}
+          atalho="D"
+          onClick={() =>
+            clipeSelecionado && onOperacao?.({ op: 'duplicar_clipe', clipId: clipeSelecionado })
+          }
+        />
         <Acao
           Icone={IconeLixeira}
           rotulo="Excluir"
           desabilitado={semSelecao || plan.clips.length === 1}
+          atalho="Del"
           onClick={() =>
             clipeSelecionado &&
             onOperacao?.({ op: 'alternar_clipe', clipId: clipeSelecionado, enabled: false })
@@ -321,11 +390,13 @@ function Acao({
   Icone,
   rotulo,
   desabilitado,
+  atalho,
   onClick,
 }: {
   Icone: Icon;
   rotulo: string;
   desabilitado?: boolean;
+  atalho?: string;
   onClick?: () => void;
 }) {
   return (
@@ -334,6 +405,7 @@ function Acao({
       className="botao botao--fantasma botao--pequeno"
       disabled={desabilitado}
       onClick={onClick}
+      title={atalho ? `${rotulo} (${atalho})` : rotulo}
     >
       <Icone size={16} />
       {rotulo}
