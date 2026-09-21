@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (terceira revisão: Fase 4 fechada).
+> Atualizado em 2026-09-21 (quarta revisão: Fases 4 e 5a fechadas).
 
 ## Panorama
 
@@ -15,8 +15,8 @@
 | 3 | Script e Record Studio | **concluída** |
 | 4 | Ingestão e transcrição | **concluída** — pipeline fecha da câmera à transcrição |
 | 4a | Entrada de vídeo | **concluída** (ADR 0010) |
-| 5a | IA: adapter e travas de custo | pendente — **próximo passo** |
-| 5b | IA: seleção de trechos e risco | pendente |
+| 5a | IA: adapter e travas de custo | **concluída** |
+| 5b | IA: seleção de trechos e risco | pendente — **próximo passo** |
 | 5c | IA: roteiro e sugestões | pendente |
 | 5d | IA: candidatos e refino | pendente |
 | 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
@@ -36,11 +36,15 @@ palavra, e o projeto chega a `ANALYZING` com os silêncios já marcados como
 regiões. O editor abre esse projeto, toca o proxy e salva cada ajuste como
 uma versão no banco.
 
+A infraestrutura de IA existe e está travada: adapter, provedor falso,
+prompts versionados e o teto de gasto por workspace, visível na tela.
+
 O que ainda **não** funciona, sem rodeio:
 
-- **IA**: as seis chamadas da seção 26 não existem. O painel "Seleção da IA"
-  mostra o exemplo do plano, não uma proposta real. É por isso que o projeto
-  para em `ANALYZING`: o estado está certo, só não há quem analise;
+- **as seis chamadas da seção 26**: o encanamento está pronto, mas nenhuma
+  função usa. O painel "Seleção da IA" mostra o exemplo do plano, não uma
+  proposta real. É por isso que o projeto para em `ANALYZING`: o estado está
+  certo, só não há quem analise;
 - **render**: "Exportar vídeo" não gera arquivo. É a Fase 7 inteira;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
@@ -109,6 +113,47 @@ pronto: se o áudio foi extraído, a falha foi da transcrição, e refazer proxy
 thumbnail gastaria minutos de FFmpeg para produzir os mesmos arquivos. O lock
 global é único na VPS — trabalho repetido ali é fila parada para todo mundo.
 
+### Fase 5a — o encanamento da IA, com o teto ligado
+
+Vem antes das chamadas porque é onde mora o limite de gasto. Ligar IA sem teto
+configurado é o tipo de erro que só aparece na fatura.
+
+**Adapter.** Deliberadamente estreito — um método, não os seis que o plano
+esboça. Seis métodos tipados por função obrigariam cada implementação a
+repetir parsing e validação; com um só, o parsing vive uma vez, junto do
+schema que ele precisa satisfazer.
+
+**Provedor falso.** Testar o caminho feliz de uma IA é fácil e quase inútil: o
+que precisa de teste é a recusa. Ele produz sob encomenda JSON quebrado, campo
+inventado, prosa no lugar de estrutura — e o caso perigoso, em que o JSON é
+válido, o schema passa, e o trecho aponta para um tempo que não existe na
+gravação. Só uma conferência contra a duração real pega esse, e é por isso que
+o validador semântico existe.
+
+**Trava de custo.** Confere antes de chamar, registra depois de receber:
+registrar antes contaria o que não aconteceu, conferir depois seria conferir a
+fatura. A estimativa usa o máximo de tokens que o pedido autoriza, não a média
+— estimar pela média deixaria passar justamente a chamada grande, que é a que
+estoura.
+
+- preços em centavos inteiros: somar float de centavo cem vezes produz
+  4,999999 e um limite que dispara na hora errada;
+- arredondamento para cima: um teto que erra para baixo deixa passar a chamada
+  que estoura;
+- `upsert` com `increment`: duas chamadas simultâneas perderiam uma contagem,
+  e a que se perde é sempre a que faltava para bater no teto;
+- `AiUsage` separado de `AiAnalysis`, porque aquela pende de um projeto e as
+  chamadas de roteiro acontecem antes de existir projeto nenhum.
+
+O gasto aparece na tela de Marca, ao lado do armazenamento, com aviso em 80% e
+bloqueio em 100%. Um limite que só aparece quando bloqueia é indistinguível de
+um defeito, do ponto de vista de quem está usando.
+
+**Um bug pego construindo a imagem, não lendo o código.** O `tsc` só emite
+`.js`, então `dist/modules/ai/prompts/` não existia e a primeira chamada de IA
+em produção falharia com "prompt não está na imagem". Não aparece em
+typecheck, nem em teste, nem no build.
+
 ### Dois containers que subiriam unhealthy
 
 `worker-transcription` e `worker-render` tinham o mesmo defeito de tmpfs já
@@ -132,7 +177,11 @@ Não por inspeção — executando:
 | Áudio sem fala sai com código 3 e stdout vazio | duble que devolve zero segmentos |
 | Erros de uso saem em stderr, stdout limpo | sem argumento e com arquivo inexistente |
 | Build e typecheck | worker compila; API e web limpos |
-| Suíte completa | **380 testes, 0 falhas** |
+| O prompt chega dentro da imagem | `docker build` da API, arquivo listado e lido no container |
+| O `PromptsService` carrega em produção | executado dentro da imagem, pelo caminho real do `dist` |
+| As recusas da IA são recusadas | provedor falso: JSON quebrado, campo extra, prosa, vazio |
+| Aritmética do teto de gasto | 30 casos, incluindo o centavo que passa do limite |
+| Suíte completa | **431 testes, 0 falhas** |
 
 O que **não** foi verificado: transcrição de um vídeo real na VPS. O
 faster-whisper não roda nesta máquina de desenvolvimento, então a qualidade da
@@ -226,14 +275,10 @@ O que falta da fase: captions renderizadas e os componentes Remotion.
 
 ## Ordem sugerida a partir daqui
 
-1. **Fase 5a — adapter, provedor falso, prompts versionados e travas de
-   custo.** Vem primeiro porque as outras três dependem dela, e porque é onde
-   mora o limite de gasto: ligar chamadas de IA sem teto configurado é o tipo
-   de erro que só aparece na fatura.
-2. **Fase 5b — seleção de trechos e risco semântico (#3, #5).** O caminho
-   crítico. Consome a transcrição que agora existe e tira o projeto de
-   `ANALYZING`.
-3. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo; podem
-   sair antes se o cliente precisar.
-4. **Fase 7 — render.** É o que fecha o ciclo e entrega arquivo.
-5. **Fase 5d, upload de assets e Fase 8.**
+1. **Fase 5b — seleção de trechos e risco semântico (#3, #5).** O caminho
+   crítico. Consome a transcrição que agora existe, usa o adapter que agora
+   existe, e tira o projeto de `ANALYZING` — o estado em que ele hoje para.
+2. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo; podem
+   sair antes se o cliente precisar ver IA funcionando sem gravar nada.
+3. **Fase 7 — render.** É o que fecha o ciclo e entrega arquivo.
+4. **Fase 5d, upload de assets e Fase 8.**
