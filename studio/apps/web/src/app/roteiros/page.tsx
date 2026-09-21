@@ -15,9 +15,11 @@
 // número vindo de lugar nenhum daria autoridade a um palpite.
 // ============================================================
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Topbar } from '../../components/shell/Topbar';
+import { roteiros as apiRoteiros } from '../../lib/api';
 import {
   IconeIA,
   IconeRelogio,
@@ -37,6 +39,9 @@ import {
 // ---------- Estrutura ----------
 
 type Papel = 'hook' | 'problem' | 'authority' | 'cta';
+
+/** Duracao alvo do roteiro, no limite que o contrato aceita. */
+const DURACAO_ALVO_MS = 45_000;
 
 interface Bloco {
   id: string;
@@ -218,8 +223,21 @@ function sugerir(blocos: Bloco[]): Array<{ id: string; texto: string; aplicar: (
 // ============================================================
 
 export default function RoteirosPage() {
+  return (
+    <Suspense fallback={<div className="conteudo" />}>
+      <Roteiro />
+    </Suspense>
+  );
+}
+
+function Roteiro() {
+  const parametros = useSearchParams();
+  const idDaUrl = parametros.get('id');
+
   const [blocos, setBlocos] = useState<Bloco[]>(INICIAL);
   const [titulo, setTitulo] = useState('Atendimento rápido vende mais');
+  const [roteiroId, setRoteiroId] = useState<string | null>(idDaUrl);
+  const [salvamento, setSalvamento] = useState<'salvo' | 'salvando' | 'erro'>('salvo');
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [selecionado, setSelecionado] = useState<string | null>('b1');
   const [gerando, setGerando] = useState(false);
@@ -242,6 +260,85 @@ export default function RoteirosPage() {
   );
   const { nota, criterios } = useMemo(() => analisar(blocos), [blocos]);
   const sugestoes = useMemo(() => sugerir(blocos), [blocos]);
+
+  // ---------- Carregar ----------
+  useEffect(() => {
+    if (!idDaUrl) return;
+
+    void apiRoteiros
+      .obter(idDaUrl)
+      .then((r) => {
+        setTitulo(r.title);
+        setBlocos(
+          r.blocks
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((b, i) => ({
+              id: b.id ?? `b${i}`,
+              papel: b.role as Papel,
+              texto: b.text,
+            })),
+        );
+      })
+      .catch((e) => setAviso(e instanceof Error ? e.message : 'não foi possível carregar.'));
+  }, [idDaUrl]);
+
+  // ---------- Salvar sozinho ----------
+  //
+  // Debounce de 1,5 s: salvar a cada tecla encheria o banco de
+  // versões que ninguém pediu, e não salvar nada faria a pessoa
+  // perder o roteiro ao fechar a aba.
+  const primeiroRender = useRef(true);
+
+  useEffect(() => {
+    if (primeiroRender.current) {
+      primeiroRender.current = false;
+      return;
+    }
+
+    // Sem hook o contrato recusa — não adianta tentar e mostrar erro
+    // enquanto a pessoa ainda está escrevendo.
+    const temHook = blocos.some((b) => b.papel === 'hook' && b.texto.trim());
+    const temTexto = blocos.some((b) => b.texto.trim());
+    if (!temHook || !temTexto) return;
+
+    setSalvamento('salvando');
+
+    const id = setTimeout(async () => {
+      const corpo = {
+        title: titulo.trim() || 'Roteiro sem título',
+        mode: 'manual',
+        framework: 'authority_education',
+        targetDurationMs: DURACAO_ALVO_MS,
+        blocks: blocos
+          .filter((b) => b.texto.trim())
+          .map((b, i) => ({
+            role: b.papel,
+            goal: INTENCAO[b.papel].slice(0, 120),
+            text: b.texto.trim(),
+            position: i,
+          })),
+      };
+
+      try {
+        if (roteiroId) {
+          await apiRoteiros.atualizar(roteiroId, corpo);
+        } else {
+          const criado = await apiRoteiros.criar(corpo);
+          setRoteiroId(criado.id);
+          // A URL passa a carregar o id: recarregar a página não
+          // cria um roteiro duplicado.
+          window.history.replaceState(null, '', `/roteiros?id=${criado.id}`);
+        }
+        setSalvamento('salvo');
+      } catch (e) {
+        setSalvamento('erro');
+        setAviso(e instanceof Error ? e.message : 'não foi possível salvar.');
+      }
+    }, 1500);
+
+    return () => clearTimeout(id);
+  }, [blocos, titulo, roteiroId]);
 
   const editar = (id: string, texto: string) =>
     setBlocos((atual) => atual.map((b) => (b.id === id ? { ...b, texto } : b)));
@@ -299,7 +396,7 @@ export default function RoteirosPage() {
             </span>
           </div>
         }
-        estado="salvo"
+        estado={salvamento}
         busca
       >
         <Link href="/gravar" className="botao botao--pequeno">
@@ -564,7 +661,11 @@ export default function RoteirosPage() {
               ))}
             </ul>
 
-            <Link href="/gravar" className="botao botao--largo" style={{ marginTop: 'var(--e5)' }}>
+            <Link
+              href={roteiroId ? `/gravar?roteiro=${roteiroId}` : '/gravar'}
+              className="botao botao--largo"
+              style={{ marginTop: 'var(--e5)' }}
+            >
               <IconeGravar size={16} weight="fill" />
               Usar no teleprompter
             </Link>

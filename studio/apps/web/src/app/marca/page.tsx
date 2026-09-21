@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
+import { marca as apiMarca, armazenamento as apiArmazenamento } from '../../lib/api';
 import {
   IconeAviso,
   IconeEnviar,
@@ -74,14 +75,59 @@ export default function MarcaPage() {
   const [fonteCorpo, setFonteCorpo] = useState('Inter');
   const [temLogo, setTemLogo] = useState(true);
   const [sujo, setSujo] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/settings/storage', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setUso)
-      .catch(() => undefined);
+    // O armazenamento é informativo: falhar nele não impede editar a
+    // marca, então o erro fica silencioso.
+    void apiArmazenamento.obter().then(setUso).catch(() => undefined);
+
+    void apiMarca
+      .obter()
+      .then((perfil) => {
+        if (!perfil) return;
+
+        setCores([
+          { id: 'primaria', rotulo: 'Primária', valor: perfil.colors.primary },
+          { id: 'secundaria', rotulo: 'Secundária', valor: perfil.colors.secondary },
+          { id: 'fundo', rotulo: 'Fundo', valor: perfil.colors.textDark },
+          { id: 'superficie', rotulo: 'Superfície', valor: perfil.colors.accent },
+          { id: 'texto', rotulo: 'Texto', valor: perfil.colors.textLight },
+        ]);
+
+        if (perfil.fontPrimary) setFonteTitulo(perfil.fontPrimary);
+        if (perfil.fontSecond) setFonteCorpo(perfil.fontSecond);
+      })
+      .catch((e) => setAviso(e instanceof Error ? e.message : 'não foi possível carregar a marca.'));
   }, []);
+
+  const salvar = async () => {
+    setSalvando(true);
+    setAviso(null);
+
+    try {
+      await apiMarca.salvar({
+        name: 'Kit de marca',
+        colors: {
+          primary: corDe('primaria'),
+          secondary: corDe('secundaria'),
+          accent: corDe('superficie'),
+          textLight: corDe('texto'),
+          textDark: corDe('fundo'),
+        },
+        fontPrimary: fonteTitulo,
+        fontSecond: fonteCorpo,
+      });
+
+      setSujo(false);
+      setAviso('Salvo. O kit passa a valer nos próximos vídeos.');
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'não foi possível salvar.');
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   const corDe = (id: string) => cores.find((c) => c.id === id)?.valor ?? '#2F66FF';
 
@@ -105,14 +151,11 @@ export default function MarcaPage() {
         <button
           type="button"
           className="botao auto"
-          disabled={!sujo}
-          onClick={() => {
-            setSujo(false);
-            setAviso('O kit de marca passa a valer nos próximos vídeos.');
-          }}
+          disabled={!sujo || salvando}
+          onClick={salvar}
         >
           <IconeSalvo size={16} />
-          Salvar alterações
+          {salvando ? 'Salvando…' : 'Salvar alterações'}
         </button>
       </Topbar>
 

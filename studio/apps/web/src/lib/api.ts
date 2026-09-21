@@ -128,12 +128,21 @@ export interface Roteiro {
   updatedAt: string;
 }
 
+/** O que o scriptInputSchema aceita. */
+export interface RoteiroParaSalvar {
+  title: string;
+  mode: string;
+  framework: string;
+  targetDurationMs: number;
+  blocks: Array<{ role: string; goal?: string; text: string; position: number }>;
+}
+
 export const roteiros = {
   listar: () => api<Roteiro[]>('/scripts'),
   obter: (id: string) => api<Roteiro>(`/scripts/${id}`),
-  criar: (dados: Omit<Roteiro, 'id' | 'updatedAt'>) =>
+  criar: (dados: RoteiroParaSalvar) =>
     api<Roteiro>('/scripts', { metodo: 'POST', corpo: dados }),
-  atualizar: (id: string, dados: Omit<Roteiro, 'id' | 'updatedAt'>) =>
+  atualizar: (id: string, dados: RoteiroParaSalvar) =>
     api<Roteiro>(`/scripts/${id}`, { metodo: 'PATCH', corpo: dados }),
   remover: (id: string) => api<void>(`/scripts/${id}`, { metodo: 'DELETE' }),
 };
@@ -142,23 +151,42 @@ export const roteiros = {
 // Marca
 // ============================================================
 
+export interface CoresDaMarca {
+  primary: string;
+  secondary: string;
+  accent: string;
+  textLight: string;
+  textDark: string;
+}
+
 export interface PerfilDeMarca {
   id: string;
   name: string;
-  primaryColor: string;
-  secondaryColor: string;
-  backgroundColor: string;
-  surfaceColor: string;
-  textColor: string;
-  titleFont: string;
-  bodyFont: string;
+  colors: CoresDaMarca;
+  fontPrimary?: string;
+  fontSecond?: string;
   version: number;
 }
 
+export interface MarcaParaSalvar {
+  name: string;
+  colors: CoresDaMarca;
+  fontPrimary?: string;
+  fontSecond?: string;
+}
+
 export const marca = {
-  obter: () => api<PerfilDeMarca | null>('/brand-profile'),
-  salvar: (dados: Partial<PerfilDeMarca>) =>
-    api<PerfilDeMarca>('/brand-profile', { metodo: 'PUT', corpo: dados }),
+  // Devolve null quando o workspace ainda nao tem perfil -- o caso de
+  // quem abre a tela pela primeira vez, que nao e erro.
+  obter: () =>
+    api<PerfilDeMarca | null>('/brand-profile').catch((e) => {
+      if (e instanceof ErroDaApi && e.status === 404) return null;
+      throw e;
+    }),
+  // POST e nao PUT: cada salvamento cria uma VERSAO, e e isso que
+  // permite saber com que marca um video antigo foi gerado.
+  salvar: (dados: MarcaParaSalvar) =>
+    api<PerfilDeMarca>('/brand-profile', { metodo: 'POST', corpo: dados }),
 };
 
 // ============================================================
