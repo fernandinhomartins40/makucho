@@ -13,7 +13,7 @@
   "scripts": {
     "build": "rimraf dist tsconfig.tsbuildinfo && tsc",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/lock.test.ts && tsx test/tmp.test.ts"
+    "test": "tsx test/lock.test.ts && tsx test/tmp.test.ts && tsx test/ffmpeg.test.ts"
   },
   "dependencies": {
     "@makucho/studio-contracts": "workspace:*",
