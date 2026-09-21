@@ -17,16 +17,18 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
-    "typecheck": "prisma generate"
+    "typecheck": "prisma generate",
+    "seed": "tsx src/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "argon2": "^0.41.1"
   },
   "devDependencies": {
     "@makucho/typescript-config": "workspace:*",
     "@types/node": "^22.7.5",
-    "tsx": "^4.19.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "rimraf": "^6.0.1"
   }

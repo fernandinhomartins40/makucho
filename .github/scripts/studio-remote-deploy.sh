@@ -62,12 +62,28 @@ cd "$RELEASE_DIR/studio"
 # Foi exatamente o que aconteceu na release b9e6f18: makucho-studio-
 # worker not found, e as seis demais imagens marcadas "Interrupted".
 # ------------------------------------------------------------
+#
+# STUDIO_WORKERS traz a LISTA dos que tem imagem publicada, separada
+# por virgula (ex.: "media"). Cada worker tem profile proprio, entao
+# ter so um pronto deixou de impedir que ele suba -- era o que
+# segurava o worker de midia, o primeiro implementado.
 PROFILE_ARGS=()
-if [ "${STUDIO_WORKERS:-0}" = "1" ]; then
-  PROFILE_ARGS=(--profile workers)
-  log "workers habilitados neste deploy"
+WORKERS="${STUDIO_WORKERS:-}"
+
+# Compatibilidade com o formato antigo, caso um deploy manual ainda
+# passe 1 ou 0.
+[ "$WORKERS" = "1" ] && WORKERS="workers"
+[ "$WORKERS" = "0" ] && WORKERS=""
+
+if [ -n "$WORKERS" ]; then
+  IFS=',' read -ra NOMES <<< "$WORKERS"
+  for nome in "${NOMES[@]}"; do
+    nome="$(echo "$nome" | xargs)"
+    [ -n "$nome" ] && PROFILE_ARGS+=(--profile "$nome")
+  done
+  log "workers habilitados neste deploy: ${WORKERS}"
 else
-  log "workers ainda sem imagem; subindo apenas api, web, redis e nginx"
+  log "nenhum worker com imagem publicada; subindo apenas api, web, redis e nginx"
 fi
 
 compose() {

@@ -62,7 +62,8 @@ jobs:
     outputs:
       release: ${{ steps.meta.outputs.release }}
       apps_ready: ${{ steps.meta.outputs.apps_ready }}
-      # O deploy le isto para decidir se ativa o profile "workers".
+      # Lista de profiles a ativar, separada por virgula (ex.: "media").
+      # Vazia quando nenhum worker tem imagem publicada.
       workers_ready: ${{ steps.workers.outputs.published }}
 
     steps:
@@ -134,19 +135,13 @@ jobs:
           set -euo pipefail
           RELEASE='${{ steps.meta.outputs.release }}'
 
-          # Os tres sobem juntos ou nenhum sobe: o compose ativa o
-          # profile inteiro, e um worker faltando no meio repetiria o
-          # erro que esta separacao existe para evitar.
-          existentes=0
-          for w in media transcription render; do
-            [ -f "studio/workers/${w}/package.json" ] && existentes=$((existentes + 1))
-          done
-
-          if [ "$existentes" -ne 3 ]; then
-            echo "published=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::workers incompletos (${existentes}/3); o stack sobe sem eles."
-            exit 0
-          fi
+          # Publica o que EXISTE, nao "os tres ou nenhum".
+          #
+          # A regra anterior vinha de o compose ter um profile unico:
+          # subir "workers" com uma imagem faltando quebrava o pull
+          # inteiro. Agora cada worker tem profile proprio, entao ter
+          # so um pronto deixou de ser motivo para nao publicar nenhum
+          # -- era o que segurava o worker de midia.
 
           publicar() {
             local dockerfile="$1" imagem="$2"
@@ -160,11 +155,27 @@ jobs:
               --push .
           }
 
-          publicar worker-media.Dockerfile         '${{ env.IMAGE_PREFIX }}-worker'
-          publicar worker-transcription.Dockerfile '${{ env.IMAGE_PREFIX }}-whisper'
-          publicar worker-render.Dockerfile        '${{ env.IMAGE_PREFIX }}-render'
+          prontos=""
 
-          echo "published=true" >> "$GITHUB_OUTPUT"
+          if [ -f "studio/workers/media/package.json" ]; then
+            publicar worker-media.Dockerfile '${{ env.IMAGE_PREFIX }}-worker'
+            prontos="${prontos}media,"
+          fi
+
+          if [ -f "studio/workers/transcription/package.json" ]; then
+            publicar worker-transcription.Dockerfile '${{ env.IMAGE_PREFIX }}-whisper'
+            prontos="${prontos}transcription,"
+          fi
+
+          if [ -f "studio/workers/render/package.json" ]; then
+            publicar worker-render.Dockerfile '${{ env.IMAGE_PREFIX }}-render'
+            prontos="${prontos}render,"
+          fi
+
+          # Vira a lista de profiles que o deploy ativa: cada um sobe
+          # apenas o worker cuja imagem acabou de ir para o registro.
+          echo "published=${prontos%,}" >> "$GITHUB_OUTPUT"
+          echo "::notice::workers publicados: ${prontos:-nenhum}"
 
   # ============================================================
   # JOB 2 - Deploy
@@ -284,7 +295,7 @@ jobs:
             "APP_ROOT='${{ env.APP_ROOT }}' \
              RELEASE='${RELEASE}' \
              STUDIO_DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
-             STUDIO_WORKERS='${{ needs.build.outputs.workers_ready == 'true' && '1' || '0' }}' \
+             STUDIO_WORKERS='${{ needs.build.outputs.workers_ready }}' \
              REGISTRY_IMAGE_STUDIO_API='${{ env.IMAGE_PREFIX }}-api' \
              REGISTRY_IMAGE_STUDIO_WEB='${{ env.IMAGE_PREFIX }}-web' \
              REGISTRY_IMAGE_STUDIO_WORKER='${{ env.IMAGE_PREFIX }}-worker' \
