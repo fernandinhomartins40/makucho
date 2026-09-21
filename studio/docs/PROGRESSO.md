@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (quarta revisão: Fases 4 e 5a fechadas).
+> Atualizado em 2026-09-21 (quinta revisão: Fases 4, 5a e 5b fechadas).
 
 ## Panorama
 
@@ -16,8 +16,8 @@
 | 4 | Ingestão e transcrição | **concluída** — pipeline fecha da câmera à transcrição |
 | 4a | Entrada de vídeo | **concluída** (ADR 0010) |
 | 5a | IA: adapter e travas de custo | **concluída** |
-| 5b | IA: seleção de trechos e risco | pendente — **próximo passo** |
-| 5c | IA: roteiro e sugestões | pendente |
+| 5b | IA: seleção de trechos e risco | **concluída** |
+| 5c | IA: roteiro e sugestões | pendente — **próximo passo** |
 | 5d | IA: candidatos e refino | pendente |
 | 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
 | 7 | Render e entrega | pendente |
@@ -36,15 +36,15 @@ palavra, e o projeto chega a `ANALYZING` com os silêncios já marcados como
 regiões. O editor abre esse projeto, toca o proxy e salva cada ajuste como
 uma versão no banco.
 
-A infraestrutura de IA existe e está travada: adapter, provedor falso,
-prompts versionados e o teto de gasto por workspace, visível na tela.
+**A cadeia principal fecha.** Um vídeo entra, vira proxy e transcrição, e a
+IA escolhe os trechos com o motivo de cada escolha e o risco de tirá-los do
+contexto. O editor abre a proposta real, não mais o exemplo.
 
 O que ainda **não** funciona, sem rodeio:
 
-- **as seis chamadas da seção 26**: o encanamento está pronto, mas nenhuma
-  função usa. O painel "Seleção da IA" mostra o exemplo do plano, não uma
-  proposta real. É por isso que o projeto para em `ANALYZING`: o estado está
-  certo, só não há quem analise;
+- **quatro das seis chamadas da seção 26**: roteiro (#1), sugestões (#2),
+  candidatos (#4) e refino (#6). O encanamento está pronto e a #3 e a #5
+  rodam;
 - **render**: "Exportar vídeo" não gera arquivo. É a Fase 7 inteira;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
@@ -181,12 +181,47 @@ Não por inspeção — executando:
 | O `PromptsService` carrega em produção | executado dentro da imagem, pelo caminho real do `dist` |
 | As recusas da IA são recusadas | provedor falso: JSON quebrado, campo extra, prosa, vazio |
 | Aritmética do teto de gasto | 30 casos, incluindo o centavo que passa do limite |
-| Suíte completa | **431 testes, 0 falhas** |
+| As migrations aplicam em banco limpo | Postgres descartável, `migrate deploy` do zero |
+| A API sobe com as rotas novas | `/analyze`, `/retry`, `/ai-usage`, `/ai-limit` registradas, sem ciclo |
+| A cadeia da 5b roda ponta a ponta | banco real + provedor falso: IDs conferidos contra o banco |
+| Suíte completa | **455 testes, 0 falhas** |
 
 O que **não** foi verificado: transcrição de um vídeo real na VPS. O
 faster-whisper não roda nesta máquina de desenvolvimento, então a qualidade da
 transcrição em português e o tempo real de processamento ainda são previsão,
 não medição.
+
+### Fase 5b — a peça que faltava entre a proposta e o plano
+
+O compilador. É onde `transcriptSegmentIds` deixa de ser promessa e vira
+dado: cada clip recebe os IDs dos segmentos de transcrição que de fato cobre,
+e um trecho que não case com segmento nenhum é **recusado**. Sem origem
+verificável, a fala do resultado não existe comprovadamente no bruto — e essa
+é a regra que o produto inteiro sustenta.
+
+Dois casos que só ele pega, porque o schema não conhece o vídeo:
+
+- **trecho depois do fim da gravação.** Um `sourceEndMs` além do fim faz o
+  FFmpeg produzir um clip mudo e mais curto, sem erro: a falha só apareceria
+  no vídeo final, depois do render inteiro;
+- **tempos válidos, dentro do vídeo, e sem fala nenhuma.** Acontece quando o
+  modelo aponta para um silêncio. O JSON é válido, o schema passa, e o clip
+  sairia mudo.
+
+Decisões técnicas são do compilador, não do modelo: canvas, codec, CRF,
+loudness e legenda têm resposta certa, e pedi-las a um modelo é convidar
+variação onde não deveria haver nenhuma.
+
+A confiança exibida **não vem do modelo**. Modelos de linguagem não produzem
+confiança calibrada, e pedir um é convidar o modelo a inventar. É agregação
+dos riscos que ele classificou — o painel já usava os mesmos pesos.
+
+Nenhuma falha é terminal: o projeto fica num estado de onde dá para tentar de
+novo, porque a gravação continua válida. O que falhou foi a análise.
+
+A rota é **síncrona**, e não por fila: leva dezenas de segundos e o usuário
+está olhando a tela esperando. Uma fila acrescentaria polling e um estado
+intermediário para economizar um tempo que ninguém ganharia.
 
 ---
 
@@ -275,10 +310,9 @@ O que falta da fase: captions renderizadas e os componentes Remotion.
 
 ## Ordem sugerida a partir daqui
 
-1. **Fase 5b — seleção de trechos e risco semântico (#3, #5).** O caminho
-   crítico. Consome a transcrição que agora existe, usa o adapter que agora
-   existe, e tira o projeto de `ANALYZING` — o estado em que ele hoje para.
+1. **Fase 7 — render.** É o que falta para o ciclo fechar de ponta a ponta:
+   hoje o produto escolhe os trechos e não entrega arquivo. É o passo com
+   maior diferença entre "demonstração" e "ferramenta".
 2. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo; podem
    sair antes se o cliente precisar ver IA funcionando sem gravar nada.
-3. **Fase 7 — render.** É o que fecha o ciclo e entrega arquivo.
-4. **Fase 5d, upload de assets e Fase 8.**
+3. **Fase 5d, upload de assets e Fase 8.**
