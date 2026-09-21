@@ -559,6 +559,13 @@ h3 {
   to { background-position: -200% 0; }
 }
 
+/* Ponto de gravação: pisca para deixar claro que a câmera está
+   ligada, mesmo com a tela de relance. */
+@keyframes pulsar {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
 .barra {
   height: 6px;
   border-radius: 3px;
@@ -648,4 +655,211 @@ h3 {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ============================================================
+   Editor — quatro zonas
+
+   O guia define a anatomia: rail de ferramentas 72px, painel da IA
+   280px, preview 9:16 ao centro, inspector à direita e timeline na
+   base.
+
+   O editor não usa .conteudo: ele não rola. Cada zona rola por
+   dentro, e o preview nunca sai de vista. Numa tela de edição,
+   perder o preview de vista é perder a referência do trabalho.
+   ============================================================ */
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--sidebar-compacta) 280px minmax(0, 1fr) 300px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'rail ia palco inspector'
+    'timeline timeline timeline timeline';
+  background: var(--bg-canvas);
+}
+
+.editor__rail {
+  grid-area: rail;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--e1);
+  padding: var(--e3) 0;
+}
+
+.editor__ia {
+  grid-area: ia;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor__palco {
+  grid-area: palco;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--e4);
+  padding: var(--e4);
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor__inspector {
+  grid-area: inspector;
+  background: var(--surface-1);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.editor__timeline {
+  grid-area: timeline;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Abaixo de 1280px o inspector sai: ele é contextual, enquanto o
+   painel da IA carrega a proposta — a razão de a tela existir. */
+@media (max-width: 1280px) {
+  .editor {
+    grid-template-columns: var(--sidebar-compacta) 260px minmax(0, 1fr);
+    grid-template-areas:
+      'rail ia palco'
+      'timeline timeline timeline';
+  }
+
+  .editor__inspector {
+    display: none;
+  }
+}
+
+/* ---------- Ferramenta do rail ---------- */
+
+.ferramenta {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  border: none;
+  border-radius: var(--r-controle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+.ferramenta:hover {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+/* Ativa por fundo E cor, nunca só cor. */
+.ferramenta[aria-pressed='true'] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.ferramenta__rotulo {
+  font-size: 9px;
+  letter-spacing: 0.2px;
+}
+
+/* ---------- Trecho proposto pela IA ---------- */
+
+.trecho {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cor-funcao, var(--border-forte));
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--transicao), background var(--transicao);
+}
+
+.trecho:hover {
+  background: color-mix(in srgb, var(--surface-2) 70%, var(--primary) 12%);
+}
+
+/* Selecionado: contorno completo, não só a barra lateral. */
+.trecho[aria-pressed='true'] {
+  border-color: var(--primary);
+  border-left-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface-2));
+}
+
+.trecho__motivo {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-top: var(--e1);
+}
+
+/* ---------- Palco ---------- */
+
+.palco__quadro {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  height: 100%;
+  max-height: 100%;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  overflow: hidden;
+  flex-shrink: 1;
+}
+
+.palco__legenda {
+  position: absolute;
+  left: var(--e4);
+  right: var(--e4);
+  bottom: 12%;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #fff;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%);
+  pointer-events: none;
+}
+
+.palco__controles {
+  display: flex;
+  align-items: center;
+  gap: var(--e4);
+  flex-shrink: 0;
+}
+
+/* ---------- Timeline ---------- */
+
+.timeline__barra {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: var(--e2) var(--e4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.timeline__corpo {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
 }

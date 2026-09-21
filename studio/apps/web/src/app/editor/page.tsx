@@ -1,27 +1,40 @@
 'use client';
 
 // ============================================================
-// Editor — layout de três painéis.
+// Editor — quatro zonas.
 //
-// A organização segue o OpenCut (ADR 0009): um grupo vertical
-// (conteúdo em cima, timeline embaixo) e, dentro dele, um horizontal
-// com ferramentas, preview e propriedades. As divisas são
-// arrastáveis e o tamanho é lembrado entre visitas.
+// O guia define a anatomia: rail de ferramentas 72px, painel
+// "Seleção da IA" 280px, preview 9:16 ao centro, inspector
+// contextual à direita e timeline na base.
 //
-// A diferença de fundo está no painel esquerdo: lá são os arquivos
-// que a pessoa importou; aqui é a análise da IA — os trechos que ela
-// achou no bruto, com o motivo de cada escolha. O usuário começa de
-// uma proposta pronta, não de uma timeline vazia.
+// A diferença de fundo para o OpenCut (ADR 0009) está no painel
+// esquerdo: lá são os arquivos que a pessoa importou; aqui é a
+// análise da IA — os trechos que ela achou no bruto, com o motivo de
+// cada escolha. O usuário começa de uma proposta pronta, não de uma
+// timeline vazia.
 // ============================================================
 
 import { useCallback, useMemo, useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { aplicarOperacao } from '@makucho/studio-contracts';
-import { PainelRedimensionavel } from '../../components/editor/PainelRedimensionavel';
-import { PainelDeFerramentas } from '../../components/editor/PainelDeFerramentas';
-import { PainelDePropriedades } from '../../components/editor/PainelDePropriedades';
-import { Preview } from '../../components/editor/Preview';
+import { Topbar } from '../../components/shell/Topbar';
+import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
+import { PainelDaIA } from '../../components/editor/PainelDaIA';
+import { PainelVazio } from '../../components/editor/PainelVazio';
+import { Inspector } from '../../components/editor/Inspector';
+import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
+import {
+  IconeDesfazer,
+  IconeRefazer,
+  IconeExportar,
+  IconeOlho,
+  IconeAviso,
+  IconeMidia,
+  IconeTexto,
+  IconeAudio,
+  IconeMarca,
+} from '../../components/icones';
 
 // Exemplo da seção 4 do contexto mestre: o bruto de oito minutos que
 // vira um Reel. Substituído pela proposta real na Fase 5.
@@ -69,7 +82,13 @@ export default function EditorPage() {
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [posicaoMs, setPosicaoMs] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
-  const [historico, setHistorico] = useState<EditPlanV1[]>([]);
+  const [aba, setAba] = useState<AbaDoEditor>('ia');
+
+  // Duas pilhas: desfazer empilha o passado, refazer o que foi
+  // desfeito. Uma edição nova limpa o futuro — é o comportamento que
+  // todo editor tem, e quebrá-lo confunde.
+  const [passado, setPassado] = useState<EditPlanV1[]>([]);
+  const [futuro, setFuturo] = useState<EditPlanV1[]>([]);
 
   const duracaoMs = useMemo(
     () => plano.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0),
@@ -87,7 +106,8 @@ export default function EditorPage() {
         return;
       }
 
-      setHistorico((h) => [...h, plano]);
+      setPassado((h) => [...h, plano]);
+      setFuturo([]);
       setPlano(resultado.plan);
       setErro(null);
 
@@ -101,128 +121,149 @@ export default function EditorPage() {
   );
 
   const desfazer = useCallback(() => {
-    setHistorico((h) => {
+    setPassado((h) => {
       const anterior = h[h.length - 1];
       if (!anterior) return h;
+      setFuturo((f) => [plano, ...f]);
       setPlano(anterior);
       setErro(null);
       return h.slice(0, -1);
     });
-  }, []);
+  }, [plano]);
+
+  const refazer = useCallback(() => {
+    setFuturo((f) => {
+      const proximo = f[0];
+      if (!proximo) return f;
+      setPassado((h) => [...h, plano]);
+      setPlano(proximo);
+      setErro(null);
+      return f.slice(1);
+    });
+  }, [plano]);
 
   const reducao = Math.round((1 - duracaoMs / plano.sourceDurationMs) * 100);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh' }}>
-      {/* ---------- Barra superior ---------- */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 14px',
-          borderBottom: '1px solid var(--borda)',
-          flexShrink: 0,
-          minHeight: 48,
-        }}
+    <>
+      <Topbar
+        trilha={['Projetos', 'Atendimento no WhatsApp']}
+        estado="salvo"
       >
-        <strong style={{ fontSize: 14 }}>Editor</strong>
-
-        <span style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
+        <span
+          className="texto-secundario"
+          style={{ fontSize: 12, marginRight: 'var(--e2)' }}
+        >
           {Math.round(plano.sourceDurationMs / 60_000)} min → {(duracaoMs / 1000).toFixed(0)}s
           {reducao > 0 && ` · −${reducao}%`}
         </span>
 
-        <div className="linha" style={{ marginLeft: 'auto', gap: 8 }}>
-          <button
-            type="button"
-            onClick={desfazer}
-            disabled={historico.length === 0}
-            className="botao botao-secundario"
-            style={{ minHeight: 34, padding: '0 12px', fontSize: 12 }}
-          >
-            ↩ Desfazer
-          </button>
-          <button
-            type="button"
-            className="botao"
-            style={{ minHeight: 34, padding: '0 16px', fontSize: 12 }}
-            onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
-          >
-            Gerar vídeo
-          </button>
-        </div>
-      </header>
+        <button
+          type="button"
+          className="botao-icone"
+          onClick={desfazer}
+          disabled={passado.length === 0}
+          aria-label="Desfazer"
+          title="Desfazer"
+        >
+          <IconeDesfazer size={18} />
+        </button>
+        <button
+          type="button"
+          className="botao-icone"
+          onClick={refazer}
+          disabled={futuro.length === 0}
+          aria-label="Refazer"
+          title="Refazer"
+        >
+          <IconeRefazer size={18} />
+        </button>
+
+        <button type="button" className="botao botao--secundario botao--pequeno">
+          <IconeOlho size={16} />
+          Pré-visualizar
+        </button>
+        <button
+          type="button"
+          className="botao botao--pequeno"
+          onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
+        >
+          <IconeExportar size={16} />
+          Exportar vídeo
+        </button>
+      </Topbar>
 
       {erro && (
         <div
           role="alert"
-          className="aviso aviso-erro"
-          style={{ margin: '10px 14px 0', flexShrink: 0 }}
+          className="aviso aviso--erro"
+          style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}
         >
-          {erro}
+          <IconeAviso size={16} />
+          <span>{erro}</span>
         </div>
       )}
 
-      {/* ---------- Conteúdo | Timeline ---------- */}
-      <div style={{ flex: 1, minHeight: 0, padding: 10 }}>
-        <PainelRedimensionavel
-          direcao="vertical"
-          tamanhosIniciais={[65, 35]}
-          minimos={[30, 15]}
-          id="editor-vertical"
-        >
-          {/* Ferramentas | Preview | Propriedades */}
-          <PainelRedimensionavel
-            direcao="horizontal"
-            tamanhosIniciais={[24, 50, 26]}
-            minimos={[15, 30, 15]}
-            id="editor-horizontal"
-          >
-            <div className="cartao" style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}>
-              <PainelDeFerramentas
-                plan={plano}
-                selecionado={selecionado}
-                onSelecionar={setSelecionado}
-              />
-            </div>
+      <div className="editor">
+        <RailDeFerramentas aba={aba} onTrocar={setAba} />
 
-            <div
-              style={{
-                height: '100%',
-                display: 'grid',
-                placeItems: 'center',
-                padding: 10,
-                minWidth: 0,
-              }}
-            >
-              <Preview plan={plano} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} />
-            </div>
-
-            <div className="cartao" style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}>
-              <PainelDePropriedades
-                plan={plano}
-                clipId={selecionado}
-                onOperacao={executar}
-              />
-            </div>
-          </PainelRedimensionavel>
-
-          <div
-            className="cartao"
-            style={{ height: '100%', padding: 0, margin: 0, overflow: 'hidden' }}
-          >
-            <Timeline
+        <section className="editor__ia" aria-label="Painel de conteúdo">
+          {aba === 'ia' && (
+            <PainelDaIA
               plan={plano}
-              posicaoMs={posicaoMs}
-              onSeek={setPosicaoMs}
-              onOperacao={executar}
-              clipeSelecionado={selecionado}
+              selecionado={selecionado}
               onSelecionar={setSelecionado}
             />
-          </div>
-        </PainelRedimensionavel>
+          )}
+          {aba === 'midia' && (
+            <PainelVazio
+              Icone={IconeMidia}
+              titulo="Mídia do projeto"
+              texto="A gravação enviada e os cortes gerados aparecem aqui."
+            />
+          )}
+          {aba === 'texto' && (
+            <PainelVazio
+              Icone={IconeTexto}
+              titulo="Títulos e legendas"
+              texto="As legendas seguem a transcrição. Estilos entram na composição final."
+            />
+          )}
+          {aba === 'audio' && (
+            <PainelVazio
+              Icone={IconeAudio}
+              titulo="Trilha e efeitos"
+              texto="Música de fundo e efeitos, com o volume ajustado à sua voz."
+            />
+          )}
+          {aba === 'marca' && (
+            <PainelVazio
+              Icone={IconeMarca}
+              titulo="Kit de marca"
+              texto="Logo, cores e fontes cadastrados em Marca aparecem aqui."
+            />
+          )}
+        </section>
+
+        <main className="editor__palco">
+          <Palco plan={plano} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} />
+        </main>
+
+        <aside className="editor__inspector" aria-label="Propriedades">
+          <Inspector plan={plano} clipId={selecionado} onOperacao={executar} />
+        </aside>
+
+        <section className="editor__timeline" aria-label="Linha do tempo">
+          <Timeline
+            plan={plano}
+            posicaoMs={posicaoMs}
+            onSeek={setPosicaoMs}
+            onOperacao={executar}
+            clipeSelecionado={selecionado}
+            onSelecionar={setSelecionado}
+          />
+        </section>
       </div>
-    </div>
+    </>
   );
 }

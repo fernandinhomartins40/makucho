@@ -64,7 +64,7 @@ export function TimelineRuler({ duracaoMs, zoom, fps = 30, onSeek }: Props) {
         position: 'relative',
         height: 28,
         minWidth: larguraPx,
-        borderBottom: '1px solid var(--borda)',
+        borderBottom: '1px solid var(--border)',
         cursor: onSeek ? 'pointer' : 'default',
         userSelect: 'none',
       }}
@@ -80,7 +80,7 @@ export function TimelineRuler({ duracaoMs, zoom, fps = 30, onSeek }: Props) {
             // o olho a encontrar os segundos cheios.
             height: marca.rotulo ? 10 : 5,
             width: 1,
-            background: marca.rotulo ? 'var(--texto-suave)' : 'var(--borda)',
+            background: marca.rotulo ? 'var(--text-secondary)' : 'var(--border)',
           }}
         >
           {marca.rotulo && (
@@ -90,7 +90,7 @@ export function TimelineRuler({ duracaoMs, zoom, fps = 30, onSeek }: Props) {
                 bottom: 12,
                 left: 4,
                 fontSize: 10,
-                color: 'var(--texto-suave)',
+                color: 'var(--text-secondary)',
                 whiteSpace: 'nowrap',
               }}
             >

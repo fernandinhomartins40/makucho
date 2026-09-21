@@ -18,6 +18,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, ItemDeTrack, Track, TimelineOperation } from '@makucho/studio-contracts';
 import { montarVisao, duracaoDoPlano } from '@makucho/studio-contracts';
 import { TimelineRuler } from './TimelineRuler';
+import { corDaFuncao, nomeDaFuncao } from '../editor/funcoes';
+import { IconeZoomMenos, IconeZoomMais } from '../icones';
 import { msParaPx, pxParaMs, alinharAoFrame } from './ruler-utils';
 
 const ALTURA_TRACK = 56;
@@ -28,22 +30,6 @@ const ROTULO_TRACK: Record<Track, string> = {
   assets: 'Elementos',
   music: 'Trilha',
   effects: 'Efeitos',
-};
-
-const COR_POR_FUNCAO: Record<string, string> = {
-  hook: '#1E5AFF',
-  problem: '#ef4444',
-  context: '#64748b',
-  curiosity_gap: '#8b5cf6',
-  authority: '#22c55e',
-  introduction: '#64748b',
-  proof: '#22c55e',
-  insight: '#eab308',
-  solution: '#06b6d4',
-  pattern_interrupt: '#f97316',
-  payoff: '#22c55e',
-  offer: '#f97316',
-  cta: '#ec4899',
 };
 
 interface Props {
@@ -112,56 +98,50 @@ export function Timeline({
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--superficie)' }}>
+    <>
       {/* ---------- Controles ---------- */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--borda)',
-        }}
-      >
-        <span style={{ fontSize: 12, color: 'var(--texto-suave)' }}>
+      <div className="timeline__barra">
+        <span className="rotulo-secao">Linha do tempo</span>
+        <span className="texto-secundario" style={{ fontSize: 12 }}>
           {(duracaoMs / 1000).toFixed(1)}s
         </span>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+        <div className="linha auto" style={{ gap: 'var(--e1)' }}>
           <button
             type="button"
+            className="botao-icone botao-icone--pequeno"
             onClick={() => setZoom((z) => Math.max(0.25, z / 1.5))}
             aria-label="Diminuir zoom"
-            style={botaoIcone}
           >
-            −
+            <IconeZoomMenos size={16} />
           </button>
           <button
             type="button"
+            className="botao botao--fantasma botao--pequeno"
             onClick={() => setZoom(1)}
-            aria-label="Zoom padrão"
-            style={{ ...botaoIcone, width: 'auto', padding: '0 10px', fontSize: 11 }}
+            aria-label="Voltar ao zoom padrão"
+            style={{ minWidth: 54, fontVariantNumeric: 'tabular-nums' }}
           >
             {Math.round(zoom * 100)}%
           </button>
           <button
             type="button"
+            className="botao-icone botao-icone--pequeno"
             onClick={() => setZoom((z) => Math.min(8, z * 1.5))}
             aria-label="Aumentar zoom"
-            style={botaoIcone}
           >
-            +
+            <IconeZoomMais size={16} />
           </button>
         </div>
       </div>
 
       {/* ---------- Área rolável ---------- */}
-      <div style={{ display: 'flex', overflow: 'hidden' }}>
+      <div className="timeline__corpo" style={{ display: 'flex' }}>
         {/* Coluna fixa com os nomes das tracks. Fora da rolagem
             horizontal: rolar e perder de vista qual track e qual
             torna a timeline confusa. */}
-        <div style={{ flexShrink: 0, width: 88, borderRight: '1px solid var(--borda)' }}>
-          <div style={{ height: 28, borderBottom: '1px solid var(--borda)' }} />
+        <div style={{ flexShrink: 0, width: 88, borderRight: '1px solid var(--border)' }}>
+          <div style={{ height: 28, borderBottom: '1px solid var(--border)' }} />
           {(Object.keys(ROTULO_TRACK) as Track[]).map((track) => (
             <div
               key={track}
@@ -171,8 +151,8 @@ export function Timeline({
                 alignItems: 'center',
                 padding: '0 10px',
                 fontSize: 11,
-                color: 'var(--texto-suave)',
-                borderBottom: '1px solid var(--borda)',
+                color: 'var(--text-secondary)',
+                borderBottom: '1px solid var(--border)',
               }}
             >
               {ROTULO_TRACK[track]}
@@ -196,7 +176,7 @@ export function Timeline({
                 position: 'relative',
                 height: ALTURA_TRACK,
                 minWidth: larguraPx,
-                borderBottom: '1px solid var(--borda)',
+                borderBottom: '1px solid var(--border)',
               }}
             >
               {visao[track].map((item) => (
@@ -230,14 +210,14 @@ export function Timeline({
               bottom: 0,
               left: msParaPx(posicaoMs, zoom),
               width: 2,
-              background: '#ef4444',
+              background: 'var(--danger)',
               pointerEvents: 'none',
               zIndex: 5,
             }}
           />
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -256,7 +236,7 @@ function ItemNaTrack({
   onSelecionar: () => void;
   onIniciarArraste: (e: React.PointerEvent) => void;
 }) {
-  const cor = COR_POR_FUNCAO[item.label] ?? '#64748b';
+  const cor = corDaFuncao(item.label);
   const largura = Math.max(2, msParaPx(item.endMs - item.startMs, zoom));
 
   return (
@@ -285,7 +265,7 @@ function ItemNaTrack({
         border: selecionado
           ? '2px solid #fff'
           : item.semanticRisk === 'high'
-            ? '2px solid #f97316'
+            ? '2px solid var(--warning)'
             : '1px solid rgba(0,0,0,0.25)',
         borderRadius: 6,
         cursor: arrastavel ? 'grab' : 'pointer',
@@ -306,20 +286,9 @@ function ItemNaTrack({
           overflow: 'hidden',
         }}
       >
-        {item.label}
+        {nomeDaFuncao(item.label)}
       </span>
     </div>
   );
 }
 
-const botaoIcone: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  borderRadius: 6,
-  border: '1px solid var(--borda)',
-  background: 'transparent',
-  color: 'var(--texto)',
-  cursor: 'pointer',
-  fontSize: 14,
-  lineHeight: 1,
-};
