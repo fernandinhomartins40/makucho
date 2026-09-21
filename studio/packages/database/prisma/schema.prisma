@@ -160,6 +160,7 @@ model Workspace {
   auditEvents          AuditEvent[]
   aiCredential         AiCredential?
   retentionPolicy      RetentionSettings?
+  aiUsage              AiUsage[]
 
   @@map("workspaces")
 }
@@ -205,6 +206,10 @@ model AiCredential {
   keyPrefix   String
   model       String?
   isActive    Boolean  @default(true)
+  // Teto mensal de gasto, em centavos de dolar. Fica junto da
+  // credencial porque e a mesma decisao: quem cadastra a chave e quem
+  // paga a conta, e e quem define ate quanto.
+  monthlyLimitCents Int @default(2000)
   lastUsedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -533,6 +538,41 @@ model AiAnalysis {
 
   @@index([projectId])
   @@map("ai_analyses")
+}
+
+// Consumo de IA, por workspace e por mes.
+//
+// Separado de AiAnalysis por dois motivos concretos. Primeiro,
+// AiAnalysis pende de um projeto, e as chamadas de roteiro (#1 e #2 da
+// secao 26) acontecem antes de existir projeto nenhum -- elas nao
+// teriam onde ser contadas. Segundo, a trava de custo precisa
+// responder "quanto ja gastei este mes" numa leitura, e somar
+// AiAnalysis a cada chamada ficaria mais caro conforme o historico
+// cresce, justamente no caminho que roda antes de toda chamada.
+//
+// Uma linha por workspace, mes e tipo de chamada. O detalhe por
+// chamada existe porque "a IA custou X" nao ajuda a decidir nada;
+// "a selecao de trechos custou X" ajuda.
+model AiUsage {
+  id          String @id @default(cuid())
+  workspaceId String
+  // AAAA-MM em UTC.
+  period      String
+  // Uma das CHAMADAS_DE_IA do contrato.
+  call        String
+  costCents   Int    @default(0)
+  calls       Int    @default(0)
+  inputTokens  Int   @default(0)
+  outputTokens Int   @default(0)
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // A unicidade e o que permite somar com upsert em vez de ler,
+  // calcular e gravar -- que perderia contagem sob concorrencia.
+  @@unique([workspaceId, period, call])
+  @@index([workspaceId, period])
+  @@map("ai_usage")
 }
 
 model EditPlan {

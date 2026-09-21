@@ -13,7 +13,12 @@
 
 import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
-import { marca as apiMarca, armazenamento as apiArmazenamento } from '../../lib/api';
+import {
+  marca as apiMarca,
+  armazenamento as apiArmazenamento,
+  ia as apiIa,
+  type ConsumoDeIa,
+} from '../../lib/api';
 import {
   IconeAviso,
   IconeEnviar,
@@ -69,6 +74,7 @@ const FONTES_CORPO = ['Inter', 'Roboto', 'Open Sans', 'Source Sans 3'];
 
 export default function MarcaPage() {
   const [uso, setUso] = useState<Armazenamento | null>(null);
+  const [consumo, setConsumo] = useState<ConsumoDeIa | null>(null);
   const [cores, setCores] = useState<Cor[]>(CORES_INICIAIS);
   const [estilo, setEstilo] = useState<string>('moderno');
   const [fonteTitulo, setFonteTitulo] = useState('Poppins');
@@ -82,6 +88,11 @@ export default function MarcaPage() {
     // O armazenamento é informativo: falhar nele não impede editar a
     // marca, então o erro fica silencioso.
     void apiArmazenamento.obter().then(setUso).catch(() => undefined);
+
+    // Mesmo tratamento: sem credencial de IA cadastrada a rota
+    // responde normalmente com gasto zero, e uma falha aqui não pode
+    // impedir de editar a marca.
+    void apiIa.consumo().then(setConsumo).catch(() => undefined);
 
     void apiMarca
       .obter()
@@ -532,6 +543,68 @@ export default function MarcaPage() {
                 )}
               </section>
             )}
+
+            {/* O teto de IA precisa ser visto ANTES de ser atingido:
+                um limite que só aparece quando bloqueia é
+                indistinguível de um defeito. */}
+            {consumo && (
+              <section className="cartao">
+                <h2 style={{ marginBottom: 'var(--e4)' }}>Uso de IA</h2>
+
+                <BarraDeCota
+                  rotulo="Gasto deste mês"
+                  descricao={
+                    consumo.chamadas === 0
+                      ? 'Nenhuma chamada de IA ainda neste mês.'
+                      : `${consumo.chamadas} ${consumo.chamadas === 1 ? 'chamada' : 'chamadas'} até agora.`
+                  }
+                  cota={{
+                    usadoBytes: consumo.gastoCentavos,
+                    quotaBytes: consumo.limiteCentavos,
+                    percentual: Math.min(
+                      100,
+                      Math.round((consumo.gastoCentavos / consumo.limiteCentavos) * 100),
+                    ),
+                    mensagem: null,
+                  }}
+                  formatar={(centavos) => `US$ ${(centavos / 100).toFixed(2)}`}
+                />
+
+                {consumo.detalhe.length > 0 && (
+                  <ul
+                    style={{
+                      listStyle: 'none',
+                      margin: 'var(--e3) 0 0',
+                      padding: 0,
+                      display: 'grid',
+                      gap: 4,
+                    }}
+                  >
+                    {consumo.detalhe.map((d) => (
+                      <li
+                        key={d.chamada}
+                        className="linha entre"
+                        style={{ fontSize: 12, color: 'var(--texto-2)' }}
+                      >
+                        <span>{d.rotulo}</span>
+                        <span>US$ {(d.centavos / 100).toFixed(2)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {consumo.aviso && (
+                  <div
+                    className={
+                      consumo.estado === 'bloqueado' ? 'aviso aviso--erro' : 'aviso aviso--atencao'
+                    }
+                  >
+                    <IconeAviso size={16} />
+                    <span>{consumo.aviso}</span>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </div>
       </div>
@@ -546,10 +619,13 @@ function BarraDeCota({
   rotulo,
   descricao,
   cota,
+  formatar,
 }: {
   rotulo: string;
   descricao: string;
   cota: UsoDeCota;
+  /** Bytes por padrão; o uso de IA passa centavos e formata em dólar. */
+  formatar?: (valor: number) => string;
 }) {
   // Cheio demais muda de cor E ganha texto: a seção 13 não aceita
   // estado transmitido só por cor.
@@ -566,7 +642,9 @@ function BarraDeCota({
             color: apertado ? 'var(--danger)' : undefined,
           }}
         >
-          {gb(cota.usadoBytes)} / {gb(cota.quotaBytes)} GB
+          {formatar
+            ? `${formatar(cota.usadoBytes)} / ${formatar(cota.quotaBytes)}`
+            : `${gb(cota.usadoBytes)} / ${gb(cota.quotaBytes)} GB`}
         </span>
       </div>
 

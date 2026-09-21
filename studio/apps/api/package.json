@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "rimraf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json",
+    "build": "rimraf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json && node scripts/copiar-prompts.mjs",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/tenant-isolation.test.ts"
+    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts"
   },
   "dependencies": {
     "@makucho/studio-contracts": "workspace:*",

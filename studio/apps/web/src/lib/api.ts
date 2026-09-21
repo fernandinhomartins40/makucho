@@ -253,3 +253,30 @@ export interface Armazenamento {
 export const armazenamento = {
   obter: () => api<Armazenamento>('/settings/storage'),
 };
+
+// ============================================================
+// Consumo de IA
+//
+// O teto existe para ser visto antes de ser atingido: um limite que
+// só aparece quando bloqueia é indistinguível de um defeito, do
+// ponto de vista de quem está usando.
+// ============================================================
+
+export interface ConsumoDeIa {
+  periodo: string;
+  gastoCentavos: number;
+  limiteCentavos: number;
+  chamadas: number;
+  estado: 'ok' | 'aviso' | 'bloqueado';
+  aviso: string | null;
+  detalhe: Array<{ chamada: string; rotulo: string; centavos: number }>;
+}
+
+export const ia = {
+  consumo: () => api<ConsumoDeIa>('/settings/ai-usage'),
+  definirLimite: (monthlyLimitCents: number) =>
+    api<{ ok: boolean; motivo?: string }>('/settings/ai-limit', {
+      metodo: 'PUT',
+      corpo: { monthlyLimitCents },
+    }),
+};

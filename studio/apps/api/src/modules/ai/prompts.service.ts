@@ -1,0 +1,62 @@
+// ============================================================
+// Prompts versionados (seção 26.8).
+//
+// Cada chamada tem prompt em arquivo próprio, com versão no nome. A
+// versão vai gravada junto da resposta, em `AiAnalysis.promptVersion`.
+//
+// Isso não é organização: é o que permite responder "por que este
+// vídeo ficou diferente do outro" três meses depois. Sem a versão
+// registrada, um prompt ajustado torna todo resultado anterior
+// inexplicável — e o ajuste é justamente o que mais se faz.
+//
+// Os arquivos são lidos uma vez e ficam em memória: são pequenos, não
+// mudam em execução, e lê-los a cada chamada colocaria disco no
+// caminho quente sem motivo.
+// ============================================================
+
+import { Injectable, Logger } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * A versão em uso de cada prompt.
+ *
+ * Mudar um prompt em produção significa criar `-v2.md` e trocar aqui,
+ * nunca editar o `-v1.md` no lugar: o histórico já gravado aponta para
+ * a v1, e reescrevê-la faria o registro mentir sobre o que foi pedido.
+ */
+export const VERSAO_DO_PROMPT = {
+  selecionar_trechos: 'selecao-v1',
+} as const;
+
+export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;
+
+@Injectable()
+export class PromptsService {
+  private readonly log = new Logger(PromptsService.name);
+  private readonly cache = new Map<string, string>();
+
+  /** O texto do prompt e a versão que ficará registrada com a resposta. */
+  obter(nome: NomeDePrompt): { texto: string; versao: string } {
+    const versao = VERSAO_DO_PROMPT[nome];
+
+    let texto = this.cache.get(versao);
+    if (!texto) {
+      // `__dirname` e não cwd: o processo é iniciado da raiz do app,
+      // e resolver por cwd quebraria em produção, onde o dist mora em
+      // outro nível.
+      const caminho = join(__dirname, 'prompts', `${versao}.md`);
+      try {
+        texto = readFileSync(caminho, 'utf8');
+      } catch (e) {
+        // Prompt ausente é erro de empacotamento, não de uso: vale
+        // falhar alto em vez de mandar instrução vazia ao modelo.
+        this.log.error(`prompt ${versao} não encontrado em ${caminho}`);
+        throw new Error(`prompt ${versao} não está na imagem`);
+      }
+      this.cache.set(versao, texto);
+    }
+
+    return { texto, versao };
+  }
+}
