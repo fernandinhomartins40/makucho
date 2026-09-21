@@ -15,12 +15,12 @@
 
 :root {
   /* ---------- Superfícies ---------- */
-  --bg-canvas: #06132d;
-  --bg-sidebar: #081a3b;
-  --surface-1: #0e2148;
-  --surface-2: #132a57;
-  --border: #27426f;
-  --border-forte: #3a5a94;
+  --bg-canvas: #041735;
+  --bg-sidebar: #041d46;
+  --surface-1: #031736;
+  --surface-2: #08224c;
+  --border: #0f2d5e;
+  --border-forte: #1b4384;
 
   /* ---------- Marca e estado ---------- */
   --primary: #2f66ff;
@@ -111,6 +111,8 @@ textarea {
   display: flex;
   flex-direction: column;
   transition: width var(--transicao);
+  box-shadow: var(--sombra-1);
+
 }
 
 
@@ -185,6 +187,8 @@ textarea {
   padding: 0 var(--e4) 0 var(--e3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-canvas);
+  box-shadow: var(--sombra-1);
+
 }
 
 .conteudo {
@@ -379,20 +383,7 @@ h3 {
   height: 100%;
 }
 
-.painel__cabecalho {
-  display: flex;
-  align-items: center;
-  gap: var(--e2);
-  padding: var(--e3) var(--e4);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
 
-.painel__corpo {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--e3);
-}
 
 /* ============================================================
    Formulário
@@ -588,20 +579,25 @@ h3 {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border: 1px solid color-mix(in srgb, var(--primary) 58%, var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e5);
+  min-height: 248px;
+  border: 1px solid color-mix(in srgb, var(--primary) 42%, var(--border));
   border-radius: var(--r-destaque);
   padding: var(--e6);
+  /* A luz nasce no canto direito, atras da claquete, e morre antes
+     de chegar ao texto -- e o que mantem o titulo legivel. */
   background:
-    radial-gradient(circle at 84% 38%, rgb(47 102 255 / 28%), transparent 36%),
-    linear-gradient(135deg, var(--surface-1), #0b2a61);
+    radial-gradient(70% 120% at 92% 45%, rgb(24 90 253 / 55%) 0%, transparent 62%),
+    linear-gradient(100deg, #071e46 0%, #062255 55%, #05296c 100%);
 }
 
 .hero__arte {
-  position: absolute;
-  right: clamp(16px, 5vw, 72px);
-  bottom: -12%;
-  z-index: -1;
-  width: clamp(280px, 34vw, 520px);
+  position: relative;
+  flex-shrink: 0;
+  width: clamp(240px, 30vw, 430px);
   height: auto;
   object-fit: contain;
   pointer-events: none;
@@ -776,9 +772,6 @@ h3 {
   grid-area: ia;
 }
 
-.editor__inspector {
-  grid-area: inspector;
-}
 
 .editor__palco {
   grid-area: palco;
@@ -1010,6 +1003,8 @@ h3 {
   border-radius: var(--r-destaque);
   overflow: hidden;
   flex-shrink: 1;
+  box-shadow: var(--sombra-3);
+
 }
 
 .palco__vazio {
@@ -1104,6 +1099,8 @@ h3 {
   padding: 0;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 45%, transparent);
+
 }
 
 .palco__tempo {
@@ -1362,20 +1359,10 @@ h3 {
 /* O canvas não é uma cor só: escurece para as bordas, o que empurra
    a atenção para o centro da tela. */
 body {
-  background:
-    radial-gradient(120% 80% at 50% 0%, #0a1c3d 0%, #06132d 55%, #040d20 100%);
-  background-attachment: fixed;
+  background: var(--bg-canvas);
 }
 
-.sidebar {
-  background: linear-gradient(180deg, #0a1f45 0%, #071630 100%);
-  box-shadow: var(--sombra-1);
-}
 
-.topbar {
-  background: linear-gradient(180deg, #0a1c3d 0%, #071734 100%);
-  box-shadow: var(--sombra-1);
-}
 
 /* ---------- Superfícies com espessura ---------- */
 
@@ -1384,18 +1371,7 @@ body {
 .editor__ia,
 .editor__inspector,
 .editor__timeline,
-.sidebar__armazenamento {
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface-1) 100%, #ffffff 3%) 0%,
-    var(--surface-1) 100%
-  );
-  box-shadow: var(--luz-topo), var(--sombra-2);
-}
 
-.editor__rail {
-  background: linear-gradient(180deg, #0a1f45 0%, #071630 100%);
-}
 
 /* ---------- Estado ativo com luz ---------- */
 
@@ -1415,23 +1391,9 @@ body {
   box-shadow: var(--brilho-primario);
 }
 
-.botao--secundario,
-.botao--fantasma,
-.botao--perigo,
-.botao--tracejado {
+.botao--secundario {
   background: var(--surface-1);
   box-shadow: var(--luz-topo);
-}
-
-.botao--fantasma,
-.botao--tracejado {
-  background: transparent;
-  box-shadow: none;
-}
-
-.botao--perigo {
-  background: transparent;
-  box-shadow: none;
 }
 
 .botao:disabled {
@@ -1459,13 +1421,7 @@ body {
 }
 
 /* O preview é o objeto da tela: flutua acima de tudo. */
-.palco__quadro {
-  box-shadow: var(--sombra-3);
-}
 
-.palco__play {
-  box-shadow: 0 4px 20px color-mix(in srgb, var(--primary) 45%, transparent);
-}
 
 /* O playhead precisa ser achado num relance sobre clipes coloridos. */
 .clipe[data-selecionado] {
@@ -1474,12 +1430,6 @@ body {
 
 /* ---------- Hero ---------- */
 
-.hero {
-  background:
-    radial-gradient(90% 140% at 88% 12%, rgb(65 200 255 / 22%) 0%, transparent 55%),
-    linear-gradient(120deg, #1546c8 0%, #1231a0 45%, #0d2472 100%);
-  box-shadow: var(--luz-topo), var(--sombra-3);
-}
 
 /* ---------- Cartão de projeto ---------- */
 
@@ -1506,4 +1456,172 @@ body {
 
 .selo--sucesso {
   box-shadow: 0 0 14px color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+/* ============================================================
+   Roteiro
+
+   Três colunas: configuração, o roteiro e o assistente. O roteiro
+   fica no meio e é a coluna elástica — as laterais têm largura fixa
+   porque seu conteúdo não cresce.
+   ============================================================ */
+
+.roteiro {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 360px;
+  gap: var(--e5);
+  align-items: start;
+}
+
+@media (max-width: 1400px) {
+  .roteiro {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  /* O assistente desce para a largura toda em vez de sumir: as
+     sugestões e o checklist são o motivo de a tela existir. */
+  .roteiro > aside:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .roteiro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Bloco do roteiro ---------- */
+
+.bloco {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--e3);
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cor-bloco, var(--border-forte));
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--transicao), box-shadow var(--transicao);
+}
+
+.bloco[data-ativo] {
+  border-color: var(--primary);
+  border-left-color: var(--cor-bloco);
+  box-shadow: var(--brilho-primario);
+}
+
+.bloco__alca {
+  color: var(--text-secondary);
+  cursor: grab;
+  padding-top: var(--e1);
+}
+
+.bloco__numero {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cor-bloco);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* O papel é um select sem cara de select: a cor da função já diz o
+   que é, e uma caixa cinza no meio do texto atrapalharia a leitura. */
+.bloco__papel {
+  border: none;
+  background: transparent;
+  color: var(--cor-bloco);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  appearance: none;
+}
+
+.bloco__papel option {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
+/* O texto cresce com o conteúdo: rolagem dentro de um bloco de
+   roteiro esconderia justamente o que se está escrevendo. */
+.bloco__texto {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  padding: 0;
+}
+
+.bloco__texto::placeholder {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* ---------- Sugestão ---------- */
+
+.sugestao {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--e3);
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+}
+
+/* ---------- Menu ---------- */
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 160px;
+  padding: var(--e1);
+  border: 1px solid var(--border-forte);
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  box-shadow: var(--sombra-3);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  min-height: 38px;
+  padding: 0 var(--e3);
+  border: none;
+  border-radius: var(--r-controle);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transicao);
+}
+
+.menu__item:hover {
+  background: var(--surface-2);
+}
+
+.menu__item--perigo {
+  color: var(--danger);
+}
+
+.menu__item--perigo:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }

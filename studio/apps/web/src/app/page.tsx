@@ -152,12 +152,12 @@ export default function ProjetosPage() {
         {/* ---------- Hero ---------- */}
         <section className="hero" style={{ marginBottom: 'var(--e6)' }}>
           <div style={{ maxWidth: 560 }}>
-            <h2 style={{ fontSize: 32, letterSpacing: -0.6, marginBottom: 'var(--e2)' }}>
+            <h2 style={{ fontSize: 40, letterSpacing: -1, marginBottom: 'var(--e3)' }}>
               Crie vídeos melhores, mais rápido
             </h2>
             <p
               className="texto-secundario"
-              style={{ fontSize: 15, marginBottom: 'var(--e5)' }}
+              style={{ fontSize: 16, marginBottom: 'var(--e5)' }}
             >
               Planeje, grave e edite com IA. Do seu jeito, para o seu público.
             </p>
@@ -168,19 +168,23 @@ export default function ProjetosPage() {
           </div>
 
           {/* Ilustração decorativa: aria-hidden porque não carrega
-              informação, e some abaixo de 900px pelo CSS. */}
-          <picture>
+              informação, e some abaixo de 900px pelo CSS.
+
+              A classe vai no <picture>, que é o filho do flex — no
+              <img> ela ficava um nível abaixo do que o layout mede,
+              e a arte estourava o hero. */}
+          <picture className="hero__arte">
             <source
               srcSet="/assets/makucho-studio/hero-clapperboard.webp"
               type="image/webp"
             />
             <img
-              className="hero__arte"
               src="/assets/makucho-studio/hero-clapperboard.png"
               alt=""
               aria-hidden
               width={768}
               height={512}
+              style={{ width: '100%', height: 'auto', display: 'block' }}
             />
           </picture>
         </section>
