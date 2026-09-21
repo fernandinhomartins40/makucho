@@ -272,8 +272,20 @@ export interface ConsumoDeIa {
   detalhe: Array<{ chamada: string; rotulo: string; centavos: number }>;
 }
 
+export interface ResultadoDaAnalise {
+  ok: boolean;
+  /** Agregação dos riscos que o modelo classificou, não uma probabilidade. */
+  confianca: number;
+  avisos: string[];
+  problemas: Array<{ code: string; segmentIndex: number; message: string; severity: string }>;
+}
+
 export const ia = {
   consumo: () => api<ConsumoDeIa>('/settings/ai-usage'),
+  // Leva dezenas de segundos: é síncrona de propósito, porque o
+  // usuário está olhando a tela esperando o resultado.
+  analisar: (projectId: string) =>
+    api<ResultadoDaAnalise>(`/projects/${projectId}/analyze`, { metodo: 'POST' }),
   definirLimite: (monthlyLimitCents: number) =>
     api<{ ok: boolean; motivo?: string }>('/settings/ai-limit', {
       metodo: 'PUT',

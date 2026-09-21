@@ -27,7 +27,12 @@ import { PainelVazio } from '../../components/editor/PainelVazio';
 import { Inspector } from '../../components/editor/Inspector';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
-import { planos as apiPlanos, projetos as apiProjetos, urlDoVideo } from '../../lib/api';
+import {
+  planos as apiPlanos,
+  projetos as apiProjetos,
+  ia as apiIa,
+  urlDoVideo,
+} from '../../lib/api';
 import {
   IconeDesfazer,
   IconeRefazer,
@@ -43,6 +48,7 @@ import {
   IconeAudio,
   IconeMarca,
   IconeLegenda,
+  IconeIA,
 } from '../../components/icones';
 
 // Exemplo da seção 4 do contexto mestre: o bruto de oito minutos que
@@ -116,6 +122,16 @@ function Editor() {
   const [proxyUrl, setProxyUrl] = useState<string | undefined>(undefined);
   const [editandoTitulo, setEditandoTitulo] = useState(false);
 
+  // O estado do projeto decide se a analise pode ser pedida: so faz
+  // sentido depois da transcricao, e nao enquanto a midia processa.
+  const [estado, setEstado] = useState<string | null>(null);
+  const [analisando, setAnalisando] = useState(false);
+  const [avisosDaIa, setAvisosDaIa] = useState<string[]>([]);
+  // `true` quando o plano na tela e o exemplo, e nao uma proposta
+  // real: e o que distingue "a IA ainda nao rodou" de "rodou e deu
+  // isto", e a tela nao pode confundir os dois.
+  const [semProposta, setSemProposta] = useState(false);
+
   // Trechos desligados continuam na lista: a seção 13 exige poder
   // restaurar o que foi descartado.
   const [desligados, setDesligados] = useState<Set<string>>(new Set());
@@ -143,6 +159,7 @@ function Editor() {
         if (cancelado) return;
 
         setTitulo(projeto.title);
+        setEstado(projeto.state);
         // O proxy só existe depois que o worker de mídia rodou. Antes
         // disso o palco mostra o estado vazio em vez de um <video>
         // apontando para 404.
@@ -151,13 +168,18 @@ function Editor() {
         }
 
         const versao = await apiPlanos.atual(projectId);
-        if (!cancelado) setPlano(versao.document as EditPlanV1);
+        if (!cancelado) {
+          setPlano(versao.document as EditPlanV1);
+          setSemProposta(false);
+        }
       } catch (e) {
         // Projeto sem proposta ainda é o caso normal de quem acabou de
         // enviar o vídeo: a IA entra na Fase 5. O editor abre com o
         // exemplo em vez de uma tela de erro.
         if (!cancelado && e instanceof Error && !e.message.includes('proposta')) {
           setErro(e.message);
+        } else if (!cancelado) {
+          setSemProposta(true);
         }
       } finally {
         if (!cancelado) setCarregando(false);
@@ -168,6 +190,43 @@ function Editor() {
       cancelado = true;
     };
   }, [projectId]);
+
+  /**
+   * Pede a análise da IA (chamadas #3 e #5 da seção 26).
+   *
+   * Leva dezenas de segundos, e por isso o botão fica desabilitado
+   * com texto próprio em vez de um spinner solto: quem espera
+   * precisa saber que algo está acontecendo e o que é.
+   */
+  const analisar = useCallback(async () => {
+    if (!projectId || analisando) return;
+
+    setAnalisando(true);
+    setErro(null);
+    setAvisosDaIa([]);
+
+    try {
+      const resultado = await apiIa.analisar(projectId);
+
+      // A análise salva o plano no servidor; recarregar é o que traz
+      // a versão que ficou ativa, em vez de reconstruí-la aqui e
+      // arriscar divergir do que o render vai usar.
+      const versao = await apiPlanos.atual(projectId);
+      setPlano(versao.document as EditPlanV1);
+      setSemProposta(false);
+      setEstado('PROPOSAL_READY');
+      setAvisosDaIa(resultado.avisos);
+
+      // A proposta nova é um marco: desfazer não deve voltar para o
+      // exemplo que estava na tela antes dela.
+      setPassado([]);
+      setFuturo([]);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'não foi possível analisar.');
+    } finally {
+      setAnalisando(false);
+    }
+  }, [projectId, analisando]);
 
   const executar = useCallback(
     (operacao: TimelineOperation) => {
@@ -358,6 +417,54 @@ function Editor() {
         )}
 
         <section className="editor__ia" aria-label="Painel de conteúdo">
+          {aba === 'ia' && semProposta && projectId && (
+            <div style={{ padding: 'var(--e4)', borderBottom: '1px solid var(--border)' }}>
+              <p className="texto-secundario" style={{ fontSize: 13, marginBottom: 'var(--e3)' }}>
+                {estado === 'ANALYZING' || estado === 'TRANSCRIBED'
+                  ? 'A transcrição está pronta. Peça à IA para escolher os melhores trechos.'
+                  : estado === 'FAILED_RETRYABLE'
+                    ? 'A última tentativa falhou. Você pode pedir de novo.'
+                    : 'Os trechos abaixo são um exemplo. A proposta real aparece depois da análise.'}
+              </p>
+
+              <button
+                type="button"
+                className="botao"
+                style={{ width: '100%' }}
+                disabled={analisando}
+                onClick={() => void analisar()}
+              >
+                <IconeIA size={16} weight="fill" />
+                {analisando ? 'Analisando a gravação…' : 'Analisar com IA'}
+              </button>
+
+              {analisando && (
+                <p
+                  className="texto-secundario"
+                  style={{ fontSize: 12, marginTop: 'var(--e2)' }}
+                  role="status"
+                  aria-live="polite"
+                >
+                  Isso leva alguns minutos em vídeos longos. Pode deixar a aba aberta.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Os avisos da análise ficam visíveis: um bloco que faltou
+              na gravação ou um trecho que precisa de confirmação é
+              justamente o que o usuário precisa olhar. */}
+          {aba === 'ia' && avisosDaIa.length > 0 && (
+            <div style={{ padding: 'var(--e3) var(--e4) 0' }}>
+              {avisosDaIa.map((a) => (
+                <div key={a} className="aviso aviso--atencao" style={{ marginBottom: 'var(--e2)' }}>
+                  <IconeAviso size={15} />
+                  <span style={{ fontSize: 12 }}>{a}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {aba === 'ia' && (
             <PainelDaIA
               plan={plano}
