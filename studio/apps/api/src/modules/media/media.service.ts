@@ -23,6 +23,7 @@ import {
 import { QUOTA_EDICAO_BYTES } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { StorageService } from '../../common/storage.service';
+import { FilaService } from '../../common/fila.service';
 import { assertOwnership } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 
@@ -70,6 +71,7 @@ export class MediaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly fila: FilaService,
   ) {}
 
   // ---------- Abrir ----------
@@ -203,18 +205,29 @@ export class MediaService {
       },
     });
 
-    // UPLOADING → INGESTING é a transição que enfileira o worker de
-    // mídia. Enquanto ele não existe, o projeto para aqui e a tela
-    // mostra "Preparando vídeo".
+    const enfileirado = await this.fila.prepararMidia(sessao.projectId, midia.id);
+
+    // Se o Redis estiver fora do ar, o arquivo já está salvo: o
+    // projeto fica num estado que a tela sabe explicar e que permite
+    // tentar de novo, em vez de perder 2 GB de envio.
     await this.prisma.project.update({
       where: { id: sessao.projectId },
-      data: { state: 'INGESTING' },
+      data: enfileirado
+        ? { state: 'INGESTING', publicError: null }
+        : {
+            state: 'FAILED_RETRYABLE',
+            publicError: 'O vídeo foi recebido, mas o preparo não começou. Tente de novo.',
+          },
     });
 
     this.sessoes.delete(uploadId);
     this.log.log(`upload concluído: projeto ${sessao.projectId}, ${tamanho} bytes`);
 
-    return { mediaSourceId: midia.id, tamanhoBytes: tamanho, state: 'INGESTING' };
+    return {
+      mediaSourceId: midia.id,
+      tamanhoBytes: tamanho,
+      state: enfileirado ? 'INGESTING' : 'FAILED_RETRYABLE',
+    };
   }
 
   /** Descarta a sessão e os pedaços já gravados. */
