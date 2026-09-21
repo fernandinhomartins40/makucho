@@ -1366,12 +1366,17 @@ body {
 
 /* ---------- Superfícies com espessura ---------- */
 
+/* Superfícies: na referência os cards mal se destacam do canvas.
+   O que os separa é a BORDA, não a luminosidade -- clarear o fundo
+   foi o que achatava a tela. */
 .cartao,
 .painel,
 .editor__ia,
 .editor__inspector,
-.editor__timeline,
-
+.editor__timeline {
+  background: var(--surface-1);
+  box-shadow: var(--luz-topo), var(--sombra-2);
+}
 
 /* ---------- Estado ativo com luz ---------- */
 
@@ -1624,4 +1629,281 @@ body {
 
 .menu__item--perigo:hover {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+/* ============================================================
+   Kit de marca
+
+   Três colunas: identidade, preview e escolhas. O preview fica no
+   meio porque é o que responde à pergunta da tela — "como isso vai
+   ficar no meu vídeo?".
+   ============================================================ */
+
+.marca {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px minmax(0, 1fr);
+  gap: var(--e5);
+  align-items: start;
+}
+
+@media (max-width: 1400px) {
+  .marca {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .marca {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.marca__logo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--e4);
+  align-items: start;
+}
+
+@media (max-width: 620px) {
+  .marca__logo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Moldura tracejada: diz "solte um arquivo aqui" sem precisar de
+   texto, e mostra o logo sobre o fundo real do produto. */
+.marca__moldura {
+  display: grid;
+  place-items: center;
+  min-height: 148px;
+  padding: var(--e4);
+  border: 1px dashed var(--border-forte);
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+}
+
+.marca__cores {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--e3);
+}
+
+@media (max-width: 620px) {
+  .marca__cores {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* O input nativo de cor vira a própria amostra: sem moldura do
+   sistema, só o bloco de cor clicável. */
+.marca__amostra {
+  width: 100%;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.marca__amostra::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.marca__amostra::-webkit-color-swatch {
+  border: none;
+  border-radius: 7px;
+}
+
+.marca__amostra::-moz-color-swatch {
+  border: none;
+  border-radius: 7px;
+}
+
+.marca__fontes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--e4);
+}
+
+@media (max-width: 620px) {
+  .marca__fontes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Preview ---------- */
+
+.marca__preview {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  width: 100%;
+  border-radius: var(--r-cartao);
+  overflow: hidden;
+  margin-bottom: var(--e3);
+  /* Enquanto não há gravação, um degradê de cena ocupa o lugar sem
+     fingir um frame que não temos. */
+  background:
+    radial-gradient(60% 40% at 50% 28%, rgb(65 200 255 / 18%) 0%, transparent 70%),
+    linear-gradient(170deg, #0d2a55 0%, #071a3a 55%, #040f26 100%);
+}
+
+.marca__logo-no-video {
+  position: absolute;
+  top: 6%;
+  left: 8%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.marca__zona-logo {
+  position: absolute;
+  top: 5%;
+  left: 7%;
+  width: 46%;
+  height: 8%;
+  border: 1px dashed rgb(255 255 255 / 30%);
+  border-radius: 4px;
+}
+
+.marca__legenda {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 18%;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.32;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 70%);
+}
+
+.marca__assinatura {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 11%;
+  font-size: 12px;
+  color: rgb(247 250 255 / 82%);
+}
+
+/* ---------- Opção com rádio ---------- */
+
+.opcao {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--e3);
+  width: 100%;
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--transicao), box-shadow var(--transicao);
+}
+
+.opcao[aria-checked='true'] {
+  border-color: var(--primary);
+  box-shadow: var(--brilho-primario);
+}
+
+/* O rádio é desenhado, não nativo: o nativo não aceita a cor da
+   marca de forma consistente entre navegadores. */
+.opcao__marca {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--border-forte);
+  transition: border-color var(--transicao), box-shadow var(--transicao);
+}
+
+.opcao[aria-checked='true'] .opcao__marca {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 4px var(--primary);
+}
+
+.opcao__amostra {
+  display: grid;
+  place-items: center;
+  width: 128px;
+  height: 56px;
+  padding: var(--e2);
+  border-radius: var(--r-controle);
+  background: #050f26;
+  text-align: center;
+}
+
+/* ---------- Faixa de áudio ---------- */
+
+.faixa {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--e3);
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+}
+
+.faixa__capa {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-controle);
+  background: var(--surface-1);
+  color: var(--accent);
+}
+
+.faixa__play {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
+/* ============================================================
+   Ajustes de proporção
+
+   As capturas mostraram o hero alto demais e os cards de projeto
+   grandes demais perto da referência.
+   ============================================================ */
+
+.hero {
+  min-height: 208px;
+  padding: var(--e5) var(--e6);
+}
+
+.hero h2 {
+  font-size: clamp(26px, 2.6vw, 38px);
+}
+
+/* Títulos de seção dentro de cards: 17px, não 20px — na referência
+   eles acompanham o texto em vez de competir com o h1 da página. */
+.cartao h2 {
+  font-size: 17px;
+  margin-bottom: var(--e1);
+}
+
+/* A Topbar carrega título de duas linhas em algumas telas: o
+   alinhamento ao topo do texto evita que a descrição empurre o
+   título para cima. */
+.topbar {
+  gap: var(--e4);
 }
