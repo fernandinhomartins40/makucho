@@ -3,18 +3,18 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21.
+> Atualizado em 2026-09-21 (segunda revisão: Fase 4a implementada).
 
 ## Panorama
 
 | Fase | Escopo | Estado |
 |---|---|---|
 | 0 | Fundação e contratos | **concluída** |
-| 1 | Plataforma base | **concluída**, menos CRUD de projetos |
-| 2 | Brand e Communication Studio | API parcial; **tela pronta, desligada** |
-| 3 | Script e Record Studio | API parcial; **tela pronta, desligada** |
-| 4 | Ingestão e transcrição | contratos + núcleo dos workers; **fila não roda** |
-| 4a | **Entrada de vídeo** | pendente — **não há como subir vídeo** (ADR 0010) |
+| 1 | Plataforma base | **concluída** |
+| 2 | Brand e Communication Studio | **tela ligada**; falta upload de assets |
+| 3 | Script e Record Studio | **concluída** — roteiro salva, gravação grava |
+| 4 | Ingestão e transcrição | worker de mídia rodando; **falta transcrição** |
+| 4a | Entrada de vídeo | **concluída** — gravação e upload funcionam (ADR 0010) |
 | 5a | IA: adapter e travas de custo | pendente |
 | 5b | IA: seleção de trechos e risco | pendente |
 | 5c | IA: roteiro e sugestões | pendente |
@@ -30,17 +30,24 @@ banco conectados.
 
 ## Onde realmente paramos
 
-O redesign inverteu a natureza do trabalho pendente. Antes faltava tela;
-agora **a tela existe inteira e o que falta é o que fica atrás dela**.
+O caminho da câmera até o editor está fechado. Um vídeo entra — gravado ou
+enviado —, vira proxy e thumbnail, e o projeto aparece na home com o estado
+real. O editor abre esse projeto, toca o proxy e salva cada ajuste como uma
+versão no banco.
 
-Sete rotas no ar: `/`, `/roteiros`, `/gravar`, `/editor`, `/marca`, `/ajuda` e
-a página 404. Todas seguem o guia de UX/UI e as referências.
+O que ainda **não** funciona, sem rodeio:
 
-O que isso significa em termos de risco: o produto *parece* pronto e não
-está. Quem abrir hoje vê projetos que não existem, edita um EditPlan que não
-é salvo e clica em "Exportar vídeo" sem render por trás. Essa distância entre
-aparência e função é a dívida principal deste momento — e é maior do que era
-antes do redesign, não menor.
+- **transcrição**: o áudio é extraído, mas nada o transcreve. Sem transcrição
+  não há origem verificável para os cortes;
+- **IA**: as seis chamadas da seção 26 não existem. O painel "Seleção da IA"
+  mostra o exemplo do plano, não uma proposta real;
+- **render**: "Exportar vídeo" não gera arquivo. É a Fase 7 inteira;
+- **upload de logo e trilha**: os botões em Marca são a interface, sem o
+  `assets` por trás.
+
+A distância entre o que a tela mostra e o que o produto faz diminuiu muito,
+mas não chegou a zero — e os três primeiros itens acima são o que separa
+"ferramenta que organiza vídeo" de "editor com IA".
 
 ---
 
@@ -113,33 +120,17 @@ falta para deixar de ser demonstração.
 | `/marca` | preview reage a cor, fonte e estilo na hora | não persiste — **falta ligar em `brand-profile`, que já existe** |
 | `/ajuda` | conteúdo estático, correto | — |
 
-### A lacuna que bloqueia tudo
+### O que foi fechado
 
-**Nenhuma tela aceita um vídeo.** Não há `input type="file"`, área de soltar
-arquivo nem `MediaRecorder` em lugar nenhum do produto. A `/gravar` verifica
-câmera e microfone, mostra o preview, conta o tempo — e o botão Gravar não
-grava. A aba "Mídia" do editor promete que "a gravação enviada aparece aqui",
-sem caminho por onde ela chegue.
+| Módulo | O que faz |
+|---|---|
+| `projects` | CRUD com máquina de estados; arquiva em vez de apagar |
+| `media` | upload resumível em pedaços de 5 MB, quota conferida ao abrir |
+| `edit-plans` | versionamento; operação validada no servidor |
+| `worker-media` | proxy 720p, thumbnail, áudio 16 kHz, silêncios |
 
-Isso é anterior a qualquer discussão sobre IA: sem vídeo, as seis chamadas da
-seção 26 do plano não têm sobre o que agir, e o produto funciona apenas com as
-constantes escritas nos arquivos. Virou a **Fase 4a**, detalhada na seção 27
-do plano e no ADR 0010.
-
-### O que não existe por trás
-
-Três módulos da API que o novo frontend pressupõe e que não foram escritos:
-
-- **`projects`** — a tela inicial inteira depende dele. É o menor e o mais
-  urgente: sem projeto não há onde pendurar mídia, roteiro nem EditPlan;
-- **`media`** — sessão de upload, proxy, thumbnail. Sem ele `/gravar` não tem
-  para onde enviar e `/editor` não tem o que mostrar;
-- **`edit-plans`** — carregar e salvar o plano com versionamento. As operações
-  já existem e são validadas; falta só a persistência.
-
-Os workers também não rodam: `@makucho/studio-worker-core` tem o lock global,
-o diretório temporário e os wrappers de FFmpeg, todos testados, mas **nenhum
-processo consome a fila**. É biblioteca sem aplicação.
+O `worker-core` deixou de ser biblioteca sem aplicação: o lock global e o
+diretório temporário do ADR 0003 agora têm um processo que os usa.
 
 ---
 
