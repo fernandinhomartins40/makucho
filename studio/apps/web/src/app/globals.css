@@ -1907,3 +1907,16 @@ body {
 .topbar {
   gap: var(--e4);
 }
+
+/* Carga do editor: cobre as três zonas de conteúdo, deixando o rail
+   visível. O plano de demonstração não deve piscar antes do real — a
+   impressão de que os dados mudaram sozinhos é pior que a espera. */
+.editor__carregando {
+  grid-area: ia / ia / inspector / inspector;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--e3);
+  background: var(--bg-canvas);
+  z-index: 2;
+}

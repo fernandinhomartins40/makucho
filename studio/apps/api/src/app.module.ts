@@ -9,6 +9,7 @@ import { BrandModule } from './modules/brand/brand.module';
 import { ScriptsModule } from './modules/scripts/scripts.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { MediaModule } from './modules/media/media.module';
+import { EditPlansModule } from './modules/edit-plans/edit-plans.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
@@ -28,6 +29,7 @@ import { loadEnv } from './config/env';
     ScriptsModule,
     ProjectsModule,
     MediaModule,
+    EditPlansModule,
     SettingsModule,
   ],
   controllers: [HealthController],

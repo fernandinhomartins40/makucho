@@ -190,6 +190,48 @@ export const marca = {
 };
 
 // ============================================================
+// Planos de edição
+// ============================================================
+
+export interface VersaoDoPlano {
+  id: string;
+  version: number;
+  origin: string;
+  createdAt: string;
+  document: unknown;
+}
+
+export const planos = {
+  atual: (projectId: string) =>
+    api<VersaoDoPlano>(`/projects/${projectId}/edit-plans`),
+  historico: (projectId: string) =>
+    api<Array<Omit<VersaoDoPlano, 'document'> & { isActive: boolean }>>(
+      `/projects/${projectId}/edit-plans/history`,
+    ),
+  salvar: (projectId: string, documento: unknown) =>
+    api<VersaoDoPlano>(`/projects/${projectId}/edit-plans`, {
+      metodo: 'POST',
+      corpo: documento,
+    }),
+  /** O servidor aplica a mesma função que o navegador: a recusa é
+      idêntica nos dois lados. */
+  operar: (projectId: string, operacao: unknown) =>
+    api<VersaoDoPlano>(`/projects/${projectId}/edit-plans/operations`, {
+      metodo: 'POST',
+      corpo: operacao,
+    }),
+  restaurar: (projectId: string, versao: number) =>
+    api<VersaoDoPlano>(`/projects/${projectId}/edit-plans/restore/${versao}`, {
+      metodo: 'POST',
+    }),
+};
+
+/** URL do proxy que o editor toca. Nunca o original (seção 18). */
+export function urlDoVideo(projectId: string): string {
+  return `/api/projects/${projectId}/video`;
+}
+
+// ============================================================
 // Armazenamento
 // ============================================================
 

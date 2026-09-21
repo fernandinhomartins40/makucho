@@ -16,8 +16,9 @@
 // timeline vazia.
 // ============================================================
 
-import { useCallback, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { aplicarOperacao } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
@@ -26,6 +27,7 @@ import { PainelVazio } from '../../components/editor/PainelVazio';
 import { Inspector } from '../../components/editor/Inspector';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
+import { planos as apiPlanos, projetos as apiProjetos, urlDoVideo } from '../../lib/api';
 import {
   IconeDesfazer,
   IconeRefazer,
@@ -92,12 +94,26 @@ const LEGENDAS = {
 };
 
 export default function EditorPage() {
+  return (
+    <Suspense fallback={<div className="conteudo" />}>
+      <Editor />
+    </Suspense>
+  );
+}
+
+function Editor() {
+  const parametros = useSearchParams();
+  const projectId = parametros.get('projeto');
+
   const [plano, setPlano] = useState<EditPlanV1>(PLANO_DEMO);
+  const [carregando, setCarregando] = useState(Boolean(projectId));
+  const [salvando, setSalvando] = useState(false);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [posicaoMs, setPosicaoMs] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<AbaDoEditor>('ia');
   const [titulo, setTitulo] = useState('Atendimento no WhatsApp');
+  const [proxyUrl, setProxyUrl] = useState<string | undefined>(undefined);
   const [editandoTitulo, setEditandoTitulo] = useState(false);
 
   // Trechos desligados continuam na lista: a seção 13 exige poder
@@ -115,6 +131,44 @@ export default function EditorPage() {
     [plano.clips],
   );
 
+  // ---------- Carregar do servidor ----------
+  useEffect(() => {
+    if (!projectId) return;
+
+    let cancelado = false;
+
+    void (async () => {
+      try {
+        const projeto = await apiProjetos.obter(projectId);
+        if (cancelado) return;
+
+        setTitulo(projeto.title);
+        // O proxy só existe depois que o worker de mídia rodou. Antes
+        // disso o palco mostra o estado vazio em vez de um <video>
+        // apontando para 404.
+        if (projeto.state !== 'DRAFT' && projeto.state !== 'UPLOADING') {
+          setProxyUrl(urlDoVideo(projectId));
+        }
+
+        const versao = await apiPlanos.atual(projectId);
+        if (!cancelado) setPlano(versao.document as EditPlanV1);
+      } catch (e) {
+        // Projeto sem proposta ainda é o caso normal de quem acabou de
+        // enviar o vídeo: a IA entra na Fase 5. O editor abre com o
+        // exemplo em vez de uma tela de erro.
+        if (!cancelado && e instanceof Error && !e.message.includes('proposta')) {
+          setErro(e.message);
+        }
+      } finally {
+        if (!cancelado) setCarregando(false);
+      }
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, [projectId]);
+
   const executar = useCallback(
     (operacao: TimelineOperation) => {
       const resultado = aplicarOperacao(plano, operacao);
@@ -131,13 +185,29 @@ export default function EditorPage() {
       setPlano(resultado.plan);
       setErro(null);
 
+      // O servidor valida de novo e cria a versão. Se recusar, a tela
+      // volta ao plano anterior: aceitar local e recusar remoto
+      // deixaria os dois lados discordando sobre o que está salvo.
+      if (projectId) {
+        const anterior = plano;
+        setSalvando(true);
+        void apiPlanos
+          .operar(projectId, operacao)
+          .catch((e: unknown) => {
+            setPlano(anterior);
+            setPassado((h) => h.slice(0, -1));
+            setErro(e instanceof Error ? e.message : 'não foi possível salvar o ajuste.');
+          })
+          .finally(() => setSalvando(false));
+      }
+
       // O trecho removido deixa de existir: manter a seleção mostraria
       // propriedades de algo que não está mais no vídeo.
       if (operacao.op === 'alternar_clipe' && !operacao.enabled) {
         setSelecionado(null);
       }
     },
-    [plano],
+    [plano, projectId],
   );
 
   const alternarTrecho = useCallback((clipId: string) => {
@@ -276,6 +346,17 @@ export default function EditorPage() {
       <div className="editor">
         <RailDeFerramentas aba={aba} onTrocar={setAba} />
 
+        {carregando && (
+          <div
+            className="editor__carregando"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="esqueleto" style={{ width: 200, height: 14 }} />
+            <span className="texto-secundario">Carregando o projeto…</span>
+          </div>
+        )}
+
         <section className="editor__ia" aria-label="Painel de conteúdo">
           {aba === 'ia' && (
             <PainelDaIA
@@ -327,6 +408,7 @@ export default function EditorPage() {
         <main className="editor__palco">
           <Palco
             plan={plano}
+            proxyUrl={proxyUrl}
             posicaoMs={posicaoMs}
             onPosicao={setPosicaoMs}
             legendas={LEGENDAS}
