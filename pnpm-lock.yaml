@@ -487,6 +487,37 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
+  studio/packages/worker-core:
+    dependencies:
+      '@makucho/studio-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@makucho/studio-database':
+        specifier: workspace:*
+        version: link:../database
+      bullmq:
+        specifier: ^5.28.1
+        version: 5.81.5
+      ioredis:
+        specifier: ^5.4.1
+        version: 5.11.1
+    devDependencies:
+      '@makucho/typescript-config':
+        specifier: workspace:*
+        version: link:../../../shared/typescript-config
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.20.2
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
 packages:
 
   '@acemir/cssom@0.9.31':
