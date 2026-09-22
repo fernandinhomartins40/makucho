@@ -160,6 +160,78 @@ t('remove a trilha',
     .plan?.music === undefined);
 
 // ============================================================
+// Inserir: traz para a timeline um trecho que ficou de fora
+//
+// E a operacao que aplica um candidato da chamada #4. Nao viola a
+// integridade editorial: o trecho vem do ORIGINAL, pelos tempos dele,
+// e carrega transcriptSegmentIds como qualquer outro clipe.
+// ============================================================
+
+const paraInserir = {
+  op: 'inserir' as const,
+  sourceStartMs: 200_000,
+  sourceEndMs: 208_000,
+  role: 'proof' as const,
+  transcriptSegmentIds: ['s9'],
+  reason: 'Traz o caso concreto que faltava.',
+  semanticRisk: 'low' as const,
+};
+
+const inserido = aplicarOperacao(plano, paraInserir);
+
+t('inserir e aceito', inserido.ok);
+t('a timeline ganha um trecho', inserido.plan?.clips.length === plano.clips.length + 1);
+t(
+  'o trecho novo aponta para o original',
+  inserido.plan?.clips.some((c) => c.sourceStartMs === 200_000 && c.sourceEndMs === 208_000) === true,
+);
+t(
+  'e carrega a origem na transcricao',
+  inserido.plan?.clips.find((c) => c.sourceStartMs === 200_000)?.transcriptSegmentIds[0] === 's9',
+);
+t('sem aposClipId, entra no fim', inserido.plan?.clips.at(-1)?.sourceStartMs === 200_000);
+t('a duracao total aumenta', (inserido.plan?.targetDurationMs ?? 0) > plano.targetDurationMs);
+
+// Inserir no meio nao pode deixar buraco na timeline.
+const noMeio = aplicarOperacao(plano, { ...paraInserir, aposClipId: 'c1' });
+t('com aposClipId, a insercao e aceita', noMeio.ok);
+
+if (noMeio.plan) {
+  const i = noMeio.plan.clips.findIndex((c) => c.sourceStartMs === 200_000);
+  t('o trecho novo fica logo depois do indicado', i === 1);
+
+  let esperado = 0;
+  const semBuraco = noMeio.plan.clips.every((c) => {
+    const bate = c.timelineStartMs === esperado;
+    esperado += c.sourceEndMs - c.sourceStartMs;
+    return bate;
+  });
+  t('a timeline e recomposta sem buraco apos inserir', semBuraco);
+}
+
+// --- Recusas ---
+t(
+  'RECUSA trecho alem do fim da gravacao',
+  !aplicarOperacao(plano, { ...paraInserir, sourceStartMs: 470_000, sourceEndMs: 490_000 }).ok,
+);
+t(
+  'RECUSA fim antes do inicio',
+  !aplicarOperacao(plano, { ...paraInserir, sourceStartMs: 208_000, sourceEndMs: 200_000 }).ok,
+);
+t(
+  'RECUSA aposClipId inexistente',
+  !aplicarOperacao(plano, { ...paraInserir, aposClipId: 'naoexiste' }).ok,
+);
+// Sem origem na transcricao, a fala nao tem como ser comprovada -- e
+// exatamente o caso que a regra de integridade editorial proibe.
+t(
+  'RECUSA insercao sem transcriptSegmentIds',
+  !timelineOperationSchema.safeParse({ ...paraInserir, transcriptSegmentIds: [] }).success,
+);
+
+t('o plano original nao e mutado pela insercao', plano.clips.length === 3);
+
+// ============================================================
 // Correcao de transcricao
 //
 // O whisper erra nome proprio, jargao e sigla. Antes esta operacao

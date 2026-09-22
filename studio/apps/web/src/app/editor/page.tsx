@@ -23,6 +23,7 @@ import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { aplicarOperacao } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
+import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
 import { PainelVazio } from '../../components/editor/PainelVazio';
 import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
 import { Inspector } from '../../components/editor/Inspector';
@@ -604,6 +605,13 @@ function Editor() {
               onAlternar={alternarTrecho}
               onOperacao={executar}
             />
+          )}
+          {/* As chamadas #4 e #6 ficam ABAIXO da proposta: sao acoes
+              sob demanda sobre o que ja esta montado, nao a proposta
+              em si. E so aparecem quando ha proposta -- nao ha o que
+              refinar numa timeline vazia. */}
+          {aba === 'ia' && !semProposta && (
+            <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />
           )}
           {aba === 'midia' && (
             <PainelVazio

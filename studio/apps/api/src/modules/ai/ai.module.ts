@@ -18,6 +18,8 @@ import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
 import { PromptsService } from './prompts.service';
+import { RefinoController } from './refino.controller';
+import { RefinoService } from './refino.service';
 import { RoteiroController } from './roteiro.controller';
 import { RoteiroService } from './roteiro.service';
 import { UsoDeIaService } from './uso.service';
@@ -26,11 +28,12 @@ import { UsoDeIaService } from './uso.service';
   // A analise persiste o plano e muda o estado do projeto; reusar os
   // servicos que ja fazem isso evita duas maquinas de estado.
   imports: [EditPlansModule, ProjectsModule],
-  controllers: [AiController, AnaliseController, RoteiroController],
+  controllers: [AiController, AnaliseController, RoteiroController, RefinoController],
   providers: [
     AiService,
     AnaliseService,
     RoteiroService,
+    RefinoService,
     UsoDeIaService,
     PromptsService,
     CryptoService,

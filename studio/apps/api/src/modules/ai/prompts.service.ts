@@ -29,6 +29,8 @@ export const VERSAO_DO_PROMPT = {
   selecionar_trechos: 'selecao-v1',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
+  propor_candidatos: 'candidatos-v1',
+  refinar_cortes: 'refino-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

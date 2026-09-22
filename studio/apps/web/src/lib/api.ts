@@ -438,6 +438,29 @@ export interface SugestaoDaIa {
   replacementText: string;
 }
 
+/** O que a #4 devolve. Vira uma operacao `inserir` num clique. */
+export interface CandidatoDaIa {
+  sourceStartMs: number;
+  sourceEndMs: number;
+  role: string;
+  score: number;
+  /** O que o video GANHA com este trecho. Permite discordar. */
+  reason: string;
+  semanticRisk: string;
+  apos?: number;
+  /** A origem na transcricao. Sem ela o contrato recusa a insercao. */
+  transcriptSegmentIds: string[];
+}
+
+/** O que a #6 devolve. Vira `ajustar_corte`, uma a uma. */
+export interface AjusteDaIa {
+  clipIndex: number;
+  sourceStartMs: number;
+  sourceEndMs: number;
+  /** O que estava errado, nao o que foi feito. */
+  reason: string;
+}
+
 export const ia = {
   consumo: () => api<ConsumoDeIa>('/settings/ai-usage'),
   // #1 -- escreve um rascunho a partir do tema. Nao salva nada: o
@@ -463,6 +486,21 @@ export const ia = {
   // usuário está olhando a tela esperando o resultado.
   analisar: (projectId: string) =>
     api<ResultadoDaAnalise>(`/projects/${projectId}/analyze`, { metodo: 'POST' }),
+  // #4 -- procura trechos bons que ficaram de fora. Devolve
+  // CANDIDATOS: quem decide e o usuario, e o que entra na timeline e
+  // uma operacao `inserir` disparada por um clique.
+  candidatos: (projectId: string) =>
+    api<{ candidatos: CandidatoDaIa[]; custoCentavos: number }>(
+      `/projects/${projectId}/candidates`,
+      { metodo: 'POST' },
+    ),
+  // #6 -- ajustes de borda. Os silencios vem de MEDICAO, nao do
+  // modelo: ja estao detectados desde a transcricao.
+  refinar: (projectId: string) =>
+    api<{ ajustes: AjusteDaIa[]; silenciosRemoviveis: number; custoCentavos: number }>(
+      `/projects/${projectId}/refine`,
+      { metodo: 'POST' },
+    ),
   definirLimite: (monthlyLimitCents: number) =>
     api<{ ok: boolean; motivo?: string }>('/settings/ai-limit', {
       metodo: 'PUT',

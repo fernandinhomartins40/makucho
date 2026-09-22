@@ -98,6 +98,12 @@ export class FalsoProvedor implements ProvedorDeIa {
         if (pedido.chamada === 'sugerir_melhorias') {
           return JSON.stringify(this.sugestoesValidas());
         }
+        if (pedido.chamada === 'propor_candidatos') {
+          return JSON.stringify(this.candidatosValidos());
+        }
+        if (pedido.chamada === 'refinar_cortes') {
+          return JSON.stringify(this.refinoValido());
+        }
         return JSON.stringify({ ok: true, chamada: pedido.chamada });
     }
   }
@@ -157,6 +163,57 @@ export class FalsoProvedor implements ProvedorDeIa {
           issue: 'o hook afirma em vez de perguntar',
           reason: 'uma pergunta direta segura mais nos primeiros segundos',
           replacementText: 'Quanto cliente voce perde antes mesmo de falar com ele?',
+        },
+      ],
+    };
+  }
+
+  /**
+   * Candidatos que passam no schema e no parser.
+   *
+   * Os tempos ficam no ÚLTIMO terço do vídeo, longe do que a
+   * `propostaValida` escolhe: um duble que propoe o que ja esta na
+   * timeline seria descartado pelo parser, e o teste nunca veria
+   * candidato nenhum.
+   */
+  private candidatosValidos() {
+    const inicio = Math.floor(this.duracaoMs * 0.7);
+
+    return {
+      schemaVersion: '1.0' as const,
+      candidates: [
+        {
+          sourceStartMs: inicio,
+          sourceEndMs: Math.min(inicio + 5_000, this.duracaoMs),
+          role: 'proof' as const,
+          score: 0.8,
+          reason: 'Traz o caso concreto que sustenta a afirmacao anterior.',
+          semanticRisk: 'low' as const,
+          apos: 0,
+        },
+      ],
+    };
+  }
+
+  /**
+   * Um ajuste de borda que passa no schema.
+   *
+   * Move o inicio do primeiro trecho em 400ms -- pequeno de
+   * proposito, porque o refino e acabamento: um ajuste de varios
+   * segundos seria outra escolha de trecho, e essa decisao nao e do
+   * modelo.
+   */
+  private refinoValido() {
+    const terco = Math.floor(this.duracaoMs / 3);
+
+    return {
+      schemaVersion: '1.0' as const,
+      adjustments: [
+        {
+          clipIndex: 0,
+          sourceStartMs: 400,
+          sourceEndMs: terco,
+          reason: 'O corte comecava no meio da palavra anterior.',
         },
       ],
     };

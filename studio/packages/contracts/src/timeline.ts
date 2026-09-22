@@ -5,9 +5,14 @@
 //
 // A timeline NAO e um editor livre. Ela ajusta a proposta que a IA
 // fez -- mover, encurtar, desativar e reordenar clipes que JA
-// existem no EditPlan. Nao ha "adicionar clipe do nada", porque
-// toda fala precisa vir do video original (regra de integridade
-// editorial, contexto mestre secao 5).
+// existem no EditPlan.
+//
+// `inserir` acrescenta um trecho, e isso NAO e excecao a regra de
+// integridade editorial (contexto mestre, secao 5): o trecho vem do
+// video ORIGINAL, pelos tempos dele, e carrega
+// `transcriptSegmentIds` como qualquer outro clipe. Continua nao
+// havendo "adicionar clipe do nada" -- o que ha e trazer para a
+// timeline uma fala que ja foi gravada e ficou de fora.
 //
 // Toda operacao produz um EditPlan novo, validado pelo mesmo schema
 // de sempre. A timeline nao tem um caminho mais permissivo que o da
@@ -17,6 +22,7 @@
 import { z } from 'zod';
 import { editPlanV1Schema } from './edit-plan';
 import type { EditPlanV1 } from './edit-plan';
+import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
 
 // ---------- Tracks ----------
 //
@@ -97,6 +103,36 @@ export const duplicarClipeSchema = z.object({
   clipId: idSchema,
 });
 
+/**
+ * Traz para a timeline um trecho do original que ficou de fora.
+ *
+ * E a operacao que aplica um candidato da chamada #4. O candidato
+ * chega como PROPOSTA -- a IA sugere, o usuario clica, e o que entra
+ * na timeline passa por aqui, pelo mesmo contrato de sempre.
+ *
+ * `transcriptSegmentIds` e obrigatorio pelo mesmo motivo do
+ * `clipSchema`: sem ao menos um segmento, a fala nao tem origem
+ * comprovavel, e e exatamente o caso que a regra de integridade
+ * editorial proibe.
+ */
+export const inserirClipeSchema = z.object({
+  op: z.literal('inserir'),
+  sourceStartMs: z.number().int().nonnegative(),
+  sourceEndMs: z.number().int().nonnegative(),
+  role: clipRoleSchema,
+  transcriptSegmentIds: z.array(idSchema).min(1),
+  reason: z.string().min(1).max(500),
+  semanticRisk: semanticRiskSchema,
+  /**
+   * Depois de qual clipe entrar. Ausente = no fim.
+   *
+   * Por ID e nao por indice: indice muda quando outra operacao
+   * reordena, e uma insercao pendente na tela apontaria para o
+   * lugar errado.
+   */
+  aposClipId: idSchema.optional(),
+});
+
 /** Troca a ordem dos clipes. A validacao semantica roda depois. */
 export const reordenarSchema = z.object({
   op: z.literal('reordenar'),
@@ -153,6 +189,7 @@ export const timelineOperationSchema = z
     alternarClipeSchema,
     dividirClipeSchema,
     duplicarClipeSchema,
+    inserirClipeSchema,
     reordenarSchema,
     editarLegendaSchema,
     desfazerCorrecaoSchema,
@@ -302,6 +339,54 @@ export function aplicarOperacao(
       const comCopia = [...clips];
       comCopia.splice(indice + 1, 0, copia);
       novo = { ...novo, clips: recomporTimeline(comCopia) };
+      break;
+    }
+
+    case 'inserir': {
+      if (operacao.sourceEndMs <= operacao.sourceStartMs) {
+        return { ok: false, erro: 'o fim do trecho precisa vir depois do inicio' };
+      }
+
+      // O trecho tem de existir na gravacao. Um tempo alem do fim
+      // faria o FFmpeg produzir um clip mudo e mais curto, sem erro:
+      // a falha so apareceria no video final, depois do render.
+      if (operacao.sourceEndMs > plan.sourceDurationMs) {
+        return {
+          ok: false,
+          erro: `o trecho passa do fim da gravacao (${plan.sourceDurationMs}ms)`,
+        };
+      }
+
+      // Teto de clipes, o mesmo do schema: recusar aqui da uma
+      // mensagem que explica, em vez de um erro de validacao no fim.
+      if (clips.length >= 60) {
+        return { ok: false, erro: 'a timeline ja tem o maximo de trechos' };
+      }
+
+      const clipeNovo = {
+        id: `ins${Date.now().toString(36)}`,
+        sourceStartMs: operacao.sourceStartMs,
+        sourceEndMs: operacao.sourceEndMs,
+        // Recomposto logo abaixo; o valor aqui e so para satisfazer
+        // o tipo.
+        timelineStartMs: 0,
+        role: operacao.role,
+        transcriptSegmentIds: operacao.transcriptSegmentIds,
+        semanticRisk: operacao.semanticRisk,
+        reason: operacao.reason,
+      };
+
+      const comNovo = [...clips];
+
+      if (operacao.aposClipId) {
+        const onde = comNovo.findIndex((c) => c.id === operacao.aposClipId);
+        if (onde === -1) return { ok: false, erro: 'o trecho de referencia nao existe' };
+        comNovo.splice(onde + 1, 0, clipeNovo);
+      } else {
+        comNovo.push(clipeNovo);
+      }
+
+      novo = { ...novo, clips: recomporTimeline(comNovo) };
       break;
     }
 
