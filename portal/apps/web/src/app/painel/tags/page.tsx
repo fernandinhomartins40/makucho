@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TagDto } from '@makucho/types';
 import { gerarSlug } from '@makucho/validation';
 import { ErroApi, painel } from '@/lib/painel';
@@ -29,6 +29,9 @@ function Tags() {
   const recado = useRecado();
   const [itens, setItens] = useState<TagDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [busca, setBusca] = useState('');
   const [form, setForm] = useState<Formulario | null>(null);
   const [excluir, setExcluir] = useState<TagDto | null>(null);
@@ -37,13 +40,19 @@ function Tags() {
   const [slugTocado, setSlugTocado] = useState(false);
 
   async function carregar() {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
-      setItens(await painel.tags());
+      const tags = await painel.tags();
+      if (requisicao !== requisicaoAtual.current) return;
+      setItens(tags);
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar as tags.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
   }
 
@@ -58,7 +67,7 @@ function Tags() {
     : itens;
 
   async function salvar() {
-    if (!form) return;
+    if (!form || salvando) return;
     setErro('');
 
     if (!form.name.trim()) {
@@ -101,7 +110,7 @@ function Tags() {
     <>
       <TituloPagina
         titulo="Tags"
-        descricao={`${itens.length} cadastrada${itens.length === 1 ? '' : 's'}`}
+        descricao={dadosCarregados ? `${itens.length} cadastrada${itens.length === 1 ? '' : 's'}` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
             + Nova tag
@@ -112,6 +121,7 @@ function Tags() {
       <div className="pn-filtros">
         <Entrada
           className="pn-busca"
+          aria-label="Filtrar tags"
           placeholder="Filtrar tags…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
@@ -119,12 +129,19 @@ function Tags() {
       </div>
 
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma tag foi carregada.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : visiveis.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : visiveis.length === 0 ? (
           <Vazio
             titulo={busca ? 'Nenhuma tag encontrada' : 'Nenhuma tag'}
             descricao={busca ? 'Tente outro termo.' : 'As tags ajudam a agrupar assuntos.'}
+            acao={busca ? <Botao variante="neutro" onClick={() => setBusca('')}>Limpar filtro</Botao> : undefined}
           />
         ) : (
           <div className="pn-tabela-area">
@@ -168,11 +185,11 @@ function Tags() {
       <Modal
         titulo={form?.id ? 'Editar tag' : 'Nova tag'}
         aberto={form !== null}
-        aoFechar={() => setForm(null)}
+        aoFechar={() => { if (!salvando) setForm(null); }}
         largura={460}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setForm(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>
               Cancelar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvar}>

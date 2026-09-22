@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
 import type { CategoryDto, MediaDto, VideoDto } from '@makucho/types';
 import { gerarSlug } from '@makucho/validation';
@@ -55,12 +55,13 @@ function paraSegundos(v: string): number | null {
   const t = v.trim();
   if (!t) return null;
   if (t.includes(':')) {
-    const [m, s] = t.split(':');
-    const total = Number(m) * 60 + Number(s || 0);
-    return Number.isFinite(total) ? total : null;
+    const partes = /^(\d+):([0-5]?\d)$/.exec(t);
+    if (!partes) return null;
+    const total = Number(partes[1]) * 60 + Number(partes[2]);
+    return total <= 86400 ? total : null;
   }
   const n = Number(t);
-  return Number.isFinite(n) ? n : null;
+  return Number.isInteger(n) && n >= 0 && n <= 86400 ? n : null;
 }
 
 function paraTempo(segundos: number | null): string {
@@ -72,8 +73,12 @@ function Videos() {
   const recado = useRecado();
   const [itens, setItens] = useState<VideoDto[]>([]);
   const [categorias, setCategorias] = useState<CategoryDto[]>([]);
+  const [erroCategorias, setErroCategorias] = useState(false);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [pagina, setPagina] = useState(1);
   const [plataforma, setPlataforma] = useState('');
 
@@ -83,24 +88,38 @@ function Videos() {
   const [erro, setErro] = useState('');
   const [slugTocado, setSlugTocado] = useState(false);
 
-  useEffect(() => {
-    painel.categorias().then(setCategorias).catch(() => setCategorias([]));
+  const carregarCategorias = useCallback(async () => {
+    try {
+      setCategorias(await painel.categorias());
+      setErroCategorias(false);
+    } catch {
+      setErroCategorias(true);
+    }
   }, []);
 
+  useEffect(() => {
+    void carregarCategorias();
+  }, [carregarCategorias]);
+
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.videos({
         page: pagina,
         perPage: 24,
         platform: plataforma || undefined,
       });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar os vídeos.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina, plataforma]);
@@ -125,14 +144,14 @@ function Videos() {
             thumbnail: v.thumbnail,
             categoryId: v.category?.id ?? '',
             isFeatured: v.isFeatured,
-            isPublished: true,
+            isPublished: v.isPublished,
           }
         : { ...NOVO },
     );
   }
 
   async function salvar() {
-    if (!form) return;
+    if (!form || salvando) return;
     setErro('');
 
     if (form.title.trim().length < 3) {
@@ -141,6 +160,11 @@ function Videos() {
     }
     if (!form.url.trim()) {
       setErro('Informe o endereço do vídeo.');
+      return;
+    }
+    const duracao = paraSegundos(form.duracao);
+    if (form.duracao.trim() && duracao === null) {
+      setErro('Informe a duração em segundos ou no formato 8:30, até 24 horas.');
       return;
     }
 
@@ -152,7 +176,7 @@ function Videos() {
         description: form.description.trim() || null,
         platform: form.platform,
         url: form.url.trim(),
-        durationSeconds: paraSegundos(form.duracao),
+        durationSeconds: duracao,
         thumbnailId: form.thumbnail?.id ?? null,
         categoryId: form.categoryId || null,
         isFeatured: form.isFeatured,
@@ -176,7 +200,7 @@ function Videos() {
     <>
       <TituloPagina
         titulo="Vídeos"
-        descricao={`${meta.total.toLocaleString('pt-BR')} no total`}
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
             + Novo vídeo
@@ -186,6 +210,7 @@ function Videos() {
 
       <div className="pn-filtros">
         <Selecao
+          aria-label="Filtrar vídeos por plataforma"
           value={plataforma}
           onChange={(e) => {
             setPagina(1);
@@ -199,10 +224,23 @@ function Videos() {
         </Selecao>
       </div>
 
+      {erroCategorias && (
+        <div className="pn-erro-lista">
+          <Aviso tipo="erro">As categorias não foram carregadas. O campo de categoria pode estar incompleto.</Aviso>
+          <Botao variante="neutro" onClick={() => void carregarCategorias()}>Recarregar categorias</Botao>
+        </div>
+      )}
+
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'Os resultados anteriores permanecem abaixo.' : 'Nenhum resultado foi carregado.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo="Nenhum vídeo"
             descricao="Cadastre os vídeos do YouTube, Instagram e TikTok."
@@ -251,14 +289,17 @@ function Videos() {
                           em destaque
                         </small>
                       )}
+                      {!v.isPublished && (
+                        <small style={{ display: 'block', color: 'var(--pn-suave)' }}>rascunho · não aparece no portal</small>
+                      )}
                     </td>
                     <td style={{ textTransform: 'capitalize' }}>{v.platform.toLowerCase()}</td>
                     <td style={{ color: 'var(--pn-suave)' }}>{v.category?.name ?? '—'}</td>
                     <td>{paraTempo(v.durationSeconds) || '—'}</td>
                     <td>
                       <div className="pn-acoes">
-                        <a href={v.url} target="_blank" rel="noopener noreferrer">
-                          <Botao variante="fantasma">Abrir</Botao>
+                        <a href={v.url} target="_blank" rel="noopener noreferrer" className="pn-botao pn-botao-fantasma">
+                          Abrir
                         </a>
                         <Botao variante="fantasma" onClick={() => abrir(v)}>
                           Editar
@@ -275,16 +316,16 @@ function Videos() {
           </div>
         )}
 
-        <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+        {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
       </div>
 
       <Modal
         titulo={form?.id ? 'Editar vídeo' : 'Novo vídeo'}
         aberto={form !== null}
-        aoFechar={() => setForm(null)}
+        aoFechar={() => { if (!salvando) setForm(null); }}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setForm(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>
               Cancelar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvar}>

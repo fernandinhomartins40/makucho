@@ -1,11 +1,12 @@
 /**
- * Icones em SVG inline (secao 6).
+ * Ícones simples em SVG inline; a marca usa o asset oficial do cliente.
  *
- * Sem biblioteca: cada icone e um componente de servidor que vira markup
- * no HTML, sem um quilobyte de JavaScript no navegador. Importar
+ * Sem biblioteca: cada ícone vira markup no HTML. Importar
  * lucide-react ou react-icons pelo punhado de simbolos do layout
  * custaria dezenas de KB no bundle.
  */
+
+import Image from 'next/image';
 
 type Props = { className?: string; size?: number };
 
@@ -21,26 +22,17 @@ const base = (size: number) => ({
   'aria-hidden': true,
 });
 
-/** Logo do MAKUCHO: o "M" em triangulos, como na marca. */
+/** Símbolo oficial derivado do arquivo fornecido pelo cliente. */
 export function LogoM({ className, size = 32 }: Props) {
   return (
-    <svg
+    <Image
+      src="/brand/makucho-symbol-metallic-master.webp"
+      alt=""
       className={className}
       width={size}
       height={size}
-      viewBox="0 0 48 48"
-      fill="none"
       aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="mk-grad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#1a5fd4" />
-        </linearGradient>
-      </defs>
-      <path d="M4 40 L14 8 L24 26 L34 8 L44 40 L35 40 L29 23 L24 33 L19 23 L13 40 Z" fill="url(#mk-grad)" />
-      <path d="M24 26 L29 17 L24 8 L19 17 Z" fill="#60a5fa" opacity="0.85" />
-    </svg>
+    />
   );
 }
 
@@ -156,7 +148,8 @@ export function IconeRede({ platform, className, size = 16 }: Props & { platform
   if (p.includes('tiktok')) return <TikTok className={className} size={size} />;
   if (p.includes('youtube')) return <YouTube className={className} size={size} />;
   if (p.includes('linkedin')) return <LinkedIn className={className} size={size} />;
-  return <X className={className} size={size} />;
+  if (p === 'x' || p.includes('twitter')) return <X className={className} size={size} />;
+  return <svg className={className} {...base(size)}><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2" /><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2" /></svg>;
 }
 
 // ============================================================

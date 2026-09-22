@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AdPlacement, AdvertisementDto, MediaDto } from '@makucho/types';
 import { ErroApi, painel } from '@/lib/painel';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
@@ -77,6 +77,9 @@ function Anuncios() {
   const [itens, setItens] = useState<AdvertisementDto[]>([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [pagina, setPagina] = useState(1);
   const [status, setStatus] = useState('');
 
@@ -86,19 +89,24 @@ function Anuncios() {
   const [erro, setErro] = useState('');
 
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.anuncios({
         page: pagina,
         perPage: 20,
         status: status || undefined,
       });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar os anúncios.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina, status]);
@@ -132,7 +140,7 @@ function Anuncios() {
   }
 
   async function salvar() {
-    if (!form) return;
+    if (!form || salvando) return;
     setErro('');
 
     if (form.name.trim().length < 2) {
@@ -143,12 +151,38 @@ function Anuncios() {
       setErro('Informe o endereço de destino.');
       return;
     }
+    try {
+      const destino = new URL(form.targetUrl.trim());
+      if (!['http:', 'https:'].includes(destino.protocol)) throw new Error('Protocolo inválido');
+    } catch {
+      setErro('Informe um endereço de destino válido, começando com https:// ou http://.');
+      return;
+    }
     if (!form.alt.trim()) {
       setErro('O texto alternativo é obrigatório: ele descreve o anúncio para leitores de tela.');
       return;
     }
     if (form.placements.length === 0) {
       setErro('Escolha ao menos uma posição no site.');
+      return;
+    }
+    if (form.status === 'ACTIVE' && !form.media) {
+      setErro('Escolha uma imagem antes de ativar o anúncio.');
+      return;
+    }
+    const prioridade = Number(form.priority);
+    if (!Number.isInteger(prioridade) || prioridade < 0 || prioridade > 1000) {
+      setErro('A prioridade deve ser um número inteiro entre 0 e 1000.');
+      return;
+    }
+    const inicio = form.startsAt ? new Date(form.startsAt) : null;
+    const fim = form.endsAt ? new Date(form.endsAt) : null;
+    if ((inicio && Number.isNaN(inicio.getTime())) || (fim && Number.isNaN(fim.getTime()))) {
+      setErro('Confira as datas de início e fim da veiculação.');
+      return;
+    }
+    if (inicio && fim && fim.getTime() <= inicio.getTime()) {
+      setErro('A data final deve ser posterior à inicial.');
       return;
     }
 
@@ -163,11 +197,11 @@ function Anuncios() {
         alt: form.alt.trim(),
         status: form.status,
         device: form.device,
-        priority: Number(form.priority) || 0,
+        priority: prioridade,
         placements: form.placements,
         openInNewTab: form.openInNewTab,
-        startsAt: form.startsAt ? new Date(form.startsAt).toISOString() : null,
-        endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
+        startsAt: inicio?.toISOString() ?? null,
+        endsAt: fim?.toISOString() ?? null,
       };
 
       if (form.id) await painel.atualizarAnuncio(form.id, corpo);
@@ -187,7 +221,7 @@ function Anuncios() {
     <>
       <TituloPagina
         titulo="Anúncios"
-        descricao={`${meta.total.toLocaleString('pt-BR')} cadastrado${meta.total === 1 ? '' : 's'}`}
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} cadastrado${meta.total === 1 ? '' : 's'}` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
             + Novo anúncio
@@ -197,6 +231,7 @@ function Anuncios() {
 
       <div className="pn-filtros">
         <Selecao
+          aria-label="Filtrar anúncios por status"
           value={status}
           onChange={(e) => {
             setPagina(1);
@@ -212,9 +247,15 @@ function Anuncios() {
       </div>
 
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'Os resultados anteriores permanecem abaixo.' : 'Nenhum resultado foi carregado.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo="Nenhum anúncio"
             descricao="Cadastre as peças publicitárias e escolha onde elas aparecem."
@@ -284,17 +325,17 @@ function Anuncios() {
           </div>
         )}
 
-        <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+        {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
       </div>
 
       <Modal
         titulo={form?.id ? 'Editar anúncio' : 'Novo anúncio'}
         aberto={form !== null}
-        aoFechar={() => setForm(null)}
+        aoFechar={() => { if (!salvando) setForm(null); }}
         largura={640}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setForm(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>
               Cancelar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvar}>

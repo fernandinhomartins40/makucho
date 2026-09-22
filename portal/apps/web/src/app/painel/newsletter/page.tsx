@@ -1,17 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ErroApi, painel, pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import {
+  Aviso,
   Botao,
   Carregando,
   Paginacao,
   SeloStatus,
   Selecao,
   Vazio,
-  useRecado,
 } from '@/components/painel/ui';
 
 interface Inscrito {
@@ -24,7 +24,6 @@ interface Inscrito {
 
 function Newsletter() {
   const { usuario } = useSessao();
-  const recado = useRecado();
 
   const [itens, setItens] = useState<Inscrito[]>([]);
   const [stats, setStats] = useState<{
@@ -35,16 +34,28 @@ function Newsletter() {
   } | null>(null);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const [erroStats, setErroStats] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [pagina, setPagina] = useState(1);
   const [status, setStatus] = useState('');
 
   const admin = pode(usuario, 'ADMIN');
 
-  useEffect(() => {
-    painel.estatisticasNewsletter().then(setStats).catch(() => setStats(null));
+  const carregarStats = useCallback(async () => {
+    setErroStats(null);
+    try {
+      setStats(await painel.estatisticasNewsletter());
+    } catch (erro) {
+      setErroStats(erro instanceof ErroApi ? erro.message : 'Não foi possível carregar as métricas.');
+    }
   }, []);
 
+  useEffect(() => { void carregarStats(); }, [carregarStats]);
+
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     // A lista completa é só para ADMIN; o editor vê apenas os números.
     if (!admin) {
       setCarregando(false);
@@ -52,20 +63,23 @@ function Newsletter() {
     }
 
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.inscritos({
         page: pagina,
         perPage: 30,
         status: status || undefined,
       });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar os inscritos.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina, status, admin]);
 
   useEffect(() => {
@@ -81,12 +95,12 @@ function Newsletter() {
           admin && (
             // Download direto pelo navegador: a API devolve o CSV com o
             // cookie de sessão junto.
-            <a href="/api/newsletter/export" download>
-              <Botao variante="neutro">Exportar CSV</Botao>
-            </a>
+            <a href="/api/newsletter/export" download className="pn-botao pn-botao-neutro">Exportar CSV</a>
           )
         }
       />
+
+      {erroStats && <div className="pn-erro-lista"><Aviso tipo="erro">{erroStats}</Aviso><Botao variante="neutro" onClick={() => void carregarStats()}>Tentar novamente</Botao></div>}
 
       {stats && (
         <div className="pn-cartoes">
@@ -120,6 +134,7 @@ function Newsletter() {
         <>
           <div className="pn-filtros">
             <Selecao
+              aria-label="Filtrar inscritos por status"
               value={status}
               onChange={(e) => {
                 setPagina(1);
@@ -134,9 +149,15 @@ function Newsletter() {
           </div>
 
           <div className="pn-bloco">
+            {erroLista && (
+              <div className="pn-erro-lista">
+                <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhum inscrito foi carregado.'}</Aviso>
+                <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+              </div>
+            )}
             {carregando ? (
               <Carregando />
-            ) : itens.length === 0 ? (
+            ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
               <Vazio
                 titulo="Nenhum inscrito"
                 descricao="O formulário da home alimenta esta lista."
@@ -170,12 +191,11 @@ function Newsletter() {
               </div>
             )}
 
-            <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+            {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
           </div>
         </>
       )}
 
-      {recado.elemento}
     </>
   );
 }

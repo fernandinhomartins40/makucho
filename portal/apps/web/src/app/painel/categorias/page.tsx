@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CategoryDto, MediaDto } from '@makucho/types';
 import { gerarSlug } from '@makucho/validation';
 import { ErroApi, painel } from '@/lib/painel';
@@ -45,6 +45,10 @@ function Categorias() {
   const recado = useRecado();
   const [itens, setItens] = useState<CategoryDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
+  const [reordenando, setReordenando] = useState(false);
   const [form, setForm] = useState<Formulario | null>(null);
   const [excluir, setExcluir] = useState<CategoryDto | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -52,13 +56,19 @@ function Categorias() {
   const [slugTocado, setSlugTocado] = useState(false);
 
   async function carregar() {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
-      setItens(await painel.categorias());
+      const categorias = await painel.categorias();
+      if (requisicao !== requisicaoAtual.current) return;
+      setItens(categorias);
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar as categorias.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
   }
 
@@ -87,7 +97,7 @@ function Categorias() {
   }
 
   async function salvar() {
-    if (!form) return;
+    if (!form || salvando) return;
     setErro('');
 
     if (!form.name.trim()) {
@@ -123,22 +133,26 @@ function Categorias() {
   /** Move uma posição e grava a ordem inteira; a home lê essa sequência. */
   async function mover(indice: number, direcao: -1 | 1) {
     const destino = indice + direcao;
-    if (destino < 0 || destino >= itens.length) return;
+    if (reordenando || carregando || erroLista || destino < 0 || destino >= itens.length) return;
 
     const atual = itens[indice];
     const outro = itens[destino];
     if (!atual || !outro) return;
 
+    const anteriores = [...itens];
     const novos = [...itens];
     novos[indice] = outro;
     novos[destino] = atual;
     setItens(novos);
+    setReordenando(true);
 
     try {
       await painel.reordenarCategorias(novos.map((c, i) => ({ id: c.id, position: i })));
     } catch (e) {
       recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível reordenar.');
-      void carregar();
+      setItens(anteriores);
+    } finally {
+      setReordenando(false);
     }
   }
 
@@ -155,9 +169,15 @@ function Categorias() {
       />
 
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma categoria foi carregada.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo="Nenhuma categoria"
             descricao="Crie a primeira editoria do portal."
@@ -189,7 +209,7 @@ function Categorias() {
                           type="button"
                           className="pn-mover"
                           onClick={() => void mover(i, -1)}
-                          disabled={i === 0}
+                          disabled={reordenando || Boolean(erroLista) || i === 0}
                           aria-label={`Mover ${c.name} para cima`}
                         >
                           ↑
@@ -198,7 +218,7 @@ function Categorias() {
                           type="button"
                           className="pn-mover"
                           onClick={() => void mover(i, 1)}
-                          disabled={i === itens.length - 1}
+                          disabled={reordenando || Boolean(erroLista) || i === itens.length - 1}
                           aria-label={`Mover ${c.name} para baixo`}
                         >
                           ↓
@@ -250,10 +270,10 @@ function Categorias() {
       <Modal
         titulo={form?.id ? 'Editar categoria' : 'Nova categoria'}
         aberto={form !== null}
-        aoFechar={() => setForm(null)}
+        aoFechar={() => { if (!salvando) setForm(null); }}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setForm(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>
               Cancelar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvar}>

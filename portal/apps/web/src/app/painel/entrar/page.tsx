@@ -2,11 +2,11 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ErroApi, painel } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { Aviso, Botao, Campo, Entrada } from '@/components/painel/ui';
-import { LogoM } from '@/components/icones';
 
 function FormularioLogin() {
   const router = useRouter();
@@ -51,8 +51,14 @@ function FormularioLogin() {
     <div className="pn-entrar">
       <form className="pn-entrar-caixa" onSubmit={enviar}>
         <div className="pn-entrar-marca">
-          <LogoM size={44} />
-          <strong>MAKUCHO</strong>
+          <Image
+            src="/brand/makucho-logo-horizontal-metallic.webp"
+            alt="MAKUCHO"
+            width={1262}
+            height={220}
+            className="pn-logo-horizontal"
+            priority
+          />
           <span>Painel editorial</span>
         </div>
 

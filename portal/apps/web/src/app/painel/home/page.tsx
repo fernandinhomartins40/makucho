@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { HomepageSectionDto, HomepageSectionType } from '@makucho/types';
+import type { HomepageSectionAdminDto, HomepageSectionType, PostSummaryDto, VideoDto } from '@makucho/types';
+import { AD_PLACEMENTS } from '@makucho/types';
 import { ErroApi, painel } from '@/lib/painel';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import {
@@ -38,16 +39,21 @@ interface Formulario {
   subtitle: string;
   isVisible: boolean;
   limite: string;
+  config: Record<string, unknown>;
+  selecionados: Array<{ id: string; title: string }>;
 }
 
 function Home() {
   const recado = useRecado();
-  const [secoes, setSecoes] = useState<HomepageSectionDto[]>([]);
+  const [secoes, setSecoes] = useState<HomepageSectionAdminDto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState<Formulario | null>(null);
-  const [excluir, setExcluir] = useState<HomepageSectionDto | null>(null);
+  const [excluir, setExcluir] = useState<HomepageSectionAdminDto | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
+  const [busca, setBusca] = useState('');
+  const [opcoes, setOpcoes] = useState<Array<{ id: string; title: string }>>([]);
+  const [buscando, setBuscando] = useState(false);
 
   async function carregar() {
     setCarregando(true);
@@ -88,7 +94,7 @@ function Home() {
   }
 
   /** A visibilidade é o botão mais usado: alterna direto na lista. */
-  async function alternarVisivel(s: HomepageSectionDto) {
+  async function alternarVisivel(s: HomepageSectionAdminDto) {
     setSecoes((atuais) =>
       atuais.map((x) => (x.id === s.id ? { ...x, isVisible: !x.isVisible } : x)),
     );
@@ -100,8 +106,10 @@ function Home() {
     }
   }
 
-  function abrir(s?: HomepageSectionDto) {
+  function abrir(s?: HomepageSectionAdminDto) {
     setErro('');
+    setBusca('');
+    setOpcoes([]);
     setForm(
       s
         ? {
@@ -111,6 +119,8 @@ function Home() {
             subtitle: s.subtitle ?? '',
             isVisible: s.isVisible,
             limite: String((s.config?.limit as number) ?? ''),
+            config: s.config ?? {},
+            selecionados: s.items.map((item) => item.post ?? item.video).filter((item): item is { id: string; title: string; slug: string } => Boolean(item)).map((item) => ({ id: item.id, title: item.title })),
           }
         : {
             type: 'LATEST_POSTS',
@@ -118,8 +128,41 @@ function Home() {
             subtitle: '',
             isVisible: true,
             limite: '',
+            config: {},
+            selecionados: [],
           },
     );
+  }
+
+  const tipoBusca = form?.type;
+  const secaoEmEdicao = form?.id;
+
+  useEffect(() => {
+    if (!tipoBusca || !['HERO', 'CUSTOM_POSTS', 'VIDEOS'].includes(tipoBusca)) return;
+    let vivo = true;
+    const timer = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const resultado = tipoBusca === 'VIDEOS'
+          ? await painel.videos({ page: 1, perPage: 30, search: busca || undefined })
+          : await painel.posts({ page: 1, perPage: 30, search: busca || undefined, status: 'PUBLISHED' });
+        if (vivo) setOpcoes(resultado.data.map((item: PostSummaryDto | VideoDto) => ({ id: item.id, title: item.title })));
+      } catch {
+        if (vivo) setErro('Não foi possível buscar conteúdos. Tente novamente.');
+      } finally {
+        if (vivo) setBuscando(false);
+      }
+    }, 250);
+    return () => { vivo = false; clearTimeout(timer); };
+  }, [tipoBusca, busca, secaoEmEdicao]);
+
+  function alternarSelecao(item: { id: string; title: string }) {
+    setForm((atual) => atual ? {
+      ...atual,
+      selecionados: atual.selecionados.some((x) => x.id === item.id)
+        ? atual.selecionados.filter((x) => x.id !== item.id)
+        : [...atual.selecionados, item],
+    } : null);
   }
 
   async function salvar() {
@@ -129,12 +172,20 @@ function Home() {
 
     try {
       const limite = Number(form.limite);
+      const config = { ...form.config };
+      if (Number.isFinite(limite) && limite > 0) config.limit = limite;
+      else delete config.limit;
       const corpo = {
         type: form.type,
         title: form.title.trim() || null,
         subtitle: form.subtitle.trim() || null,
         isVisible: form.isVisible,
-        config: Number.isFinite(limite) && limite > 0 ? { limit: limite } : null,
+        config: Object.keys(config).length ? config : null,
+        ...(['HERO', 'CUSTOM_POSTS'].includes(form.type)
+          ? { postIds: form.selecionados.map((item) => item.id) }
+          : form.type === 'VIDEOS'
+            ? { videoIds: form.selecionados.map((item) => item.id) }
+            : {}),
         position: form.id
           ? secoes.find((s) => s.id === form.id)?.position ?? 0
           : secoes.length,
@@ -300,6 +351,50 @@ function Home() {
                 onChange={(e) => setForm({ ...form, limite: e.target.value })}
               />
             </Campo>
+
+            {form.type === 'AD_SLOT' && (
+              <Campo rotulo="Posição do anúncio" dica="A campanha também precisa estar vinculada a esta posição no cadastro de anúncios.">
+                <Selecao
+                  value={typeof form.config.placement === 'string' ? form.config.placement : 'HOME_MIDDLE'}
+                  onChange={(e) => setForm({ ...form, config: { ...form.config, placement: e.target.value } })}
+                >
+                  {AD_PLACEMENTS.filter((item) => item.startsWith('HOME_')).map((item) => (
+                    <option key={item} value={item}>{item === 'HOME_TOP' ? 'Topo' : item === 'HOME_AFTER_HERO' ? 'Após o destaque' : 'Meio da página'}</option>
+                  ))}
+                </Selecao>
+              </Campo>
+            )}
+
+            {['HERO', 'CUSTOM_POSTS', 'VIDEOS'].includes(form.type) && (
+              <div className="pn-escolha-home">
+                <label htmlFor="busca-conteudo-home" className="pn-rotulo">
+                  {form.type === 'VIDEOS' ? 'Escolher vídeos' : 'Escolher publicações'}
+                </label>
+                <Entrada
+                  id="busca-conteudo-home"
+                  type="search"
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Buscar pelo título"
+                />
+                <small className="pn-dica">Selecionados aparecem primeiro na ordem escolhida. Sem seleção, a seção usa o conteúdo recente.</small>
+                {form.selecionados.length > 0 && (
+                  <ol className="pn-escolhidos">
+                    {form.selecionados.map((item) => (
+                      <li key={item.id}>
+                        <span>{item.title}</span>
+                        <button type="button" className="pn-link" onClick={() => alternarSelecao(item)} aria-label={`Remover ${item.title}`}>Remover</button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <div className="pn-opcoes-home" role="group" aria-label="Resultados de conteúdo">
+                  {buscando ? <Carregando texto="Buscando conteúdos…" /> : opcoes.filter((item) => !form.selecionados.some((x) => x.id === item.id)).map((item) => (
+                    <button type="button" key={item.id} onClick={() => alternarSelecao(item)}>+ {item.title}</button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Alternador
               marcado={form.isVisible}

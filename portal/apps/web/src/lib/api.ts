@@ -1,5 +1,6 @@
 import type {
   AuthorDto,
+  AdvertisementDto,
   CategoryDto,
   HomepagePayload,
   PaginatedResponse,
@@ -81,6 +82,18 @@ async function buscar<T>(caminho: string, opcoes: OpcoesBusca = {}): Promise<T> 
 export const api = {
   /** Tudo o que a home precisa, em uma requisição só. */
   homepage: () => buscar<HomepagePayload>('/homepage', { revalidate: 60 }),
+
+  anuncios: (posicao: string) =>
+    buscar<AdvertisementDto[]>(`/ads/serve/${encodeURIComponent(posicao)}?limit=1`, {
+      revalidate: 0,
+    }),
+
+  registrarImpressao: (adId: string, placement: string) =>
+    buscar<void>('/ads/events', {
+      method: 'POST',
+      body: JSON.stringify({ adId, type: 'impression', placement }),
+      revalidate: 0,
+    }),
 
   posts: (params: Record<string, string | number | undefined> = {}) => {
     const query = new URLSearchParams(

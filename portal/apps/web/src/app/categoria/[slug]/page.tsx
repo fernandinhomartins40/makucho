@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ApiError, api } from '@/lib/api';
+import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
 import { Listagem } from '@/components/listagem';
 
@@ -33,9 +34,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PaginaCategoria({ params, searchParams }: Props) {
   const { slug } = await params;
   const { page } = await searchParams;
-  const pagina = Math.max(1, Number(page) || 1);
+  const pagina = paginaDaUrl(page);
 
-  const categorias = await api.categorias().catch(() => []);
+  const categorias = await api.categorias();
   const categoria = categorias.find((c) => c.slug === slug);
 
   if (!categoria) notFound();

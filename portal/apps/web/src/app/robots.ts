@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       // Busca e painel nao pertencem ao indice: a primeira gera infinitas
       // URLs sem conteudo proprio, o segundo exige autenticacao.
-      disallow: ['/busca', '/admin'],
+      disallow: ['/busca', '/painel'],
     },
     sitemap: `${SITE}/sitemap.xml`,
   };

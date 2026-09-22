@@ -3,8 +3,10 @@ import type {
   AuthUser,
   AuthorDto,
   CategoryDto,
+  HomepageSectionAdminDto,
   HomepageSectionDto,
   MediaDto,
+  MediaUploadConfigDto,
   PaginatedResponse,
   PostDto,
   PostSummaryDto,
@@ -159,7 +161,7 @@ export const painel = {
     chamar<PostDto>(`/posts/${id}`, { method: 'PATCH', body: dados }),
 
   autosave: (id: string, dados: unknown) =>
-    chamar<{ savedAt: string }>(`/posts/${id}/autosave`, { method: 'PATCH', body: dados }),
+    chamar<PostDto>(`/posts/${id}/autosave`, { method: 'PATCH', body: dados }),
 
   statusPost: (id: string, status: string, extras: Record<string, unknown> = {}) =>
     chamar<PostDto>(`/posts/${id}/status`, { method: 'PATCH', body: { status, ...extras } }),
@@ -179,6 +181,8 @@ export const painel = {
   // ---------- midia ----------
   midias: (f: Pag & { preset?: string; search?: string } = {}) =>
     chamar<PaginatedResponse<MediaDto>>(`/media${query(f)}`),
+
+  configuracaoUploadMidia: () => chamar<MediaUploadConfigDto>('/media/upload-config'),
 
   enviarMidia: (form: FormData) =>
     chamar<MediaDto>('/media/upload', { method: 'POST', body: form, bruto: true }),
@@ -236,7 +240,7 @@ export const painel = {
     ),
 
   // ---------- home ----------
-  secoesHome: () => chamar<HomepageSectionDto[]>('/homepage/sections'),
+  secoesHome: () => chamar<HomepageSectionAdminDto[]>('/homepage/sections'),
   criarSecao: (d: unknown) =>
     chamar<HomepageSectionDto>('/homepage/sections', { method: 'POST', body: d }),
   atualizarSecao: (id: string, d: unknown) =>
@@ -264,9 +268,10 @@ export const painel = {
   criarUsuario: (d: unknown) => chamar<AuthUser>('/users', { method: 'POST', body: d }),
   atualizarUsuario: (id: string, d: unknown) =>
     chamar<AuthUser>(`/users/${id}`, { method: 'PATCH', body: d }),
-  resetarSenha: (id: string) =>
-    chamar<{ temporaryPassword?: string; message: string }>(`/users/${id}/reset-password`, {
+  resetarSenha: (id: string, password: string) =>
+    chamar<void>(`/users/${id}/reset-password`, {
       method: 'POST',
+      body: { password },
     }),
   excluirUsuario: (id: string) => chamar<void>(`/users/${id}`, { method: 'DELETE' }),
 
@@ -277,7 +282,7 @@ export const painel = {
     chamar<SiteSettings>('/settings', { method: 'PUT', body: { settings } }),
   redes: () => chamar<SocialProfileDto[]>('/settings/social/admin'),
   salvarRede: (d: unknown) =>
-    chamar<SocialProfileDto>('/settings/social', { method: 'POST', body: d }),
+    chamar<SocialProfileDto[]>('/settings/social', { method: 'POST', body: d }),
   excluirRede: (id: string) => chamar<void>(`/settings/social/${id}`, { method: 'DELETE' }),
 
   // ---------- auditoria ----------

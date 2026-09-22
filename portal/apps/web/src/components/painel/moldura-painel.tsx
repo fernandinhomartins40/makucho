@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { UserRole } from '@makucho/types';
 import { pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { Botao, Carregando } from '@/components/painel/ui';
-import { LogoM } from '@/components/icones';
 
 interface ItemMenu {
   href: string;
@@ -44,6 +44,7 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
   const caminho = usePathname();
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
+  const gatilhoMenu = useRef<HTMLButtonElement>(null);
 
   // A rota /painel/entrar tem moldura propria; aqui so tratamos o resto.
   useEffect(() => {
@@ -54,6 +55,18 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
 
   // Trocar de tela fecha o menu do celular.
   useEffect(() => setMenuAberto(false), [caminho]);
+
+  useEffect(() => {
+    if (!menuAberto) return;
+    const fecharComEscape = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') {
+        setMenuAberto(false);
+        gatilhoMenu.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', fecharComEscape);
+    return () => document.removeEventListener('keydown', fecharComEscape);
+  }, [menuAberto]);
 
   if (carregando) {
     return (
@@ -75,19 +88,23 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`pn ${menuAberto ? 'pn-menu-aberto' : ''}`}>
-      <aside className="pn-lateral">
+      <aside className="pn-lateral" id="pn-navegacao">
         <Link href="/painel" className="pn-marca">
-          <LogoM size={30} />
-          <span>
-            MAKUCHO<small>painel</small>
-          </span>
+          <Image
+            src="/brand/makucho-logo-horizontal-dark-bg.webp"
+            alt="MAKUCHO"
+            width={1262}
+            height={220}
+            className="pn-logo-horizontal"
+          />
+          <span className="so-leitor-de-tela">Início do painel</span>
         </Link>
 
-        <nav className="pn-nav">
+        <nav className="pn-nav" aria-label="Navegação do painel">
           {itens.map((i) => {
             const ativo = i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href);
             return (
-              <Link key={i.href} href={i.href} className={ativo ? 'pn-nav-ativo' : ''}>
+              <Link key={i.href} href={i.href} className={ativo ? 'pn-nav-ativo' : ''} aria-current={ativo ? 'page' : undefined}>
                 {i.icone}
                 {i.rotulo}
               </Link>
@@ -106,11 +123,13 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
       <div className="pn-conteudo">
         <header className="pn-topo">
           <button
+            ref={gatilhoMenu}
             type="button"
             className="pn-hamburguer"
             onClick={() => setMenuAberto((v) => !v)}
-            aria-label="Abrir o menu"
+            aria-label={menuAberto ? 'Fechar o menu' : 'Abrir o menu'}
             aria-expanded={menuAberto}
+            aria-controls="pn-navegacao"
           >
             <I d="M3 6h18M3 12h18M3 18h18" />
           </button>

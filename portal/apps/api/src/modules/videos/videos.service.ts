@@ -73,7 +73,12 @@ export class VideosService {
 
   async buscarPorSlug(slug: string): Promise<VideoDto> {
     const video = await this.prisma.video.findFirst({
-      where: { slug, deletedAt: null, isPublished: true },
+      where: {
+        slug,
+        deletedAt: null,
+        isPublished: true,
+        OR: [{ publishedAt: null }, { publishedAt: { lte: new Date() } }],
+      },
       include: this.incluir,
     });
     if (!video) {
@@ -85,6 +90,23 @@ export class VideosService {
   async buscarPorId(id: string): Promise<VideoDto> {
     const video = await this.prisma.video.findFirst({
       where: { id, deletedAt: null },
+      include: this.incluir,
+    });
+    if (!video) {
+      throw new NotFoundException({ code: 'VIDEO_NOT_FOUND', message: 'Vídeo não encontrado' });
+    }
+    return this.paraDto(video);
+  }
+
+  /** Leitura pública por ID para seleções manuais da home. */
+  async buscarPublicadoPorId(id: string): Promise<VideoDto> {
+    const video = await this.prisma.video.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        isPublished: true,
+        OR: [{ publishedAt: null }, { publishedAt: { lte: new Date() } }],
+      },
       include: this.incluir,
     });
     if (!video) {
@@ -107,7 +129,7 @@ export class VideosService {
         ...dados,
         slug,
         embedId: extrairIdVideo(dados.url as string, plataforma),
-        publishedAt: (dados.publishedAt as Date | undefined) ?? new Date(),
+        publishedAt: (dados.publishedAt as Date | null | undefined) ?? (dados.isPublished === false ? null : new Date()),
       } as never,
       include: this.incluir,
     });
@@ -132,13 +154,17 @@ export class VideosService {
   ): Promise<VideoDto> {
     const atual = await this.prisma.video.findFirst({
       where: { id, deletedAt: null },
-      select: { url: true, platform: true },
+      select: { url: true, platform: true, isPublished: true },
     });
     if (!atual) {
       throw new NotFoundException({ code: 'VIDEO_NOT_FOUND', message: 'Vídeo não encontrado' });
     }
 
     const atualizacao: Record<string, unknown> = { ...dados };
+
+    if (dados.isPublished === true && !atual.isPublished && dados.publishedAt == null) {
+      atualizacao.publishedAt = new Date();
+    }
 
     if (typeof dados.slug === 'string' && dados.slug) {
       atualizacao.slug = await this.slugDisponivel(dados.slug, id);
@@ -220,7 +246,12 @@ export class VideosService {
    */
   async registrarVisualizacao(id: string): Promise<void> {
     await this.prisma.video.updateMany({
-      where: { id, deletedAt: null },
+      where: {
+        id,
+        deletedAt: null,
+        isPublished: true,
+        OR: [{ publishedAt: null }, { publishedAt: { lte: new Date() } }],
+      },
       data: { viewCount: { increment: 1 } },
     });
   }
@@ -252,6 +283,7 @@ export class VideosService {
       category?: { id: string; name: string; slug: string; color: string | null } | null;
       post?: { slug: string } | null;
       isFeatured: boolean;
+      isPublished: boolean;
       viewCount: number;
       publishedAt: Date | null;
     };
@@ -269,6 +301,7 @@ export class VideosService {
       category: v.category ?? null,
       postSlug: v.post?.slug ?? null,
       isFeatured: v.isFeatured,
+      isPublished: v.isPublished,
       viewCount: v.viewCount,
       publishedAt: v.publishedAt ? v.publishedAt.toISOString() : null,
     };

@@ -180,10 +180,19 @@ export class PostsService {
   async listarPorIds(ids: string[]): Promise<PostSummaryDto[]> {
     if (ids.length === 0) return [];
     const posts = await this.prisma.post.findMany({
-      where: { id: { in: ids }, deletedAt: null },
+      where: {
+        id: { in: ids },
+        status: 'PUBLISHED',
+        publishedAt: { lte: new Date() },
+        deletedAt: null,
+      },
       include: this.incluirResumo,
     });
-    return posts.map((p) => this.paraResumo(p));
+    const porId = new Map(posts.map((post) => [post.id, this.paraResumo(post)]));
+    return ids.flatMap((id) => {
+      const post = porId.get(id);
+      return post ? [post] : [];
+    });
   }
 
   async relacionados(postId: string, limite = 4): Promise<PostSummaryDto[]> {
@@ -275,18 +284,18 @@ export class PostsService {
       [k: string]: unknown;
     };
 
+    // Mesma regra do atualizar: AUTHOR escreve e envia para revisao, nao
+    // publica direto — aqui tambem, senao bastaria criar ja publicado.
+    if ((campos.status === 'PUBLISHED' || campos.status === 'SCHEDULED') && !papelAtende(usuario.role, 'EDITOR')) {
+      throw new ForbiddenException({
+        code: 'POST_PUBLISH_FORBIDDEN',
+        message: 'Seu perfil não pode publicar ou agendar. Envie o artigo para revisão.',
+      });
+    }
+
     const titulo = campos.title as string;
     const slug = await this.slugDisponivel((campos.slug as string) || gerarSlug(titulo));
     const derivados = this.derivarConteudo(campos);
-
-    // Mesma regra do atualizar: AUTHOR escreve e envia para revisao, nao
-    // publica direto — aqui tambem, senao bastaria criar ja publicado.
-    if (campos.status === 'PUBLISHED' && !papelAtende(usuario.role, 'EDITOR')) {
-      throw new ForbiddenException({
-        code: 'POST_PUBLISH_FORBIDDEN',
-        message: 'Seu perfil não pode publicar. Envie o artigo para revisão.',
-      });
-    }
 
     // Publicar sem data deixaria o artigo invisivel: todas as consultas do
     // portal filtram por publishedAt <= agora.
@@ -354,13 +363,14 @@ export class PostsService {
 
     // Publicar exige EDITOR: AUTHOR escreve e envia para revisao.
     if (
-      dados.status === 'PUBLISHED' &&
-      atual.status !== 'PUBLISHED' &&
+      (dados.status === 'SCHEDULED' ||
+        (atual.status === 'SCHEDULED' && 'scheduledFor' in dados) ||
+        (dados.status === 'PUBLISHED' && atual.status !== 'PUBLISHED')) &&
       !papelAtende(usuario.role, 'EDITOR')
     ) {
       throw new ForbiddenException({
         code: 'POST_PUBLISH_FORBIDDEN',
-        message: 'Seu perfil não pode publicar. Envie o artigo para revisão.',
+        message: 'Seu perfil não pode publicar ou agendar. Envie o artigo para revisão.',
       });
     }
 
@@ -369,6 +379,16 @@ export class PostsService {
       relatedPostIds?: string[];
       [k: string]: unknown;
     };
+
+    if (dados.status === 'SCHEDULED') {
+      const data = dados.scheduledFor instanceof Date ? dados.scheduledFor : null;
+      if (!data || !Number.isFinite(data.getTime()) || data.getTime() <= Date.now()) {
+        throw new BadRequestException({
+          code: 'POST_INVALID_SCHEDULE',
+          message: 'Informe uma data futura para o agendamento',
+        });
+      }
+    }
 
     const atualizacao: Record<string, unknown> = { ...campos };
 

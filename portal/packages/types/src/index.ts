@@ -241,6 +241,11 @@ export interface MediaDto {
   createdAt: string;
 }
 
+export interface MediaUploadConfigDto {
+  maxFileSizeBytes: number;
+  allowedMimeTypes: string[];
+}
+
 // ============================================================
 // CONTEUDO EDITORIAL
 // ============================================================
@@ -336,6 +341,7 @@ export interface VideoDto {
   category: Pick<CategoryDto, 'id' | 'name' | 'slug' | 'color'> | null;
   postSlug: string | null;
   isFeatured: boolean;
+  isPublished: boolean;
   viewCount: number;
   publishedAt: string | null;
 }
@@ -416,6 +422,18 @@ export interface HomepageSectionDto {
   config: Record<string, unknown> | null;
   posts: PostSummaryDto[];
   videos: VideoDto[];
+}
+
+/** Resposta administrativa inclui a seleção manual e sua ordem. */
+export interface HomepageSectionAdminDto extends Omit<HomepageSectionDto, 'posts' | 'videos'> {
+  items: Array<{
+    id: string;
+    position: number;
+    postId: string | null;
+    videoId: string | null;
+    post?: { id: string; title: string; slug: string } | null;
+    video?: { id: string; title: string; slug: string } | null;
+  }>;
 }
 
 /** Tudo o que a home precisa, em uma unica requisicao. */

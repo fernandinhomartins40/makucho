@@ -20,7 +20,12 @@ export function Listagem({
   const { data, meta } = resultado;
 
   if (data.length === 0) {
-    return <p className="vazio">{vazio}</p>;
+    return (
+      <div className="vazio">
+        <p>{meta.total > 0 ? 'Não há artigos nesta página.' : vazio}</p>
+        {meta.total > 0 && <Link href={base}>Voltar à primeira página</Link>}
+      </div>
+    );
   }
 
   const separador = base.includes('?') ? '&' : '?';

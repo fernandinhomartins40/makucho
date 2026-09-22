@@ -34,9 +34,8 @@ export class MediaController {
   @Post('upload')
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Enviar imagem com recorte e geração de variantes' })
-  // O limite real e validado no service; aqui evitamos bufferizar arquivo
-  // gigante so para recusar depois.
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+  // O MulterModule usa o mesmo limite configurado para o processamento.
+  @UseInterceptors(FileInterceptor('file'))
   async enviar(
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() corpo: Record<string, string>,
@@ -88,6 +87,12 @@ export class MediaController {
       search,
       preset: query.preset as ImagePreset | undefined,
     });
+  }
+
+  @Get('upload-config')
+  @ApiOperation({ summary: 'Limites vigentes para envio de imagens' })
+  configuracaoUpload() {
+    return this.media.configuracaoUpload();
   }
 
   @Get(':id')

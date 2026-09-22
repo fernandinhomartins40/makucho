@@ -174,7 +174,7 @@ export class HomepageService {
         const ids = secao.items.map((i) => i.videoId).filter(Boolean) as string[];
         if (ids.length > 0) {
           const escolhidos = await Promise.all(
-            ids.map((id) => this.videos.buscarPorId(id).catch(() => null)),
+            ids.map((id) => this.videos.buscarPublicadoPorId(id).catch(() => null)),
           );
           videos = escolhidos.filter((v): v is VideoDto => v !== null);
         }

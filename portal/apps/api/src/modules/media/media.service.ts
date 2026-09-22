@@ -50,6 +50,11 @@ export class MediaService {
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
   ) {}
 
+  configuracaoUpload() {
+    const { maxFileSizeBytes, allowedMimeTypes } = this.config.get('upload', { infer: true });
+    return { maxFileSizeBytes, allowedMimeTypes };
+  }
+
   // ============================================================
   // UPLOAD
   // ============================================================

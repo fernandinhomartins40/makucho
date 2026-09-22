@@ -6,12 +6,12 @@ import type { PostSummaryDto } from '@makucho/types';
 import { painel, pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
-import { Botao, Carregando, SeloStatus, Vazio } from '@/components/painel/ui';
+import { Aviso, Botao, Carregando, SeloStatus, Vazio } from '@/components/painel/ui';
 
 interface Resumo {
-  rascunhos: number;
-  publicados: number;
-  agendados: number;
+  rascunhos: number | null;
+  publicados: number | null;
+  agendados: number | null;
   inscritos: number | null;
 }
 
@@ -20,38 +20,41 @@ function Painel() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [recentes, setRecentes] = useState<PostSummaryDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [falha, setFalha] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     let vivo = true;
 
     (async () => {
       // Cada contagem e uma pagina de 1 item: so queremos o total do meta.
-      const [rascunho, publicado, agendado, ultimos, news] = await Promise.all([
-        painel.posts({ status: 'DRAFT', perPage: 1 }).catch(() => null),
-        painel.posts({ status: 'PUBLISHED', perPage: 1 }).catch(() => null),
-        painel.posts({ status: 'SCHEDULED', perPage: 1 }).catch(() => null),
-        painel.posts({ perPage: 8 }).catch(() => null),
+      const [rascunho, publicado, agendado, ultimos, news] = await Promise.allSettled([
+        painel.posts({ status: 'DRAFT', perPage: 1 }),
+        painel.posts({ status: 'PUBLISHED', perPage: 1 }),
+        painel.posts({ status: 'SCHEDULED', perPage: 1 }),
+        painel.posts({ perPage: 8 }),
         pode(usuario, 'EDITOR')
-          ? painel.estatisticasNewsletter().catch(() => null)
+          ? painel.estatisticasNewsletter()
           : Promise.resolve(null),
       ]);
 
       if (!vivo) return;
 
+      setFalha([rascunho, publicado, agendado, ultimos, news].some((item) => item.status === 'rejected'));
       setResumo({
-        rascunhos: rascunho?.meta.total ?? 0,
-        publicados: publicado?.meta.total ?? 0,
-        agendados: agendado?.meta.total ?? 0,
-        inscritos: news?.confirmed ?? null,
+        rascunhos: rascunho.status === 'fulfilled' ? rascunho.value.meta.total : null,
+        publicados: publicado.status === 'fulfilled' ? publicado.value.meta.total : null,
+        agendados: agendado.status === 'fulfilled' ? agendado.value.meta.total : null,
+        inscritos: news.status === 'fulfilled' ? news.value?.confirmed ?? null : null,
       });
-      setRecentes(ultimos?.data ?? []);
+      setRecentes(ultimos.status === 'fulfilled' ? ultimos.value.data : []);
       setCarregando(false);
     })();
 
     return () => {
       vivo = false;
     };
-  }, [usuario]);
+  }, [usuario, tentativa]);
 
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
@@ -72,10 +75,18 @@ function Painel() {
         <Carregando />
       ) : (
         <>
+          {falha && (
+            <div className="pn-falha-resumo">
+              <Aviso tipo="erro">Parte dos dados não pôde ser carregada. Os valores indisponíveis aparecem com um traço.</Aviso>
+              <Botao variante="fantasma" onClick={() => { setCarregando(true); setTentativa((n) => n + 1); }}>
+                Tentar novamente
+              </Botao>
+            </div>
+          )}
           <div className="pn-cartoes">
-            <Cartao rotulo="Publicados" valor={resumo?.publicados ?? 0} href="/painel/publicacoes?status=PUBLISHED" />
-            <Cartao rotulo="Rascunhos" valor={resumo?.rascunhos ?? 0} href="/painel/publicacoes?status=DRAFT" />
-            <Cartao rotulo="Agendados" valor={resumo?.agendados ?? 0} href="/painel/publicacoes?status=SCHEDULED" />
+            <Cartao rotulo="Publicados" valor={resumo?.publicados ?? null} href="/painel/publicacoes?status=PUBLISHED" />
+            <Cartao rotulo="Rascunhos" valor={resumo?.rascunhos ?? null} href="/painel/publicacoes?status=DRAFT" />
+            <Cartao rotulo="Agendados" valor={resumo?.agendados ?? null} href="/painel/publicacoes?status=SCHEDULED" />
             {resumo?.inscritos !== null && resumo !== null && (
               <Cartao rotulo="Inscritos na newsletter" valor={resumo.inscritos ?? 0} href="/painel/newsletter" />
             )}
@@ -121,10 +132,10 @@ function Painel() {
   );
 }
 
-function Cartao({ rotulo, valor, href }: { rotulo: string; valor: number; href: string }) {
+function Cartao({ rotulo, valor, href }: { rotulo: string; valor: number | null; href: string }) {
   return (
     <Link href={href} className="pn-cartao">
-      <strong>{valor.toLocaleString('pt-BR')}</strong>
+      <strong>{valor === null ? '—' : valor.toLocaleString('pt-BR')}</strong>
       <span>{rotulo}</span>
     </Link>
   );

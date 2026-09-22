@@ -1,6 +1,7 @@
 import {
   loginSchema, criarPostSchema, atualizarPostSchema, urlExternaSchema,
   senhaSchema, inscreverNewsletterSchema, criarAnuncioSchema, atualizarAnuncioSchema,
+  redeSocialSchema,
 } from '../src/index';
 
 let ok = 0, fail = 0;
@@ -64,6 +65,11 @@ const datasInvertidas = criarAnuncioSchema.safeParse({
 });
 t('rejeita data final antes da inicial', !datasInvertidas.success);
 t('anuncio parcial funciona', atualizarAnuncioSchema.safeParse({ name: 'Novo nome' }).success);
+
+const rede = redeSocialSchema.safeParse({
+  platform: 'instagram', label: 'MAKUCHO', url: 'https://instagram.com/makucho',
+});
+t('rede social preserva opções não enviadas na edição', rede.success && !('isActive' in rede.data) && !('showInHeader' in rede.data) && !('position' in rede.data));
 
 console.log(`\n${ok} passaram, ${fail} falharam`);
 process.exit(fail > 0 ? 1 : 0);

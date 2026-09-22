@@ -2,17 +2,16 @@ import Link from 'next/link';
 
 export default function NaoEncontrado() {
   return (
-    <main className="container" style={{ padding: '80px 20px', textAlign: 'center' }}>
-      <p style={{ fontSize: '3rem', fontWeight: 900, color: 'var(--borda)' }}>404</p>
-      <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 10 }}>
-        Página não encontrada
-      </h1>
-      <p style={{ color: 'var(--texto-suave)', marginBottom: 24 }}>
-        O endereço que você procurou não existe ou foi movido.
-      </p>
-      <Link href="/" className="botao-azul" style={{ display: 'inline-block' }}>
-        Voltar para a home
-      </Link>
+    <main className="portal-main portal-erro-pagina">
+      <div className="portal-container">
+        <span className="hub-eyebrow">Erro 404</span>
+        <h1>Página não encontrada</h1>
+        <p>O endereço pode ter mudado. Continue pela página inicial ou procure o assunto que deseja entender.</p>
+        <div className="hub-actions">
+          <Link href="/" className="hub-primary">Voltar ao início</Link>
+          <Link href="/busca" className="hub-secondary">Buscar conteúdo</Link>
+        </div>
+      </div>
     </main>
   );
 }

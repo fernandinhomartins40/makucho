@@ -34,6 +34,9 @@ function Midia() {
   const [itens, setItens] = useState<MediaDto[]>([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [pagina, setPagina] = useState(1);
   const [busca, setBusca] = useState('');
   const [termo, setTermo] = useState('');
@@ -46,15 +49,20 @@ function Midia() {
   const [erro, setErro] = useState('');
 
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.midias({ page: pagina, perPage: 36, search: termo || undefined });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar a biblioteca.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar a biblioteca.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina, termo]);
@@ -73,7 +81,7 @@ function Midia() {
   }, [busca]);
 
   async function salvarDetalhe() {
-    if (!detalhe) return;
+    if (!detalhe || salvando) return;
     setErro('');
     setSalvando(true);
 
@@ -98,7 +106,7 @@ function Midia() {
     <>
       <TituloPagina
         titulo="Biblioteca de mídia"
-        descricao={`${meta.total.toLocaleString('pt-BR')} imagem${meta.total === 1 ? '' : 's'}`}
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} imagem${meta.total === 1 ? '' : 's'}` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => setEnviando(true)}>
             + Enviar imagem
@@ -109,6 +117,7 @@ function Midia() {
       <div className="pn-filtros">
         <Entrada
           className="pn-busca"
+          aria-label="Buscar imagens por descrição ou arquivo"
           placeholder="Buscar por descrição ou arquivo…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
@@ -116,9 +125,15 @@ function Midia() {
       </div>
 
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'Os resultados anteriores permanecem abaixo.' : 'Nenhuma imagem foi carregada.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo={termo ? 'Nada encontrado' : 'Biblioteca vazia'}
             descricao={
@@ -127,7 +142,9 @@ function Midia() {
                 : 'Envie imagens para usar nas publicações, vídeos e anúncios.'
             }
             acao={
-              !termo && (
+              termo ? (
+                <Botao variante="neutro" onClick={() => { setBusca(''); setTermo(''); setPagina(1); }}>Limpar busca</Botao>
+              ) : (
                 <Botao variante="primario" onClick={() => setEnviando(true)}>
                   + Enviar imagem
                 </Botao>
@@ -138,7 +155,7 @@ function Midia() {
           <GradeMidia itens={itens} aoEscolher={setDetalhe} />
         )}
 
-        <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+        {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
       </div>
 
       {/* Reaproveita o seletor no modo "enviar": mesma validação e recorte. */}
@@ -154,13 +171,14 @@ function Midia() {
       <Modal
         titulo="Detalhes da imagem"
         aberto={detalhe !== null}
-        aoFechar={() => setDetalhe(null)}
+        aoFechar={() => { if (!salvando) setDetalhe(null); }}
         largura={640}
         rodape={
           <>
             {pode(usuario, 'EDITOR') && detalhe && (
               <Botao
                 variante="perigo"
+                disabled={salvando}
                 onClick={() => {
                   setExcluir(detalhe);
                   setDetalhe(null);
@@ -170,7 +188,7 @@ function Midia() {
                 Excluir
               </Botao>
             )}
-            <Botao variante="fantasma" onClick={() => setDetalhe(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setDetalhe(null)}>
               Fechar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvarDetalhe}>
@@ -257,7 +275,7 @@ function Midia() {
       <Confirmacao
         aberto={excluir !== null}
         titulo="Excluir imagem"
-        mensagem="A imagem e todas as suas variantes serão apagadas do servidor. Publicações que a usam ficarão sem capa."
+        mensagem={`"${excluir?.originalFilename ?? 'Esta imagem'}" será removida da biblioteca. Arquivos já usados em publicações continuam preservados; a limpeza definitiva ocorre após 30 dias.`}
         aoConfirmar={async () => {
           if (!excluir) return;
           try {

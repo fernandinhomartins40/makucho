@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { api, urlDaImagem } from '@/lib/api';
+import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
 import { IconeRede, Play } from '@/components/icones';
 
@@ -25,9 +26,9 @@ type Props = { searchParams: Promise<{ page?: string }> };
 
 export default async function PaginaVideos({ searchParams }: Props) {
   const { page } = await searchParams;
-  const pagina = Math.max(1, Number(page) || 1);
+  const pagina = paginaDaUrl(page);
 
-  const resultado = await api.videos(pagina).catch(() => null);
+  const resultado = await api.videos(pagina);
 
   return (
     <Moldura>
@@ -36,8 +37,11 @@ export default async function PaginaVideos({ searchParams }: Props) {
         <p>Análises rápidas no YouTube, Instagram e TikTok</p>
       </header>
 
-      {!resultado || resultado.data.length === 0 ? (
-        <p className="vazio">Nenhum vídeo publicado ainda.</p>
+      {resultado.data.length === 0 ? (
+        <div className="vazio">
+          <p>{resultado.meta.total > 0 ? 'Não há vídeos nesta página.' : 'Nenhum vídeo publicado ainda.'}</p>
+          {resultado.meta.total > 0 && <Link href="/videos">Voltar ao primeiro vídeo</Link>}
+        </div>
       ) : (
         <>
           <div className="grade-cards">
@@ -49,7 +53,9 @@ export default async function PaginaVideos({ searchParams }: Props) {
                   ? 'Assistir no Instagram'
                   : v.platform === 'TIKTOK'
                     ? 'Assistir no TikTok'
-                    : 'Assistir no YouTube';
+                    : v.platform === 'YOUTUBE'
+                      ? 'Assistir no YouTube'
+                      : 'Assistir ao vídeo';
 
               return (
                 <article key={v.id} className="card">
@@ -64,6 +70,7 @@ export default async function PaginaVideos({ searchParams }: Props) {
                           sizes="(max-width: 700px) 100vw, 25vw"
                         />
                       )}
+                      {!capa && <span className="card-sem-capa">MAKUCHO · Vídeo</span>}
                       <span className="play" aria-hidden="true">
                         <Play />
                       </span>
@@ -96,7 +103,7 @@ export default async function PaginaVideos({ searchParams }: Props) {
                         {v.category.name}
                       </span>
                     )}
-                    <h3 className="card-titulo">{v.title}</h3>
+                    <h2 className="card-titulo"><a href={v.url} target="_blank" rel="noopener noreferrer">{v.title}</a></h2>
                     <a
                       href={v.url}
                       target="_blank"
@@ -109,7 +116,7 @@ export default async function PaginaVideos({ searchParams }: Props) {
                             ? 'icone-instagram'
                             : v.platform === 'TIKTOK'
                               ? 'icone-tiktok'
-                              : 'icone-youtube'
+                              : v.platform === 'YOUTUBE' ? 'icone-youtube' : ''
                         }
                         style={{ display: 'flex' }}
                       >

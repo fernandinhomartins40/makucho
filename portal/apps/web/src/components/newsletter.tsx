@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { api } from '@/lib/api';
-import { LogoM } from '@/components/icones';
 
 /**
  * Inscricao na newsletter (secao 29).
@@ -26,19 +26,21 @@ export function Newsletter({
   origem?: string;
 }) {
   const [email, setEmail] = useState('');
+  const [consentiu, setConsentiu] = useState(false);
   const [estado, setEstado] = useState<'parado' | 'enviando' | 'ok' | 'erro'>('parado');
   const [mensagem, setMensagem] = useState('');
 
   async function enviar(evento: React.FormEvent) {
     evento.preventDefault();
-    if (estado === 'enviando') return;
+    if (estado === 'enviando' || !consentiu) return;
 
     setEstado('enviando');
     try {
-      const r = await api.inscreverNewsletter({ email, consent: true, source: origem });
+      const r = await api.inscreverNewsletter({ email, consent: consentiu, source: origem });
       setEstado('ok');
       setMensagem(r.message);
       setEmail('');
+      setConsentiu(false);
     } catch (erro) {
       setEstado('erro');
       setMensagem(erro instanceof Error ? erro.message : 'Não foi possível concluir a inscrição.');
@@ -63,6 +65,18 @@ export function Newsletter({
       />
     </>
   );
+  const consentimento = (
+    <label className="news-consentimento">
+      <input
+        type="checkbox"
+        name="consentimento"
+        checked={consentiu}
+        onChange={(evento) => setConsentiu(evento.target.checked)}
+        required
+      />
+      <span>Quero receber os e-mails do MAKUCHO. Posso cancelar a inscrição a qualquer momento.</span>
+    </label>
+  );
 
   if (variante === 'lateral') {
     return (
@@ -80,6 +94,7 @@ export function Newsletter({
             <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
               {estado === 'enviando' ? 'Enviando…' : 'Quero receber'}
             </button>
+            {consentimento}
             {estado === 'erro' && (
               <p role="alert" style={{ marginTop: 8, fontSize: '0.76rem' }}>
                 {mensagem}
@@ -89,8 +104,7 @@ export function Newsletter({
         )}
 
         <div className="news-marca">
-          <LogoM size={46} />
-          <strong>MAKUCHO</strong>
+          <Image src="/brand/makucho-logo-horizontal-dark-bg.webp" alt="MAKUCHO" width={1262} height={220} className="marca-imagem" />
           <span>Conhecimento que gera liberdade</span>
         </div>
       </aside>
@@ -100,7 +114,7 @@ export function Newsletter({
   return (
     <section className="news-faixa" id="newsletter">
       <div className="news-faixa-marca">
-        <LogoM size={44} />
+        <Image src="/brand/makucho-symbol-metallic-master.webp" alt="" width={44} height={44} aria-hidden="true" />
         <div>
           <h2>{titulo ?? 'Economia sem complicação, direto no seu e-mail.'}</h2>
           <p>
@@ -120,6 +134,7 @@ export function Newsletter({
           <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
             {estado === 'enviando' ? 'Enviando…' : 'Quero receber'}
           </button>
+          {consentimento}
           {estado === 'erro' && (
             <p role="alert" style={{ flexBasis: '100%', fontSize: '0.78rem' }}>
               {mensagem}

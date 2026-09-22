@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { CategoryDto, SiteSettings, SocialProfileDto } from '@makucho/types';
-import { IconeRede, LogoM } from '@/components/icones';
+import { IconeRede } from '@/components/icones';
+import { AnuncioSlot } from '@/components/anuncio-home';
 
 /** Rodapé em quatro colunas, montado a partir do CMS (seção 27). */
 export function Rodape({
@@ -21,7 +23,7 @@ export function Rodape({
 
   const navegacao = [
     { rotulo: 'Início', href: '/' },
-    { rotulo: 'Anuncie', href: '/#publicidade' },
+    { rotulo: 'Anuncie', href: '/contato' },
     { rotulo: 'Sobre', href: '/sobre' },
     { rotulo: 'Política de Privacidade', href: '/privacidade' },
     { rotulo: 'Contato', href: '/contato' },
@@ -29,13 +31,20 @@ export function Rodape({
   ];
 
   return (
+    <>
+    <div className="container"><AnuncioSlot posicao="FOOTER" /></div>
     <footer className="rodape">
       <div className="container">
         <div className="rodape-grade">
           <div>
             <div className="rodape-marca">
-              <LogoM size={34} />
-              {nome}
+              <Image
+                src="/brand/makucho-logo-horizontal-dark-bg.webp"
+                alt={nome}
+                width={1262}
+                height={220}
+                className="marca-imagem"
+              />
             </div>
             <p className="rodape-sobre">{sobre}</p>
           </div>
@@ -97,5 +106,6 @@ export function Rodape({
         </div>
       </div>
     </footer>
+    </>
   );
 }

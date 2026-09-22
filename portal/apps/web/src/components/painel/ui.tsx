@@ -164,12 +164,36 @@ export function Modal({
 }) {
   const tituloId = useId();
   const caixa = useRef<HTMLDivElement>(null);
+  const aoFecharAtual = useRef(aoFechar);
+  aoFecharAtual.current = aoFechar;
 
   useEffect(() => {
     if (!aberto) return;
+    const origem = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') aoFechar();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        aoFecharAtual.current();
+      }
+      if (e.key !== 'Tab' || !caixa.current) return;
+      const focaveis = Array.from(caixa.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((elemento) => elemento.getClientRects().length > 0);
+      if (!focaveis.length) {
+        e.preventDefault();
+        caixa.current.focus();
+        return;
+      }
+      const primeiro = focaveis[0]!;
+      const ultimo = focaveis[focaveis.length - 1]!;
+      if (e.shiftKey && (document.activeElement === primeiro || document.activeElement === caixa.current)) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && document.activeElement === ultimo) {
+        e.preventDefault();
+        primeiro.focus();
+      }
     };
     document.addEventListener('keydown', aoTeclar);
 
@@ -181,8 +205,9 @@ export function Modal({
     return () => {
       document.removeEventListener('keydown', aoTeclar);
       document.body.style.overflow = anterior;
+      if (origem?.isConnected) origem.focus();
     };
-  }, [aberto, aoFechar]);
+  }, [aberto]);
 
   if (!aberto) return null;
 
@@ -232,11 +257,11 @@ export function Confirmacao({
     <Modal
       titulo={titulo}
       aberto={aberto}
-      aoFechar={aoCancelar}
+      aoFechar={() => { if (!processando) aoCancelar(); }}
       largura={420}
       rodape={
         <>
-          <Botao variante="fantasma" onClick={aoCancelar}>
+          <Botao variante="fantasma" disabled={processando} onClick={aoCancelar}>
             Cancelar
           </Botao>
           <Botao

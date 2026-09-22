@@ -1,7 +1,7 @@
-import type { HomepagePayload } from '@makucho/types';
-import { api } from '@/lib/api';
-import { Cabecalho } from '@/components/cabecalho';
-import { Rodape } from '@/components/rodape';
+import type { HomepagePayload } from "@makucho/types";
+import { api } from "@/lib/api";
+import { Cabecalho } from "@/components/cabecalho";
+import { Rodape } from "@/components/rodape";
 
 /**
  * Cabecalho e rodape em volta do conteudo.
@@ -29,7 +29,7 @@ export async function Moldura({ children }: { children: React.ReactNode }) {
     };
   }
 
-  const nomeDoSite = (dados.settings['site.name'] as string) ?? 'MAKUCHO';
+  const nomeDoSite = (dados.settings["site.name"] as string) ?? "MAKUCHO";
 
   return (
     <>
@@ -39,10 +39,14 @@ export async function Moldura({ children }: { children: React.ReactNode }) {
         socials={dados.socials}
         nomeDoSite={nomeDoSite}
       />
-      <main>
-        <div className="container">{children}</div>
+      <main className="portal-main">
+        <div className="portal-container">{children}</div>
       </main>
-      <Rodape categorias={dados.categories} socials={dados.socials} settings={dados.settings} />
+      <Rodape
+        categorias={dados.categories}
+        socials={dados.socials}
+        settings={dados.settings}
+      />
     </>
   );
 }

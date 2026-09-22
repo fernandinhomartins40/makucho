@@ -8,6 +8,7 @@ import {
   IMAGE_PRESETS,
   type ImagePreset,
   type MediaDto,
+  type MediaUploadConfigDto,
 } from '@makucho/types';
 import { ErroApi, painel } from '@/lib/painel';
 import { Aviso, Botao, Campo, Carregando, Entrada, Modal, Selecao, Vazio } from '@/components/painel/ui';
@@ -24,7 +25,7 @@ export function miniatura(m: MediaDto): string {
 // ENVIO COM RECORTE
 // ============================================================
 
-function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void }) {
+function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void; aoOcupar: (ocupado: boolean) => void }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string>('');
   const [preset, setPreset] = useState<ImagePreset>('POST_CARD');
@@ -36,6 +37,16 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
   const [legenda, setLegenda] = useState('');
   const [erro, setErro] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [configuracao, setConfiguracao] = useState<MediaUploadConfigDto | null>(null);
+  const [erroConfiguracao, setErroConfiguracao] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    painel.configuracaoUploadMidia()
+      .then((valor) => { if (ativo) setConfiguracao(valor); })
+      .catch(() => { if (ativo) setErroConfiguracao(true); });
+    return () => { ativo = false; };
+  }, []);
 
   // A URL de objeto e um recurso do navegador: sem revoke ela vaza.
   useEffect(() => {
@@ -52,12 +63,12 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
     const f = e.target.files?.[0];
     if (!f) return;
 
-    if (!f.type.startsWith('image/')) {
+    if (!f.type.startsWith('image/') || (configuracao && !configuracao.allowedMimeTypes.includes(f.type))) {
       setErro('Selecione um arquivo de imagem.');
       return;
     }
-    if (f.size > 20 * 1024 * 1024) {
-      setErro('A imagem precisa ter no máximo 20 MB.');
+    if (configuracao && f.size > configuracao.maxFileSizeBytes) {
+      setErro(`A imagem precisa ter no máximo ${configuracao.maxFileSizeBytes / 1024 / 1024} MB.`);
       return;
     }
 
@@ -69,9 +80,10 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
   }
 
   async function enviar() {
-    if (!arquivo) return;
+    if (!arquivo || enviando) return;
     setErro('');
     setEnviando(true);
+    aoOcupar(true);
 
     try {
       const form = new FormData();
@@ -98,7 +110,9 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
       aoEnviar(await painel.enviarMidia(form));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : 'Não foi possível enviar a imagem.');
+    } finally {
       setEnviando(false);
+      aoOcupar(false);
     }
   }
 
@@ -107,9 +121,9 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
       <>
         <Aviso tipo="erro">{erro}</Aviso>
         <label className="pn-solta">
-          <input type="file" accept="image/*" onChange={escolher} hidden />
+          <input type="file" accept={configuracao?.allowedMimeTypes.join(',') ?? 'image/*'} onChange={escolher} aria-label="Escolher uma imagem para enviar" />
           <strong>Escolher uma imagem</strong>
-          <span>JPEG, PNG, WebP ou AVIF · até 20 MB</span>
+          <span>{configuracao ? `${configuracao.allowedMimeTypes.map((m) => m.replace('image/', '').toUpperCase()).join(', ')} · até ${configuracao.maxFileSizeBytes / 1024 / 1024} MB` : erroConfiguracao ? 'Limites indisponíveis; o servidor validará o arquivo.' : 'Consultando formatos e limite de tamanho…'}</span>
           <small>
             Os dados de câmera e localização são removidos automaticamente no envio.
           </small>
@@ -184,10 +198,10 @@ function Envio({ aoEnviar, aoCancelar }: { aoEnviar: (m: MediaDto) => void; aoCa
       </div>
 
       <div className="pn-modal-rodape" style={{ padding: 0, borderTop: 0 }}>
-        <Botao variante="fantasma" onClick={aoCancelar}>
+        <Botao variante="fantasma" onClick={aoCancelar} disabled={enviando}>
           Cancelar
         </Botao>
-        <Botao variante="neutro" onClick={() => setArquivo(null)}>
+        <Botao variante="neutro" onClick={() => setArquivo(null)} disabled={enviando}>
           Trocar imagem
         </Botao>
         <Botao variante="primario" carregando={enviando} onClick={enviar}>
@@ -254,21 +268,34 @@ export function SeletorMidia({
   const [aba, setAba] = useState<'biblioteca' | 'enviar'>('biblioteca');
   const [itens, setItens] = useState<MediaDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [falha, setFalha] = useState<{ mensagem: string; pagina: number; termo: string; acrescentar: boolean } | null>(null);
+  const requisicaoAtual = useRef(0);
   const [busca, setBusca] = useState('');
   const [pagina, setPagina] = useState(1);
   const [temMais, setTemMais] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const carregar = useCallback(async (p: number, q: string, acrescentar: boolean) => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setFalha(null);
     try {
       const r = await painel.midias({ page: p, perPage: 24, search: q || undefined });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens((atuais) => (acrescentar ? [...atuais, ...r.data] : r.data));
       setTemMais(r.meta.hasNextPage);
-    } catch {
-      if (!acrescentar) setItens([]);
+      setPagina(p);
+    } catch (erro) {
+      if (requisicao !== requisicaoAtual.current) return;
+      setFalha({
+        mensagem: erro instanceof ErroApi ? erro.message : 'Não foi possível carregar as imagens.',
+        pagina: p,
+        termo: q,
+        acrescentar,
+      });
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
   }, []);
 
@@ -294,7 +321,7 @@ export function SeletorMidia({
   }, [busca]);
 
   return (
-    <Modal titulo="Biblioteca de mídia" aberto={aberto} aoFechar={aoFechar} largura={880}>
+    <Modal titulo="Biblioteca de mídia" aberto={aberto} aoFechar={() => { if (!enviando) aoFechar(); }} largura={880}>
       <div className="pn-abas" role="tablist">
         <button
           type="button"
@@ -302,6 +329,7 @@ export function SeletorMidia({
           aria-selected={aba === 'biblioteca'}
           className={aba === 'biblioteca' ? 'pn-aba-ativa' : ''}
           onClick={() => setAba('biblioteca')}
+          disabled={enviando}
         >
           Biblioteca
         </button>
@@ -311,6 +339,7 @@ export function SeletorMidia({
           aria-selected={aba === 'enviar'}
           className={aba === 'enviar' ? 'pn-aba-ativa' : ''}
           onClick={() => setAba('enviar')}
+          disabled={enviando}
         >
           Enviar imagem
         </button>
@@ -318,6 +347,7 @@ export function SeletorMidia({
 
       {aba === 'enviar' ? (
         <Envio
+          aoOcupar={setEnviando}
           aoCancelar={() => setAba('biblioteca')}
           aoEnviar={(m) => {
             aoEscolher(m);
@@ -327,15 +357,23 @@ export function SeletorMidia({
       ) : (
         <>
           <Entrada
+            aria-label="Buscar imagens na biblioteca"
             placeholder="Buscar por descrição ou arquivo…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             style={{ marginBottom: 12 }}
           />
 
+          {falha && (
+            <div className="pn-erro-lista">
+              <Aviso tipo="erro">{falha.mensagem} {itens.length ? 'As imagens anteriores permanecem abaixo.' : 'Nenhuma imagem foi carregada.'}</Aviso>
+              <Botao variante="neutro" onClick={() => void carregar(falha.pagina, falha.termo, falha.acrescentar)}>Tentar novamente</Botao>
+            </div>
+          )}
+
           {carregando && itens.length === 0 ? (
             <Carregando />
-          ) : itens.length === 0 ? (
+          ) : falha && itens.length === 0 ? null : itens.length === 0 ? (
             <Vazio
               titulo="Nenhuma imagem"
               descricao="Envie a primeira imagem para usar nas publicações."
@@ -355,14 +393,13 @@ export function SeletorMidia({
                   aoFechar();
                 }}
               />
-              {temMais && (
+              {temMais && !falha && (
                 <div style={{ textAlign: 'center', marginTop: 12 }}>
                   <Botao
                     variante="neutro"
                     carregando={carregando}
                     onClick={() => {
                       const p = pagina + 1;
-                      setPagina(p);
                       void carregar(p, busca, true);
                     }}
                   >

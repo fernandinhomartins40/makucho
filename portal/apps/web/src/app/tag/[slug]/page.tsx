@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { ApiError, api } from '@/lib/api';
+import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
 import { Listagem } from '@/components/listagem';
 
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PaginaTag({ params, searchParams }: Props) {
   const { slug } = await params;
   const { page } = await searchParams;
-  const pagina = Math.max(1, Number(page) || 1);
+  const pagina = paginaDaUrl(page);
 
   let tag;
   try {

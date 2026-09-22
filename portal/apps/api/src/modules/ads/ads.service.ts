@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type {
@@ -51,6 +51,7 @@ export class AdsService {
       where: {
         deletedAt: null,
         status: 'ACTIVE',
+        mediaId: { not: null },
         placements: { some: { placement } },
         AND: [
           { OR: [{ startsAt: null }, { startsAt: { lte: agora } }] },
@@ -132,6 +133,12 @@ export class AdsService {
       placements: AdPlacement[];
       [k: string]: unknown;
     };
+    this.validarVeiculacao(
+      (dados.status as AdStatus | undefined) ?? 'DRAFT',
+      (dados.mediaId as string | null | undefined) ?? null,
+      (dados.startsAt as Date | null | undefined) ?? null,
+      (dados.endsAt as Date | null | undefined) ?? null,
+    );
 
     const anuncio = await this.prisma.advertisement.create({
       // O cast recai sobre o objeto inteiro: os campos ja passaram pelo Zod
@@ -167,7 +174,7 @@ export class AdsService {
   ): Promise<AdvertisementDto> {
     const existe = await this.prisma.advertisement.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, status: true, mediaId: true, startsAt: true, endsAt: true },
     });
     if (!existe) {
       throw new NotFoundException({ code: 'AD_NOT_FOUND', message: 'Anúncio não encontrado' });
@@ -177,6 +184,12 @@ export class AdsService {
       placements?: AdPlacement[];
       [k: string]: unknown;
     };
+    this.validarVeiculacao(
+      (dados.status as AdStatus | undefined) ?? existe.status,
+      dados.mediaId === undefined ? existe.mediaId : dados.mediaId as string | null,
+      dados.startsAt === undefined ? existe.startsAt : dados.startsAt as Date | null,
+      dados.endsAt === undefined ? existe.endsAt : dados.endsAt as Date | null,
+    );
 
     // A lista de posicoes e substituida por inteiro: e mais simples e mais
     // previsivel do que tentar casar o que entrou com o que ja existia.
@@ -228,6 +241,15 @@ export class AdsService {
       summary: `Anúncio excluído: ${anuncio.name}`,
       request,
     });
+  }
+
+  private validarVeiculacao(status: AdStatus, mediaId: string | null, inicio: Date | null, fim: Date | null): void {
+    if (status === 'ACTIVE' && !mediaId) {
+      throw new BadRequestException({ code: 'AD_MEDIA_REQUIRED', message: 'Escolha uma imagem antes de ativar o anúncio.' });
+    }
+    if (inicio && fim && fim.getTime() <= inicio.getTime()) {
+      throw new BadRequestException({ code: 'AD_PERIOD_INVALID', message: 'A data final deve ser posterior à inicial.' });
+    }
   }
 
   // ============================================================

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SocialProfileDto } from '@makucho/types';
 import { ErroApi, painel, type Configuracao } from '@/lib/painel';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
@@ -35,10 +35,17 @@ function Configuracoes() {
   const [valores, setValores] = useState<Record<string, unknown>>({});
   const [redes, setRedes] = useState<SocialProfileDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState<string | null>(null);
+  const [carregandoRedes, setCarregandoRedes] = useState(true);
+  const [erroRedes, setErroRedes] = useState<string | null>(null);
+  const requisicaoRedes = useRef(0);
   const [salvando, setSalvando] = useState(false);
+  const [salvandoRede, setSalvandoRede] = useState(false);
   const [erro, setErro] = useState('');
+  const [erroRede, setErroRede] = useState('');
 
   const [rede, setRede] = useState<{
+    id?: string;
     platform: string;
     label: string;
     url: string;
@@ -47,29 +54,43 @@ function Configuracoes() {
   } | null>(null);
   const [excluirRede, setExcluirRede] = useState<SocialProfileDto | null>(null);
 
-  async function carregar() {
+  const carregar = useCallback(async () => {
     setCarregando(true);
+    setErroCarga(null);
     try {
-      const [cfg, soc] = await Promise.all([
-        painel.configuracoes(),
-        painel.redes().catch(() => []),
-      ]);
+      const cfg = await painel.configuracoes();
       setItens(cfg);
       setValores(Object.fromEntries(cfg.map((c) => [c.key, c.value])));
-      setRedes(soc);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      setErroCarga(e instanceof ErroApi ? e.message : 'Não foi possível carregar as configurações.');
     } finally {
       setCarregando(false);
     }
-  }
+  }, []);
+
+  const carregarRedes = useCallback(async () => {
+    const requisicao = ++requisicaoRedes.current;
+    setCarregandoRedes(true);
+    setErroRedes(null);
+    try {
+      const perfis = await painel.redes();
+      if (requisicao !== requisicaoRedes.current) return;
+      setRedes(perfis);
+    } catch (e) {
+      if (requisicao !== requisicaoRedes.current) return;
+      setErroRedes(e instanceof ErroApi ? e.message : 'Não foi possível carregar as redes sociais.');
+    } finally {
+      if (requisicao === requisicaoRedes.current) setCarregandoRedes(false);
+    }
+  }, []);
 
   useEffect(() => {
     void carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void carregarRedes();
+  }, [carregar, carregarRedes]);
 
   async function salvar() {
+    if (salvando || carregando || erroCarga) return;
     setErro('');
     setSalvando(true);
 
@@ -81,13 +102,13 @@ function Configuracoes() {
 
       if (alterados.length === 0) {
         recado.ok('Nada para salvar.');
-        setSalvando(false);
         return;
       }
 
       await painel.salvarConfiguracoes(alterados);
+      const gravados = new Map(alterados.map((item) => [item.key, item.value]));
+      setItens((atuais) => atuais.map((item) => gravados.has(item.key) ? { ...item, value: gravados.get(item.key) } : item));
       recado.ok('Configurações salvas.');
-      void carregar();
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : 'Não foi possível salvar.');
     } finally {
@@ -96,20 +117,38 @@ function Configuracoes() {
   }
 
   async function salvarRede() {
-    if (!rede) return;
+    if (!rede || salvandoRede) return;
+    setErroRede('');
+    if (!/^https?:\/\//i.test(rede.url.trim())) {
+      setErroRede('O endereço deve começar com http:// ou https://.');
+      return;
+    }
     try {
-      await painel.salvarRede({
+      new URL(rede.url.trim());
+    } catch {
+      setErroRede('Informe um endereço válido.');
+      return;
+    }
+    if (rede.followerCount && (!Number.isInteger(Number(rede.followerCount)) || Number(rede.followerCount) < 0)) {
+      setErroRede('Seguidores deve ser um número inteiro não negativo.');
+      return;
+    }
+    setSalvandoRede(true);
+    try {
+      const perfis = await painel.salvarRede({
         platform: rede.platform,
         label: rede.label.trim() || rede.platform,
         url: rede.url.trim(),
         handle: rede.handle.trim() || null,
         followerCount: rede.followerCount ? Number(rede.followerCount) : null,
       });
+      setRedes(perfis);
       recado.ok('Rede salva.');
       setRede(null);
-      void carregar();
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível salvar a rede.');
+      setErroRede(e instanceof ErroApi ? e.message : 'Não foi possível salvar a rede.');
+    } finally {
+      setSalvandoRede(false);
     }
   }
 
@@ -117,11 +156,16 @@ function Configuracoes() {
     return <Carregando />;
   }
 
+  if (erroCarga) {
+    return <div className="pn-bloco pn-erro-lista"><Aviso tipo="erro">{erroCarga}</Aviso><Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao></div>;
+  }
+
   // Agrupa para a tela não virar uma lista solta de 30 campos.
   const porGrupo = itens.reduce<Record<string, Configuracao[]>>((acc, c) => {
     (acc[c.group] ??= []).push(c);
     return acc;
   }, {});
+  const proximaRede = REDES.find((plataforma) => !redes.some((perfil) => perfil.platform === plataforma));
 
   return (
     <>
@@ -202,15 +246,20 @@ function Configuracoes() {
           <h2>Perfis nas redes</h2>
           <Botao
             variante="neutro"
-            onClick={() =>
-              setRede({ platform: 'instagram', label: '', url: '', handle: '', followerCount: '' })
-            }
+            disabled={!proximaRede || carregandoRedes || Boolean(erroRedes)}
+            onClick={() => {
+              if (!proximaRede) return;
+              setErroRede('');
+              setRede({ platform: proximaRede, label: '', url: '', handle: '', followerCount: '' });
+            }}
           >
             + Adicionar rede
           </Botao>
         </div>
 
-        {redes.length === 0 ? (
+        {erroRedes && <div className="pn-erro-lista"><Aviso tipo="erro">{erroRedes} {redes.length ? 'As redes já carregadas permanecem abaixo.' : 'Nenhuma rede foi carregada.'}</Aviso><Botao variante="neutro" onClick={() => void carregarRedes()}>Tentar novamente</Botao></div>}
+
+        {carregandoRedes && redes.length === 0 ? <Carregando /> : erroRedes && redes.length === 0 ? null : redes.length === 0 ? (
           <p className="pn-dica">Nenhuma rede cadastrada. Elas aparecem no topo e no rodapé.</p>
         ) : (
           <ul className="pn-lista-simples">
@@ -220,6 +269,10 @@ function Configuracoes() {
                   <span className="pn-lista-titulo">{r.label}</span>
                   <span className="pn-lista-meta">{r.url}</span>
                 </div>
+                <Botao variante="fantasma" onClick={() => {
+                  setErroRede('');
+                  setRede({ id: r.id, platform: r.platform, label: r.label, url: r.url, handle: r.handle ?? '', followerCount: r.followerCount?.toString() ?? '' });
+                }}>Editar</Botao>
                 <Botao variante="fantasma" onClick={() => setExcluirRede(r)}>
                   Excluir
                 </Botao>
@@ -230,16 +283,16 @@ function Configuracoes() {
       </section>
 
       <Modal
-        titulo="Adicionar rede social"
+        titulo={rede?.id ? 'Editar rede social' : 'Adicionar rede social'}
         aberto={rede !== null}
-        aoFechar={() => setRede(null)}
+        aoFechar={() => { if (!salvandoRede) setRede(null); }}
         largura={460}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setRede(null)}>
+            <Botao variante="fantasma" disabled={salvandoRede} onClick={() => setRede(null)}>
               Cancelar
             </Botao>
-            <Botao variante="primario" onClick={salvarRede}>
+            <Botao variante="primario" carregando={salvandoRede} onClick={salvarRede}>
               Salvar
             </Botao>
           </>
@@ -247,12 +300,14 @@ function Configuracoes() {
       >
         {rede && (
           <>
+            <Aviso tipo="erro">{erroRede}</Aviso>
             <Campo rotulo="Plataforma" obrigatorio>
               <Selecao
                 value={rede.platform}
                 onChange={(e) => setRede({ ...rede, platform: e.target.value })}
+                disabled={Boolean(rede.id)}
               >
-                {REDES.map((p) => (
+                {REDES.filter((p) => p === rede.platform || !redes.some((perfil) => perfil.platform === p)).map((p) => (
                   <option key={p} value={p}>
                     {p.charAt(0).toUpperCase() + p.slice(1)}
                   </option>
@@ -306,8 +361,8 @@ function Configuracoes() {
           try {
             await painel.excluirRede(excluirRede.id);
             recado.ok('Rede excluída.');
+            setRedes((atuais) => atuais.filter((r) => r.id !== excluirRede.id));
             setExcluirRede(null);
-            void carregar();
           } catch (e) {
             recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível excluir.');
           }

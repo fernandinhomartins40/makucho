@@ -1,15 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ErroApi, painel, type RegistroAuditoria } from '@/lib/painel';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import {
+  Aviso,
+  Botao,
   Carregando,
   Etiqueta,
   Paginacao,
   Selecao,
   Vazio,
-  useRecado,
 } from '@/components/painel/ui';
 
 const ACOES: Record<string, { rotulo: string; cor: string }> = {
@@ -37,16 +38,20 @@ const RECURSOS: Record<string, string> = {
 };
 
 function Auditoria() {
-  const recado = useRecado();
   const [itens, setItens] = useState<RegistroAuditoria[]>([]);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [pagina, setPagina] = useState(1);
   const [acao, setAcao] = useState('');
   const [recurso, setRecurso] = useState('');
 
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.auditoria({
         page: pagina,
@@ -54,14 +59,16 @@ function Auditoria() {
         action: acao || undefined,
         resource: recurso || undefined,
       });
+      if (requisicao !== requisicaoAtual.current) return;
       setItens(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar a auditoria.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina, acao, recurso]);
 
   useEffect(() => {
@@ -77,6 +84,7 @@ function Auditoria() {
 
       <div className="pn-filtros">
         <Selecao
+          aria-label="Filtrar auditoria por ação"
           value={acao}
           onChange={(e) => {
             setPagina(1);
@@ -92,6 +100,7 @@ function Auditoria() {
         </Selecao>
 
         <Selecao
+          aria-label="Filtrar auditoria por item"
           value={recurso}
           onChange={(e) => {
             setPagina(1);
@@ -108,9 +117,10 @@ function Auditoria() {
       </div>
 
       <div className="pn-bloco">
+        {erroLista && <div className="pn-erro-lista"><Aviso tipo="erro">{erroLista} {dadosCarregados ? 'Os registros anteriores permanecem abaixo.' : 'Nenhum registro foi carregado.'}</Aviso><Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao></div>}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo="Nada registrado"
             descricao="As ações do painel aparecem aqui conforme acontecem."
@@ -158,10 +168,9 @@ function Auditoria() {
           </div>
         )}
 
-        <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+        {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
       </div>
 
-      {recado.elemento}
     </>
   );
 }

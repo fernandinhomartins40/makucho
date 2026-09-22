@@ -7,6 +7,7 @@ import type { CategoryDto, PostSummaryDto } from '@makucho/types';
 import { ErroApi, painel } from '@/lib/painel';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import {
+  Aviso,
   Botao,
   Carregando,
   Confirmacao,
@@ -34,23 +35,43 @@ function Lista() {
 
   const [posts, setPosts] = useState<PostSummaryDto[]>([]);
   const [categorias, setCategorias] = useState<CategoryDto[]>([]);
+  const [erroCategorias, setErroCategorias] = useState(false);
   const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
   const [excluir, setExcluir] = useState<PostSummaryDto | null>(null);
+  const [duplicando, setDuplicando] = useState<string | null>(null);
 
-  const [status, setStatus] = useState(params.get('status') ?? '');
+  const [status, setStatus] = useState(() => {
+    const recebido = params.get('status') ?? '';
+    return STATUS.some((item) => item.valor === recebido) ? recebido : '';
+  });
   const [categoria, setCategoria] = useState('');
   const [busca, setBusca] = useState('');
   const [pagina, setPagina] = useState(1);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const requisicaoAtual = useRef(0);
   const [termo, setTermo] = useState('');
 
-  useEffect(() => {
-    painel.categorias().then(setCategorias).catch(() => setCategorias([]));
+  const carregarCategorias = useCallback(async () => {
+    try {
+      const resultado = await painel.categorias();
+      setCategorias(resultado);
+      setErroCategorias(false);
+    } catch {
+      setErroCategorias(true);
+    }
   }, []);
 
+  useEffect(() => {
+    void carregarCategorias();
+  }, [carregarCategorias]);
+
   const carregar = useCallback(async () => {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
       const r = await painel.posts({
         page: pagina,
@@ -59,12 +80,15 @@ function Lista() {
         categoryId: categoria || undefined,
         search: termo || undefined,
       });
+      if (requisicao !== requisicaoAtual.current) return;
       setPosts(r.data);
       setMeta({ page: r.meta.page, totalPages: r.meta.totalPages, total: r.meta.total });
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar a lista.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar a lista.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
     // O `recado` muda a cada render e nao deve disparar recarga.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,13 +108,34 @@ function Lista() {
     return () => clearTimeout(debounce.current);
   }, [busca]);
 
+  function alterarStatus(valor: string) {
+    setPagina(1);
+    setStatus(valor);
+    const proximos = new URLSearchParams(params.toString());
+    if (valor) proximos.set('status', valor);
+    else proximos.delete('status');
+    const query = proximos.toString();
+    router.replace(`/painel/publicacoes${query ? `?${query}` : ''}`, { scroll: false });
+  }
+
+  function limparFiltros() {
+    alterarStatus('');
+    setCategoria('');
+    setBusca('');
+    setTermo('');
+  }
+
   async function duplicar(p: PostSummaryDto) {
+    if (duplicando !== null) return;
+    setDuplicando(p.id);
     try {
       const novo = await painel.duplicarPost(p.id);
       recado.ok('Cópia criada.');
       router.push(`/painel/publicacoes/${novo.id}`);
     } catch (e) {
       recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível duplicar.');
+    } finally {
+      setDuplicando(null);
     }
   }
 
@@ -110,27 +155,24 @@ function Lista() {
     <>
       <TituloPagina
         titulo="Publicações"
-        descricao={`${meta.total.toLocaleString('pt-BR')} no total`}
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total` : 'Aguardando dados do painel'}
         acoes={
-          <Link href="/painel/publicacoes/nova">
-            <Botao variante="primario">+ Nova publicação</Botao>
-          </Link>
+          <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Nova publicação</Link>
         }
       />
 
       <div className="pn-filtros">
         <Entrada
           className="pn-busca"
+          aria-label="Buscar publicações por título"
           placeholder="Buscar por título…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
         <Selecao
+          aria-label="Filtrar publicações por status"
           value={status}
-          onChange={(e) => {
-            setPagina(1);
-            setStatus(e.target.value);
-          }}
+          onChange={(e) => alterarStatus(e.target.value)}
         >
           {STATUS.map((s) => (
             <option key={s.valor} value={s.valor}>
@@ -139,6 +181,7 @@ function Lista() {
           ))}
         </Selecao>
         <Selecao
+          aria-label="Filtrar publicações por categoria"
           value={categoria}
           onChange={(e) => {
             setPagina(1);
@@ -154,17 +197,31 @@ function Lista() {
         </Selecao>
       </div>
 
+      {erroCategorias && (
+        <div className="pn-erro-lista">
+          <Aviso tipo="erro">As categorias não foram carregadas. O filtro por categoria pode estar incompleto.</Aviso>
+          <Botao variante="neutro" onClick={() => void carregarCategorias()}>Recarregar categorias</Botao>
+        </div>
+      )}
+
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'Os resultados anteriores permanecem abaixo.' : 'Nenhum resultado foi carregado.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : posts.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : posts.length === 0 ? (
           <Vazio
             titulo="Nenhuma publicação encontrada"
             descricao="Ajuste os filtros ou crie uma nova publicação."
             acao={
-              <Link href="/painel/publicacoes/nova">
-                <Botao variante="primario">+ Nova publicação</Botao>
-              </Link>
+              <div className="pn-acoes">
+                {(status || categoria || busca) && <Botao variante="neutro" onClick={limparFiltros}>Limpar filtros</Botao>}
+                <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Nova publicação</Link>
+              </div>
             }
           />
         ) : (
@@ -207,11 +264,12 @@ function Lista() {
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Ver no site"
+                            className="pn-botao pn-botao-fantasma"
                           >
-                            <Botao variante="fantasma">Ver</Botao>
+                            Ver
                           </a>
                         )}
-                        <Botao variante="fantasma" onClick={() => void duplicar(p)}>
+                        <Botao variante="fantasma" carregando={duplicando === p.id} disabled={duplicando !== null} onClick={() => void duplicar(p)}>
                           Duplicar
                         </Botao>
                         <Botao variante="fantasma" onClick={() => setExcluir(p)}>
@@ -226,7 +284,7 @@ function Lista() {
           </div>
         )}
 
-        <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />
+        {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
       </div>
 
       <Confirmacao

@@ -1,16 +1,17 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import Image from 'next/image';
-import { notFound } from 'next/navigation';
-import { ApiError, api, urlDaImagem } from '@/lib/api';
-import { Cabecalho } from '@/components/cabecalho';
-import { Rodape } from '@/components/rodape';
-import { CardArtigo, formatarData } from '@/components/card-artigo';
-import { ContadorDeLeitura } from '@/components/contador-leitura';
-import { Calendario, Relogio } from '@/components/icones';
+import type { Metadata } from "next";
+import Link from "next/link";
+import Image from "next/image";
+import { notFound } from "next/navigation";
+import { ApiError, api, urlDaImagem } from "@/lib/api";
+import { Cabecalho } from "@/components/cabecalho";
+import { Rodape } from "@/components/rodape";
+import { CardArtigo, formatarData } from "@/components/card-artigo";
+import { ContadorDeLeitura } from "@/components/contador-leitura";
+import { AnuncioSlot } from "@/components/anuncio-home";
+import { Calendario, Relogio } from "@/components/icones";
 
 // Mesma razao da home: a API nao esta no ar durante o build.
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 export const revalidate = 300;
 
 type Props = { params: Promise<{ slug: string }> };
@@ -21,31 +22,35 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   try {
     const post = await api.post(slug);
-    const imagem = urlDaImagem(post.ogImage ?? post.coverImage, 'MEDIUM');
+    const imagem = urlDaImagem(post.ogImage ?? post.coverImage, "MEDIUM");
 
     return {
       title: post.seoTitle ?? post.title,
       description: post.seoDescription ?? post.excerpt ?? undefined,
       alternates: { canonical: `/artigo/${post.slug}` },
       openGraph: {
-        type: 'article',
+        type: "article",
         title: post.title,
         description: post.excerpt ?? undefined,
         publishedTime: post.publishedAt ?? undefined,
         authors: post.author ? [post.author.name] : undefined,
-        images: imagem ? [{ url: imagem, width: 1200, height: 630 }] : undefined,
+        images: imagem
+          ? [{ url: imagem, width: 1200, height: 630 }]
+          : undefined,
       },
       twitter: {
-        card: 'summary_large_image',
+        card: "summary_large_image",
         title: post.title,
         description: post.excerpt ?? undefined,
         images: imagem ? [imagem] : undefined,
       },
     };
-  } catch {
-    // Metadata nao pode derrubar a pagina: o notFound() do componente
-    // cuida do 404 com a aparencia do site.
-    return { title: 'Artigo não encontrado' };
+  } catch (erro) {
+    // Uma API indisponível não significa que o artigo deixou de existir.
+    if (erro instanceof ApiError && erro.status === 404) {
+      return { title: "Artigo não encontrado", robots: { index: false } };
+    }
+    return { title: "Conteúdo temporariamente indisponível", robots: { index: false } };
   }
 }
 
@@ -66,27 +71,34 @@ export default async function PaginaArtigo({ params }: Props) {
     api.relacionados(post.id).catch(() => []),
   ]);
 
-  const capa = urlDaImagem(post.coverImage, 'LARGE');
-  const nomeDoSite = (dados.settings['site.name'] as string) ?? 'MAKUCHO';
-  const urlSite = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://makucho.com.br';
+  const capa = urlDaImagem(post.coverImage, "LARGE");
+  const nomeDoSite = (dados.settings["site.name"] as string) ?? "MAKUCHO";
+  const urlSite = process.env.NEXT_PUBLIC_SITE_URL ?? "https://makucho.com.br";
 
   /**
    * JSON-LD do artigo: e o que faz o Google exibir autor, data e imagem
    * no resultado de busca.
    */
   const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'NewsArticle',
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
     headline: post.title,
     description: post.excerpt ?? undefined,
     image: capa ? [capa] : undefined,
     datePublished: post.publishedAt ?? undefined,
     dateModified: post.updatedAt ?? post.publishedAt ?? undefined,
     author: post.author
-      ? { '@type': 'Person', name: post.author.name, url: `${urlSite}/autor/${post.author.slug}` }
+      ? {
+          "@type": "Person",
+          name: post.author.name,
+          url: `${urlSite}/autor/${post.author.slug}`,
+        }
       : undefined,
-    publisher: { '@type': 'Organization', name: nomeDoSite },
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `${urlSite}/artigo/${post.slug}` },
+    publisher: { "@type": "Organization", name: nomeDoSite },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `${urlSite}/artigo/${post.slug}`,
+    },
     articleSection: post.category.name,
   };
 
@@ -102,24 +114,30 @@ export default async function PaginaArtigo({ params }: Props) {
       {/* Serializamos um objeto proprio; nada aqui vem do editor. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
 
       <ContadorDeLeitura postId={post.id} />
 
-      <main>
-        <div className="container com-sidebar">
-          <article className="artigo">
+      <main className="portal-main artigo-main">
+        <div className="portal-container artigo-layout">
+          <article className="artigo artigo-leitura">
             <Link
               href={`/categoria/${post.category.slug}`}
               className="etiqueta"
-              style={post.category.color ? { background: post.category.color } : undefined}
+              style={
+                post.category.color
+                  ? { background: post.category.color }
+                  : undefined
+              }
             >
               {post.category.name}
             </Link>
 
             <h1 className="artigo-titulo">{post.title}</h1>
-            {post.subtitle && <p className="artigo-subtitulo">{post.subtitle}</p>}
+            {post.subtitle && (
+              <p className="artigo-subtitulo">{post.subtitle}</p>
+            )}
 
             <div className="artigo-meta">
               {post.author && (
@@ -128,19 +146,23 @@ export default async function PaginaArtigo({ params }: Props) {
                 </Link>
               )}
               {post.publishedAt && (
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <Calendario />
-                  <time dateTime={post.publishedAt}>{formatarData(post.publishedAt)}</time>
+                  <time dateTime={post.publishedAt}>
+                    {formatarData(post.publishedAt)}
+                  </time>
                 </span>
               )}
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <Relogio />
                 {post.readingTimeMinutes} min de leitura
               </span>
             </div>
 
+            <AnuncioSlot posicao="ARTICLE_TOP" />
+
             {capa && (
-              <figure style={{ marginBlock: 20 }}>
+              <figure className="artigo-capa">
                 <Image
                   src={capa}
                   alt={post.coverImage?.alt ?? post.title}
@@ -148,14 +170,10 @@ export default async function PaginaArtigo({ params }: Props) {
                   height={675}
                   priority
                   sizes="(max-width: 1040px) 100vw, 700px"
-                  style={{ borderRadius: 'var(--raio)' }}
+                  className="artigo-capa-imagem"
                 />
                 {post.coverImage?.credit && (
-                  <figcaption
-                    style={{ marginTop: 6, fontSize: '0.76rem', color: 'var(--texto-claro)' }}
-                  >
-                    {post.coverImage.credit}
-                  </figcaption>
+                  <figcaption>{post.coverImage.credit}</figcaption>
                 )}
               </figure>
             )}
@@ -164,30 +182,43 @@ export default async function PaginaArtigo({ params }: Props) {
                 gravar, e a lista de tags permitidas nao inclui script. */}
             <div
               className="artigo-conteudo"
-              dangerouslySetInnerHTML={{ __html: post.contentHtml ?? '' }}
+              dangerouslySetInnerHTML={{ __html: post.contentHtml ?? "" }}
             />
 
+            <AnuncioSlot posicao="ARTICLE_MIDDLE" />
+
             {post.tags && post.tags.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 24 }}>
+              <div className="artigo-tags">
                 {post.tags.map((t) => (
-                  <Link key={t.id} href={`/tag/${t.slug}`} className="etiqueta etiqueta-clara">
+                  <Link
+                    key={t.id}
+                    href={`/tag/${t.slug}`}
+                    className="etiqueta etiqueta-clara"
+                  >
                     #{t.name}
                   </Link>
                 ))}
               </div>
             )}
+
+            <AnuncioSlot posicao="ARTICLE_BOTTOM" />
           </article>
 
           <aside className="sidebar">
+            <AnuncioSlot posicao="SIDEBAR_TOP" />
             <section>
               <div className="secao-cabecalho">
                 <h2 className="secao-titulo">Mais lidas</h2>
               </div>
               <div className="ranking">
                 {dados.mostRead.slice(0, 5).map((p, i) => {
-                  const mini = urlDaImagem(p.coverImage, 'THUMBNAIL');
+                  const mini = urlDaImagem(p.coverImage, "THUMBNAIL");
                   return (
-                    <Link key={p.id} href={`/artigo/${p.slug}`} className="ranking-item">
+                    <Link
+                      key={p.id}
+                      href={`/artigo/${p.slug}`}
+                      className="ranking-item"
+                    >
                       <span className="ranking-numero" aria-hidden="true">
                         {i + 1}
                       </span>
@@ -208,12 +239,13 @@ export default async function PaginaArtigo({ params }: Props) {
                 })}
               </div>
             </section>
+            <AnuncioSlot posicao="SIDEBAR_MIDDLE" />
           </aside>
         </div>
 
         {relacionados.length > 0 && (
-          <div className="container">
-            <section className="secao" style={{ marginTop: 32 }}>
+          <div className="portal-container">
+            <section className="secao artigo-relacionados">
               <div className="secao-cabecalho">
                 <h2 className="secao-titulo">Leia também</h2>
               </div>
@@ -227,7 +259,11 @@ export default async function PaginaArtigo({ params }: Props) {
         )}
       </main>
 
-      <Rodape categorias={dados.categories} socials={dados.socials} settings={dados.settings} />
+      <Rodape
+        categorias={dados.categories}
+        socials={dados.socials}
+        settings={dados.settings}
+      />
     </>
   );
 }

@@ -9,7 +9,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/content.test.ts && tsx test/storage.test.ts",
+    "test": "tsx test/content.test.ts && tsx test/storage.test.ts && tsx test/public-selection.test.ts && tsx test/ads.test.ts && tsx test/posts-workflow.test.ts",
     "seed": "pnpm build && node dist/seed/seed.js"
   },
   "dependencies": {

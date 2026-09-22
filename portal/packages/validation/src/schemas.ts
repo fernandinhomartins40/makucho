@@ -518,11 +518,11 @@ export const redeSocialSchema = z.object({
   icon: z.string().max(60).nullish(),
   followerCount: z.number().int().min(0).nullish(),
   followerLabel: z.string().max(60).nullish(),
-  position: z.number().int().min(0).default(0),
-  isActive: z.boolean().default(true),
-  showInHeader: z.boolean().default(true),
-  showInFooter: z.boolean().default(true),
-  showInSidebar: z.boolean().default(true),
+  position: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+  showInHeader: z.boolean().optional(),
+  showInFooter: z.boolean().optional(),
+  showInSidebar: z.boolean().optional(),
 });
 
 // ============================================================

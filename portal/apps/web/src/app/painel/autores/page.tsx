@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
 import type { AuthorDto, MediaDto } from '@makucho/types';
 import { gerarSlug } from '@makucho/validation';
@@ -62,6 +62,9 @@ function Autores() {
   const recado = useRecado();
   const [itens, setItens] = useState<AuthorDto[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [dadosCarregados, setDadosCarregados] = useState(false);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const requisicaoAtual = useRef(0);
   const [form, setForm] = useState<Formulario | null>(null);
   const [excluir, setExcluir] = useState<AuthorDto | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -69,13 +72,19 @@ function Autores() {
   const [slugTocado, setSlugTocado] = useState(false);
 
   async function carregar() {
+    const requisicao = ++requisicaoAtual.current;
     setCarregando(true);
+    setErroLista(null);
     try {
-      setItens(await painel.autores());
+      const autores = await painel.autores();
+      if (requisicao !== requisicaoAtual.current) return;
+      setItens(autores);
+      setDadosCarregados(true);
     } catch (e) {
-      recado.erro(e instanceof ErroApi ? e.message : 'Não foi possível carregar.');
+      if (requisicao !== requisicaoAtual.current) return;
+      setErroLista(e instanceof ErroApi ? e.message : 'Não foi possível carregar os autores.');
     } finally {
-      setCarregando(false);
+      if (requisicao === requisicaoAtual.current) setCarregando(false);
     }
   }
 
@@ -108,7 +117,7 @@ function Autores() {
   }
 
   async function salvar() {
-    if (!form) return;
+    if (!form || salvando) return;
     setErro('');
 
     if (form.name.trim().length < 2) {
@@ -162,9 +171,15 @@ function Autores() {
       />
 
       <div className="pn-bloco">
+        {erroLista && (
+          <div className="pn-erro-lista">
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhum autor foi carregado.'}</Aviso>
+            <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
+          </div>
+        )}
         {carregando ? (
           <Carregando />
-        ) : itens.length === 0 ? (
+        ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
             titulo="Nenhum autor"
             descricao="Cadastre quem assina as matérias."
@@ -231,10 +246,10 @@ function Autores() {
       <Modal
         titulo={form?.id ? 'Editar autor' : 'Novo autor'}
         aberto={form !== null}
-        aoFechar={() => setForm(null)}
+        aoFechar={() => { if (!salvando) setForm(null); }}
         rodape={
           <>
-            <Botao variante="fantasma" onClick={() => setForm(null)}>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>
               Cancelar
             </Botao>
             <Botao variante="primario" carregando={salvando} onClick={salvar}>
