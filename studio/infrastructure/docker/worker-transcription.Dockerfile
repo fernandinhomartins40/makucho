@@ -24,6 +24,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY studio/workers/transcription/package.json ./studio/workers/transcription/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/
+# worker-core: o lock e do workspace INTEIRO, e `--frozen-lockfile`
+# recusa resolver com um package.json de dependencia ausente. Faltava
+# aqui -- o mesmo defeito que media e render ja tiveram.
+COPY studio/packages/worker-core/package.json ./studio/packages/worker-core/
 COPY shared/typescript-config/package.json ./shared/typescript-config/
 COPY shared/eslint-config/package.json ./shared/eslint-config/
 RUN pnpm install --frozen-lockfile
@@ -35,6 +39,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/studio/workers/transcription/node_modules ./studio/workers/transcription/node_modules
 COPY --from=deps /app/studio/packages/contracts/node_modules ./studio/packages/contracts/node_modules
 COPY --from=deps /app/studio/packages/database/node_modules ./studio/packages/database/node_modules
+COPY --from=deps /app/studio/packages/worker-core/node_modules ./studio/packages/worker-core/node_modules
 
 ENV STUDIO_DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN pnpm --filter @makucho/studio-database exec prisma generate
@@ -48,6 +53,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY studio/workers/transcription/package.json ./studio/workers/transcription/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/
+COPY studio/packages/worker-core/package.json ./studio/packages/worker-core/
 COPY shared/typescript-config/package.json ./shared/typescript-config/
 COPY shared/eslint-config/package.json ./shared/eslint-config/
 RUN pnpm install --frozen-lockfile --prod
@@ -91,6 +97,10 @@ COPY --from=prod-deps --chown=worker:nodejs /app/studio/packages ./studio/packag
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/transcription/dist ./studio/workers/transcription/dist
 COPY --from=builder --chown=worker:nodejs /app/studio/workers/transcription/package.json ./studio/workers/transcription/
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/contracts/dist ./studio/packages/contracts/dist
+# O `dist` do worker-core, sem o qual o worker sobe e quebra ao
+# importar o lock global -- defeito de runtime, que so apareceria
+# depois do deploy.
+COPY --from=builder --chown=worker:nodejs /app/studio/packages/worker-core/dist ./studio/packages/worker-core/dist
 # O client Prisma sai em src/generated (ver schema.prisma), e nao
 # em node_modules/.prisma: de dentro do pacote o TypeScript
 # consegue nomear os tipos em quem o consome.

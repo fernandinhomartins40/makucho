@@ -19,6 +19,22 @@ generator client {
   // node_modules/@prisma/client: gerar os dois no mesmo lugar faz um
   // sobrescrever o outro.
   output   = "../src/generated"
+
+  // Os alvos de TODAS as imagens do stack, nao apenas o da maquina
+  // onde `generate` rodou.
+  //
+  // Sem isto o worker SOBE -- anuncia "ouvindo a fila" -- e morre no
+  // primeiro acesso ao banco com PrismaClientInitializationError.
+  // Medido: engine gerada para debian-openssl-1.1.x, imagem bookworm
+  // exigindo debian-openssl-3.0.x.
+  //
+  // As imagens do stack nao sao homogeneas, e por isso ha tres alvos:
+  //   native                    a maquina de build/desenvolvimento
+  //   linux-musl-openssl-3.0.x  api, web, worker-media (Alpine)
+  //   debian-openssl-3.0.x      transcription e render (bookworm slim,
+  //                             exigido pelo faster-whisper, cujo
+  //                             ctranslate2 e compilado contra glibc)
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
