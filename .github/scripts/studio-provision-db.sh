@@ -152,3 +152,49 @@ fi
 
 chmod 600 "$ENV_FILE"
 log "ambiente pronto em $ENV_FILE"
+
+# ---------- Backup diario ----------
+#
+# Sem isto, um `docker volume rm` ou uma falha de disco apaga o
+# trabalho do cliente sem recurso: roteiros, planos de edicao,
+# correcoes de legenda. Meses de decisao editorial.
+#
+# Instalado aqui porque este script ja roda a cada deploy e ja e
+# idempotente -- um cron que depende de alguem lembrar de configurar
+# e um cron que nao existe.
+#
+# 03:20 para nao coincidir com a janela de deploy. O pg_dump segura
+# um lock leve, e rodar junto de um render disputaria I/O na VPS
+# compartilhada (ADR 0003).
+# O caminho sai do DIRETORIO DESTE SCRIPT, nao de $APP_ROOT/current:
+# este passo roda ANTES de o deploy criar o link `current`, e no
+# primeiro deploy o link ainda nao existe -- o cron nunca seria
+# instalado.
+#
+# Aponta para a release fixa de proposito: se um deploy futuro
+# falhar, o cron continua rodando o backup desta versao, que
+# funciona, em vez de apontar para um diretorio quebrado.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_SCRIPT="$SCRIPT_DIR/studio-backup.sh"
+
+if [ -f "$BACKUP_SCRIPT" ]; then
+  chmod +x "$BACKUP_SCRIPT" 2>/dev/null || true
+  mkdir -p "$APP_ROOT/backups"
+
+  LINHA_CRON="20 3 * * * APP_ROOT=$APP_ROOT $BACKUP_SCRIPT >> $APP_ROOT/backups/backup.log 2>&1"
+
+  # Remove a entrada antiga antes de inserir: sem isso cada deploy
+  # acrescentaria mais uma linha, e o backup rodaria N vezes.
+  crontab -l 2>/dev/null | grep -v 'studio-backup.sh' > /tmp/cron-studio.tmp || : > /tmp/cron-studio.tmp
+  echo "$LINHA_CRON" >> /tmp/cron-studio.tmp
+
+  if crontab /tmp/cron-studio.tmp 2>/dev/null; then
+    log "backup diario agendado para 03:20"
+  else
+    log "AVISO: nao foi possivel agendar o backup (crontab indisponivel)"
+  fi
+
+  rm -f /tmp/cron-studio.tmp
+else
+  log "AVISO: studio-backup.sh ausente nesta release; backup nao agendado"
+fi
