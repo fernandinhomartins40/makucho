@@ -33,6 +33,14 @@ export interface OpcoesDoRender {
   plano: EditPlanV1;
   /** Clips desligados pelo usuario, que nao entram no resultado. */
   clipsDesligados?: readonly string[];
+  /**
+   * Caminho do .ass com as legendas, quando elas estao ligadas.
+   *
+   * Um ARQUIVO e nao o texto: o conteudo nunca entra na linha de
+   * comando, o que fecha a porta para injecao de argumento por uma
+   * palavra transcrita.
+   */
+  legendas?: string;
   aoProgredir?: (fracao: number) => void;
   sinal?: AbortSignal;
 }
@@ -109,10 +117,25 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // O alvo vem das plataformas sociais: acima dele elas normalizam
   // por conta própria e o resultado sai abafado. Uma passagem só não
   // é exato, mas a diferença é inaudível e a segunda dobraria o tempo.
+  // As legendas entram DEPOIS do concat, nao clip a clip. Sao um
+  // arquivo unico com tempos de timeline, e aplicar por clip exigiria
+  // um .ass por trecho com os tempos rebatidos -- mais arquivos, mais
+  // chances de dessincronizar, e o mesmo resultado.
+  //
+  // O rotulo final muda de nome quando ha legenda, porque `-map` tem
+  // de apontar para a ultima etapa da cadeia: mapear [vsaida] com o
+  // subtitles depois dele entregaria o video SEM legenda, em silencio.
+  const legendar = Boolean(opcoes.legendas) && plano.captions.enabled;
+  const saidaDeVideo = legendar ? '[vlegendado]' : '[vsaida]';
+
   partes.push(
     `${rotulos.join('')}concat=n=${clips.length}:v=1:a=1[vsaida][aconcat];` +
       `[aconcat]loudnorm=I=${plano.render.loudnessTargetLufs}:TP=-1.5:LRA=11[asaida]`,
   );
+
+  if (legendar) {
+    partes.push(`[vsaida]subtitles=${escaparCaminhoDeFiltro(opcoes.legendas!)}[vlegendado]`);
+  }
 
   return [
     '-y',
@@ -121,7 +144,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     '-filter_complex',
     partes.join(';'),
     '-map',
-    '[vsaida]',
+    saidaDeVideo,
     '-map',
     '[asaida]',
     '-c:v',
@@ -149,6 +172,27 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     '+faststart',
     saida,
   ];
+}
+
+/**
+ * Escapa um caminho para uso DENTRO de um filtro do FFmpeg.
+ *
+ * O filter_complex tem sintaxe propria, e um caminho do Windows
+ * dispara dois problemas de uma vez: a barra invertida e o
+ * dois-pontos de `C:`. Sem tratar, o FFmpeg le o caminho como o
+ * filtro `C` com uma opcao, e falha com um erro que nao menciona
+ * legenda nenhuma.
+ *
+ * As barras invertidas viram barras normais ANTES de qualquer
+ * escape: o FFmpeg aceita `/` no Windows, e converter e mais
+ * simples do que escapar barra invertida dentro de tres niveis de
+ * parsing. Depois disso, os caracteres que o parser de filtro
+ * reserva ganham a contrabarra.
+ */
+export function escaparCaminhoDeFiltro(caminho: string): string {
+  return caminho
+    .replace(/\\/g, '/')
+    .replace(/[:'[\],;]/g, (c) => `\\${c}`);
 }
 
 /** Duração esperada do resultado, em ms. */

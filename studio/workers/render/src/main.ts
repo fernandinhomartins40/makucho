@@ -18,15 +18,17 @@ import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import { FILA_RENDER, PREFIXO_DAS_FILAS, editPlanV1Schema } from '@makucho/studio-contracts';
+import type { CaptionStyleInput, EditPlanV1 } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
   duracaoDoResultado,
+  gerarAss,
   lerMetadados,
   renderizar,
   verificarLimite,
 } from '@makucho/studio-worker-core';
-import { copyFile, mkdir, rename, stat } from 'node:fs/promises';
+import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
@@ -90,10 +92,21 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
     await comEspacoDeTrabalho(async (espaco) => {
       const saidaTmp = espaco.arquivo('render.mp4');
 
+      // O .ass vive no espaço de trabalho: é temporário e vai embora
+      // com ele. Guardá-lo no storage encheria o disco com um arquivo
+      // que só serve durante o render.
+      const legendas = await prepararLegendas(
+        espaco,
+        plano,
+        projectId,
+        job.data.clipsDesligados ?? [],
+      );
+
       await renderizar({
         entrada,
         saida: saidaTmp,
         plano,
+        legendas,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
           // Renova o lock a cada avanço: um render de dez minutos não
@@ -156,6 +169,118 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 
   await job.updateProgress(100);
   console.log(`[render] projeto ${projectId} concluído: ${(info.size / 1024 / 1024).toFixed(1)} MB`);
+}
+
+/**
+ * Gera o .ass, quando o plano pede legenda e há transcrição.
+ *
+ * Devolve `undefined` em vez de lançar quando algo falta. A legenda é
+ * acabamento: um render sem ela é um vídeo publicável, e derrubar o
+ * job por causa dela trocaria um resultado bom por nenhum resultado.
+ * O que NÃO acontece é gerar legenda inventada — sem as palavras da
+ * transcrição, não há legenda, ponto.
+ */
+async function prepararLegendas(
+  espaco: { arquivo(nome: string): string },
+  plano: EditPlanV1,
+  projectId: string,
+  clipsDesligados: readonly string[],
+): Promise<string | undefined> {
+  if (!plano.captions.enabled) return undefined;
+
+  // As palavras vêm da transcrição, com os timestamps que o whisper
+  // mediu. É a única origem possível: legenda é fala transcrita, e
+  // qualquer outra fonte seria texto que ninguém disse.
+  const transcricao = await prisma.transcription.findFirst({
+    where: { projectId },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      segments: {
+        orderBy: { startMs: 'asc' },
+        include: { words: { orderBy: { startMs: 'asc' } } },
+      },
+    },
+  });
+
+  const palavras = (transcricao?.segments ?? []).flatMap((s) =>
+    s.words.map((w) => ({ startMs: w.startMs, endMs: w.endMs, word: w.word })),
+  );
+
+  if (palavras.length === 0) {
+    console.warn(`[render] projeto ${projectId} sem palavras transcritas: render sem legenda`);
+    return undefined;
+  }
+
+  // O estilo vem do perfil de marca ATIVO, pela versão mais recente:
+  // é o que permite dizer com que identidade um vídeo antigo foi
+  // gerado. Sem estilo cadastrado, cai no padrão — legenda branca com
+  // contorno preto funciona sobre qualquer fundo.
+  const estilo = await buscarEstilo(projectId, plano.captions.styleId);
+
+  const conteudo = gerarAss({ plano, estilo, palavras, clipsDesligados });
+  const caminho = espaco.arquivo('legendas.ass');
+
+  // UTF-8 explícito: a legenda é em português, e um acento gravado na
+  // codificação errada aparece como caractere quebrado QUEIMADO no
+  // vídeo — sem como corrigir depois.
+  await writeFile(caminho, conteudo, 'utf8');
+
+  console.log(`[render] legendas: ${palavras.length} palavras, estilo ${estilo.name}`);
+  return caminho;
+}
+
+/**
+ * Estilo de legenda do workspace, ou o padrão.
+ *
+ * O `styleId` do plano é consultado dentro do perfil de marca do
+ * projeto, nunca isolado: um id de outro workspace aplicaria a marca
+ * de um cliente no vídeo de outro.
+ */
+async function buscarEstilo(projectId: string, styleId: string): Promise<CaptionStyleInput> {
+  const projeto = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { workspaceId: true },
+  });
+
+  const salvo = projeto
+    ? await prisma.captionStyle.findFirst({
+        where: {
+          id: styleId,
+          brandProfile: { workspaceId: projeto.workspaceId },
+        },
+      })
+    : null;
+
+  if (!salvo) {
+    return {
+      name: 'padrao',
+      // `Liberation Sans` porque é a fonte que EXISTE na imagem
+      // (`fonts-liberation` no Dockerfile). Uma fonte ausente não
+      // falha: o libass cai num substituto em silêncio, e a legenda
+      // sai com uma tipografia que ninguém escolheu.
+      fontFamily: 'Liberation Sans',
+      fontSizePx: 64,
+      color: '#FFFFFF',
+      strokeColor: '#000000',
+      strokeWidthPx: 3,
+      // Três palavras por bloco: cabe na largura de 1080 e dá tempo
+      // de ler sem que a legenda vire um parágrafo parado na tela.
+      wordsPerBlock: 3,
+      position: 'bottom',
+    };
+  }
+
+  return {
+    name: salvo.name,
+    fontFamily: salvo.fontFamily,
+    fontSizePx: salvo.fontSizePx,
+    color: salvo.color,
+    strokeColor: salvo.strokeColor ?? undefined,
+    strokeWidthPx: salvo.strokeWidthPx,
+    highlightColor: salvo.highlightColor ?? undefined,
+    wordsPerBlock: salvo.wordsPerBlock,
+    position: salvo.position as CaptionStyleInput['position'],
+  };
 }
 
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */

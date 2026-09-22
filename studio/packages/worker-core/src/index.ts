@@ -13,3 +13,4 @@ export * from './global-lock';
 export * from './tmp-dir';
 export * from './ffmpeg';
 export * from './render';
+export * from './legendas';
