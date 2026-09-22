@@ -12,6 +12,7 @@ import { MediaModule } from './modules/media/media.module';
 import { EditPlansModule } from './modules/edit-plans/edit-plans.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiModule } from './modules/ai/ai.module';
+import { RendersModule } from './modules/renders/renders.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -33,6 +34,7 @@ import { loadEnv } from './config/env';
     EditPlansModule,
     SettingsModule,
     AiModule,
+    RendersModule,
   ],
   controllers: [HealthController],
   providers: [

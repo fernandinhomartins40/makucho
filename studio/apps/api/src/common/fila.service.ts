@@ -89,6 +89,28 @@ export class FilaService implements OnModuleDestroy {
     }
   }
 
+  async renderizar(
+    projectId: string,
+    editPlanId: string,
+    renderId: string,
+    clipsDesligados: string[] = [],
+  ): Promise<boolean> {
+    try {
+      await this.fila(FILA_RENDER).add(
+        'renderizar',
+        { projectId, editPlanId, renderId, clipsDesligados },
+        // jobId pelo renderId: cada exportação é um registro próprio,
+        // e um clique duplo em "Exportar" não vira dois FFmpeg
+        // disputando o mesmo arquivo de saída.
+        { jobId: `render-${renderId}` },
+      );
+      return true;
+    } catch (e) {
+      this.log.error(`falha ao enfileirar render do projeto ${projectId}`, e as Error);
+      return false;
+    }
+  }
+
   /** Quantos jobs esperam em cada fila. Alimenta o painel de status. */
   async situacao() {
     const contagens = await Promise.all(

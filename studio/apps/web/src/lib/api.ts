@@ -272,6 +272,32 @@ export interface ConsumoDeIa {
   detalhe: Array<{ chamada: string; rotulo: string; centavos: number }>;
 }
 
+// ============================================================
+// Exportação
+// ============================================================
+
+export interface SituacaoDoRender {
+  existe: boolean;
+  id?: string;
+  estado?: 'na_fila' | 'processando' | 'pronto' | 'falhou';
+  tamanhoBytes?: number | null;
+  duracaoMs?: number | null;
+  erro?: string | null;
+}
+
+export const renders = {
+  // Por fila: leva minutos, e o usuário pode fechar a aba.
+  exportar: (projectId: string, clipsDesligados: string[] = []) =>
+    api<{ id: string; estado: string; jaExistia: boolean }>(`/projects/${projectId}/render`, {
+      metodo: 'POST',
+      corpo: { clipsDesligados },
+    }),
+  situacao: (projectId: string) => api<SituacaoDoRender>(`/projects/${projectId}/render`),
+  // Caminho absoluto pelo nginx, como `urlDoVideo`: o download vai
+  // direto no href de um link, fora do cliente de API.
+  urlDeDownload: (projectId: string) => `/api/projects/${projectId}/render/download`,
+};
+
 export interface ResultadoDaAnalise {
   ok: boolean;
   /** Agregação dos riscos que o modelo classificou, não uma probabilidade. */

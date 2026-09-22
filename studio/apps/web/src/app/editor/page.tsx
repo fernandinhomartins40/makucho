@@ -31,7 +31,9 @@ import {
   planos as apiPlanos,
   projetos as apiProjetos,
   ia as apiIa,
+  renders as apiRenders,
   urlDoVideo,
+  type SituacaoDoRender,
 } from '../../lib/api';
 import {
   IconeDesfazer,
@@ -132,6 +134,9 @@ function Editor() {
   // isto", e a tela nao pode confundir os dois.
   const [semProposta, setSemProposta] = useState(false);
 
+  const [exportando, setExportando] = useState(false);
+  const [render, setRender] = useState<SituacaoDoRender | null>(null);
+
   // Trechos desligados continuam na lista: a seção 13 exige poder
   // restaurar o que foi descartado.
   const [desligados, setDesligados] = useState<Set<string>>(new Set());
@@ -166,6 +171,15 @@ function Editor() {
         if (projeto.state !== 'DRAFT' && projeto.state !== 'UPLOADING') {
           setProxyUrl(urlDoVideo(projectId));
         }
+
+        // Consulta o render ao abrir: quem pediu a exportação e
+        // fechou a aba precisa encontrar o arquivo pronto ao voltar.
+        void apiRenders
+          .situacao(projectId)
+          .then((r) => {
+            if (!cancelado && r.existe) setRender(r);
+          })
+          .catch(() => undefined);
 
         const versao = await apiPlanos.atual(projectId);
         if (!cancelado) {
@@ -227,6 +241,50 @@ function Editor() {
       setAnalisando(false);
     }
   }, [projectId, analisando]);
+
+  /**
+   * Pede a exportação (Fase 7).
+   *
+   * Por fila, ao contrário da análise: leva minutos, e o usuário pode
+   * fechar a aba. Por isso a tela consulta o estado em vez de esperar
+   * a resposta — e por isso o estado precisa ser consultável.
+   */
+  const exportar = useCallback(async () => {
+    if (!projectId || exportando) return;
+
+    setExportando(true);
+    setErro(null);
+
+    try {
+      await apiRenders.exportar(projectId, [...desligados]);
+      setRender({ existe: true, estado: 'na_fila' });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'não foi possível exportar.');
+      setExportando(false);
+    }
+  }, [projectId, exportando, desligados]);
+
+  // Acompanha a exportação enquanto ela roda. Para de perguntar assim
+  // que termina: um intervalo que continua depois de pronto gastaria
+  // requisição para sempre numa aba esquecida aberta.
+  useEffect(() => {
+    if (!projectId || !render?.existe) return;
+    if (render.estado !== 'na_fila' && render.estado !== 'processando') {
+      setExportando(false);
+      return;
+    }
+
+    const id = setInterval(() => {
+      void apiRenders
+        .situacao(projectId)
+        .then(setRender)
+        .catch(() => undefined);
+      // Cinco segundos: um render leva minutos, e perguntar a cada
+      // segundo só multiplicaria requisição sem antecipar nada.
+    }, 5000);
+
+    return () => clearInterval(id);
+  }, [projectId, render?.existe, render?.estado]);
 
   const executar = useCallback(
     (operacao: TimelineOperation) => {
@@ -381,15 +439,56 @@ function Editor() {
           <IconeTocar size={16} />
           Pré-visualizar
         </button>
-        <button
-          type="button"
-          className="botao"
-          onClick={() => setErro('O render entra na Fase 7. A proposta já está pronta.')}
-        >
-          <IconeExportar size={16} />
-          Exportar vídeo
-        </button>
+        {/* Pronto vira link de download em vez de botão: o arquivo
+            existe, e pedir de novo gastaria minutos de CPU para
+            produzir o mesmo resultado. */}
+        {render?.estado === 'pronto' && projectId ? (
+          <a
+            className="botao"
+            href={apiRenders.urlDeDownload(projectId)}
+            download
+          >
+            <IconeExportar size={16} />
+            Baixar vídeo
+            {render.tamanhoBytes ? (
+              <span style={{ opacity: 0.75, fontSize: 12 }}>
+                {(render.tamanhoBytes / 1024 / 1024).toFixed(1)} MB
+              </span>
+            ) : null}
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="botao"
+            disabled={
+              exportando || render?.estado === 'na_fila' || render?.estado === 'processando'
+            }
+            onClick={() => void exportar()}
+          >
+            <IconeExportar size={16} />
+            {render?.estado === 'processando'
+              ? 'Exportando…'
+              : render?.estado === 'na_fila'
+                ? 'Na fila…'
+                : 'Exportar vídeo'}
+          </button>
+        )}
       </header>
+
+      {/* A falha do render vem do servidor, não de uma ação na tela:
+          sem isto ela ficaria invisível para quem voltou depois. */}
+      {render?.estado === 'falhou' && (
+        <div
+          role="alert"
+          className="aviso aviso--erro"
+          style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}
+        >
+          <IconeAviso size={16} />
+          <span>
+            {render.erro ?? 'A exportação falhou.'} Você pode tentar de novo.
+          </span>
+        </div>
+      )}
 
       {erro && (
         <div

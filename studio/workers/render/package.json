@@ -1,31 +1,26 @@
 {
-  "name": "@makucho/studio-worker-core",
+  "name": "@makucho/studio-worker-render",
   "version": "0.1.0",
   "private": true,
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
+  "main": "./dist/main.js",
   "scripts": {
     "build": "rimraf dist tsconfig.tsbuildinfo && tsc",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/lock.test.ts && tsx test/tmp.test.ts && tsx test/ffmpeg.test.ts && tsx test/render.test.ts"
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts"
   },
   "dependencies": {
     "@makucho/studio-contracts": "workspace:*",
     "@makucho/studio-database": "workspace:*",
+    "@makucho/studio-worker-core": "workspace:*",
     "bullmq": "^5.28.1",
     "ioredis": "^5.4.1"
   },
   "devDependencies": {
     "@makucho/typescript-config": "workspace:*",
-    "@types/node": "^22.7.5",
+    "@types/node": "^22.10.2",
     "rimraf": "^6.0.1",
-    "tsx": "^4.23.13",
-    "typescript": "^5.6.3"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }
