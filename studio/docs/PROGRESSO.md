@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-22 (décima revisão: Fase 5d — as seis chamadas de IA no ar).
+> Atualizado em 2026-09-22 (décima primeira revisão: backup, restauração e runbook).
 
 ## Panorama
 
@@ -21,7 +21,7 @@
 | 5d | IA: candidatos e refino | **concluída** — as 6 chamadas da seção 26 |
 | 6 | Preview e composição | **concluída** — timeline (ADR 0008) e legendas queimadas |
 | 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
-| 8 | Hardening e piloto | pendente |
+| 8 | Hardening e piloto | backup e runbook prontos; **falta o piloto real** |
 
 Em produção: `studio.makucho.com.br` no ar. As seis chamadas de IA da seção
 26, o pipeline da câmera ao arquivo, marca, legenda e correção manual.
@@ -51,9 +51,11 @@ parecia publicável sem legenda.
 O que ainda **não** funciona, sem rodeio:
 
 
-Resta a Fase 8 — hardening e piloto. Todo o resto está implementado e no ar:
-as seis chamadas de IA da seção 26, o pipeline da câmera ao arquivo, marca,
-legenda e correção manual.
+Todo o código do plano está implementado e no ar: as seis chamadas de IA da
+seção 26, o pipeline da câmera ao arquivo, marca, legenda e correção manual.
+Da Fase 8, backup e runbook estão prontos.
+
+**O que falta não é código: é rodar o produto com um cliente de verdade.**
 
 ---
 
@@ -326,6 +328,81 @@ pegaria, porque com dublês o `findFirst` sempre devolve o que o teste mandou.
 O que **não** foi verificado: o DeepSeek nunca foi chamado de fato. Todo o
 caminho rodou contra o provedor falso, então a qualidade do roteiro em
 português e a aderência do modelo ao formato ainda são previsão.
+
+---
+
+## Fase 8 — Hardening — backup e runbook prontos
+
+### Backup
+
+Era o maior risco aberto do projeto: **não havia nenhum**. Um `docker volume
+rm` ou uma falha de disco apagaria roteiros, planos de edição, transcrições e
+correções de legenda — meses de decisão editorial, sem recurso.
+
+Entra o **banco** e os **assets** (logo, trilha). Não entram os vídeos
+originais, por escolha: são gigabytes por projeto, o cliente tem o arquivo na
+câmera, e um backup diário deles encheria o disco da VPS em uma semana. Perder
+um vídeo significa reenviar; perder o banco significa perder o trabalho.
+
+O `.env` entra junto, e não é detalhe: a chave de IA é cifrada com o
+`JWT_ACCESS_SECRET`, e sem ele o backup do banco restauraria uma credencial
+ilegível.
+
+Roda por cron às 03:20, com 14 dias de retenção. O cron é instalado pelo
+provisionamento, que já roda a cada deploy — um cron que depende de alguém
+lembrar de configurar é um cron que não existe.
+
+### Restauração testável
+
+`studio-restore.sh --conferir` valida o backup **sem tocar em produção**. Um
+backup que nunca foi restaurado é uma suposição, e descobrir que o dump está
+corrompido depois de derrubar o banco seria o pior momento possível.
+
+A restauração real exige confirmação **digitada**, não um `-y`: um prompt que
+se responde sem ler não protege ninguém. E salva o estado atual antes de
+sobrescrever — se a restauração for a decisão errada, ainda há como voltar.
+
+### Verificado com um desastre de verdade
+
+Montei um ambiente igual ao da VPS — container `makucho-postgres`, volume
+`studio_media` —, apliquei as migrations reais, criei dados, **apaguei tudo** e
+restaurei.
+
+| Verificação | Resultado |
+|---|---|
+| Roteiro, workspace, usuário, 25 tabelas | voltaram |
+| Assets | voltaram |
+| "Vídeo" de 1,9 MB | ficou de fora, como projetado |
+| Tamanho do backup | **68 KB** |
+| Backup corrompido | detectado pelo checksum |
+| Dump vazio | recusado |
+| Confirmação errada | cancela sem tocar no banco |
+| Cron após 3 deploys | 1 entrada, e a do portal preservada |
+
+**Um defeito encontrado testando:** `pg_restore --list /dev/stdin` falha dentro
+do container com *"did not find magic string in file header"*. Sem argumento de
+arquivo ele lê de stdin, que é o que se quer — e esse era justamente o passo
+que deveria detectar um dump inválido.
+
+### Runbook
+
+`studio/docs/RUNBOOK.md`, escrito para ser lido às 2h da manhã por quem não
+construiu o sistema. Começa pelo **sintoma** e não pelo componente: quem chega
+ali sabe que "o vídeo não processa", não que "o worker perdeu o lock".
+
+Conferi os comandos contra o código, e dois estavam errados: a chave do lock é
+`studio:heavy-job-lock` e a coluna é `costCents`. Um runbook com comando errado
+é pior que nenhum.
+
+### O que falta da Fase 8
+
+Não é código:
+
+- **teste real com o cliente** — o critério de aceite do plano;
+- **medição de tempos e ajuste da VPS** — depende de carga real;
+- **monitoramento ativo** — hoje alguém precisa olhar; o `/api/health` existe
+  e serve para um monitor externo apontar;
+- **teste de carga** — faz sentido depois de saber como o uso real se parece.
 
 ---
 
@@ -618,4 +695,6 @@ quando o worker processar um vídeo de verdade.
    Vale medir o que só a execução mostra: a qualidade da transcrição em
    português, o tempo real de processamento na VPS, e se a proposta da IA faz
    sentido editorial sobre uma gravação de verdade.
-2. **Fase 8 — hardening e piloto.** É o que resta do plano.
+2. **Monitoramento externo.** Um monitor apontando para `/api/health` fecha a
+   lacuna entre "quebrou" e "alguém percebeu". O resto do hardening — carga,
+   ajuste de VPS — só faz sentido depois de medir uso real.
