@@ -12,6 +12,20 @@ const loginSchema = z.object({
   password: z.string().min(1).max(200),
 });
 
+/**
+ * Primeiro acesso: cria o unico usuario que esta rota aceita criar.
+ *
+ * Doze caracteres de senha, e nao os oito do seed: o seed roda por
+ * quem ja tem acesso ao servidor, esta rota fica aberta na internet
+ * ate alguem usa-la.
+ */
+const primeiroAcessoSchema = z.object({
+  email: z.string().email().max(200),
+  password: z.string().min(12).max(200),
+  name: z.string().min(1).max(120).default('Administrador'),
+  workspace: z.string().min(1).max(80).default('MAKUCHO'),
+});
+
 // Cookies de sessao. httpOnly impede leitura por script; sameSite lax
 // permite a navegacao normal e barra envio em requisicao de terceiro.
 const COOKIE_BASE = {
@@ -24,6 +38,54 @@ const COOKIE_BASE = {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  /**
+   * O Studio ja tem dono?
+   *
+   * A tela consulta isto para decidir entre mostrar o login ou o
+   * primeiro acesso. Publica de proposito: responder que o produto
+   * esta em uso nao vaza nada que a tela de login ja nao mostre.
+   */
+  @Public()
+  @Get('setup')
+  async precisaDeSetup() {
+    return { precisaDeSetup: await this.auth.precisaDePrimeiroAcesso() };
+  }
+
+  /**
+   * Cria o primeiro usuario e ja o autentica.
+   *
+   * Ja autenticar evita um segundo passo que so existiria para
+   * repetir a senha que a pessoa acabou de digitar. A rota se fecha
+   * sozinha: com um usuario no banco, responde 409.
+   */
+  @Public()
+  @Post('setup')
+  @HttpCode(201)
+  async primeiroAcesso(@Body() body: unknown, @Res({ passthrough: true }) res: Response) {
+    const dados = primeiroAcessoSchema.parse(body);
+
+    const { user, membership } = await this.auth.criarPrimeiroAcesso({
+      email: dados.email,
+      senha: dados.password,
+      nome: dados.name,
+      workspace: dados.workspace,
+    });
+
+    const tenant: TenantContext = {
+      userId: user.id,
+      workspaceId: membership.workspaceId,
+      role: membership.role,
+    };
+
+    const { accessToken, refreshToken } = await this.auth.issueTokens(tenant);
+    this.gravarCookies(res, accessToken, refreshToken);
+
+    return {
+      user,
+      workspace: { id: membership.workspaceId, role: membership.role },
+    };
+  }
 
   @Public()
   @Post('login')

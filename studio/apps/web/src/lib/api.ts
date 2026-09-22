@@ -35,20 +35,73 @@ interface Opcoes {
   sinal?: AbortSignal;
 }
 
+/**
+ * Renovacao de sessao, uma por vez.
+ *
+ * O token de acesso dura 15 minutos e o de renovacao, 7 dias. Sem
+ * renovar sozinho, a pessoa seria expulsa quatro vezes por hora --
+ * possivelmente no meio de uma edicao nao salva.
+ *
+ * A promessa e COMPARTILHADA entre chamadas: uma tela que dispara
+ * cinco requisicoes ao abrir faria cinco renovacoes simultaneas, e
+ * as quatro ultimas usariam um cookie que a primeira ja rotacionou.
+ */
+let renovacaoEmCurso: Promise<boolean> | null = null;
+
+function renovarSessao(): Promise<boolean> {
+  renovacaoEmCurso ??= fetch('/api/auth/refresh', {
+    method: 'POST',
+    credentials: 'include',
+  })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => {
+      renovacaoEmCurso = null;
+    });
+
+  return renovacaoEmCurso;
+}
+
+/** Para a tela decidir mostrar o login sem depender de try/catch. */
+export function aoExpirarSessao(acao: () => void): void {
+  aoExpirar = acao;
+}
+
+let aoExpirar: (() => void) | null = null;
+
 export async function api<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
   const { metodo = 'GET', corpo, sinal } = opcoes;
 
-  const resposta = await fetch(`/api${caminho}`, {
-    method: metodo,
-    credentials: 'include',
-    signal: sinal,
-    ...(corpo !== undefined && {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(corpo),
-    }),
-  });
+  const enviar = () =>
+    fetch(`/api${caminho}`, {
+      method: metodo,
+      credentials: 'include',
+      signal: sinal,
+      ...(corpo !== undefined && {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo),
+      }),
+    });
 
-  if (resposta.status === 401) throw new SessaoExpirada();
+  let resposta = await enviar();
+
+  // Um 401 no meio do trabalho quase sempre e o token de 15 minutos
+  // expirando, nao a sessao de 7 dias. Renovar e repetir devolve a
+  // chamada sem que ninguem perceba.
+  //
+  // As rotas de auth ficam de fora: renovar para tentar renovar de
+  // novo seria um laco, e um 401 no login significa senha errada.
+  if (resposta.status === 401 && !caminho.startsWith('/auth/')) {
+    if (await renovarSessao()) {
+      resposta = await enviar();
+    }
+  }
+
+  if (resposta.status === 401) {
+    // A renovacao tambem falhou: a sessao acabou de verdade.
+    aoExpirar?.();
+    throw new SessaoExpirada();
+  }
 
   if (!resposta.ok) {
     // A API devolve { message } nos erros tratados. Quando não
@@ -77,6 +130,39 @@ function mensagemPorStatus(status: number): string {
   if (status >= 500) return 'o servidor falhou. Tente de novo em instantes.';
   return 'não foi possível completar a ação.';
 }
+
+// ============================================================
+// Sessao
+// ============================================================
+
+export interface Sessao {
+  user: { id: string; email: string; name: string };
+  workspace: { id: string; role: string };
+}
+
+export const auth = {
+  /** O Studio ja tem dono? Decide entre login e primeiro acesso. */
+  precisaDeSetup: () => api<{ precisaDeSetup: boolean }>('/auth/setup'),
+
+  entrar: (email: string, password: string) =>
+    api<Sessao>('/auth/login', { metodo: 'POST', corpo: { email, password } }),
+
+  // Cria o primeiro usuario E ja autentica: um segundo passo so
+  // existiria para repetir a senha recem-digitada.
+  criarPrimeiroAcesso: (dados: {
+    email: string;
+    password: string;
+    name?: string;
+    workspace?: string;
+  }) => api<Sessao>('/auth/setup', { metodo: 'POST', corpo: dados }),
+
+  sair: () => api<{ ok: boolean }>('/auth/logout', { metodo: 'POST' }),
+
+  // Devolve null em vez de lancar: "nao esta logado" e uma resposta,
+  // nao um erro, para quem so quer saber se deve mostrar o login.
+  atual: () =>
+    api<{ userId: string; workspaceId: string; role: string }>('/auth/me').catch(() => null),
+};
 
 // ============================================================
 // Projetos

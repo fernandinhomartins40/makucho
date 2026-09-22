@@ -10,6 +10,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
 import { loadEnv } from './config/env';
 
 async function bootstrap(): Promise<void> {
@@ -46,6 +47,13 @@ async function bootstrap(): Promise<void> {
   //
   // Instalar class-validator so para satisfazer o pipe adicionaria uma
   // dependencia sem uso e dois modelos de validacao convivendo.
+  //
+  // O que faltava era TRADUZIR o ZodError: sem este filtro, toda
+  // validacao que falha virava 500 "Internal server error", e a tela
+  // dizia "tente de novo em instantes" para um erro que nao se
+  // resolve tentando -- a senha continua curta. Medido em
+  // POST /auth/setup.
+  app.useGlobalFilters(new ZodExceptionFilter());
 
   app.enableCors({
     origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : false,

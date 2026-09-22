@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { Icon } from '@phosphor-icons/react';
 import {
   IconeProjetos,
@@ -26,7 +26,9 @@ import {
   IconeAjuda,
   IconeNuvem,
   IconeAvancar,
+  IconeSair,
 } from '../icones';
+import { auth } from '../../lib/api';
 
 interface ItemDeNavegacao {
   href: string;
@@ -91,6 +93,8 @@ export function Sidebar() {
           </span>
           <span className="nav-item__rotulo">Ajuda</span>
         </Link>
+
+        <Sair />
       </div>
     </aside>
   );
@@ -156,6 +160,46 @@ function Armazenamento() {
         <IconeAvancar size={13} />
       </Link>
     </div>
+  );
+}
+
+/**
+ * Sair.
+ *
+ * Sem isto nao ha como trocar de conta nem encerrar a sessao num
+ * computador compartilhado -- o cookie dura sete dias.
+ *
+ * `replace` e nao `push`: o botao voltar nao pode trazer de volta uma
+ * tela autenticada depois de sair. Ela viria do cache do navegador e
+ * pareceria que a sessao continua.
+ */
+function Sair() {
+  const router = useRouter();
+  const [saindo, setSaindo] = useState(false);
+
+  const sair = async () => {
+    setSaindo(true);
+    // O `catch` ignora a falha de proposito: se a chamada nao passar,
+    // ir para a tela de entrar continua sendo o certo -- e insistir
+    // deixaria a pessoa presa numa tela que ela pediu para deixar.
+    await auth.sair().catch(() => undefined);
+    router.replace('/entrar');
+    router.refresh();
+  };
+
+  return (
+    <button
+      type="button"
+      className="nav-item"
+      onClick={() => void sair()}
+      disabled={saindo}
+      style={{ width: '100%', border: 0, background: 'none', cursor: 'pointer' }}
+    >
+      <span className="nav-item__icone" aria-hidden>
+        <IconeSair size={20} />
+      </span>
+      <span className="nav-item__rotulo">{saindo ? 'Saindo…' : 'Sair'}</span>
+    </button>
   );
 }
 

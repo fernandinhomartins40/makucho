@@ -6,7 +6,7 @@
 // o outro (ADR 0002).
 // ============================================================
 
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma.service';
@@ -23,6 +23,101 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
   ) {}
+
+  /**
+   * Existe algum usuario no sistema?
+   *
+   * E o que decide se a tela de primeiro acesso aparece. A pergunta
+   * e publica de proposito: responder "ja tem dono" a quem tenta
+   * cadastrar nao vaza nada -- o fato de o produto estar em uso e
+   * visivel na propria tela de login.
+   */
+  async precisaDePrimeiroAcesso(): Promise<boolean> {
+    const quantos = await this.prisma.studioUser.count();
+    return quantos === 0;
+  }
+
+  /**
+   * Cria o PRIMEIRO usuario, e so o primeiro.
+   *
+   * Nao e uma rota de registro publico: ela se fecha sozinha assim
+   * que existe um usuario, e a partir dai responde 409 a qualquer
+   * tentativa. O Studio e para um cliente, nao um SaaS aberto.
+   *
+   * A contagem e a criacao acontecem na MESMA transacao. Sem isso,
+   * dois cadastros simultaneos passariam os dois pela verificacao
+   * antes de qualquer um gravar, e o segundo viraria um OWNER que
+   * ninguem esperava.
+   */
+  async criarPrimeiroAcesso(dados: {
+    email: string;
+    senha: string;
+    nome: string;
+    workspace: string;
+  }) {
+    const email = dados.email.trim().toLowerCase();
+
+    // Doze caracteres, e nao os oito do seed: o seed roda por quem
+    // tem acesso ao servidor, esta rota fica aberta na internet ate
+    // alguem usa-la. A diferenca de exposicao justifica a diferenca
+    // de exigencia.
+    if (dados.senha.length < 12) {
+      throw new BadRequestException('a senha precisa de ao menos 12 caracteres');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if ((await tx.studioUser.count()) > 0) {
+        throw new ConflictException(
+          'este Studio ja tem um usuario; peca um convite a quem administra',
+        );
+      }
+
+      const passwordHash = await argon2.hash(dados.senha, {
+        // Os mesmos parametros que o `validateUser` espera. Divergir
+        // aqui produziria um hash que o login nao aceita, e o erro
+        // apareceria como "senha incorreta" -- mandando procurar no
+        // lugar errado.
+        type: argon2.argon2id,
+        memoryCost: 65536,
+        timeCost: 3,
+        parallelism: 4,
+      });
+
+      const slug =
+        dados.workspace
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)/g, '') || 'workspace';
+
+      const espaco = await tx.workspace.create({
+        data: { name: dados.workspace, slug },
+      });
+
+      const usuario = await tx.studioUser.create({
+        data: { email, passwordHash, name: dados.nome },
+      });
+
+      await tx.membership.create({
+        data: { userId: usuario.id, workspaceId: espaco.id, role: 'OWNER' },
+      });
+
+      // A cota do ADR 0003 precisa existir antes do primeiro upload:
+      // sem a linha, a checagem de espaco nao tem contra o que
+      // comparar.
+      await tx.retentionSettings.upsert({
+        where: { workspaceId: espaco.id },
+        create: { workspaceId: espaco.id },
+        update: {},
+      });
+
+      return {
+        user: { id: usuario.id, email: usuario.email, name: usuario.name },
+        membership: { workspaceId: espaco.id, role: 'OWNER' as const },
+      };
+    });
+  }
 
   async validateUser(email: string, senha: string) {
     const user = await this.prisma.studioUser.findUnique({
