@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (sétima revisão: Fases 7 e 5c fechadas).
+> Atualizado em 2026-09-22 (oitava revisão: Fase 6 completa — legendas queimadas).
 
 ## Panorama
 
@@ -18,8 +18,8 @@
 | 5a | IA: adapter e travas de custo | **concluída** |
 | 5b | IA: seleção de trechos e risco | **concluída** |
 | 5c | IA: roteiro e sugestões | **concluída** — rodam sem gravação |
-| 5d | IA: candidatos e refino | pendente — **próximo passo** |
-| 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
+| 5d | IA: candidatos e refino | pendente |
+| 6 | Preview e composição | **concluída** — timeline (ADR 0008) e legendas queimadas |
 | 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
 | 8 | Hardening e piloto | pendente |
 
@@ -41,24 +41,23 @@ escreve o rascunho do roteiro a partir do tema e do perfil de comunicação;
 a pessoa grava; o vídeo vira proxy e transcrição; a IA escolhe os trechos
 com o motivo de cada escolha e o risco de tirá-los do contexto; o editor
 abre essa proposta — e "Exportar vídeo" devolve um mp4 pronto para
-publicar.
+publicar, com as legendas queimadas e sincronizadas.
 
-As duas pontas são o que mudou nesta revisão. Antes o produto tinha opinião
-no meio e nada nas extremidades: não ajudava a escrever e não entregava
-arquivo.
+O que mudou nas últimas revisões foram as duas pontas e o acabamento. Antes
+o produto tinha opinião no meio e nada nas extremidades: não ajudava a
+escrever, não entregava arquivo, e o arquivo que passou a entregar não
+parecia publicável sem legenda.
 
 O que ainda **não** funciona, sem rodeio:
 
 - **duas das seis chamadas da seção 26**: candidatos (#4) e refino (#6). As
   outras quatro rodam;
-- **legendas queimadas no vídeo**: o render entrega corte e áudio
-  normalizado; as captions são o que resta da Fase 6;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
 
-A partir daqui, o que falta é acabamento — legenda queimada, assets — e as
-duas chamadas de IA que operam sobre uma timeline já montada. O caminho
-principal, do tema ao arquivo, está inteiro.
+A partir daqui, o que falta é o upload de assets e as duas chamadas de IA
+que operam sobre uma timeline já montada. O caminho principal, do tema ao
+arquivo publicável, está inteiro.
 
 ---
 
@@ -395,21 +394,74 @@ com palavras → `ANALYZING`.
 
 ---
 
-## Fase 6 — antecipada em parte
+## Fase 6 — Preview e composição — CONCLUÍDA
 
 A timeline veio antes (ADR 0008) e está no ar. Nove operações validadas:
 mover, ajustar corte, alternar, dividir, duplicar, reordenar, editar legenda,
 trocar estilo e trocar música.
 
-O que falta da fase: **captions renderizadas**.
+As legendas queimadas fecharam a fase.
 
-Os componentes Remotion saíram do caminho. A Fase 7 renderiza com FFmpeg
-puro, e o Dockerfile do worker chegou a copiar um `studio/remotion` que nunca
-existiu — o que teria quebrado o build. Remotion e Chromium foram removidos
-da imagem em vez de criados: um navegador headless dentro do container
-custaria centenas de MB e minutos de CPU numa VPS compartilhada, para fazer
-o que o `filter_complex` já faz. Se as captions vierem a exigi-lo, a decisão
-merece um ADR próprio.
+**A legenda não é escrita, é derivada.** Cada palavra exibida vem de uma
+`TranscriptWord` com o timestamp que o whisper mediu, e nenhuma função aceita
+texto de fora. Isso é deliberado: legenda que não foi dita é a mesma violação
+que a IA inventar fala, com o agravante de ficar **queimada** no arquivo —
+sem como corrigir depois de publicado.
+
+**Por `.ass` e não `drawtext`.** O `drawtext` precisaria de um filtro por
+bloco, cada um com `enable='between(t,...)'` — perto de 60 filtros num vídeo
+de 60s, num `filter_complex` que já carrega dois por clip. E não tem como
+destacar a palavra ativa, que é justamente o estilo que prende atenção. O
+`.ass` tem karaokê nativo (`\kf`), contorno e posição no próprio estilo, e o
+texto vive num **arquivo**: nada dele entra na linha de comando.
+
+**O ponto mais delicado é a conversão de tempo.** O tempo de timeline é
+recalculado clip a clip, acumulando durações, em vez de lido de
+`timelineStartMs`. Com clips desligados, esse campo descreve onde o clip
+*estaria* se nada tivesse sido desligado, e o render concatena o que sobrou:
+usá-lo adiantaria toda a legenda pelo tamanho exato do que o usuário
+desligou. Três testes cobrem exatamente isso.
+
+#### Um defeito que só apareceu assistindo ao resultado
+
+O `Dialogue` saía com **dez campos** para os nove que o `Format:` declara.
+Não é erro de sintaxe — o libass trata o excedente como início do texto, e a
+vírgula aparecia **queimada** antes da primeira palavra. O exit 0 não mostrava
+nada, o `.ass` era válido, e o teste de unidade passava porque conferia o
+prefixo da linha. Só o quadro extraído do mp4 mostrou: `,Atenção não perca`.
+
+Há teste que reprova a regressão, conferido reintroduzindo o bug de propósito.
+
+A fonte padrão também mudou depois do container: `Liberation Sans`, que é a
+que **existe** na imagem. Uma fonte ausente não falha — o libass cai num
+substituto em silêncio, e a legenda sai com uma tipografia que ninguém
+escolheu.
+
+| Verificação (FFmpeg real) | Resultado |
+|---|---|
+| Render com legenda | exit 0 |
+| Dimensões / pixel format / codecs | 1080×1920, yuv420p, h264+aac |
+| Duração | 6.00s — a soma dos clipes |
+| Luminância da faixa inferior | **235** com legenda, **17** sem |
+| Quadro em t=1s | "Atenção não perca", acento correto, "perca" em azul |
+| Quadro em t=4s | "Comente AGENDA você" — fala que no original está em 12s |
+| Suíte completa | **657 testes, 0 falhas** |
+
+A última linha é a prova da conversão de tempo: a legenda acompanhou o corte
+em vez de ficar no tempo do original.
+
+**Os componentes Remotion saíram do caminho, e as legendas confirmaram a
+decisão.** A Fase 7 renderiza com FFmpeg puro, e o Dockerfile do worker
+chegou a copiar um `studio/remotion` que nunca existiu. Remotion e Chromium
+foram removidos da imagem em vez de criados: um navegador headless custaria
+centenas de MB e minutos de CPU numa VPS compartilhada para fazer o que o
+`filter_complex` faz. A caption era o caso que poderia justificá-lo, e não
+justificou — o `libass` resolve karaokê, contorno e posição sem browser.
+
+O que **não** foi verificado: nenhuma legenda foi gerada a partir de uma
+transcrição real do banco. As palavras do teste foram construídas à mão, com
+tempos escolhidos; o caminho `Transcription → TranscriptWord → .ass` só roda
+quando o worker processar um vídeo de verdade.
 
 ---
 
@@ -427,14 +479,21 @@ merece um ADR próprio.
 
 ## Ordem sugerida a partir daqui
 
-1. **Subir o que está pronto.** Nove commits locais — transcrição, 5a, 5b,
-   7 e 5c — e nada disso está na VPS. O ciclo fecha na máquina de
-   desenvolvimento e não fecha em produção, que é onde importa. Entre eles
-   vai a correção do `mode`, sem a qual a tela de roteiros continua sem
-   salvar para quem está usando hoje.
-2. **Legendas queimadas (resto da Fase 6).** O render entrega corte e áudio
-   normalizado; a caption é o acabamento que falta para o resultado parecer
-   um vídeo publicável.
+1. **Subir o que está pronto, e rodar o pipeline inteiro uma vez.** Dez
+   commits locais — transcrição, 5a, 5b, 7, 5c e legendas — e nada disso
+   está na VPS. Entre eles vai a correção do `mode`, sem a qual a tela de
+   roteiros continua sem salvar para quem está usando hoje.
+
+   Subir não é só deploy: é a primeira oportunidade de ver as peças se
+   falando com dados reais. Três caminhos foram construídos e nunca
+   executados de ponta a ponta — o faster-whisper nunca transcreveu áudio
+   real, o DeepSeek nunca foi chamado de fato, e o worker de render nunca
+   completou uma volta como worker. Cada um tem teste próprio e todos
+   passam; a costura entre eles é o que resta conferir.
+2. **Upload de assets** (logo e trilha em Marca). Os botões são a interface,
+   sem o `assets` por trás — e agora que o render aplica legenda pela marca,
+   é o que falta para a identidade visual chegar ao vídeo por inteiro.
 3. **Fase 5d — candidatos (#4) e refino (#6).** As duas chamadas que faltam
-   da seção 26.
-4. **Upload de assets e Fase 8.**
+   da seção 26. Operam sobre uma timeline já montada, então dependem de o
+   pipeline ter rodado.
+4. **Fase 8 — hardening e piloto.**
