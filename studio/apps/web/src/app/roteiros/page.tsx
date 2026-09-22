@@ -19,7 +19,8 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Topbar } from '../../components/shell/Topbar';
-import { roteiros as apiRoteiros } from '../../lib/api';
+import { ia, roteiros as apiRoteiros } from '../../lib/api';
+import type { SugestaoDaIa } from '../../lib/api';
 import {
   IconeIA,
   IconeRelogio,
@@ -38,7 +39,27 @@ import {
 
 // ---------- Estrutura ----------
 
-type Papel = 'hook' | 'problem' | 'authority' | 'cta';
+// Os treze papeis do vocabulario (`clipRoleSchema`), nao quatro.
+//
+// A tela nasceu com quatro, e isso criava dois defeitos: um roteiro
+// salvo com qualquer outro papel -- vindo da IA ou de outra tela --
+// virava `undefined` em ROTULO e INTENCAO e quebrava a renderizacao;
+// e a geracao com IA ficaria limitada a um quarto do vocabulario que
+// o resto do produto usa.
+type Papel =
+  | 'hook'
+  | 'problem'
+  | 'context'
+  | 'curiosity_gap'
+  | 'authority'
+  | 'introduction'
+  | 'proof'
+  | 'insight'
+  | 'solution'
+  | 'pattern_interrupt'
+  | 'payoff'
+  | 'offer'
+  | 'cta';
 
 /** Duracao alvo do roteiro, no limite que o contrato aceita. */
 const DURACAO_ALVO_MS = 45_000;
@@ -52,14 +73,32 @@ interface Bloco {
 const ROTULO: Record<Papel, string> = {
   hook: 'Hook',
   problem: 'Problema',
+  context: 'Contexto',
+  curiosity_gap: 'Curiosidade',
   authority: 'Autoridade',
+  introduction: 'Apresentação',
+  proof: 'Prova',
+  insight: 'Insight',
+  solution: 'Solução',
+  pattern_interrupt: 'Quebra de padrão',
+  payoff: 'Recompensa',
+  offer: 'Oferta',
   cta: 'CTA',
 };
 
 const COR: Record<Papel, string> = {
   hook: '#2f66ff',
   problem: '#8b5cf6',
+  context: '#64748b',
+  curiosity_gap: '#a855f7',
   authority: '#41c8ff',
+  introduction: '#94a3b8',
+  proof: '#0ea5e9',
+  insight: '#eab308',
+  solution: '#14b8a6',
+  pattern_interrupt: '#f97316',
+  payoff: '#10b981',
+  offer: '#ec4899',
   cta: '#22c55e',
 };
 
@@ -67,9 +106,22 @@ const COR: Record<Papel, string> = {
 const INTENCAO: Record<Papel, string> = {
   hook: 'Os primeiros segundos. Uma afirmação que dá vontade de continuar.',
   problem: 'O que dói, nomeado com clareza.',
+  context: 'O que quem assiste precisa saber antes.',
+  curiosity_gap: 'A pergunta que fica aberta e segura até o fim.',
   authority: 'Por que você pode falar disso — experiência, não currículo.',
+  introduction: 'Quem é você, depois de já ter entregado valor.',
+  proof: 'O que sustenta o que você disse — caso, número, resultado.',
+  insight: 'O que muda a forma de ver o problema.',
+  solution: 'O caminho, aplicável hoje.',
+  pattern_interrupt: 'A virada que recupera quem estava dispersando.',
+  payoff: 'A entrega do que o hook prometeu.',
+  offer: 'O que você oferece, sem rodeio.',
   cta: 'Uma ação só, clara e verificável.',
 };
+
+/** Um papel do banco que a tela não conhece não pode quebrar a tela. */
+const PAPEIS = Object.keys(ROTULO) as Papel[];
+const ehPapel = (v: string): v is Papel => (PAPEIS as string[]).includes(v);
 
 const INICIAL: Bloco[] = [
   {
@@ -243,6 +295,13 @@ function Roteiro() {
   const [gerando, setGerando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  // Sugestoes da IA -- ADICIONAIS ao checklist local, nunca no lugar
+  // dele. Os quatro criterios sao deterministicos, explicaveis e
+  // funcionam offline; se a IA falhar, eles continuam.
+  const [sugestoesIa, setSugestoesIa] = useState<SugestaoDaIa[]>([]);
+  const [iaIndisponivel, setIaIndisponivel] = useState<string | null>(null);
+  const [pedindoSugestoes, setPedindoSugestoes] = useState(false);
+
   const [tema, setTema] = useState('Atendimento via WhatsApp');
   const [objetivo, setObjetivo] = useState('Atrair mais clientes');
   const [publico, setPublico] = useState('Pequenos e médios negócios');
@@ -275,7 +334,9 @@ function Roteiro() {
             .sort((a, b) => a.position - b.position)
             .map((b, i) => ({
               id: b.id ?? `b${i}`,
-              papel: b.role as Papel,
+              // `ehPapel` e nao `as`: um papel que a tela nao conhece
+              // viraria `undefined` em ROTULO e quebraria o render.
+              papel: ehPapel(b.role) ? b.role : 'insight',
               texto: b.text,
             })),
         );
@@ -307,7 +368,12 @@ function Roteiro() {
     const id = setTimeout(async () => {
       const corpo = {
         title: titulo.trim() || 'Roteiro sem título',
-        mode: 'manual',
+        // `BULLETS` e nao 'manual': 'manual' nao existe em
+        // SCRIPT_MODES, e o contrato recusava TODO salvamento desta
+        // tela com 400 -- a pessoa escrevia, via "salvando", e nada
+        // era gravado. O modo descreve o formato do texto, nao quem
+        // escreveu, e o que esta tela produz e frase curta por bloco.
+        mode: 'BULLETS',
         framework: 'authority_education',
         targetDurationMs: DURACAO_ALVO_MS,
         blocks: blocos
@@ -340,6 +406,53 @@ function Roteiro() {
     return () => clearTimeout(id);
   }, [blocos, titulo, roteiroId]);
 
+  // ---------- Sugestões da IA ----------
+  //
+  // Debounce de 2 s (seção 26.3), e o servidor ainda aplica um
+  // intervalo mínimo de 20 s por roteiro: o debounce é proteção do
+  // cliente, e cliente não é confiável. Uma aba presa num laço
+  // transformaria digitação em uma chamada por tecla.
+  //
+  // Depende do `roteiroId`, então só roda depois do primeiro
+  // salvamento — pedir sugestão sobre um roteiro que o servidor não
+  // conhece não teria o que analisar.
+  useEffect(() => {
+    if (!roteiroId) return;
+    if (!blocos.some((b) => b.texto.trim())) return;
+
+    const id = setTimeout(async () => {
+      setPedindoSugestoes(true);
+      try {
+        const r = await ia.sugestoesDeRoteiro(roteiroId);
+        setSugestoesIa(r.sugestoes);
+        setIaIndisponivel(r.indisponivel ?? null);
+      } catch (e) {
+        // Não vira aviso na tela: ninguém clicou em nada, e um erro
+        // vermelho que aparece sozinho é indistinguível de defeito.
+        setSugestoesIa([]);
+        setIaIndisponivel(e instanceof Error ? e.message : 'sugestões indisponíveis');
+      } finally {
+        setPedindoSugestoes(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(id);
+  }, [blocos, roteiroId]);
+
+  /**
+   * Aplica uma sugestão: troca o texto do bloco pelo reescrito.
+   *
+   * Some da lista depois de aplicada. Uma sugestão que continua
+   * visível depois de aceita convida a clicar de novo, e o segundo
+   * clique trocaria o texto por um que já está lá.
+   */
+  const aplicarSugestaoDaIa = (s: SugestaoDaIa) => {
+    setBlocos((atual) =>
+      atual.map((b, i) => (i === s.blockIndex ? { ...b, texto: s.replacementText } : b)),
+    );
+    setSugestoesIa((atual) => atual.filter((x) => x.blockIndex !== s.blockIndex));
+  };
+
   const editar = (id: string, texto: string) =>
     setBlocos((atual) => atual.map((b) => (b.id === id ? { ...b, texto } : b)));
 
@@ -369,17 +482,48 @@ function Roteiro() {
       { id: `b${Date.now().toString(36)}`, papel: 'problem', texto: '' },
     ]);
 
-  // A geração real entra na Fase 5, com a chave de IA cadastrada no
-  // painel. Até lá, o botão diz o que falta em vez de fingir.
-  const gerar = () => {
+  /**
+   * #1 — gera um rascunho a partir do tema.
+   *
+   * SUBSTITUI o que está escrito, e é por isso que confirma antes
+   * quando já há texto: "gerar" não pode significar "apagar o que eu
+   * estava escrevendo" sem aviso. O tom e o público não vão daqui —
+   * vêm do perfil de comunicação, versionado, que é o que torna o
+   * resultado auditável depois.
+   */
+  const gerar = async () => {
+    const temTexto = blocos.some((b) => b.texto.trim());
+    if (
+      temTexto &&
+      !window.confirm('Isso substitui o roteiro atual. Continuar?')
+    ) {
+      return;
+    }
+
     setGerando(true);
     setAviso(null);
-    setTimeout(() => {
-      setGerando(false);
-      setAviso(
-        'A geração com IA entra na Fase 5, junto com a chave de API. A estrutura e o assistente já funcionam sobre o que você escrever.',
+
+    try {
+      const { roteiro } = await ia.gerarRoteiro({
+        tema: tema.trim() || titulo.trim(),
+        targetDurationMs: DURACAO_ALVO_MS,
+      });
+
+      setTitulo(roteiro.title);
+      setBlocos(
+        roteiro.blocks.map((b, i) => ({
+          id: `b${Date.now().toString(36)}${i}`,
+          papel: ehPapel(b.role) ? b.role : 'insight',
+          texto: b.text,
+        })),
       );
-    }, 700);
+      // O autosave grava sozinho a seguir: o roteiro gerado entra
+      // pela mesma porta de um escrito à mão, sem caminho próprio.
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'não foi possível gerar o roteiro.');
+    } finally {
+      setGerando(false);
+    }
   };
 
   const trocarPapel = (id: string, papel: Papel) =>
@@ -608,7 +752,7 @@ function Roteiro() {
               </div>
             </div>
 
-            <h3 style={{ marginBottom: 'var(--e3)' }}>Sugestões da IA</h3>
+            <h3 style={{ marginBottom: 'var(--e3)' }}>Ajustes rápidos</h3>
 
             {sugestoes.length === 0 ? (
               <p className="texto-secundario" style={{ fontSize: 13, marginBottom: 'var(--e5)' }}>
@@ -630,6 +774,70 @@ function Roteiro() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* As sugestoes da IA vem DEPOIS dos ajustes locais e
+                antes do checklist: sao adicionais, e a ordem diz
+                isso sem precisar de rotulo explicando. */}
+            {(sugestoesIa.length > 0 || iaIndisponivel || pedindoSugestoes) && (
+              <>
+                <h3 style={{ marginBottom: 'var(--e3)' }}>
+                  Sugestões da IA
+                  {pedindoSugestoes && (
+                    <span
+                      className="texto-secundario"
+                      style={{ fontSize: 12, fontWeight: 400, marginLeft: 'var(--e2)' }}
+                    >
+                      analisando…
+                    </span>
+                  )}
+                </h3>
+
+                {iaIndisponivel ? (
+                  <p
+                    className="texto-secundario"
+                    style={{ fontSize: 13, marginBottom: 'var(--e5)' }}
+                  >
+                    {iaIndisponivel}
+                  </p>
+                ) : (
+                  <div className="pilha" style={{ marginBottom: 'var(--e5)' }}>
+                    {sugestoesIa.map((s) => (
+                      <div key={s.blockIndex} className="sugestao" style={{ alignItems: 'start' }}>
+                        <IconeIA size={16} color="var(--accent)" />
+                        <div style={{ display: 'grid', gap: 'var(--e2)' }}>
+                          <strong style={{ fontSize: 13 }}>{s.issue}</strong>
+                          <span className="texto-secundario" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                            {s.reason}
+                          </span>
+                          {/* O texto reescrito aparece INTEIRO antes de
+                              aplicar: aceitar sem ler o que muda e
+                              assinar em branco. */}
+                          <span
+                            style={{
+                              fontSize: 13,
+                              lineHeight: 1.45,
+                              padding: 'var(--e2) var(--e3)',
+                              borderRadius: 6,
+                              background: 'var(--surface-2)',
+                              borderLeft: '2px solid var(--accent)',
+                            }}
+                          >
+                            {s.replacementText}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="botao botao--pequeno"
+                          onClick={() => aplicarSugestaoDaIa(s)}
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             <h3 style={{ marginBottom: 'var(--e3)' }}>Checklist do roteiro</h3>

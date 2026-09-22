@@ -306,8 +306,41 @@ export interface ResultadoDaAnalise {
   problemas: Array<{ code: string; segmentIndex: number; message: string; severity: string }>;
 }
 
+/** O que a #1 devolve: um roteiro pronto para a tela, nao salvo. */
+export interface RoteiroGeradoPelaIa {
+  roteiro: RoteiroParaSalvar;
+  custoCentavos: number;
+}
+
+export interface SugestaoDaIa {
+  blockIndex: number;
+  issue: string;
+  reason: string;
+  /** O texto pronto. Sugestao sem ele e conselho, nao ferramenta. */
+  replacementText: string;
+}
+
 export const ia = {
   consumo: () => api<ConsumoDeIa>('/settings/ai-usage'),
+  // #1 -- escreve um rascunho a partir do tema. Nao salva nada: o
+  // retorno vai para a tela, editavel, e quem decide salvar e quem
+  // vai falar o texto.
+  gerarRoteiro: (dados: {
+    tema: string;
+    framework?: string;
+    mode?: string;
+    targetDurationMs?: number;
+  }) => api<RoteiroGeradoPelaIa>('/scripts/generate', { metodo: 'POST', corpo: dados }),
+  // #2 -- POST e nao GET porque a chamada custa dinheiro e consome
+  // teto; um GET que gasta seria repetido por qualquer prefetch.
+  //
+  // Nunca falha por causa da IA: devolve lista vazia com o motivo,
+  // porque a tela chama isso sozinha e um erro sem clique e defeito.
+  sugestoesDeRoteiro: (scriptId: string) =>
+    api<{ sugestoes: SugestaoDaIa[]; indisponivel?: string }>(
+      `/scripts/${scriptId}/suggestions`,
+      { metodo: 'POST' },
+    ),
   // Leva dezenas de segundos: é síncrona de propósito, porque o
   // usuário está olhando a tela esperando o resultado.
   analisar: (projectId: string) =>

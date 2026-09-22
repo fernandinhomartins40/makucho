@@ -10,6 +10,7 @@
 export * from './vocabulary';
 export * from './edit-plan';
 export * from './ai-proposal';
+export * from './ai-roteiro';
 export * from './semantic-safety';
 export * from './brand';
 export * from './file-signature';
