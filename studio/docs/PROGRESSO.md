@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (quinta revisão: Fases 4, 5a e 5b fechadas).
+> Atualizado em 2026-09-21 (sexta revisão: Fase 7 fechada — o ciclo entrega arquivo).
 
 ## Panorama
 
@@ -20,7 +20,7 @@
 | 5c | IA: roteiro e sugestões | pendente — **próximo passo** |
 | 5d | IA: candidatos e refino | pendente |
 | 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
-| 7 | Render e entrega | pendente |
+| 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
 | 8 | Hardening e piloto | pendente |
 
 Em produção: `studio.makucho.com.br` responde 200 com SSL próprio, API e
@@ -36,21 +36,24 @@ palavra, e o projeto chega a `ANALYZING` com os silêncios já marcados como
 regiões. O editor abre esse projeto, toca o proxy e salva cada ajuste como
 uma versão no banco.
 
-**A cadeia principal fecha.** Um vídeo entra, vira proxy e transcrição, e a
-IA escolhe os trechos com o motivo de cada escolha e o risco de tirá-los do
-contexto. O editor abre a proposta real, não mais o exemplo.
+**O ciclo fecha de ponta a ponta.** Um vídeo entra, vira proxy e
+transcrição, a IA escolhe os trechos com o motivo de cada escolha e o risco
+de tirá-los do contexto, o editor abre essa proposta — e "Exportar vídeo"
+agora devolve um mp4 pronto para publicar. É a primeira vez que o produto
+tem saída, e não só opinião.
 
 O que ainda **não** funciona, sem rodeio:
 
 - **quatro das seis chamadas da seção 26**: roteiro (#1), sugestões (#2),
   candidatos (#4) e refino (#6). O encanamento está pronto e a #3 e a #5
   rodam;
-- **render**: "Exportar vídeo" não gera arquivo. É a Fase 7 inteira;
+- **legendas queimadas no vídeo**: o render entrega corte e áudio
+  normalizado; as captions são o que resta da Fase 6;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
 
-A partir daqui, o que falta é inteligência e saída — a entrada e o preparo do
-material estão prontos.
+A partir daqui, o que falta é inteligência e acabamento — a entrada, o
+preparo e a saída do material estão prontos.
 
 ---
 
@@ -225,6 +228,52 @@ intermediário para economizar um tempo que ninguém ganharia.
 
 ---
 
+### Fase 7 — o render, e o arquivo que o botão prometia
+
+"Exportar vídeo" existia desde o redesenho e não gerava nada. Era a maior
+distância que restava entre demonstração e ferramenta: o produto escolhia os
+trechos com critério e não entregava arquivo.
+
+Ao contrário da análise, o render vai **por fila**. Leva minutos, não dezenas
+de segundos, e ninguém fica olhando a tela — o usuário pede, fecha a aba e
+volta depois. É por isso que o estado precisa ser consultável, e o `GET`
+devolve quatro que o usuário distingue: `na_fila`, `processando`, `pronto` e
+`falhou`.
+
+O worker **revalida o plano com Zod** antes de começar. É a última chance de
+barrar um plano inválido antes de gastar minutos de CPU numa VPS onde o lock
+é único.
+
+Dois defeitos que só apareceram porque o FFmpeg foi executado de verdade, e
+que nenhum teste de unidade pegaria:
+
+- **`-af` não pode coexistir com a saída de um `filter_complex`.** O binário
+  responde *"Simple and complex filtering cannot be used together for the
+  same stream"* e aborta. O `loudnorm` estava num `-af`, o que significa que
+  **toda exportação teria falhado**. Foi para dentro do grafo, via
+  `[aconcat]`;
+- **o Dockerfile copiava `studio/remotion`, que não existe** — o build
+  quebraria — e faltavam as duas linhas de `worker-core`, exatamente o mesmo
+  defeito que o Dockerfile do media já tinha tido antes.
+
+| Verificação | Resultado |
+|---|---|
+| Argumentos exatos do código, com FFmpeg real | exit 0 |
+| Duração da saída | **6.00s** — a soma exata dos clipes |
+| Dimensões / pixel format | 1080×1920, yuv420p |
+| Codecs | h264 + aac, `+faststart` |
+| Suíte completa | **496 testes no studio, 0 falhas** |
+
+A duração é a prova de que o `setpts` funcionou: um vídeo de 20s entrou e
+saíram 6s de trechos selecionados. Se os relógios não tivessem sido zerados,
+a saída teria a duração do original com pausas no meio.
+
+O que **não** foi verificado: o worker nunca rodou como worker. Os argumentos
+do FFmpeg foram exercitados com binário real, mas o laço BullMQ → lock →
+render → gravação no banco ainda não completou uma volta.
+
+---
+
 ## Fase 0 — Fundação e decisões — CONCLUÍDA
 
 Critério do plano: *contratos compilam, migrations sobem em ambiente limpo e o
@@ -292,7 +341,15 @@ A timeline veio antes (ADR 0008) e está no ar. Nove operações validadas:
 mover, ajustar corte, alternar, dividir, duplicar, reordenar, editar legenda,
 trocar estilo e trocar música.
 
-O que falta da fase: captions renderizadas e os componentes Remotion.
+O que falta da fase: **captions renderizadas**.
+
+Os componentes Remotion saíram do caminho. A Fase 7 renderiza com FFmpeg
+puro, e o Dockerfile do worker chegou a copiar um `studio/remotion` que nunca
+existiu — o que teria quebrado o build. Remotion e Chromium foram removidos
+da imagem em vez de criados: um navegador headless dentro do container
+custaria centenas de MB e minutos de CPU numa VPS compartilhada, para fazer
+o que o `filter_complex` já faz. Se as captions vierem a exigi-lo, a decisão
+merece um ADR próprio.
 
 ---
 
@@ -310,9 +367,13 @@ O que falta da fase: captions renderizadas e os componentes Remotion.
 
 ## Ordem sugerida a partir daqui
 
-1. **Fase 7 — render.** É o que falta para o ciclo fechar de ponta a ponta:
-   hoje o produto escolhe os trechos e não entrega arquivo. É o passo com
-   maior diferença entre "demonstração" e "ferramenta".
-2. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo; podem
-   sair antes se o cliente precisar ver IA funcionando sem gravar nada.
-3. **Fase 5d, upload de assets e Fase 8.**
+1. **Subir o que está pronto.** Sete commits locais — transcrição, 5a, 5b e
+   7 — e nada disso está na VPS. O ciclo fecha na máquina de
+   desenvolvimento e não fecha em produção, que é onde importa.
+2. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo nem de
+   render; podem sair antes se o cliente precisar ver IA funcionando sem
+   gravar nada.
+3. **Legendas queimadas (resto da Fase 6).** O render entrega corte e áudio
+   normalizado; a caption é o acabamento que falta para o resultado parecer
+   um vídeo publicável.
+4. **Fase 5d, upload de assets e Fase 8.**
