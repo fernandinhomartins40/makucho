@@ -40,7 +40,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = this.extrairToken(req);
 
     if (!token) {
-      throw new UnauthorizedException('nao autenticado');
+      throw new UnauthorizedException('não autenticado');
     }
 
     try {

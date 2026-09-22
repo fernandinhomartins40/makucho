@@ -132,12 +132,12 @@ export class AuthService {
         '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHR2YWx1ZQ$0000000000000000000000000000000000000000000',
         senha,
       ).catch(() => undefined);
-      throw new UnauthorizedException('credenciais invalidas');
+      throw new UnauthorizedException('e-mail ou senha incorretos');
     }
 
     const senhaConfere = await argon2.verify(user.passwordHash, senha).catch(() => false);
     if (!senhaConfere) {
-      throw new UnauthorizedException('credenciais invalidas');
+      throw new UnauthorizedException('e-mail ou senha incorretos');
     }
 
     // Sem workspace nao ha o que acessar: todo dado do produto e

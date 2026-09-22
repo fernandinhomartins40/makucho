@@ -98,7 +98,25 @@ export async function api<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
   }
 
   if (resposta.status === 401) {
-    // A renovacao tambem falhou: a sessao acabou de verdade.
+    // Nas rotas de AUTH, 401 nao e sessao expirada: e senha errada.
+    //
+    // Sem esta distincao, quem digitava a senha errada no login lia
+    // "sua sessao expirou. Entre de novo para continuar." -- sendo
+    // que era exatamente o que ela estava tentando fazer. A mensagem
+    // real da API ("credenciais invalidas") ficava escondida.
+    if (caminho.startsWith('/auth/')) {
+      let mensagem = 'e-mail ou senha incorretos.';
+      try {
+        const dados = await resposta.json();
+        if (typeof dados?.message === 'string') mensagem = dados.message;
+      } catch {
+        // Fica a mensagem padrao.
+      }
+      throw new ErroDaApi(401, mensagem);
+    }
+
+    // Fora do auth, a renovacao tambem falhou: a sessao acabou de
+    // verdade.
     aoExpirar?.();
     throw new SessaoExpirada();
   }
@@ -144,8 +162,8 @@ export const auth = {
   /** O Studio ja tem dono? Decide entre login e primeiro acesso. */
   precisaDeSetup: () => api<{ precisaDeSetup: boolean }>('/auth/setup'),
 
-  entrar: (email: string, password: string) =>
-    api<Sessao>('/auth/login', { metodo: 'POST', corpo: { email, password } }),
+  entrar: (email: string, password: string, remember = false) =>
+    api<Sessao>('/auth/login', { metodo: 'POST', corpo: { email, password, remember } }),
 
   // Cria o primeiro usuario E ja autentica: um segundo passo so
   // existiria para repetir a senha recem-digitada.

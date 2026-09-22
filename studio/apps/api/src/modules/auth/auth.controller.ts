@@ -10,6 +10,14 @@ import { AuthService } from './auth.service';
 const loginSchema = z.object({
   email: z.string().email().transform((v) => v.trim().toLowerCase()),
   password: z.string().min(1).max(200),
+  /**
+   * Manter conectado.
+   *
+   * Sem isto, os cookies viram de SESSAO e morrem ao fechar o
+   * navegador -- o que e o certo num computador compartilhado, e
+   * irritante no proprio. Quem escolhe e a pessoa, nao nos.
+   */
+  remember: z.boolean().default(false),
 });
 
 /**
@@ -91,7 +99,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(200)
   async login(@Body() body: unknown, @Res({ passthrough: true }) res: Response) {
-    const { email, password } = loginSchema.parse(body);
+    const { email, password, remember } = loginSchema.parse(body);
     const { user, membership } = await this.auth.validateUser(email, password);
 
     const tenant: TenantContext = {
@@ -101,7 +109,7 @@ export class AuthController {
     };
 
     const { accessToken, refreshToken } = await this.auth.issueTokens(tenant);
-    this.gravarCookies(res, accessToken, refreshToken);
+    this.gravarCookies(res, accessToken, refreshToken, remember);
 
     // O token nao volta no corpo: ele ja esta no cookie, e devolve-lo
     // aqui daria a um script a chance de guarda-lo em localStorage.
@@ -118,15 +126,26 @@ export class AuthController {
     const token = (req.cookies as Record<string, string> | undefined)?.['studio_refresh'];
     const tenant = await this.auth.verifyRefresh(token ?? '');
     const { accessToken, refreshToken } = await this.auth.issueTokens(tenant);
-    this.gravarCookies(res, accessToken, refreshToken);
+
+    // Preserva a escolha original: o cookie `studio_lembrar` marca
+    // quem pediu para continuar conectado. Sem ele, a PRIMEIRA
+    // renovacao transformaria uma sessao de 7 dias numa que morre ao
+    // fechar o navegador -- e a pessoa seria deslogada sem entender.
+    const lembrar = (req.cookies as Record<string, string> | undefined)?.['studio_lembrar'] === '1';
+
+    this.gravarCookies(res, accessToken, refreshToken, lembrar);
     return { ok: true };
   }
 
   @Post('logout')
   @HttpCode(200)
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('studio_access', { ...COOKIE_BASE, domain: process.env.COOKIE_DOMAIN });
-    res.clearCookie('studio_refresh', { ...COOKIE_BASE, domain: process.env.COOKIE_DOMAIN });
+    const base = { ...COOKIE_BASE, domain: process.env.COOKIE_DOMAIN };
+    res.clearCookie('studio_access', base);
+    // O mesmo `path` com que foi gravado: sem ele o navegador nao
+    // encontra o cookie para apagar, e a sessao sobrevive ao logout.
+    res.clearCookie('studio_refresh', { ...base, path: '/api/auth/refresh' });
+    res.clearCookie('studio_lembrar', base);
     return { ok: true };
   }
 
@@ -135,20 +154,49 @@ export class AuthController {
     return tenant;
   }
 
-  private gravarCookies(res: Response, accessToken: string, refreshToken: string): void {
+  /**
+   * Grava os cookies de sessao.
+   *
+   * Com `lembrar`, eles levam `maxAge` e sobrevivem ao fechar do
+   * navegador. Sem, sao cookies de SESSAO: morrem junto com a aba.
+   *
+   * A diferenca importa num computador compartilhado -- e quem
+   * decide e a pessoa, na caixa do login.
+   */
+  private gravarCookies(
+    res: Response,
+    accessToken: string,
+    refreshToken: string,
+    lembrar = false,
+  ): void {
     const base = {
       ...COOKIE_BASE,
       secure: process.env.COOKIE_SECURE !== 'false',
       domain: process.env.COOKIE_DOMAIN,
     };
 
-    res.cookie('studio_access', accessToken, { ...base, maxAge: 15 * 60 * 1000 });
+    // Omitir `maxAge` e o que faz um cookie ser de sessao. Passar
+    // `undefined` no objeto tem o mesmo efeito, e mantem uma
+    // expressao so.
+    res.cookie('studio_access', accessToken, {
+      ...base,
+      maxAge: lembrar ? 15 * 60 * 1000 : undefined,
+    });
+
     res.cookie('studio_refresh', refreshToken, {
       ...base,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: lembrar ? 7 * 24 * 60 * 60 * 1000 : undefined,
       // O refresh so trafega na rota que o consome: reduz a exposicao
       // do token de vida longa.
       path: '/api/auth/refresh',
+    });
+
+    // Marcador para o refresh saber que escolha preservar. Nao e
+    // segredo -- so um sim/nao -- entao nao precisa de httpOnly para
+    // funcionar, mas herda por consistencia.
+    res.cookie('studio_lembrar', lembrar ? '1' : '0', {
+      ...base,
+      maxAge: lembrar ? 7 * 24 * 60 * 60 * 1000 : undefined,
     });
   }
 }
