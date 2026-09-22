@@ -209,7 +209,12 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
 export interface OpcoesDoProxy {
   entrada: string;
   saida: string;
-  larguraPx: number;
+  /**
+   * Altura do proxy. A largura sai da PROPORCAO do original.
+   *
+   * Nao ha `larguraPx`: fixar as duas distorce todo video que nao
+   * tenha exatamente a proporcao pedida, e era o que acontecia.
+   */
   alturaPx: number;
   duracaoTotalMs: number;
   crf?: number;
@@ -229,7 +234,24 @@ export async function gerarProxy(opcoes: OpcoesDoProxy): Promise<void> {
     [
       '-y',
       '-i', opcoes.entrada,
-      '-vf', `scale=${opcoes.larguraPx}:${opcoes.alturaPx}`,
+      // `-2` na largura, e nao um numero fixo, por DOIS motivos.
+      //
+      // 1. O libx264 com yuv420p RECUSA dimensao impar -- "width not
+      //    divisible by 2". A largura fixa era 405, impar, entao
+      //    NENHUM video jamais gerou proxy. Medido em producao: o
+      //    ffmpeg saia com codigo 187 e o projeto ficava preso em
+      //    INGESTING para sempre.
+      //
+      // 2. Forcar as duas dimensoes distorce qualquer video que nao
+      //    tenha exatamente a proporcao pedida. Um 480x848 (0,566)
+      //    esticado para 405x720 (0,5625) deforma o rosto de quem
+      //    gravou -- e o proxy existe justamente para essa pessoa
+      //    escolher o corte olhando para si.
+      //
+      // `-2` manda o FFmpeg calcular a largura pela proporcao do
+      // original, arredondando para o par mais proximo. A altura
+      // manda; a largura acompanha.
+      '-vf', `scale=-2:${opcoes.alturaPx}`,
       '-c:v', 'libx264',
       // ultrafast: o proxy e descartavel e so serve para assistir.
       // Gastar CPU comprimindo melhor nao faz sentido numa VPS onde

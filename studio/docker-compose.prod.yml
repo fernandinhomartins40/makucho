@@ -252,6 +252,14 @@ services:
     mem_limit: 512m
     networks:
       - studio-net
+      # Alcanca o Postgres do portal (ADR 0004), como a API.
+      #
+      # Sem esta rede o worker resolve `postgres:5432` e nao acha
+      # ninguem: o job pega o video, falha ao ler o MediaSource, e
+      # o projeto fica preso em INGESTING para sempre. A cadeia
+      # inteira depende deste primeiro passo -- transcricao, IA e
+      # render nunca chegam a comecar.
+      - makucho-net
 
   # ---------------- Worker: transcricao (faster-whisper) ----------------
   worker-transcription:
@@ -309,6 +317,14 @@ services:
     cpus: 1.5
     networks:
       - studio-net
+      # Alcanca o Postgres do portal (ADR 0004), como a API.
+      #
+      # Sem esta rede o worker resolve `postgres:5432` e nao acha
+      # ninguem: o job pega o video, falha ao ler o MediaSource, e
+      # o projeto fica preso em INGESTING para sempre. A cadeia
+      # inteira depende deste primeiro passo -- transcricao, IA e
+      # render nunca chegam a comecar.
+      - makucho-net
 
   # ---------------- Worker: render (Remotion + FFmpeg) ----------------
   worker-render:
@@ -352,6 +368,14 @@ services:
     cpus: 2.0
     networks:
       - studio-net
+      # Alcanca o Postgres do portal (ADR 0004), como a API.
+      #
+      # Sem esta rede o worker resolve `postgres:5432` e nao acha
+      # ninguem: o job pega o video, falha ao ler o MediaSource, e
+      # o projeto fica preso em INGESTING para sempre. A cadeia
+      # inteira depende deste primeiro passo -- transcricao, IA e
+      # render nunca chegam a comecar.
+      - makucho-net
 
 networks:
   studio-net:

@@ -36,9 +36,15 @@ import { dirname, resolve, sep } from 'node:path';
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
-/** 720p de altura no formato vertical: leve para assistir, nítido o
-    bastante para escolher um corte. */
-const PROXY_LARGURA = 405;
+/**
+ * Altura do proxy: 720p, leve para assistir e nítido o bastante para
+ * escolher um corte.
+ *
+ * Só a ALTURA. A largura sai da proporção do original, calculada pelo
+ * FFmpeg — fixá-la em 405 distorcia todo vídeo fora de 9:16 e, pior,
+ * 405 é ímpar: o libx264 recusa dimensão ímpar, então nenhum vídeo
+ * chegava a gerar proxy.
+ */
 const PROXY_ALTURA = 720;
 
 interface DadosDoJob {
@@ -74,6 +80,30 @@ function caminhoDe(chave: string): string {
     throw new Error(`chave de storage fora da raiz: ${chave}`);
   }
   return completo;
+}
+
+/**
+ * A largura que o `scale=-2:altura` vai produzir.
+ *
+ * Refaz a conta do FFmpeg para gravar no banco a dimensão REAL do
+ * arquivo: proporção do original, arredondada para o par mais
+ * próximo. O editor usa esses números para montar o palco, e um
+ * valor que o arquivo não tem desalinharia o preview.
+ *
+ * Sem metadados do original — um arquivo que o ffprobe não leu —
+ * devolve `null`: um palpite gravado como fato é pior que a ausência,
+ * que a tela já sabe tratar.
+ */
+function larguraDoProxy(
+  larguraOriginal: number | null | undefined,
+  alturaOriginal: number | null | undefined,
+  alturaDoProxy: number,
+): number | null {
+  if (!larguraOriginal || !alturaOriginal) return null;
+
+  const proporcional = (larguraOriginal / alturaOriginal) * alturaDoProxy;
+  // `round(x / 2) * 2` é o mesmo arredondamento do `-2` do FFmpeg.
+  return Math.max(2, Math.round(proporcional / 2) * 2);
 }
 
 async function processar(job: Job<DadosDoJob>): Promise<void> {
@@ -114,7 +144,6 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       await gerarProxy({
         entrada,
         saida: proxyTmp,
-        larguraPx: PROXY_LARGURA,
         alturaPx: PROXY_ALTURA,
         duracaoTotalMs: probe.durationMs,
         aoProgredir: (fracao) => {
@@ -136,7 +165,11 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
           mimeType: 'video/mp4',
           sizeBytes: BigInt(await tamanhoDe(`${prefixoNoStorage}/proxy.mp4`)),
           durationMs: probe.durationMs,
-          widthPx: PROXY_LARGURA,
+          // A MESMA conta que o `scale=-2` faz: altura fixa,
+          // largura pela proporção, arredondada para par. Gravar um
+          // valor fixo aqui registraria uma dimensão que o arquivo
+          // não tem, e o editor usa isto para montar o palco.
+          widthPx: larguraDoProxy(probe.widthPx, probe.heightPx, PROXY_ALTURA),
           heightPx: PROXY_ALTURA,
         },
       });
