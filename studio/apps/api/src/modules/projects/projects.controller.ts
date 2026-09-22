@@ -24,6 +24,18 @@ export class ProjectsController {
     return this.projects.obter(tenant, id);
   }
 
+  /**
+   * A transcrição palavra por palavra, para a correção de legenda.
+   *
+   * Os ids das palavras são o que a tela precisa: a correção se
+   * ancora neles e não num tempo, e é isso que a faz sobreviver a um
+   * ajuste de corte continuando no frame certo.
+   */
+  @Get(':id/transcript')
+  transcricao(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.projects.transcricao(tenant, id);
+  }
+
   @Post()
   criar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertCanWrite(tenant);

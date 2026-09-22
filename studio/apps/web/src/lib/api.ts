@@ -229,6 +229,45 @@ export const planos = {
     }),
 };
 
+// ============================================================
+// Transcrição
+//
+// Existe para a correção manual de legenda. O whisper erra nome
+// próprio, jargão e sigla, e sem correção o erro ia queimado no
+// arquivo sem recurso.
+//
+// O `id` de cada palavra é o que importa: a correção se ancora nele,
+// nunca num tempo. Um tempo quebraria no primeiro ajuste de corte —
+// a fala se move, e a correção passaria a legendar outra palavra.
+// ============================================================
+
+export interface PalavraTranscrita {
+  id: string;
+  startMs: number;
+  endMs: number;
+  texto: string;
+  /** Onde o whisper tem menos certeza é onde ele mais erra. */
+  confianca: number;
+}
+
+export interface SegmentoTranscrito {
+  id: string;
+  startMs: number;
+  endMs: number;
+  texto: string;
+  palavras: PalavraTranscrita[];
+}
+
+export interface Transcricao {
+  existe: boolean;
+  idioma?: string;
+  segmentos: SegmentoTranscrito[];
+}
+
+export const transcricao = {
+  obter: (projectId: string) => api<Transcricao>(`/projects/${projectId}/transcript`),
+};
+
 /** URL do proxy que o editor toca. Nunca o original (seção 18). */
 export function urlDoVideo(projectId: string): string {
   return `/api/projects/${projectId}/video`;

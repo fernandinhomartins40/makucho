@@ -202,8 +202,11 @@ async function prepararLegendas(
     },
   });
 
+  // O `id` vai junto porque é a âncora das correções manuais: sem
+  // ele, uma palavra corrigida pelo usuário sairia como o whisper
+  // ouviu, e a correção seria silenciosamente descartada.
   const palavras = (transcricao?.segments ?? []).flatMap((s) =>
-    s.words.map((w) => ({ startMs: w.startMs, endMs: w.endMs, word: w.word })),
+    s.words.map((w) => ({ id: w.id, startMs: w.startMs, endMs: w.endMs, word: w.word })),
   );
 
   if (palavras.length === 0) {

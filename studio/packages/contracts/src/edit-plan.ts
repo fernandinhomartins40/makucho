@@ -57,13 +57,82 @@ export const clipSchema = z
 export type Clip = z.infer<typeof clipSchema>;
 
 // ---------- Legendas ----------
-export const captionTrackSchema = z.object({
-  enabled: z.boolean(),
-  styleId: idSchema,
-  wordsPerBlock: z.number().int().min(1).max(8),
-  position: z.enum(['top', 'center', 'bottom']),
-  highlightActiveWord: z.boolean(),
-});
+//
+// Correcao de transcricao, ancorada na PALAVRA.
+//
+// O whisper erra nome proprio, jargao e sigla -- "Makucho" sai
+// "macucho", e o erro ia queimado no arquivo sem recurso. Esta e a
+// correcao manual.
+//
+// A ancora e o id da `TranscriptWord`, nunca um tempo nem um indice
+// de bloco. Motivo concreto: o tempo e o bloco sao RECALCULADOS a
+// cada render -- um ajuste de corte move a fala, e um `wordsPerBlock`
+// diferente reagrupa tudo. Uma correcao ancorada em tempo passaria a
+// legendar outra palavra, e o defeito so apareceria no video final.
+// Ancorada na palavra, ela acompanha a fala aonde a fala for.
+//
+// O que isso NAO e: reescrever fala. A palavra falada continua a
+// mesma, com o mesmo tempo; muda o que esta ESCRITO na tela. Por isso
+// `original` fica guardado -- e o que permite mostrar o que o whisper
+// ouviu, desfazer a correcao, e auditar depois se a legenda
+// corresponde ao audio.
+export const captionCorrectionSchema = z
+  .object({
+    /** Id da `TranscriptWord` corrigida. E a ancora no tempo. */
+    wordId: idSchema,
+    /** O que vai para a tela. */
+    text: z.string().min(1).max(80),
+    /**
+     * O que o whisper transcreveu.
+     *
+     * Guardado para exibir ao lado da correcao, permitir desfazer, e
+     * tornar auditavel a distancia entre o audio e a legenda. Sem
+     * ele, uma correcao abusiva -- trocar a fala por outra coisa --
+     * seria indistinguivel de um conserto de grafia.
+     */
+    original: z.string().max(80),
+  })
+  .strict()
+  .refine((c) => c.text.trim() !== c.original.trim(), {
+    message: 'a correcao e igual ao original: nao ha o que corrigir',
+    path: ['text'],
+  });
+
+export type CaptionCorrection = z.infer<typeof captionCorrectionSchema>;
+
+export const captionTrackSchema = z
+  .object({
+    enabled: z.boolean(),
+    styleId: idSchema,
+    wordsPerBlock: z.number().int().min(1).max(8),
+    position: z.enum(['top', 'center', 'bottom']),
+    highlightActiveWord: z.boolean(),
+    /**
+     * Correcoes manuais, por palavra.
+     *
+     * Vivem no EditPlan e nao na transcricao: a transcricao e o
+     * registro do que o audio contem, e reescreve-la destruiria a
+     * origem da fala -- justamente o que torna todo clipe rastreavel.
+     * A correcao e uma decisao editorial sobre o que EXIBIR, e
+     * decisao editorial mora no plano, versionada como as outras.
+     */
+    corrections: z.array(captionCorrectionSchema).max(300).default([]),
+  })
+  // Uma palavra corrigida duas vezes tornaria o resultado dependente
+  // da ordem do array.
+  .superRefine((track, ctx) => {
+    const vistos = new Set<string>();
+    track.corrections.forEach((c, i) => {
+      if (vistos.has(c.wordId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['corrections', i, 'wordId'],
+          message: `a palavra ${c.wordId} tem mais de uma correcao`,
+        });
+      }
+      vistos.add(c.wordId);
+    });
+  });
 
 // ---------- Overlays ----------
 //

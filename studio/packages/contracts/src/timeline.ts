@@ -103,12 +103,36 @@ export const reordenarSchema = z.object({
   clipIds: z.array(idSchema).min(1).max(60),
 });
 
+/**
+ * Corrige a transcricao de UMA palavra.
+ *
+ * Antes esta operacao recebia `clipId` + `text` e nao fazia nada: o
+ * `case` era um comentario e um `break`. O usuario editava, o plano
+ * salvava uma versao nova, e o render ignorava -- a legenda saia do
+ * whisper de novo. Dois defeitos ao mesmo tempo:
+ *
+ *   - nao havia ONDE a correcao ficar: a captionTrack nao tinha
+ *     campo para guardar nada;
+ *   - `clipId` nao e ancora suficiente. Um clipe de 4s tem varios
+ *     blocos de legenda, e "a legenda do clipe" nao existe como
+ *     coisa unica.
+ *
+ * A ancora agora e a PALAVRA: a menor unidade com tempo proprio, e a
+ * unica que sobrevive a um ajuste de corte ou a uma mudanca de
+ * `wordsPerBlock`.
+ */
 export const editarLegendaSchema = z.object({
   op: z.literal('editar_legenda'),
-  clipId: idSchema,
-  // Corrige erro de transcricao. Nao muda o que foi FALADO -- muda o
-  // que esta ESCRITO na tela, que e outra coisa.
-  text: z.string().min(1).max(500),
+  wordId: idSchema,
+  text: z.string().min(1).max(80),
+  /** O que o whisper transcreveu, para exibir ao lado e desfazer. */
+  original: z.string().max(80),
+});
+
+/** Desfaz uma correcao: a legenda volta ao que o whisper ouviu. */
+export const desfazerCorrecaoSchema = z.object({
+  op: z.literal('desfazer_correcao'),
+  wordId: idSchema,
 });
 
 export const trocarEstiloLegendaSchema = z.object({
@@ -131,6 +155,7 @@ export const timelineOperationSchema = z
     duplicarClipeSchema,
     reordenarSchema,
     editarLegendaSchema,
+    desfazerCorrecaoSchema,
     trocarEstiloLegendaSchema,
     trocarMusicaSchema,
   ])
@@ -294,12 +319,57 @@ export function aplicarOperacao(
       break;
     }
 
-    case 'editar_legenda':
-      // A legenda vive na track de texto, montada a partir da
-      // transcricao no momento do render. Corrigir o texto exibido
-      // nao altera o clipe nem o trecho de origem -- mas o plano
-      // segue para a validacao como qualquer outra operacao.
+    case 'editar_legenda': {
+      // A correcao ENTRA no plano. Antes este case era um `break`
+      // vazio: a operacao era aceita, uma versao era salva, e o
+      // render ignorava tudo -- a legenda saia do whisper de novo.
+      if (operacao.text.trim() === operacao.original.trim()) {
+        return { ok: false, erro: 'a correcao e igual ao original' };
+      }
+
+      // Substitui a correcao existente da mesma palavra em vez de
+      // empilhar: duas correcoes para a mesma palavra fariam o
+      // resultado depender da ordem do array.
+      const outras = novo.captions.corrections.filter((c) => c.wordId !== operacao.wordId);
+
+      novo = {
+        ...novo,
+        captions: {
+          ...novo.captions,
+          corrections: [
+            ...outras,
+            {
+              wordId: operacao.wordId,
+              text: operacao.text.trim(),
+              // O original vem da primeira correcao, nao da ultima:
+              // corrigir duas vezes nao pode fazer o "original"
+              // passar a ser a correcao anterior -- isso apagaria o
+              // que o whisper realmente ouviu.
+              original:
+                novo.captions.corrections.find((c) => c.wordId === operacao.wordId)?.original ??
+                operacao.original,
+            },
+          ],
+        },
+      };
       break;
+    }
+
+    case 'desfazer_correcao': {
+      const tinha = novo.captions.corrections.some((c) => c.wordId === operacao.wordId);
+      if (!tinha) {
+        return { ok: false, erro: 'esta palavra nao tem correcao para desfazer' };
+      }
+
+      novo = {
+        ...novo,
+        captions: {
+          ...novo.captions,
+          corrections: novo.captions.corrections.filter((c) => c.wordId !== operacao.wordId),
+        },
+      };
+      break;
+    }
 
     case 'trocar_estilo_legenda':
       novo = { ...novo, captions: { ...novo.captions, styleId: operacao.styleId } };

@@ -27,6 +27,14 @@ import type { CaptionStyleInput, EditPlanV1 } from '@makucho/studio-contracts';
 
 /** Uma palavra da transcricao, com o tempo que o whisper mediu. */
 export interface PalavraDaTranscricao {
+  /**
+   * Id da `TranscriptWord`. E a ancora das correcoes manuais.
+   *
+   * Opcional porque o gerador funciona sem ele -- uma legenda sem
+   * correcao nenhuma nao precisa de id. Mas sem id a palavra nao PODE
+   * ser corrigida, e e por isso que o worker sempre o envia.
+   */
+  id?: string;
   /** Tempo no arquivo ORIGINAL, nao na timeline do resultado. */
   startMs: number;
   endMs: number;
@@ -93,6 +101,16 @@ export function montarBlocos(opcoes: OpcoesDasLegendas): BlocoDeLegenda[] {
 
   const blocos: BlocoDeLegenda[] = [];
 
+  // As correcoes manuais, indexadas por palavra. O whisper erra nome
+  // proprio, jargao e sigla, e sem isso o erro ia QUEIMADO no arquivo
+  // sem recurso.
+  //
+  // Elas trocam o TEXTO e nada mais: o tempo continua o da palavra
+  // falada, porque o que se corrige e a grafia, nao o momento. E o
+  // que faz a correcao ficar no frame certo sem ninguem digitar
+  // tempo nenhum.
+  const correcoes = new Map(plano.captions.corrections.map((c) => [c.wordId, c.text]));
+
   // O tempo de timeline e recalculado clip a clip, acumulando as
   // duracoes, em vez de lido de `timelineStartMs`. Motivo concreto:
   // com clips desligados, o `timelineStartMs` do plano deixa de
@@ -117,7 +135,11 @@ export function montarBlocos(opcoes: OpcoesDasLegendas): BlocoDeLegenda[] {
     let caracteres = 0;
 
     for (const palavra of doClip) {
-      const texto = palavra.word.trim();
+      // A correcao tem precedencia sobre o que o whisper ouviu. Uma
+      // palavra sem id nao pode ser corrigida -- e o worker sempre
+      // envia o id, justamente para que possa.
+      const corrigido = palavra.id ? correcoes.get(palavra.id) : undefined;
+      const texto = (corrigido ?? palavra.word).trim();
       if (!texto) continue;
 
       // Deslocamento dentro do clip, somado a onde o clip comecou na

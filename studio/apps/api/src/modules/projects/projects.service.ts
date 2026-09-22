@@ -170,6 +170,61 @@ export class ProjectsService {
   }
 
   /**
+   * A transcrição do projeto, palavra por palavra.
+   *
+   * Existe para a correção manual de legenda: sem os ids das
+   * palavras, a tela não tem o que corrigir — a âncora da correção é
+   * o id da `TranscriptWord`, e não um tempo.
+   *
+   * Devolve as palavras agrupadas por segmento, porque quem corrige
+   * precisa ver a frase em volta: é o contexto que revela que
+   * "macucho" era "Makucho". Uma lista plana de palavras faria a
+   * pessoa corrigir no escuro.
+   */
+  async transcricao(tenant: TenantContext, id: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto) throw new NotFoundException();
+
+    const transcricao = await this.prisma.transcription.findFirst({
+      where: { projectId: id },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        segments: {
+          orderBy: { startMs: 'asc' },
+          include: { words: { orderBy: { startMs: 'asc' } } },
+        },
+      },
+    });
+
+    // Sem transcrição ainda não é erro: o projeto pode estar no meio
+    // do processamento, e a tela mostra "transcrevendo" em vez de um
+    // 404 que pareceria defeito.
+    if (!transcricao) return { existe: false as const, segmentos: [] };
+
+    return {
+      existe: true as const,
+      idioma: transcricao.language,
+      segmentos: transcricao.segments.map((s) => ({
+        id: s.id,
+        startMs: s.startMs,
+        endMs: s.endMs,
+        texto: s.text,
+        palavras: s.words.map((w) => ({
+          id: w.id,
+          startMs: w.startMs,
+          endMs: w.endMs,
+          texto: w.word,
+          // A confiança orienta onde olhar primeiro: o whisper erra
+          // mais onde ele mesmo tem menos certeza, e destacar isso na
+          // tela é mais útil que pedir revisão palavra por palavra.
+          confianca: w.confidence,
+        })),
+      })),
+    };
+  }
+
+  /**
    * Recomeça o processamento de um projeto que falhou.
    *
    * A tela promete "Falhou — dá para tentar de novo" desde o primeiro

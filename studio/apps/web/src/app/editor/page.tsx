@@ -24,6 +24,7 @@ import { aplicarOperacao } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelVazio } from '../../components/editor/PainelVazio';
+import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
 import { Inspector } from '../../components/editor/Inspector';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
@@ -32,8 +33,10 @@ import {
   projetos as apiProjetos,
   ia as apiIa,
   renders as apiRenders,
+  transcricao as apiTranscricao,
   urlDoVideo,
   type SituacaoDoRender,
+  type Transcricao,
 } from '../../lib/api';
 import {
   IconeDesfazer,
@@ -84,6 +87,7 @@ const PLANO_DEMO: EditPlanV1 = {
   captions: {
     enabled: true, styleId: 'padrao', wordsPerBlock: 3,
     position: 'bottom', highlightActiveWord: true,
+    corrections: [],
   },
   overlays: [],
   soundEffects: [],
@@ -123,6 +127,13 @@ function Editor() {
   const [titulo, setTitulo] = useState('Atendimento no WhatsApp');
   const [proxyUrl, setProxyUrl] = useState<string | undefined>(undefined);
   const [editandoTitulo, setEditandoTitulo] = useState(false);
+
+  // A transcricao e carregada sob demanda, na primeira vez que a aba
+  // de legendas abre: sao centenas de palavras com id, e buscar isso
+  // junto do plano deixaria o editor mais lento para quem nunca vai
+  // corrigir legenda nenhuma.
+  const [transcricao, setTranscricao] = useState<Transcricao | null>(null);
+  const [carregandoTranscricao, setCarregandoTranscricao] = useState(false);
 
   // O estado do projeto decide se a analise pode ser pedida: so faz
   // sentido depois da transcricao, e nao enquanto a midia processa.
@@ -285,6 +296,26 @@ function Editor() {
 
     return () => clearInterval(id);
   }, [projectId, render?.existe, render?.estado]);
+
+  // ---------- Transcricao, para corrigir legenda ----------
+  //
+  // Sob demanda: so busca quando a aba de legendas abre, e so uma
+  // vez. Sao centenas de palavras com id, e carregar junto do plano
+  // deixaria o editor mais lento para quem nunca vai corrigir nada.
+  useEffect(() => {
+    if (aba !== 'legendas' || !projectId) return;
+    if (transcricao !== null || carregandoTranscricao) return;
+
+    setCarregandoTranscricao(true);
+    void apiTranscricao
+      .obter(projectId)
+      .then(setTranscricao)
+      // Nao vira erro na tela: a aba mostra "a transcricao ainda nao
+      // esta pronta", que e a situacao mais provavel, em vez de um
+      // alarme para quem so abriu uma aba.
+      .catch(() => setTranscricao({ existe: false, segmentos: [] }))
+      .finally(() => setCarregandoTranscricao(false));
+  }, [aba, projectId, transcricao, carregandoTranscricao]);
 
   const executar = useCallback(
     (operacao: TimelineOperation) => {
@@ -589,10 +620,11 @@ function Editor() {
             />
           )}
           {aba === 'legendas' && (
-            <PainelVazio
-              Icone={IconeLegenda}
-              titulo="Legendas"
-              texto="Seguem a transcrição. O estilo se ajusta no painel de propriedades."
+            <PainelDeLegendas
+              plano={plano}
+              transcricao={transcricao}
+              carregando={carregandoTranscricao}
+              onOperacao={executar}
             />
           )}
           {aba === 'marca' && (

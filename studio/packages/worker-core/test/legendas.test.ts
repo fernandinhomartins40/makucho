@@ -72,6 +72,7 @@ const plano: EditPlanV1 = {
     wordsPerBlock: 3,
     position: 'bottom',
     highlightActiveWord: true,
+    corrections: [],
   },
   overlays: [],
   soundEffects: [],
@@ -229,6 +230,144 @@ const palavras: PalavraDaTranscricao[] = [
   t(
     'e nenhum bloco fica abaixo de 300ms',
     blocos.every((b) => b.fimMs - b.inicioMs >= 300),
+  );
+}
+
+// ============================================================
+// Correção manual da transcrição
+//
+// O whisper erra nome próprio, jargão e sigla. Sem correção, o erro
+// vai QUEIMADO no arquivo, sem recurso.
+//
+// A âncora é o id da palavra, nunca um tempo: o tempo continua o da
+// palavra falada, e é isso que faz a correção ficar no frame certo
+// sem ninguém digitar tempo nenhum.
+// ============================================================
+
+// As mesmas palavras, agora com id -- é o que permite corrigir.
+const comId: PalavraDaTranscricao[] = [
+  { id: 'w1', startMs: 10_000, endMs: 10_500, word: 'Bem' },
+  { id: 'w2', startMs: 10_500, endMs: 11_200, word: 'vindo' },
+  { id: 'w3', startMs: 11_200, endMs: 12_000, word: 'ao' },
+  // O erro clássico do whisper: nome próprio que ele nunca ouviu.
+  { id: 'w4', startMs: 12_000, endMs: 12_800, word: 'macucho' },
+  { id: 'w5', startMs: 12_800, endMs: 13_500, word: 'estudio' },
+];
+
+const comCorrecao = (corrections: Array<{ wordId: string; text: string; original: string }>) => ({
+  ...plano,
+  captions: { ...plano.captions, corrections },
+});
+
+{
+  const semCorrigir = montarBlocos({ plano, estilo, palavras: comId });
+  const textoOriginal = semCorrigir.flatMap((b) => b.palavras.map((p) => p.texto)).join(' ');
+  t('sem correção, sai o que o whisper ouviu', textoOriginal.includes('macucho'));
+
+  const corrigido = montarBlocos({
+    plano: comCorrecao([{ wordId: 'w4', text: 'MAKUCHO', original: 'macucho' }]),
+    estilo,
+    palavras: comId,
+  });
+  const texto = corrigido.flatMap((b) => b.palavras.map((p) => p.texto)).join(' ');
+
+  t('a correção substitui o texto', texto.includes('MAKUCHO'));
+  t('e o erro do whisper desaparece', !texto.includes('macucho'));
+  t('as outras palavras ficam intactas', texto.includes('Bem') && texto.includes('estudio'));
+
+  // O PONTO CENTRAL: a correção fica no mesmo tempo da palavra.
+  // Corrigir grafia não pode mover a legenda.
+  const blocoDoErro = semCorrigir.find((b) => b.palavras.some((p) => p.texto === 'macucho'))!;
+  const blocoCorrigido = corrigido.find((b) => b.palavras.some((p) => p.texto === 'MAKUCHO'))!;
+
+  t(
+    'a correção fica no MESMO tempo da palavra original',
+    blocoCorrigido.inicioMs === blocoDoErro.inicioMs &&
+      blocoCorrigido.fimMs === blocoDoErro.fimMs,
+  );
+  t(
+    'e o número de blocos não muda',
+    corrigido.length === semCorrigir.length,
+  );
+}
+
+{
+  // Várias correções ao mesmo tempo, em blocos diferentes.
+  const corrigido = montarBlocos({
+    plano: comCorrecao([
+      { wordId: 'w1', text: 'Bem-', original: 'Bem' },
+      { wordId: 'w4', text: 'MAKUCHO', original: 'macucho' },
+      { wordId: 'w5', text: 'Studio', original: 'estudio' },
+    ]),
+    estilo,
+    palavras: comId,
+  });
+  const texto = corrigido.flatMap((b) => b.palavras.map((p) => p.texto)).join(' ');
+
+  t('várias correções são aplicadas juntas', texto.includes('MAKUCHO') && texto.includes('Studio'));
+  t('inclusive em blocos diferentes', texto.includes('Bem-'));
+}
+
+{
+  // Correção de palavra que não está em clip nenhum: é ignorada em
+  // silêncio, porque a palavra não é legendada de todo modo. Não é
+  // erro — o usuário pode ter corrigido antes de desligar o clipe.
+  const corrigido = montarBlocos({
+    plano: comCorrecao([{ wordId: 'w99', text: 'Fantasma', original: 'x' }]),
+    estilo,
+    palavras: comId,
+  });
+  const texto = corrigido.flatMap((b) => b.palavras.map((p) => p.texto)).join(' ');
+  t('correção de palavra ausente não aparece', !texto.includes('Fantasma'));
+  t('e não quebra as outras', texto.includes('macucho'));
+}
+
+{
+  // Palavra sem id não pode ser corrigida -- e é por isso que o
+  // worker sempre envia o id.
+  const semIds: PalavraDaTranscricao[] = [
+    { startMs: 10_000, endMs: 11_000, word: 'macucho' },
+  ];
+  const corrigido = montarBlocos({
+    plano: comCorrecao([{ wordId: 'w4', text: 'MAKUCHO', original: 'macucho' }]),
+    estilo,
+    palavras: semIds,
+  });
+  const texto = corrigido.flatMap((b) => b.palavras.map((p) => p.texto)).join(' ');
+  t('palavra sem id não é corrigida (e não quebra)', texto.includes('macucho'));
+}
+
+{
+  // A correção chega ao .ass, com karaokê e escape.
+  const ass = gerarAss({
+    plano: comCorrecao([{ wordId: 'w4', text: 'MAKUCHO', original: 'macucho' }]),
+    estilo,
+    palavras: comId,
+  });
+
+  t('a correção sai no arquivo .ass', ass.includes('MAKUCHO'));
+  t('e o erro do whisper não sai', !ass.includes('macucho'));
+
+  // O tempo do evento é o da palavra: 12.000ms no original, e o c1
+  // começa em 10.000 — então a legenda entra em 2.000ms = 0:00:02.00.
+  t(
+    'a correção fica no tempo da palavra, convertido para a timeline',
+    /Dialogue: 0,0:00:0[12]\.\d\d,[^,]+,Makucho,,0,0,,.*MAKUCHO/.test(ass),
+  );
+}
+
+{
+  // Uma correção com caractere que o .ass interpreta como comando
+  // passa pelo mesmo escape do texto transcrito: a correção vem do
+  // usuário, que é uma fonte menos confiável que o whisper.
+  const ass = gerarAss({
+    plano: comCorrecao([{ wordId: 'w4', text: '{\\an8}Injetado', original: 'macucho' }]),
+    estilo,
+    palavras: comId,
+  });
+  t(
+    'chave numa CORREÇÃO é escapada, não interpretada',
+    ass.includes('\\{') && !ass.includes('{\\an8}'),
   );
 }
 

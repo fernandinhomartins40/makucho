@@ -39,6 +39,7 @@ const plano: EditPlanV1 = {
   captions: {
     enabled: true, styleId: 'st1', wordsPerBlock: 3,
     position: 'bottom', highlightActiveWord: true,
+    corrections: [],
   },
   overlays: [],
   soundEffects: [],
@@ -158,10 +159,82 @@ t('remove a trilha',
   aplicarOperacao(comMusica.plan, { op: 'trocar_musica', assetId: null })
     .plan?.music === undefined);
 
-// Corrigir erro de transcricao muda o que esta ESCRITO, nao o que
-// foi FALADO.
-t('edita o texto da legenda',
-  aplicarOperacao(plano, { op: 'editar_legenda', clipId: 'c1', text: 'Texto corrigido' }).ok);
+// ============================================================
+// Correcao de transcricao
+//
+// O whisper erra nome proprio, jargao e sigla. Antes esta operacao
+// era um `break` vazio: era aceita, salvava uma versao, e o render
+// ignorava -- a legenda saia do whisper de novo.
+// ============================================================
+
+const corrigido = aplicarOperacao(plano, {
+  op: 'editar_legenda', wordId: 'w1', text: 'Makucho', original: 'macucho',
+});
+
+t('a correcao e aceita', corrigido.ok);
+t('e ENTRA no plano -- nao e mais um break vazio',
+  corrigido.plan?.captions.corrections.length === 1);
+t('com o texto corrigido',
+  corrigido.plan?.captions.corrections[0]?.text === 'Makucho');
+t('e o original preservado, para exibir e desfazer',
+  corrigido.plan?.captions.corrections[0]?.original === 'macucho');
+
+// O tempo NAO e digitado: a ancora e a palavra, e o tempo vem dela.
+t('a correcao guarda a palavra, nao um tempo',
+  corrigido.plan?.captions.corrections[0]?.wordId === 'w1' &&
+  !('startMs' in (corrigido.plan!.captions.corrections[0] as object)));
+
+// Corrigir de novo SUBSTITUI, nao empilha: duas correcoes para a
+// mesma palavra fariam o resultado depender da ordem do array.
+const duasVezes = aplicarOperacao(corrigido.plan!, {
+  op: 'editar_legenda', wordId: 'w1', text: 'MAKUCHO', original: 'Makucho',
+});
+t('corrigir a mesma palavra de novo substitui',
+  duasVezes.plan?.captions.corrections.length === 1);
+t('e fica o texto mais recente',
+  duasVezes.plan?.captions.corrections[0]?.text === 'MAKUCHO');
+// O original e o que o WHISPER ouviu, nao a correcao anterior:
+// senao corrigir duas vezes apagaria o que o audio de fato contem.
+t('mas o original continua sendo o do whisper',
+  duasVezes.plan?.captions.corrections[0]?.original === 'macucho');
+
+// Palavras diferentes convivem.
+const duas = aplicarOperacao(corrigido.plan!, {
+  op: 'editar_legenda', wordId: 'w2', text: 'CNPJ', original: 'cinpege',
+});
+t('correcoes de palavras diferentes convivem',
+  duas.plan?.captions.corrections.length === 2);
+
+// Correcao igual ao original nao e correcao.
+t('correcao identica ao original e recusada',
+  !aplicarOperacao(plano, {
+    op: 'editar_legenda', wordId: 'w1', text: 'macucho', original: 'macucho',
+  }).ok);
+
+// ---------- Desfazer ----------
+const desfeito = aplicarOperacao(corrigido.plan!, {
+  op: 'desfazer_correcao', wordId: 'w1',
+});
+t('desfazer remove a correcao', desfeito.ok && desfeito.plan?.captions.corrections.length === 0);
+t('desfazer o que nao foi corrigido e recusado',
+  !aplicarOperacao(plano, { op: 'desfazer_correcao', wordId: 'w9' }).ok);
+
+// ---------- A correcao sobrevive a outras operacoes ----------
+//
+// E a razao de a ancora ser a palavra e nao um tempo: um ajuste de
+// corte move a fala, e uma correcao ancorada em tempo passaria a
+// legendar outra palavra.
+const depoisDeCortar = aplicarOperacao(corrigido.plan!, {
+  op: 'ajustar_corte', clipId: 'c1', sourceStartMs: 139_000, sourceEndMs: 143_000,
+});
+t('a correcao sobrevive a um ajuste de corte',
+  depoisDeCortar.plan?.captions.corrections[0]?.text === 'Makucho');
+
+const depoisDeReordenar = aplicarOperacao(corrigido.plan!, {
+  op: 'reordenar', clipIds: ['c2', 'c1', 'c3'],
+});
+t('e sobrevive a uma reordenacao',
+  depoisDeReordenar.plan?.captions.corrections[0]?.wordId === 'w1');
 
 // ============================================================
 // Sequência de operações

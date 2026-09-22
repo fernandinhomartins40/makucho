@@ -154,6 +154,10 @@ export function compilarProposta(entrada: EntradaDaCompilacao): ResultadoDaCompi
       wordsPerBlock: 3,
       position: 'bottom' as const,
       highlightActiveWord: true,
+      // Nenhuma correcao: a proposta nasce com o que o whisper ouviu.
+      // Corrigir e decisao de quem revisa, e entra depois pela
+      // operacao `editar_legenda`.
+      corrections: [],
     },
     overlays: [],
     soundEffects: [],
