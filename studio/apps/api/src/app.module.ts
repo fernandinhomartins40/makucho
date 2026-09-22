@@ -13,6 +13,7 @@ import { EditPlansModule } from './modules/edit-plans/edit-plans.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiModule } from './modules/ai/ai.module';
 import { RendersModule } from './modules/renders/renders.module';
+import { AssetsModule } from './modules/assets/assets.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -35,6 +36,7 @@ import { loadEnv } from './config/env';
     SettingsModule,
     AiModule,
     RendersModule,
+    AssetsModule,
   ],
   controllers: [HealthController],
   providers: [

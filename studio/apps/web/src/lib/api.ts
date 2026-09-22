@@ -230,6 +230,85 @@ export const planos = {
 };
 
 // ============================================================
+// Assets — logo, trilha, fonte, imagem
+//
+// O upload vai com os BYTES no corpo e os metadados em header, não em
+// multipart: o arquivo é o corpo, e multipart acrescentaria um parser
+// no caminho para transportar duas strings.
+//
+// Não passa pelo cliente `api()` porque este envia JSON; aqui o corpo
+// é binário.
+// ============================================================
+
+export interface Asset {
+  id: string;
+  kind: string;
+  mimeType: string;
+  originalName: string;
+  sizeBytes: number;
+  widthPx: number | null;
+  heightPx: number | null;
+  durationMs: number | null;
+  /** Logo sem transparência ganha retângulo branco sobre o vídeo. */
+  hasAlpha: boolean;
+  createdAt: string;
+}
+
+export interface CotaDeAssets {
+  usadoBytes: number;
+  quotaBytes: number;
+  percentual: number;
+}
+
+export const assets = {
+  listar: (kind?: string) =>
+    api<Asset[]>(`/assets${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`),
+
+  cota: () => api<CotaDeAssets>('/assets/quota'),
+
+  async enviar(kind: string, arquivo: File): Promise<{ id: string; jaExistia: boolean }> {
+    const resposta = await fetch('/api/assets', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        // O tipo REAL é verificado pelos bytes no servidor; este é o
+        // que o navegador declarou, e a divergência entre os dois é
+        // sinal de problema.
+        'Content-Type': arquivo.type || 'application/octet-stream',
+        'x-asset-kind': kind,
+        // Codificado porque header não aceita acento nem espaço, e
+        // nome de arquivo tem os dois.
+        'x-asset-name': encodeURIComponent(arquivo.name),
+      },
+      body: arquivo,
+    });
+
+    if (resposta.status === 401) throw new SessaoExpirada();
+
+    if (!resposta.ok) {
+      let mensagem = mensagemPorStatus(resposta.status);
+      try {
+        const dados = await resposta.json();
+        if (typeof dados?.message === 'string') mensagem = dados.message;
+      } catch {
+        // Fica a mensagem por status.
+      }
+      throw new ErroDaApi(resposta.status, mensagem);
+    }
+
+    return resposta.json();
+  },
+
+  // Desativa, não apaga: um vídeo antigo pode ter sido gerado com
+  // esta logo, e apagar tornaria impossível saber com que marca ele
+  // foi feito.
+  remover: (id: string) => api<{ ok: boolean }>(`/assets/${id}`, { metodo: 'DELETE' }),
+
+  /** URL para exibir. Caminho absoluto pelo nginx, como o vídeo. */
+  url: (id: string) => `/api/assets/${id}/file`,
+};
+
+// ============================================================
 // Transcrição
 //
 // Existe para a correção manual de legenda. O whisper erra nome

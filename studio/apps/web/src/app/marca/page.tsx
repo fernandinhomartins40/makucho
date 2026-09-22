@@ -16,7 +16,9 @@ import { Topbar } from '../../components/shell/Topbar';
 import {
   marca as apiMarca,
   armazenamento as apiArmazenamento,
+  assets as apiAssets,
   ia as apiIa,
+  type Asset,
   type ConsumoDeIa,
 } from '../../lib/api';
 import {
@@ -25,9 +27,6 @@ import {
   IconeAudio,
   IconeLixeira,
   IconeSalvo,
-  IconeTocar,
-  IconeMenu,
-  IconeAvancar,
   IconeCelular,
 } from '../../components/icones';
 
@@ -79,7 +78,11 @@ export default function MarcaPage() {
   const [estilo, setEstilo] = useState<string>('moderno');
   const [fonteTitulo, setFonteTitulo] = useState('Poppins');
   const [fonteCorpo, setFonteCorpo] = useState('Inter');
-  const [temLogo, setTemLogo] = useState(true);
+  // O logo vem do servidor, nao de um estado ficticio: `temLogo` era
+  // `useState(true)` e a moldura desenhava um "M" em CSS.
+  const [logo, setLogo] = useState<Asset | null>(null);
+  const [trilha, setTrilha] = useState<Asset | null>(null);
+  const [enviando, setEnviando] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -111,7 +114,60 @@ export default function MarcaPage() {
         if (perfil.fontSecond) setFonteCorpo(perfil.fontSecond);
       })
       .catch((e) => setAviso(e instanceof Error ? e.message : 'não foi possível carregar a marca.'));
+
+    void carregarAssets();
   }, []);
+
+  /**
+   * Busca o logo e a trilha ativos.
+   *
+   * `listar` devolve do mais recente para o mais antigo, e o primeiro
+   * e o que vale: substituir a logo nao apaga a anterior -- ela fica
+   * desativada, para que um video antigo continue explicavel.
+   */
+  const carregarAssets = async () => {
+    const [logos, trilhas] = await Promise.all([
+      apiAssets.listar('LOGO').catch(() => []),
+      apiAssets.listar('MUSIC').catch(() => []),
+    ]);
+    setLogo(logos[0] ?? null);
+    setTrilha(trilhas[0] ?? null);
+  };
+
+  /**
+   * Envia um arquivo e recarrega a lista.
+   *
+   * O servidor valida pelos BYTES, entao a tela nao precisa repetir a
+   * checagem de tipo -- e nao deve: duas validacoes divergem com o
+   * tempo, e a que vale e a do servidor. A tela so mostra o motivo da
+   * recusa.
+   */
+  const enviarAsset = async (kind: string, arquivo: File) => {
+    setEnviando(kind);
+    setAviso(null);
+
+    try {
+      await apiAssets.enviar(kind, arquivo);
+      await carregarAssets();
+      // O armazenamento muda com o upload: recarregar mantem o painel
+      // de cota honesto.
+      void apiArmazenamento.obter().then(setUso).catch(() => undefined);
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'não foi possível enviar o arquivo.');
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  const removerAsset = async (id: string) => {
+    setAviso(null);
+    try {
+      await apiAssets.remover(id);
+      await carregarAssets();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'não foi possível remover.');
+    }
+  };
 
   const salvar = async () => {
     setSalvando(true);
@@ -189,31 +245,13 @@ export default function MarcaPage() {
 
               <div className="marca__logo">
                 <div className="marca__moldura">
-                  {temLogo ? (
-                    <span className="linha" style={{ gap: 'var(--e3)' }}>
-                      <span
-                        aria-hidden
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 11,
-                          display: 'grid',
-                          placeItems: 'center',
-                          background: `linear-gradient(135deg, ${corDe('primaria')}, ${corDe('secundaria')})`,
-                          color: '#fff',
-                          fontSize: 24,
-                          fontWeight: 800,
-                        }}
-                      >
-                        M
-                      </span>
-                      <span style={{ lineHeight: 1.15 }}>
-                        <span style={{ fontSize: 19, fontWeight: 700, display: 'block' }}>
-                          MAKUCHO
-                        </span>
-                        <span style={{ fontSize: 15, color: corDe('secundaria') }}>Studio</span>
-                      </span>
-                    </span>
+                  {logo ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={apiAssets.url(logo.id)}
+                      alt={logo.originalName}
+                      style={{ maxWidth: '100%', maxHeight: 88, objectFit: 'contain' }}
+                    />
                   ) : (
                     <p className="texto-secundario" style={{ fontSize: 13 }}>
                       Nenhum logotipo enviado
@@ -222,27 +260,61 @@ export default function MarcaPage() {
                 </div>
 
                 <div className="pilha">
-                  <button type="button" className="botao botao--secundario botao--largo">
+                  <label
+                    className="botao botao--secundario botao--largo"
+                    style={{ cursor: enviando === 'LOGO' ? 'progress' : 'pointer' }}
+                  >
                     <IconeEnviar size={16} />
-                    Substituir logotipo
-                  </button>
+                    {enviando === 'LOGO'
+                      ? 'Enviando…'
+                      : logo
+                        ? 'Substituir logotipo'
+                        : 'Enviar logotipo'}
+                    {/* O input fica escondido atras do label porque
+                        `input[type=file]` nao aceita estilo. O
+                        `accept` e conveniencia do seletor de arquivos,
+                        nao validacao: o servidor confere os BYTES. */}
+                    <input
+                      type="file"
+                      accept="image/png,image/svg+xml,image/webp"
+                      hidden
+                      disabled={enviando !== null}
+                      onChange={(e) => {
+                        const arquivo = e.target.files?.[0];
+                        // Limpa o valor para que escolher o MESMO
+                        // arquivo de novo dispare o onChange -- sem
+                        // isto, reenviar apos um erro nao faz nada.
+                        e.target.value = '';
+                        if (arquivo) void enviarAsset('LOGO', arquivo);
+                      }}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="botao botao--secundario botao--largo"
-                    disabled={!temLogo}
-                    onClick={() => {
-                      setTemLogo(false);
-                      setSujo(true);
-                    }}
+                    disabled={!logo || enviando !== null}
+                    onClick={() => logo && void removerAsset(logo.id)}
                   >
                     <IconeLixeira size={16} />
                     Remover
                   </button>
                   <p className="campo__ajuda">
-                    PNG, SVG ou JPG. Máximo de 5 MB.
+                    {/* 2 MB e o teto real do contrato para LOGO; a
+                        tela dizia 5 MB, e o upload seria recusado por
+                        um limite que ela mesma anunciou como aceito. */}
+                    PNG, SVG ou WebP. Máximo de 2 MB.
                     <br />
                     Recomendado: fundo transparente.
                   </p>
+                  {logo && !logo.hasAlpha && logo.mimeType === 'image/png' && (
+                    /* Logo opaca ganha um retangulo branco quando
+                       sobreposta ao video. Vale avisar aqui, nao
+                       depois de o usuario ver no resultado. */
+                    <p className="campo__ajuda" style={{ color: 'var(--warning)' }}>
+                      Este PNG não tem fundo transparente: ele aparecerá com um
+                      retângulo sobre o vídeo.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
@@ -471,49 +543,84 @@ export default function MarcaPage() {
                 Essa música será usada como padrão nos seus novos vídeos.
               </p>
 
-              <div className="faixa">
-                <span className="faixa__capa" aria-hidden>
-                  <IconeAudio size={20} />
-                </span>
-
-                <span style={{ minWidth: 0 }}>
-                  <strong style={{ fontSize: 14, display: 'block' }}>Energia Criativa</strong>
-                  <span className="texto-secundario" style={{ fontSize: 12 }}>
-                    MAKUCHO Studio
+              {trilha ? (
+                <div className="faixa">
+                  <span className="faixa__capa" aria-hidden>
+                    <IconeAudio size={20} />
                   </span>
-                </span>
 
-                <button type="button" className="faixa__play" aria-label="Ouvir Energia Criativa">
-                  <IconeTocar size={17} weight="fill" />
-                </button>
+                  <span style={{ minWidth: 0 }}>
+                    <strong
+                      style={{
+                        fontSize: 14,
+                        display: 'block',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {trilha.originalName}
+                    </strong>
+                    <span className="texto-secundario" style={{ fontSize: 12 }}>
+                      {(trilha.sizeBytes / 1024 / 1024).toFixed(1)} MB
+                    </span>
+                  </span>
 
-                <span
-                  className="texto-secundario"
-                  style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
-                >
-                  0:00 / 2:18
-                </span>
+                  {/* Player do navegador, em vez de um botao de play
+                      que nao toca nada: o <audio> ja traz controle,
+                      duracao e posicao, e reescrever isso seria
+                      trabalho para chegar no mesmo lugar. */}
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={apiAssets.url(trilha.id)}
+                    style={{ height: 32, maxWidth: 220 }}
+                  />
 
-                <button
-                  type="button"
-                  className="botao-icone botao-icone--pequeno"
-                  aria-label="Mais opções da trilha"
-                >
-                  <IconeMenu size={16} />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    className="botao-icone botao-icone--pequeno"
+                    aria-label={`Remover ${trilha.originalName}`}
+                    disabled={enviando !== null}
+                    onClick={() => void removerAsset(trilha.id)}
+                  >
+                    <IconeLixeira size={16} />
+                  </button>
+                </div>
+              ) : (
+                <p className="texto-secundario" style={{ fontSize: 13 }}>
+                  Nenhuma trilha enviada. Sem ela, os vídeos saem apenas com o
+                  áudio da gravação.
+                </p>
+              )}
 
               <div className="linha entre" style={{ marginTop: 'var(--e4)', gap: 'var(--e3)' }}>
-                <button type="button" className="botao botao--secundario botao--pequeno">
-                  <IconeEnviar size={15} />
-                  Substituir trilha
-                </button>
-                <span
-                  className="linha"
-                  style={{ gap: 4, fontSize: 13, color: 'var(--accent)' }}
+                <label
+                  className="botao botao--secundario botao--pequeno"
+                  style={{ cursor: enviando === 'MUSIC' ? 'progress' : 'pointer' }}
                 >
-                  Ouça mais faixas na biblioteca
-                  <IconeAvancar size={13} />
+                  <IconeEnviar size={15} />
+                  {enviando === 'MUSIC'
+                    ? 'Enviando…'
+                    : trilha
+                      ? 'Substituir trilha'
+                      : 'Enviar trilha'}
+                  <input
+                    type="file"
+                    accept="audio/mpeg,audio/wav,audio/ogg"
+                    hidden
+                    disabled={enviando !== null}
+                    onChange={(e) => {
+                      const arquivo = e.target.files?.[0];
+                      e.target.value = '';
+                      if (arquivo) void enviarAsset('MUSIC', arquivo);
+                    }}
+                  />
+                </label>
+                <span className="campo__ajuda" style={{ textAlign: 'right' }}>
+                  MP3, WAV ou OGG.
+                  <br />
+                  Use música que você tem direito de usar.
                 </span>
               </div>
             </section>
