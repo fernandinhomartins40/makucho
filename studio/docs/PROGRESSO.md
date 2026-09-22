@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-22 (oitava revisão: Fase 6 completa — legendas queimadas).
+> Atualizado em 2026-09-22 (nona revisão: deploy no ar e upload de assets).
 
 ## Panorama
 
@@ -11,7 +11,7 @@
 |---|---|---|
 | 0 | Fundação e contratos | **concluída** |
 | 1 | Plataforma base | **concluída** |
-| 2 | Brand e Communication Studio | tela ligada; falta upload de assets |
+| 2 | Brand e Communication Studio | **concluída** — upload de logo e trilha ligado |
 | 3 | Script e Record Studio | **concluída** |
 | 4 | Ingestão e transcrição | **concluída** — pipeline fecha da câmera à transcrição |
 | 4a | Entrada de vídeo | **concluída** (ADR 0010) |
@@ -23,8 +23,8 @@
 | 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
 | 8 | Hardening e piloto | pendente |
 
-Em produção: `studio.makucho.com.br` responde 200 com SSL próprio, API e
-banco conectados.
+Em produção: `studio.makucho.com.br` no ar com tudo até aqui — transcrição,
+as quatro chamadas de IA, render com legenda e upload de assets.
 
 ---
 
@@ -52,12 +52,10 @@ O que ainda **não** funciona, sem rodeio:
 
 - **duas das seis chamadas da seção 26**: candidatos (#4) e refino (#6). As
   outras quatro rodam;
-- **upload de logo e trilha**: os botões em Marca são a interface, sem o
-  `assets` por trás.
 
-A partir daqui, o que falta é o upload de assets e as duas chamadas de IA
-que operam sobre uma timeline já montada. O caminho principal, do tema ao
-arquivo publicável, está inteiro.
+A partir daqui faltam as duas chamadas de IA que operam sobre uma timeline
+já montada, e o hardening da Fase 8. O caminho principal — do tema ao
+arquivo publicável, com marca e legenda — está inteiro e no ar.
 
 ---
 
@@ -333,6 +331,77 @@ português e a aderência do modelo ao formato ainda são previsão.
 
 ---
 
+## Fase 2 — Brand Studio — CONCLUÍDA
+
+As cores, fontes e estilo de legenda já estavam ligados. O que faltava era o
+**upload**: "Substituir logotipo" era um botão sem `onClick`, `temLogo` era um
+`useState(true)`, e a moldura desenhava um "M" em CSS. A trilha mostrava
+"Energia Criativa / 0:00 / 2:18" fixo no código.
+
+O contrato já tinha tudo — tipos de asset, MIME por tipo, tetos de tamanho,
+validação por assinatura de arquivo, geração de chave segura, modelo no banco.
+Faltavam o módulo na API e a ligação na tela.
+
+### Três regras de segurança
+
+Cada uma barra um caso concreto, e as três foram exercitadas:
+
+- **o MIME vale pelos bytes**, nunca pela extensão nem pelo `Content-Type`. Um
+  `.exe` renomeado para `.png` passa pelos dois primeiros e para no terceiro;
+- **o nome do usuário nunca vira caminho.** Ele pode conter `../`, separador de
+  diretório ou byte nulo. Fica como metadado, e a chave sai de dados
+  controlados — verificado enviando `../../../etc/passwd.png`;
+- **SVG passa por sanitização.** Um SVG é documento XML: servido inline, seu
+  `<script>` roda no domínio da aplicação, com acesso ao cookie de sessão. O
+  cliente envia o próprio logo, então o arquivo é confiável na **intenção** e
+  não na **forma** — um editor gráfico embute script sem ninguém perceber. Seis
+  vetores cobertos: `<script>`, handler inline, `javascript:`, `foreignObject`,
+  `<use>` externo e XXE.
+
+### Decisões
+
+- **requisição única**, e não o upload em pedaços do vídeo: o teto é 10 MB, e
+  retomar um upload de dois segundos é complexidade sem benefício;
+- **leitura do corpo com teto**, ao contrário da versão do módulo de mídia que
+  acumula sem limite. Um cliente que anuncie `Content-Length` pequeno e envie
+  muito mais ocuparia a RAM da VPS até o processo morrer. `req.destroy()` corta
+  a conexão em vez de ler para descartar;
+- **cota própria de 200 MB**, separada da mídia: um logo de 2 MB não pode
+  competir com um vídeo de 2 GB pelo mesmo teto, senão o primeiro upload de
+  vídeo impediria trocar a logo;
+- **hash do conteúdo como chave**: reenviar o mesmo arquivo reaproveita em vez
+  de duplicar bytes no disco;
+- **remover desativa, não apaga.** Um vídeo antigo pode ter sido gerado com
+  aquela logo, e apagar tornaria impossível saber com que marca ele foi feito.
+  Reenviar reativa;
+- **dimensões lidas do cabeçalho**, sem biblioteca de imagem: trazer `sharp`
+  para ler oito bytes acrescentaria ~30 MB de dependência nativa ao container.
+
+### Um defeito que só apareceu exercitando por HTTP
+
+`medirImagem` lia os offsets sem conferir que o `IHDR` estava onde deveria. Um
+PNG malformado gravou **altura 134.610.944** no banco — número que iria para a
+tela como dimensão da logo. Agora valida a estrutura e a escala antes de
+aceitar; fora disso devolve `null`, porque dimensão é informativa e não pode
+impedir o upload.
+
+Corrigido de passagem: a tela anunciava "Máximo de 5 MB" para o logo, mas o
+contrato define 2 MB — o upload seria recusado por um limite que a própria tela
+dizia aceitar.
+
+| Verificação | Resultado |
+|---|---|
+| Testes de unidade | 48 |
+| Contra Postgres e disco reais | 31 |
+| Ciclo por HTTP, API de pé | upload, listagem, cota, download, remoção |
+| PNG 120×80 | dimensões e alfa corretos |
+| Arquivo baixado | byte a byte idêntico ao enviado |
+| As quatro recusas | HTTP 400 com mensagem útil |
+| O que chegou ao disco | só os PNGs legítimos, com chave de hash |
+| Suíte completa | **733 testes, 0 falhas** |
+
+---
+
 ## Fase 0 — Fundação e decisões — CONCLUÍDA
 
 Critério do plano: *contratos compilam, migrations sobem em ambiente limpo e o
@@ -479,21 +548,16 @@ quando o worker processar um vídeo de verdade.
 
 ## Ordem sugerida a partir daqui
 
-1. **Subir o que está pronto, e rodar o pipeline inteiro uma vez.** Dez
-   commits locais — transcrição, 5a, 5b, 7, 5c e legendas — e nada disso
-   está na VPS. Entre eles vai a correção do `mode`, sem a qual a tela de
-   roteiros continua sem salvar para quem está usando hoje.
+1. **Gravar um vídeo de verdade e acompanhar o pipeline.** É o que nunca
+   aconteceu: o faster-whisper nunca transcreveu áudio real, o DeepSeek nunca
+   foi chamado de fato, e o worker de render nunca completou uma volta como
+   worker. Cada caminho tem teste próprio e todos passam; a costura entre eles,
+   com dados reais, é o que resta conferir — e agora há ambiente para isso.
 
-   Subir não é só deploy: é a primeira oportunidade de ver as peças se
-   falando com dados reais. Três caminhos foram construídos e nunca
-   executados de ponta a ponta — o faster-whisper nunca transcreveu áudio
-   real, o DeepSeek nunca foi chamado de fato, e o worker de render nunca
-   completou uma volta como worker. Cada um tem teste próprio e todos
-   passam; a costura entre eles é o que resta conferir.
-2. **Upload de assets** (logo e trilha em Marca). Os botões são a interface,
-   sem o `assets` por trás — e agora que o render aplica legenda pela marca,
-   é o que falta para a identidade visual chegar ao vídeo por inteiro.
-3. **Fase 5d — candidatos (#4) e refino (#6).** As duas chamadas que faltam
-   da seção 26. Operam sobre uma timeline já montada, então dependem de o
-   pipeline ter rodado.
-4. **Fase 8 — hardening e piloto.**
+   Vale medir o que só a execução mostra: a qualidade da transcrição em
+   português, o tempo real de processamento na VPS, e se a proposta da IA faz
+   sentido editorial sobre uma gravação de verdade.
+2. **Fase 5d — candidatos (#4) e refino (#6).** As duas chamadas que faltam da
+   seção 26. Operam sobre uma timeline já montada, então ficam melhores depois
+   de o pipeline ter rodado ao menos uma vez.
+3. **Fase 8 — hardening e piloto.**
