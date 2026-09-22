@@ -3,11 +3,29 @@ name: Deploy Studio
 # ============================================================
 # MAKUCHO STUDIO - studio.makucho.com.br
 #
-# DOIS JOBS, mesmo desenho do portal:
-#   build   compila no runner do GitHub e publica no GHCR
-#   deploy  na VPS, apenas baixa a imagem pronta e sobe
+# TRES ESTAGIOS:
+#   preparar  decide o `release` UMA vez e monta a matrix
+#   build     cinco imagens EM PARALELO, uma por runner
+#   deploy    na VPS, apenas baixa as imagens prontas e sobe
 #
 # A VPS nao compila nada (ADR 0003).
+#
+# POR QUE PARALELO
+#
+# As cinco imagens eram passos sequenciais de um job unico: api, web,
+# media, transcription, render, cada uma esperando a anterior sem
+# depender dela em nada. Como cada Dockerfile roda o seu proprio
+# `pnpm install --frozen-lockfile` (duas vezes: deps e prod-deps),
+# eram dez instalacoes do mesmo lockfile em fila indiana.
+#
+# O gargalo era a transcription, que instala faster-whisper por pip --
+# CTranslate2 e centenas de MB. Em serie ela bloqueava o render atras
+# dela; em paralelo, o tempo total passa a ser o da imagem mais lenta,
+# nao a soma de todas.
+#
+# O `release` sai do job `preparar` porque leva timestamp: cinco jobs
+# gerando cada um o seu produziriam cinco tags diferentes, e o deploy
+# nao encontraria o conjunto.
 #
 # A separacao resolve um problema concreto: o job de deploy recebe do
 # build, por output, QUAIS imagens existem. Antes ele tentava baixar
@@ -51,20 +69,30 @@ env:
 
 jobs:
   # ============================================================
-  # JOB 1 - Build
+  # JOB 1 - Preparar
+  #
+  # Existe por UMA razao: o `release` precisa ser o mesmo nas cinco
+  # imagens. Ele leva timestamp, e cinco jobs paralelos gerando cada
+  # um o seu produziriam cinco tags diferentes -- o deploy pediria
+  # `abc123-...30` e encontraria `abc123-...31`. Um job so decide, e
+  # os outros consomem.
+  #
+  # Segundos de runner, e destrava o paralelismo dos builds.
   # ============================================================
-  build:
-    name: Build e publicar no GHCR
+  preparar:
+    name: Preparar release
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 5
     if: ${{ !inputs.infra_only }}
 
     outputs:
       release: ${{ steps.meta.outputs.release }}
       apps_ready: ${{ steps.meta.outputs.apps_ready }}
-      # Lista de profiles a ativar, separada por virgula (ex.: "media").
-      # Vazia quando nenhum worker tem imagem publicada.
-      workers_ready: ${{ steps.workers.outputs.published }}
+      # Os workers que existem no repositorio, como JSON, para virar a
+      # matrix do build. Um worker sem package.json nao entra na
+      # matrix -- antes isso era um `if` dentro do script.
+      workers: ${{ steps.meta.outputs.workers }}
+      workers_ready: ${{ steps.meta.outputs.workers_ready }}
 
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +100,7 @@ jobs:
       - name: Preparar metadados
         id: meta
         run: |
+          set -euo pipefail
           echo "release=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
 
           # Sem esta checagem, um acionamento antes de as aplicacoes
@@ -84,110 +113,159 @@ jobs:
             echo "::notice::studio/apps ainda vazio; apenas a infraestrutura sera preparada."
           fi
 
+          # A matrix de workers e montada aqui, a partir do que EXISTE.
+          #
+          # Publica o que existe, nao "os tres ou nenhum": cada worker
+          # tem profile proprio no compose, entao ter so um pronto
+          # deixou de ser motivo para nao publicar nenhum.
+          itens=''
+          prontos=''
+
+          incluir() {
+            local nome="$1" dockerfile="$2" sufixo="$3"
+            [ -f "studio/workers/${nome}/package.json" ] || return 0
+            [ -z "$itens" ] || itens="${itens},"
+            itens="${itens}{\"nome\":\"${nome}\",\"dockerfile\":\"${dockerfile}\",\"sufixo\":\"${sufixo}\"}"
+            prontos="${prontos}${nome},"
+          }
+
+          incluir media         worker-media.Dockerfile         worker
+          incluir transcription worker-transcription.Dockerfile whisper
+          incluir render        worker-render.Dockerfile        render
+
+          echo "workers=[${itens}]" >> "$GITHUB_OUTPUT"
+          echo "workers_ready=${prontos%,}" >> "$GITHUB_OUTPUT"
+          echo "::notice::workers na matrix: ${prontos:-nenhum}"
+
+  # ============================================================
+  # JOB 2 - Build das aplicacoes (PARALELO)
+  #
+  # API e Web em runners separados. Antes eram passos sequenciais no
+  # mesmo job: o Web esperava a API terminar sem depender dela em
+  # nada. Sao dois `pnpm install` e dois `next build`/`tsc` que nao
+  # se tocam.
+  # ============================================================
+  build-app:
+    name: Build ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [preparar]
+    if: ${{ !inputs.infra_only && needs.preparar.outputs.apps_ready == 'true' }}
+
+    strategy:
+      # `false` para ver TODAS as falhas de uma vez. Com fail-fast, a
+      # primeira imagem que quebra cancela as outras quatro, e o
+      # proximo deploy descobre o segundo erro -- duas rodadas para
+      # informacao que cabia numa.
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            dockerfile: api.Dockerfile
+            sufixo: api
+          - app: web
+            dockerfile: web.Dockerfile
+            sufixo: web
+
+    steps:
+      - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-        if: steps.meta.outputs.apps_ready == 'true'
 
       - uses: docker/login-action@v3
-        if: steps.meta.outputs.apps_ready == 'true'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build da API
-        if: steps.meta.outputs.apps_ready == 'true'
+      - name: Build e publicar
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: studio/infrastructure/docker/api.Dockerfile
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.release }}
-            ${{ env.IMAGE_PREFIX }}-api:latest
-          # O cache do registro leva o build de minutos a segundos
-          # quando so o codigo mudou. ignore-error porque no primeiro
-          # build o cache ainda nao existe.
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,mode=max,ignore-error=true
-
-      - name: Build do Web
-        if: steps.meta.outputs.apps_ready == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: studio/infrastructure/docker/web.Dockerfile
+          file: studio/infrastructure/docker/${{ matrix.dockerfile }}
           push: true
           # Variaveis NEXT_PUBLIC_* sao embutidas no bundle durante o
-          # build: precisam existir aqui, nao apenas em runtime.
+          # build: precisam existir aqui, nao apenas em runtime. Sao
+          # ignoradas pelos Dockerfiles que nao as declaram.
           build-args: |
             NEXT_PUBLIC_STUDIO_URL=https://studio.makucho.com.br
             NEXT_PUBLIC_API_URL=/api
           tags: |
-            ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.release }}
-            ${{ env.IMAGE_PREFIX }}-web:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,mode=max,ignore-error=true
-
-      - name: Build dos workers
-        id: workers
-        if: steps.meta.outputs.apps_ready == 'true'
-        run: |
-          set -euo pipefail
-          RELEASE='${{ steps.meta.outputs.release }}'
-
-          # Publica o que EXISTE, nao "os tres ou nenhum".
-          #
-          # A regra anterior vinha de o compose ter um profile unico:
-          # subir "workers" com uma imagem faltando quebrava o pull
-          # inteiro. Agora cada worker tem profile proprio, entao ter
-          # so um pronto deixou de ser motivo para nao publicar nenhum
-          # -- era o que segurava o worker de midia.
-
-          publicar() {
-            local dockerfile="$1" imagem="$2"
-            echo "publicando ${imagem}..."
-            docker buildx build \
-              --file "studio/infrastructure/docker/${dockerfile}" \
-              --tag "${imagem}:${RELEASE}" \
-              --tag "${imagem}:latest" \
-              --cache-from "type=registry,ref=${imagem}:buildcache" \
-              --cache-to "type=registry,ref=${imagem}:buildcache,mode=max" \
-              --push .
-          }
-
-          prontos=""
-
-          if [ -f "studio/workers/media/package.json" ]; then
-            publicar worker-media.Dockerfile '${{ env.IMAGE_PREFIX }}-worker'
-            prontos="${prontos}media,"
-          fi
-
-          if [ -f "studio/workers/transcription/package.json" ]; then
-            publicar worker-transcription.Dockerfile '${{ env.IMAGE_PREFIX }}-whisper'
-            prontos="${prontos}transcription,"
-          fi
-
-          if [ -f "studio/workers/render/package.json" ]; then
-            publicar worker-render.Dockerfile '${{ env.IMAGE_PREFIX }}-render'
-            prontos="${prontos}render,"
-          fi
-
-          # Vira a lista de profiles que o deploy ativa: cada um sobe
-          # apenas o worker cuja imagem acabou de ir para o registro.
-          echo "published=${prontos%,}" >> "$GITHUB_OUTPUT"
-          echo "::notice::workers publicados: ${prontos:-nenhum}"
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:${{ needs.preparar.outputs.release }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:latest
+          # O cache do registro leva o build de minutos a segundos
+          # quando so o codigo mudou. Cada imagem tem o SEU buildcache:
+          # compartilhar um so faria as cinco sobrescreverem umas as
+          # outras em paralelo, e nenhuma acertaria o cache.
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:buildcache,mode=max,ignore-error=true
 
   # ============================================================
-  # JOB 2 - Deploy
+  # JOB 3 - Build dos workers (PARALELO)
+  #
+  # Separado do job das aplicacoes porque a matrix e DINAMICA: vem do
+  # que existe no repositorio, e um worker ainda nao criado nao pode
+  # virar um job que falha.
+  #
+  # O ganho maior esta aqui. A transcription instala faster-whisper
+  # por pip, que traz CTranslate2 e centenas de MB -- e de longe a
+  # imagem mais lenta. Em serie ela bloqueava o render atras dela; em
+  # paralelo os dois terminam quando o mais lento terminar.
   # ============================================================
+  build-worker:
+    name: Build worker ${{ matrix.nome }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [preparar]
+    if: ${{ !inputs.infra_only && needs.preparar.outputs.apps_ready == 'true' && needs.preparar.outputs.workers != '[]' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.preparar.outputs.workers) }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: studio/infrastructure/docker/${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:${{ needs.preparar.outputs.release }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.sufixo }}:buildcache,mode=max,ignore-error=true
+
   deploy:
     name: Deploy na VPS
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [build]
-    # "always" para que o modo infra_only rode com o build pulado;
-    # a condicao interna barra o caso de build falho.
-    if: ${{ always() && (needs.build.result == 'success' || inputs.infra_only) }}
+    needs: [preparar, build-app, build-worker]
+    # "always" para que o modo infra_only rode com os builds pulados.
+    #
+    # A condicao interna exige `success` de TODOS os builds: nenhuma
+    # imagem sobe se qualquer uma falhar, e a VPS fica na versao
+    # anterior, inteira. Um deploy com a API nova e o worker de
+    # transcricao velho pode divergir no contrato da fila -- e esse e
+    # o tipo de defeito que aparece como job travado, sem erro claro.
+    #
+    # `!= 'failure'` e nao `== 'success'` para o build-worker: com a
+    # matrix vazia (nenhum worker no repositorio) o job e SKIPPED, e
+    # skipped nao pode barrar um deploy de api e web.
+    if: >-
+      ${{ always() && (inputs.infra_only ||
+          (needs.preparar.result == 'success' &&
+           needs['build-app'].result == 'success' &&
+           needs['build-worker'].result != 'failure')) }}
 
     environment:
       name: studio-production
@@ -227,7 +305,7 @@ jobs:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          RELEASE='${{ needs.build.outputs.release || github.sha }}'
+          RELEASE='${{ needs.preparar.outputs.release || github.sha }}'
           DIR="${{ env.APP_ROOT }}/releases/${RELEASE}"
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p '$DIR'"
 
@@ -244,7 +322,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
-          RELEASE='${{ needs.build.outputs.release || github.sha }}'
+          RELEASE='${{ needs.preparar.outputs.release || github.sha }}'
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
             "APP_ROOT='${{ env.APP_ROOT }}' \
              STUDIO_DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
@@ -257,7 +335,7 @@ jobs:
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
-          RELEASE='${{ needs.build.outputs.release || github.sha }}'
+          RELEASE='${{ needs.preparar.outputs.release || github.sha }}'
           # Upload de video, nao de imagem: 520m contra os 20m do
           # portal, e timeout longo para upload em rede movel e para o
           # stream de progresso do job.
@@ -274,7 +352,7 @@ jobs:
              bash '${{ env.APP_ROOT }}/releases/${RELEASE}/.github/scripts/provision-host.sh'"
 
       - name: Autenticar VPS no GHCR
-        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
+        if: ${{ !inputs.infra_only && needs.preparar.outputs.apps_ready == 'true' }}
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -286,16 +364,16 @@ jobs:
             "docker login ${{ env.REGISTRY }} -u '${{ github.actor }}' --password-stdin"
 
       - name: Subir o stack
-        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
+        if: ${{ !inputs.infra_only && needs.preparar.outputs.apps_ready == 'true' }}
         env:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
-          RELEASE='${{ needs.build.outputs.release }}'
+          RELEASE='${{ needs.preparar.outputs.release }}'
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
             "APP_ROOT='${{ env.APP_ROOT }}' \
              RELEASE='${RELEASE}' \
              STUDIO_DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
-             STUDIO_WORKERS='${{ needs.build.outputs.workers_ready }}' \
+             STUDIO_WORKERS='${{ needs.preparar.outputs.workers_ready }}' \
              REGISTRY_IMAGE_STUDIO_API='${{ env.IMAGE_PREFIX }}-api' \
              REGISTRY_IMAGE_STUDIO_WEB='${{ env.IMAGE_PREFIX }}-web' \
              REGISTRY_IMAGE_STUDIO_WORKER='${{ env.IMAGE_PREFIX }}-worker' \
@@ -304,7 +382,7 @@ jobs:
              bash '${{ env.APP_ROOT }}/releases/${RELEASE}/.github/scripts/studio-remote-deploy.sh'"
 
       - name: Verificar pelo dominio publico
-        if: ${{ !inputs.infra_only && needs.build.outputs.apps_ready == 'true' }}
+        if: ${{ !inputs.infra_only && needs.preparar.outputs.apps_ready == 'true' }}
         run: |
           set -uo pipefail
           falhou=0
@@ -328,4 +406,4 @@ jobs:
           checar "https://makucho.com.br/" "portal (nao pode quebrar)"
 
           [ "$falhou" -eq 0 ] || exit 1
-          echo "deploy ${{ needs.build.outputs.release }} verificado em ${{ env.CANONICAL_URL }}"
+          echo "deploy ${{ needs.preparar.outputs.release }} verificado em ${{ env.CANONICAL_URL }}"
