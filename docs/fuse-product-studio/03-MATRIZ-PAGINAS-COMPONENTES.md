@@ -4,7 +4,7 @@ Todas as rotas foram encontradas cruzando `page.tsx`, imports, menu, controlador
 
 | Rota | Componentes próprios ou compartilhados | Estados prioritários | C/T/N/D | Estado |
 |---|---|---|---|---|
-| `/` | cabeçalho, radar, hero, cards, vídeo, temas, anúncio, newsletter, rodapé | vazio/API/sem campanha | ?/?/?/? | A R I parcial |
+| `/` | cabeçalho, radar, hero, cards, vídeo, temas, anúncio, newsletter, rodapé | vazio/API/sem campanha | normal/normal/overflow observado e corrigido em código/overflow observado e corrigido em código | A R I parcial; reteste publicado pendente |
 | `/artigo/[slug]` | moldura, mídia, leitura, contador, relacionados, slots de artigo/lateral | 404/mídia ausente/longform/sem campanha | ?/?/?/? | A R I parcial |
 | `/autor/[slug]` | moldura, listagem, paginação | vazio/404 | ?/?/?/? | A R I parcial |
 | `/categoria/[slug]` | moldura, listagem, paginação | vazio/404 | ?/?/?/? | A R I parcial |
@@ -15,7 +15,7 @@ Todas as rotas foram encontradas cruzando `page.tsx`, imports, menu, controlador
 | `/contato` | moldura, e-mail configurado, CTA | e-mail ausente/erro | ?/?/?/? | A R I parcial |
 | 404 | moldura/retorno | endereço inválido/recuperação | ?/?/?/? | A R I parcial |
 | erro | retry global/retorno | falha de API/recuperação | ?/?/?/? | A R I parcial |
-| `/painel/entrar` | login, campos, aviso | envio/erro/sessão ativa | V/V/V/V (normal) | A R I V parcial |
+| `/painel/entrar` | login, campos, aviso | envio/erro/sessão ativa | V/V/V/V (normal) | A R I V parcial; captura de produção 390/820/1280/1440 |
 | `/painel/senha` | moldura, formulário | obrigatório/erro/sucesso | ?/?/?/? | A |
 | `/painel` | moldura, métricas, lista | carga/vazio/falha parcial | ?/?/?/? | A R I parcial |
 | `/painel/publicacoes` | filtros, tabela/lista, status, confirmação | vazio/busca/erro/retry | ?/?/?/? | A R I parcial |

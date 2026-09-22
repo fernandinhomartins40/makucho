@@ -2,6 +2,15 @@
 
 Estado parcial em 22/09/2026. A documentação não é aceite final.
 
+## Observação da produção após o commit `011607b`
+
+- Workflow de produção `35798474885`: build e deploy na VPS concluídos com sucesso. A home respondeu HTTP 200 em 22/09/2026.
+- Capturas reais da home e do login em 390, 820, 1280 e 1440 px: `validacao/producao-*-exact.png`. As imagens são evidência de duas rotas e do primeiro viewport, não de todas as jornadas.
+- Home em 1280 px: `document.documentElement.scrollWidth` era 1500 px; em 1440 px, 1589 px. A navegação completa forçava overflow. O breakpoint do menu foi ajustado para recolhê-lo abaixo de 1600 px; falta verificar a correção publicada.
+- Home em 390 px não apresentou overflow (`scrollWidth` 390 px). O login também não apresentou overflow em 390/820 px e seu formulário estava visível.
+- A imagem de destaque publicada foi carregada com sucesso pelo navegador, mas o próprio arquivo mostra um placeholder azul com pequenos glifos ilegíveis. É uma pendência de conteúdo/mídia da publicação atual, não um erro de rede nem autorização para substituir registros no CMS.
+- Não houve acesso autenticado ao CMS nesta verificação; comportamento de gravação, papéis e estados internos permanece sem validação real.
+
 Ambiente local: a API em `localhost:3001` não está em execução e não há `.env` em `portal/` ou `portal/apps/api/`. Não foi criado dado demonstrativo nem aplicada migração para simular integração. A inspeção de rotas dependentes de API e de sessão autenticada precisa de ambiente configurado.
 
 | Área | Evidência concluída | Falta para aceite |

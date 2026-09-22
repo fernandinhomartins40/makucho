@@ -40,15 +40,27 @@ try {
     socket.send(JSON.stringify({ id: requestId, method, params }));
   });
 
-  const cases = [
-    ['painel-entrar', 'http://localhost:3100/painel/entrar', 3000],
-    ['portal-indisponivel', 'http://localhost:3100/', 10000],
-  ];
+  const cases = process.argv[2] === '--production'
+    ? [
+        ['producao-home', 'https://makucho.com.br/', 5000],
+        ['producao-painel-entrar', 'https://makucho.com.br/painel/entrar', 3000],
+      ]
+    : [
+        ['painel-entrar', 'http://localhost:3100/painel/entrar', 3000],
+        ['portal-indisponivel', 'http://localhost:3100/', 10000],
+      ];
   for (const [name, url, waitMs] of cases) {
     for (const [viewport, width, height] of [['mobile', 390, 844], ['tablet', 820, 1180], ['notebook', 1280, 800], ['desktop', 1440, 900]]) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
       await send('Page.navigate', { url });
       await delay(waitMs);
+      if (process.argv[2] === '--production') {
+        const inspected = await send('Runtime.evaluate', {
+          expression: `JSON.stringify({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, images: [...document.images].slice(0, 8).map(image => ({alt: image.alt, src: image.currentSrc, loaded: image.complete && image.naturalWidth > 0}))})`,
+          returnByValue: true,
+        });
+        process.stdout.write(`${name}-${viewport} ${inspected.result.value}\n`);
+      }
       const result = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       const filename = join(out, `${name}-${viewport}-exact.png`);
       writeFileSync(filename, Buffer.from(result.data, 'base64'));
