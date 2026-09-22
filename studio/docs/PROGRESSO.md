@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-22 (nona revisão: deploy no ar e upload de assets).
+> Atualizado em 2026-09-22 (décima revisão: Fase 5d — as seis chamadas de IA no ar).
 
 ## Panorama
 
@@ -18,13 +18,13 @@
 | 5a | IA: adapter e travas de custo | **concluída** |
 | 5b | IA: seleção de trechos e risco | **concluída** |
 | 5c | IA: roteiro e sugestões | **concluída** — rodam sem gravação |
-| 5d | IA: candidatos e refino | pendente |
+| 5d | IA: candidatos e refino | **concluída** — as 6 chamadas da seção 26 |
 | 6 | Preview e composição | **concluída** — timeline (ADR 0008) e legendas queimadas |
 | 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
 | 8 | Hardening e piloto | pendente |
 
-Em produção: `studio.makucho.com.br` no ar com tudo até aqui — transcrição,
-as quatro chamadas de IA, render com legenda e upload de assets.
+Em produção: `studio.makucho.com.br` no ar. As seis chamadas de IA da seção
+26, o pipeline da câmera ao arquivo, marca, legenda e correção manual.
 
 ---
 
@@ -50,12 +50,10 @@ parecia publicável sem legenda.
 
 O que ainda **não** funciona, sem rodeio:
 
-- **duas das seis chamadas da seção 26**: candidatos (#4) e refino (#6). As
-  outras quatro rodam;
 
-A partir daqui faltam as duas chamadas de IA que operam sobre uma timeline
-já montada, e o hardening da Fase 8. O caminho principal — do tema ao
-arquivo publicável, com marca e legenda — está inteiro e no ar.
+Resta a Fase 8 — hardening e piloto. Todo o resto está implementado e no ar:
+as seis chamadas de IA da seção 26, o pipeline da câmera ao arquivo, marca,
+legenda e correção manual.
 
 ---
 
@@ -331,6 +329,69 @@ português e a aderência do modelo ao formato ainda são previsão.
 
 ---
 
+## Fase 5d — Candidatos e refino — CONCLUÍDA
+
+As duas chamadas que operam sobre uma timeline **já montada**, ao contrário da
+#3 que monta do zero. Com elas, as seis da seção 26 estão implementadas.
+
+**Nenhuma das duas aplica nada.** A #4 devolve candidatos, a #6 devolve
+ajustes, e o que entra na timeline é uma operação disparada por um clique. Não
+é excesso de cuidado: é a diferença entre "a IA sugere" e "a IA decide". O
+plano (seção 26.3) exige que toda operação proposta seja reversível num
+desfazer e que a tela mostre o que muda antes de aplicar.
+
+### #4 — adicionar trecho
+
+O prompt vê apenas os segmentos que ficaram **de fora**: mandar a transcrição
+inteira dobraria o custo para transportar o que o modelo deve ignorar.
+
+Duas conferências que só o servidor pode fazer:
+
+- **sobreposição com o que já está no corte.** Não é igualdade exata — um
+  trecho que cobre mais de 50% de outro já é repetição para quem assiste. Os
+  repetidos são descartados sem invalidar a resposta: os bons continuam
+  valendo, e recusar tudo gastaria a chamada de novo para obter os mesmos dois;
+- **candidato sem fala correspondente.** O JSON é válido, os tempos existem na
+  gravação, e o clipe sairia **mudo**. É o mesmo caso que a #3 já enfrentava, e
+  só a conferência contra os segmentos pega.
+
+### #6 — refino
+
+A IA ajusta **bordas**, e só isso. Não reordena, não remove, não insere — essas
+decisões mudam o sentido do vídeo, e alguém já as tomou.
+
+**Remover silêncio não usa IA.** O `worker-core` já detecta com FFmpeg, é
+determinístico, mais barato e mais preciso; os silêncios estão no banco como
+`DetectedRegion` desde a transcrição. O serviço os **conta** para a tela
+informar — não pergunta ao modelo.
+
+O prompt recebe as palavras em volta de cada borda, porque *"esse corte cai no
+meio de uma ideia?"* é pergunta sobre texto, não sobre números.
+
+### A operação `inserir`
+
+Não havia como trazer um trecho novo para a timeline — `duplicar` copia um
+existente. `inserir` **não é exceção** à regra de integridade editorial: o
+trecho vem do vídeo original, pelos tempos dele, e carrega
+`transcriptSegmentIds` obrigatório como qualquer clipe. Continua não havendo
+"adicionar clipe do nada"; o que há é trazer uma fala já gravada que ficou de
+fora.
+
+`aposClipId` por id e não por índice: índice muda quando outra operação
+reordena, e uma inserção pendente na tela apontaria para o lugar errado.
+
+| Verificação | Resultado |
+|---|---|
+| Contrato (parsers e recusas) | 29 testes |
+| Operação `inserir` na timeline | 9 testes |
+| Contra Postgres real | 22 testes |
+| Candidato → operação `inserir` | aceita pelo contrato, plano passa no schema |
+| Silêncios | 2 no banco, 2 contados — por medição |
+| Candidato apontando para silêncio | descartado |
+| Suíte completa | **776 testes, 0 falhas** |
+
+---
+
 ## Fase 2 — Brand Studio — CONCLUÍDA
 
 As cores, fontes e estilo de legenda já estavam ligados. O que faltava era o
@@ -557,7 +618,4 @@ quando o worker processar um vídeo de verdade.
    Vale medir o que só a execução mostra: a qualidade da transcrição em
    português, o tempo real de processamento na VPS, e se a proposta da IA faz
    sentido editorial sobre uma gravação de verdade.
-2. **Fase 5d — candidatos (#4) e refino (#6).** As duas chamadas que faltam da
-   seção 26. Operam sobre uma timeline já montada, então ficam melhores depois
-   de o pipeline ter rodado ao menos uma vez.
-3. **Fase 8 — hardening e piloto.**
+2. **Fase 8 — hardening e piloto.** É o que resta do plano.
