@@ -3,7 +3,7 @@
 > Estado real, conferido contra `PLANO_COMPLETO_IMPLEMENTACAO_EDITOR_IA.md`.
 > Uma fase só é marcada concluída quando o critério de aceite do plano está
 > verificado, não quando o código existe.
-> Atualizado em 2026-09-21 (sexta revisão: Fase 7 fechada — o ciclo entrega arquivo).
+> Atualizado em 2026-09-21 (sétima revisão: Fases 7 e 5c fechadas).
 
 ## Panorama
 
@@ -17,8 +17,8 @@
 | 4a | Entrada de vídeo | **concluída** (ADR 0010) |
 | 5a | IA: adapter e travas de custo | **concluída** |
 | 5b | IA: seleção de trechos e risco | **concluída** |
-| 5c | IA: roteiro e sugestões | pendente — **próximo passo** |
-| 5d | IA: candidatos e refino | pendente |
+| 5c | IA: roteiro e sugestões | **concluída** — rodam sem gravação |
+| 5d | IA: candidatos e refino | pendente — **próximo passo** |
 | 6 | Preview e composição | timeline antecipada (ADR 0008); resto pendente |
 | 7 | Render e entrega | **concluída** — exporta mp4 pronto para publicar |
 | 8 | Hardening e piloto | pendente |
@@ -36,24 +36,29 @@ palavra, e o projeto chega a `ANALYZING` com os silêncios já marcados como
 regiões. O editor abre esse projeto, toca o proxy e salva cada ajuste como
 uma versão no banco.
 
-**O ciclo fecha de ponta a ponta.** Um vídeo entra, vira proxy e
-transcrição, a IA escolhe os trechos com o motivo de cada escolha e o risco
-de tirá-los do contexto, o editor abre essa proposta — e "Exportar vídeo"
-agora devolve um mp4 pronto para publicar. É a primeira vez que o produto
-tem saída, e não só opinião.
+**O ciclo fecha de ponta a ponta, e agora começa antes da câmera.** A IA
+escreve o rascunho do roteiro a partir do tema e do perfil de comunicação;
+a pessoa grava; o vídeo vira proxy e transcrição; a IA escolhe os trechos
+com o motivo de cada escolha e o risco de tirá-los do contexto; o editor
+abre essa proposta — e "Exportar vídeo" devolve um mp4 pronto para
+publicar.
+
+As duas pontas são o que mudou nesta revisão. Antes o produto tinha opinião
+no meio e nada nas extremidades: não ajudava a escrever e não entregava
+arquivo.
 
 O que ainda **não** funciona, sem rodeio:
 
-- **quatro das seis chamadas da seção 26**: roteiro (#1), sugestões (#2),
-  candidatos (#4) e refino (#6). O encanamento está pronto e a #3 e a #5
-  rodam;
+- **duas das seis chamadas da seção 26**: candidatos (#4) e refino (#6). As
+  outras quatro rodam;
 - **legendas queimadas no vídeo**: o render entrega corte e áudio
   normalizado; as captions são o que resta da Fase 6;
 - **upload de logo e trilha**: os botões em Marca são a interface, sem o
   `assets` por trás.
 
-A partir daqui, o que falta é inteligência e acabamento — a entrada, o
-preparo e a saída do material estão prontos.
+A partir daqui, o que falta é acabamento — legenda queimada, assets — e as
+duas chamadas de IA que operam sobre uma timeline já montada. O caminho
+principal, do tema ao arquivo, está inteiro.
 
 ---
 
@@ -274,6 +279,61 @@ render → gravação no banco ainda não completou uma volta.
 
 ---
 
+### Fase 5c — roteiro e sugestões, e três defeitos de tabela
+
+As duas únicas chamadas que rodam **antes de existir gravação** — o motivo de
+poderem sair antes do resto.
+
+A **#1** é a única chamada do produto que escreve texto original. O que a
+mantém legítima não é uma regra técnica, é a ordem das coisas: o texto ainda
+será falado por uma pessoa, que lê, corrige e decide. Nada é salvo sozinho —
+o roteiro volta para a tela já no formato do `scriptInputSchema` e entra pela
+**mesma porta** de um escrito à mão. Se houvesse conversão própria, existiriam
+dois formatos de roteiro no produto.
+
+A **#2 não substitui o checklist local.** Os quatro critérios da tela são
+determinísticos, explicáveis e funcionam offline; a IA entra no que exige
+julgamento — uma promessa do hook que o resto não cumpre, um bloco que muda de
+assunto sem ligação. O prompt lista explicitamente o que **não** sugerir, para
+não virar eco do que a tela já calcula. E toda sugestão carrega o texto
+reescrito pronto: "melhore o hook" é conselho, não ferramenta.
+
+#### Três defeitos encontrados no caminho
+
+Dois deles **pré-existentes**, e o terceiro só apareceu contra banco real:
+
+- **a tela de roteiros nunca conseguiu salvar.** O autosave mandava
+  `mode: 'manual'`, que não existe em `SCRIPT_MODES`, e o contrato recusava
+  com 400. A pessoa escrevia, via "salvando", e nada era gravado. Passa a
+  mandar `BULLETS`, que é o que a tela produz de fato;
+- **a tela conhecia 4 dos 13 papéis** do vocabulário. Um roteiro salvo com
+  qualquer outro virava `undefined` em `ROTULO` e quebrava a renderização.
+  Ampliada para os treze, com verificação em vez de `as`;
+- **o intervalo mínimo da #2 rodava antes da autorização.** Responder "aguarde
+  12s" a quem pede sugestão de um roteiro alheio confirma que aquele id existe
+  e está sendo editado agora — e deixaria um workspace negar serviço ao outro,
+  porque o intervalo é por `scriptId`. A consulta com `workspaceId` passou a
+  vir primeiro.
+
+O terceiro é o que justifica testar contra banco: nenhum teste unitário o
+pegaria, porque com dublês o `findFirst` sempre devolve o que o teste mandou.
+
+| Verificação (Postgres real) | Resultado |
+|---|---|
+| Duração vem do perfil do banco | 40s (do perfil), não 60s (do padrão) |
+| Uso contabilizado em `ai_usage` | nas duas chamadas |
+| Roteiro gerado gravado sem conversão | passa no `scriptInputSchema` |
+| Roteiro de outro workspace | recusado |
+| Teto em zero | degrada com motivo, sem lançar |
+| API compilada | as duas rotas mapeadas, sem ciclo |
+| Suíte completa | **548 testes no studio, 0 falhas** |
+
+O que **não** foi verificado: o DeepSeek nunca foi chamado de fato. Todo o
+caminho rodou contra o provedor falso, então a qualidade do roteiro em
+português e a aderência do modelo ao formato ainda são previsão.
+
+---
+
 ## Fase 0 — Fundação e decisões — CONCLUÍDA
 
 Critério do plano: *contratos compilam, migrations sobem em ambiente limpo e o
@@ -367,13 +427,14 @@ merece um ADR próprio.
 
 ## Ordem sugerida a partir daqui
 
-1. **Subir o que está pronto.** Sete commits locais — transcrição, 5a, 5b e
-   7 — e nada disso está na VPS. O ciclo fecha na máquina de
-   desenvolvimento e não fecha em produção, que é onde importa.
-2. **Fase 5c — roteiro e sugestões (#1, #2).** Não dependem de vídeo nem de
-   render; podem sair antes se o cliente precisar ver IA funcionando sem
-   gravar nada.
-3. **Legendas queimadas (resto da Fase 6).** O render entrega corte e áudio
+1. **Subir o que está pronto.** Nove commits locais — transcrição, 5a, 5b,
+   7 e 5c — e nada disso está na VPS. O ciclo fecha na máquina de
+   desenvolvimento e não fecha em produção, que é onde importa. Entre eles
+   vai a correção do `mode`, sem a qual a tela de roteiros continua sem
+   salvar para quem está usando hoje.
+2. **Legendas queimadas (resto da Fase 6).** O render entrega corte e áudio
    normalizado; a caption é o acabamento que falta para o resultado parecer
    um vídeo publicável.
-4. **Fase 5d, upload de assets e Fase 8.**
+3. **Fase 5d — candidatos (#4) e refino (#6).** As duas chamadas que faltam
+   da seção 26.
+4. **Upload de assets e Fase 8.**
