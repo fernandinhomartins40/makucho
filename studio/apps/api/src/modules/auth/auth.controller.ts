@@ -42,6 +42,20 @@ const COOKIE_BASE = {
   path: '/',
 };
 
+/**
+ * Convite: cria acesso para outra pessoa no MESMO workspace.
+ *
+ * O papel é explícito e não tem padrão: quem convida precisa decidir
+ * se está dando acesso de leitura ou de administração, e um padrão
+ * silencioso escolheria por ela.
+ */
+const conviteSchema = z.object({
+  email: z.string().email().max(200),
+  password: z.string().min(12).max(200),
+  name: z.string().min(1).max(120).default('Convidado'),
+  role: z.enum(['OWNER', 'EDITOR', 'VIEWER']),
+});
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -152,6 +166,27 @@ export class AuthController {
   @Get('me')
   me(@CurrentTenant() tenant: TenantContext) {
     return tenant;
+  }
+
+  /**
+   * Convida alguém para o workspace.
+   *
+   * Autenticada, ao contrário de `/setup`: quem convida já está
+   * dentro. É a saída que faltava para quando o primeiro acesso já
+   * foi usado — sem ela, perder a senha do único usuário exige
+   * acesso ao servidor, que nem sempre está disponível.
+   */
+  @Post('invite')
+  @HttpCode(201)
+  convidar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    const dados = conviteSchema.parse(body);
+
+    return this.auth.convidar(tenant, {
+      email: dados.email,
+      senha: dados.password,
+      nome: dados.name,
+      role: dados.role,
+    });
   }
 
   /**

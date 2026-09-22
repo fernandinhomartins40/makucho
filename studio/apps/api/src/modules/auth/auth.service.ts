@@ -119,6 +119,67 @@ export class AuthService {
     });
   }
 
+  /**
+   * Cria acesso para outra pessoa. Exige estar dentro.
+   *
+   * Existe porque o primeiro acesso se fecha PARA SEMPRE, e isso
+   * deixava o produto sem nenhuma saida propria: quando a senha do
+   * unico usuario se perde, o recurso vira acesso ao servidor -- que
+   * nem sempre esta disponivel, e que passa credencial por onde nao
+   * devia. Aconteceu.
+   *
+   * Nao e registro publico: quem convida ja esta autenticado, e a
+   * pessoa entra no MESMO workspace de quem convidou. Um convite que
+   * cria workspace novo seria outro produto.
+   */
+  async convidar(
+    convidadoPor: TenantContext,
+    dados: { email: string; senha: string; nome: string; role: 'OWNER' | 'EDITOR' | 'VIEWER' },
+  ) {
+    const email = dados.email.trim().toLowerCase();
+
+    if (dados.senha.length < 12) {
+      throw new BadRequestException('a senha precisa de ao menos 12 caracteres');
+    }
+
+    // Somente OWNER convida. Um EDITOR que pudesse criar OWNER
+    // escalaria o proprio acesso pela porta da frente.
+    if (convidadoPor.role !== 'OWNER') {
+      throw new BadRequestException('apenas quem administra o workspace pode convidar');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const jaExiste = await tx.studioUser.findUnique({ where: { email } });
+
+      // Nao reescreve a senha de quem ja existe: seria uma tomada de
+      // conta disfarcada de convite.
+      if (jaExiste) {
+        throw new ConflictException('ja existe uma conta com este e-mail');
+      }
+
+      const passwordHash = await argon2.hash(dados.senha, {
+        type: argon2.argon2id,
+        memoryCost: 65536,
+        timeCost: 3,
+        parallelism: 4,
+      });
+
+      const usuario = await tx.studioUser.create({
+        data: { email, passwordHash, name: dados.nome },
+      });
+
+      await tx.membership.create({
+        data: {
+          userId: usuario.id,
+          workspaceId: convidadoPor.workspaceId,
+          role: dados.role,
+        },
+      });
+
+      return { id: usuario.id, email: usuario.email, name: usuario.name, role: dados.role };
+    });
+  }
+
   async validateUser(email: string, senha: string) {
     const user = await this.prisma.studioUser.findUnique({
       where: { email: email.trim().toLowerCase() },
