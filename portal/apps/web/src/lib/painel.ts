@@ -141,10 +141,12 @@ export const painel = {
 
   eu: () => chamar<AuthUser>('/auth/me'),
 
-  alterarSenha: (currentPassword: string, newPassword: string) =>
+  // O alterarSenhaSchema da API exige a confirmacao: sem ela, toda troca
+  // falhava na validacao.
+  alterarSenha: (currentPassword: string, newPassword: string, confirmPassword: string) =>
     chamar<{ message: string }>('/auth/change-password', {
       method: 'POST',
-      body: { currentPassword, newPassword },
+      body: { currentPassword, newPassword, confirmPassword },
     }),
 
   // ---------- posts ----------

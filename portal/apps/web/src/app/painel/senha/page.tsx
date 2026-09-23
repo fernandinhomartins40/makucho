@@ -7,6 +7,54 @@ import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina, rotuloPapel } from '@/components/painel/moldura-painel';
 import { Aviso, Botao, Campo, Entrada } from '@/components/painel/ui';
 
+/**
+ * Regras do senhaSchema de @makucho/validation, repetidas aqui para dar
+ * retorno enquanto a pessoa digita. A API continua sendo quem decide.
+ */
+const REGRAS: Array<{ rotulo: string; ok: (senha: string) => boolean }> = [
+  { rotulo: 'Ao menos 10 caracteres', ok: (s) => s.length >= 10 },
+  { rotulo: 'Uma letra maiúscula', ok: (s) => /[A-Z]/.test(s) },
+  { rotulo: 'Uma letra minúscula', ok: (s) => /[a-z]/.test(s) },
+  { rotulo: 'Um número', ok: (s) => /[0-9]/.test(s) },
+];
+
+function EntradaSenha({
+  valor,
+  aoMudar,
+  autoComplete,
+  invalido,
+  descricao,
+}: {
+  valor: string;
+  aoMudar: (valor: string) => void;
+  autoComplete: string;
+  invalido?: boolean;
+  descricao?: string;
+}) {
+  const [visivel, setVisivel] = useState(false);
+  return (
+    <div className="pn-senha">
+      <Entrada
+        type={visivel ? 'text' : 'password'}
+        value={valor}
+        onChange={(e) => aoMudar(e.target.value)}
+        autoComplete={autoComplete}
+        aria-invalid={invalido || undefined}
+        aria-describedby={descricao}
+        required
+      />
+      <button
+        type="button"
+        onClick={() => setVisivel((v) => !v)}
+        aria-label={visivel ? 'Ocultar a senha' : 'Mostrar a senha'}
+        aria-pressed={visivel}
+      >
+        {visivel ? 'ocultar' : 'mostrar'}
+      </button>
+    </div>
+  );
+}
+
 function Conta() {
   const { usuario, sair } = useSessao();
   const router = useRouter();
@@ -15,25 +63,34 @@ function Conta() {
   const [nova, setNova] = useState('');
   const [repetir, setRepetir] = useState('');
   const [erro, setErro] = useState('');
+  const [errosCampo, setErrosCampo] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
+
+  const regras = REGRAS.map((r) => ({ ...r, cumprida: r.ok(nova) }));
+  const regrasOk = regras.every((r) => r.cumprida);
+  const diferenteDaAtual = nova.length > 0 && nova !== atual;
+  const coincidem = repetir.length > 0 && nova === repetir;
+  const podeEnviar = atual.length > 0 && regrasOk && diferenteDaAtual && coincidem;
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
     setErro('');
-
-    if (nova !== repetir) {
-      setErro('A confirmação não confere com a nova senha.');
-      return;
-    }
+    setErrosCampo({});
+    if (!podeEnviar) return;
 
     setEnviando(true);
     try {
-      await painel.alterarSenha(atual, nova);
+      await painel.alterarSenha(atual, nova, repetir);
       // O backend revoga todas as sessoes: e preciso entrar de novo.
       await sair();
-      router.replace('/painel/entrar');
+      router.replace('/painel/entrar?senha=alterada');
     } catch (e) {
-      setErro(e instanceof ErroApi ? e.message : 'Não foi possível alterar a senha.');
+      if (e instanceof ErroApi) {
+        setErro(e.message);
+        setErrosCampo(e.fields ?? {});
+      } else {
+        setErro('Não foi possível alterar a senha.');
+      }
       setEnviando(false);
     }
   }
@@ -59,7 +116,7 @@ function Conta() {
         </dl>
       </div>
 
-      <form className="pn-bloco pn-estreito" onSubmit={enviar}>
+      <form className="pn-bloco pn-estreito" onSubmit={enviar} noValidate>
         <h2 className="pn-bloco-h2">Alterar a senha</h2>
 
         {usuario?.mustChangePassword && (
@@ -71,46 +128,66 @@ function Conta() {
 
         <Aviso tipo="erro">{erro}</Aviso>
 
-        <Campo rotulo="Senha atual" obrigatorio>
-          <Entrada
-            type="password"
-            value={atual}
-            onChange={(e) => setAtual(e.target.value)}
+        <Campo rotulo="Senha atual" obrigatorio erro={errosCampo.currentPassword}>
+          <EntradaSenha
+            valor={atual}
+            aoMudar={setAtual}
             autoComplete="current-password"
-            required
+            invalido={Boolean(errosCampo.currentPassword)}
           />
         </Campo>
 
-        <Campo
-          rotulo="Nova senha"
-          obrigatorio
-          dica="Ao menos 12 caracteres, com maiúscula, minúscula e número."
-        >
-          <Entrada
-            type="password"
-            value={nova}
-            onChange={(e) => setNova(e.target.value)}
+        <Campo rotulo="Nova senha" obrigatorio erro={errosCampo.newPassword}>
+          <EntradaSenha
+            valor={nova}
+            aoMudar={setNova}
             autoComplete="new-password"
-            minLength={12}
-            required
+            invalido={nova.length > 0 && (!regrasOk || !diferenteDaAtual)}
+            descricao="regras-senha"
           />
         </Campo>
 
-        <Campo rotulo="Repita a nova senha" obrigatorio>
-          <Entrada
-            type="password"
-            value={repetir}
-            onChange={(e) => setRepetir(e.target.value)}
+        <ul className="pn-regras" id="regras-senha" aria-live="polite">
+          {regras.map((r) => (
+            <li key={r.rotulo} className={r.cumprida ? 'ok' : undefined}>
+              <span aria-hidden="true">{r.cumprida ? '✓' : '○'}</span>
+              {r.rotulo}
+              <span className="so-leitor-de-tela">{r.cumprida ? ' (cumprida)' : ' (pendente)'}</span>
+            </li>
+          ))}
+          {nova.length > 0 && atual.length > 0 && (
+            <li className={diferenteDaAtual ? 'ok' : 'falha'}>
+              <span aria-hidden="true">{diferenteDaAtual ? '✓' : '✕'}</span>
+              Diferente da senha atual
+            </li>
+          )}
+        </ul>
+
+        <Campo rotulo="Repita a nova senha" obrigatorio erro={errosCampo.confirmPassword}>
+          <EntradaSenha
+            valor={repetir}
+            aoMudar={setRepetir}
             autoComplete="new-password"
-            required
+            invalido={repetir.length > 0 && !coincidem}
+            descricao="confere-senha"
           />
         </Campo>
+
+        {repetir.length > 0 && (
+          <p
+            id="confere-senha"
+            className={`pn-confere ${coincidem ? 'ok' : 'falha'}`}
+            aria-live="polite"
+          >
+            {coincidem ? '✓ As senhas coincidem' : '✕ As senhas não coincidem'}
+          </p>
+        )}
 
         <Aviso tipo="info">
           Ao trocar a senha, todas as sessões são encerradas e você precisará entrar novamente.
         </Aviso>
 
-        <Botao type="submit" variante="primario" carregando={enviando}>
+        <Botao type="submit" variante="primario" carregando={enviando} disabled={!podeEnviar}>
           Alterar a senha
         </Botao>
       </form>

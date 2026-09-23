@@ -898,54 +898,262 @@
 
 /* ---------- login ---------- */
 
+/* Login no mesmo padrão do portal: barra naval, faixa azul da newsletter
+   e cartão claro dos cards da home. */
 .pn-entrar {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  padding: 20px;
-  background: linear-gradient(150deg, #0a1f44, #123163 55%, #1a5fd4);
-}
-
-.pn-entrar-caixa {
-  width: 100%;
-  max-width: 372px;
-  padding: 26px 24px 20px;
-  background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 20px 52px rgb(3 12 30 / 36%);
-}
-
-.pn-entrar-marca {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  background: #fff;
+  color: #0a1f44;
+}
+
+.pn-entrar-topo {
+  background: #0a1f44;
+  color: #fff;
+}
+
+.pn-entrar-linha,
+.pn-entrar-corpo,
+.pn-entrar-base {
+  width: min(100% - 40px, 1200px);
+  margin-inline: auto;
+}
+
+.pn-entrar-linha {
+  display: flex;
   align-items: center;
-  gap: 3px;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  gap: 18px;
+  height: 72px;
 }
 
-.pn-entrar-marca strong {
-  font-size: 1.24rem;
-  font-weight: 900;
-  letter-spacing: 0.03em;
-}
-
-.pn-entrar-marca span {
-  font-size: 0.755rem;
-  color: var(--pn-suave);
-  letter-spacing: 0.04em;
+.pn-entrar-logo {
+  display: block;
+  width: auto;
+  height: clamp(30px, 2.6vw, 36px);
+  object-fit: contain;
 }
 
 .pn-entrar-voltar {
-  display: block;
-  margin-top: 15px;
-  text-align: center;
-  font-size: 0.785rem;
-  color: var(--pn-suave);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 600;
   text-decoration: none;
+  transition: background 0.15s;
 }
 
 .pn-entrar-voltar:hover {
-  color: var(--pn-azul);
+  background: rgb(255 255 255 / 10%);
+}
+
+.pn-entrar-seta-voltar {
+  transform: rotate(180deg);
+}
+
+.pn-entrar-corpo {
+  display: grid;
+  flex: 1;
+  gap: 28px;
+  align-content: center;
+  padding-block: 48px;
+}
+
+.pn-entrar-apresentacao {
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  padding: clamp(26px, 4vw, 44px);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 82% 0%, rgb(47 123 255 / 22%), transparent 55%),
+    linear-gradient(115deg, #0a1f44 0%, #123163 100%);
+  color: #fff;
+}
+
+.pn-entrar-rotulo {
+  color: #3b8bff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pn-entrar-apresentacao h1 {
+  max-width: 16ch;
+  margin: 0;
+  font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+
+.pn-entrar-apresentacao p {
+  max-width: 44ch;
+  margin: 0;
+  color: rgb(255 255 255 / 82%);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.pn-entrar-apresentacao ul {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+  list-style: none;
+  font-size: 0.88rem;
+}
+
+.pn-entrar-apresentacao li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: rgb(255 255 255 / 88%);
+}
+
+.pn-entrar-apresentacao li svg {
+  flex: 0 0 auto;
+  color: #3b8bff;
+}
+
+.pn-entrar-caixa {
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  width: 100%;
+  padding: clamp(24px, 4vw, 40px);
+  border: 1px solid #e3ebf6;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgb(7 27 62 / 0.08);
+}
+
+.pn-entrar-marca {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pn-entrar-marca h2 {
+  margin: 0;
+  color: #0a1f44;
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pn-entrar-marca span {
+  color: #5a6882;
+  font-size: 0.9rem;
+}
+
+.pn-entrar .pn-rotulo {
+  color: #0a1f44;
+}
+
+.pn-entrar .pn-entrada {
+  min-height: 46px;
+  border-color: #c7d4e6;
+  border-radius: 6px;
+}
+
+.pn-entrar .pn-entrada:focus-visible {
+  border-color: #1f6bff;
+}
+
+.pn-entrar .pn-senha button {
+  border-color: #c7d4e6;
+  border-radius: 6px;
+  background: #f7faff;
+  color: #1f6bff;
+}
+
+.pn-entrar .pn-botao-primario {
+  min-height: 48px;
+  border-radius: 6px;
+  background: #1f6bff;
+  font-weight: 600;
+}
+
+.pn-entrar .pn-botao-primario:hover:not(:disabled) {
+  background: #0c51cb;
+}
+
+.pn-entrar-seguro {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  color: #71809c;
+  font-size: 0.78rem;
+}
+
+.pn-entrar-base {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  width: 100%;
+  padding: 18px max(20px, calc((100% - 1200px) / 2));
+  background: #0a1f44;
+  color: rgb(255 255 255 / 60%);
+  font-size: 0.76rem;
+}
+
+.pn-entrar-slogan {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pn-entrar-slogan::before {
+  content: "";
+  width: 40px;
+  height: 2px;
+  border-radius: 2px;
+  background: #2f7bff;
+}
+
+@media (min-width: 900px) {
+  .pn-entrar-corpo {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 44px;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 899px) {
+  /* No celular, quem abre o login quer entrar: o formulário vem antes. */
+  .pn-entrar-caixa {
+    order: -1;
+  }
+}
+
+@media (max-width: 599px) {
+  .pn-entrar-linha,
+  .pn-entrar-corpo {
+    width: min(100% - 32px, 1200px);
+  }
+
+  .pn-entrar-voltar {
+    padding: 0 12px;
+    font-size: 0.8rem;
+  }
+
+  .pn-entrar-corpo {
+    padding-block: 24px 32px;
+  }
 }
 
 /* ---------- responsivo ---------- */
@@ -1806,4 +2014,55 @@
   .pn-lateral {
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------- troca de senha: regras e conferência ao vivo ---------- */
+
+.pn-regras {
+  display: grid;
+  gap: 6px;
+  margin: -4px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--pn-borda);
+  border-radius: 8px;
+  background: #f7faff;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--pn-suave);
+}
+
+.pn-regras li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pn-regras li > span[aria-hidden] {
+  display: inline-grid;
+  width: 16px;
+  place-items: center;
+  font-weight: 700;
+}
+
+.pn-regras li.ok {
+  color: #0e7a55;
+}
+
+.pn-regras li.falha,
+.pn-confere.falha {
+  color: #c81e2e;
+}
+
+.pn-confere {
+  margin: -6px 0 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.pn-confere.ok {
+  color: #0e7a55;
+}
+
+.pn-entrada[aria-invalid="true"] {
+  border-color: #e02d3c;
 }
