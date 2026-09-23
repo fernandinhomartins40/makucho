@@ -53,3 +53,4 @@ apps/api/.env
 # Imagens enviadas pelo CMS: dado da instalacao, recriado pelo seed.
 # Em producao vivem no volume makucho-media-data.
 apps/api/storage/
+portal/apps/api/storage/

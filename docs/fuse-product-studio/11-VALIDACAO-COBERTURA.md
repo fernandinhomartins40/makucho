@@ -14,7 +14,12 @@ Estado parcial em 22/09/2026. A documentação não é aceite final.
 - Smoke HTTP + browser em produção: artigo publicado, categoria Economia, tag Copom, autora Helena Braga, busca `selic`, vídeos, Sobre e Contato responderam 200; URL inexistente respondeu 404. Em 390 e 1280 px, cada rota exibiu `h1` específico e `scrollWidth` não excedeu o viewport. Isso verifica a renderização principal com dados existentes, não paginação, teclado, erros nem ações de escrita.
 - A página 404 renderizou o estado de recuperação, mas herdava o título genérico. Após `31e17ce`, o workflow `35801349011` concluiu com sucesso e o HTML público retornou HTTP 404, título `Página não encontrada | MAKUCHO` e `noindex`.
 
-Ambiente local: a API em `localhost:3001` não está em execução e não há `.env` em `portal/` ou `portal/apps/api/`. Não foi criado dado demonstrativo nem aplicada migração para simular integração. A inspeção de rotas dependentes de API e de sessão autenticada precisa de ambiente configurado.
+## Integração local com banco real de desenvolvimento
+
+- Banco PostgreSQL isolado `makucho-postgres` iniciado com volume novo e as três migrações aplicadas com sucesso. O seed local criou 12 artigos, 6 vídeos e 7 seções; esses dados são apenas de desenvolvimento e não substituem a base publicada.
+- API local em `localhost:3001` respondeu HTTP 200 em `/api/health` usando armazenamento em disco local.
+- `validate-local-api.mjs` executou: `GET /auth/me` anônimo 401; `POST /tags` anônimo 401; login `SUPER_ADMIN` 200; `/auth/me` autenticado 200; criar tag 201; editar 200; ler persistência 200; auditoria 200 com ID do registro; excluir item de teste 204; leitura seguinte confirmou ausência. Credenciais e cookies não foram registrados na saída.
+- Uma única tentativa com as credenciais do `.env` local contra o login de produção retornou 401; não houve retry. Portanto, sessão e permissões do CMS publicado continuam sem validação. Testes locais provam apenas esse fluxo específico com `SUPER_ADMIN`, não todos os papéis nem as telas no navegador.
 
 | Área | Evidência concluída | Falta para aceite |
 |---|---|---|

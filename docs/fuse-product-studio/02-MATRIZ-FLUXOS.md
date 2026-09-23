@@ -12,7 +12,7 @@ Legenda: M mapeado, D diagnosticado, R redesenhado, P planejado, I implementado,
 | PUB-06 | visitante: newsletter → confirmação | e-mail, consentimento, duplicidade, unsubscribe, export restrito | M D R P I parcial (aceite explícito); V — |
 | PUB-07 | visitante: anúncio → destino | ads, posições home/artigo/lateral/rodapé, período/alvo, impressão/clique, ausência de campanha | M D R P I; V — |
 | PUB-08 | visitante: Sobre/Contato → informação institucional | settings públicos, e-mail opcional, ausência de canal | M D R P I; V parcial (renderização publicada 390/1280) |
-| ADM-01 | equipe: login/refresh/logout/troca/recuperação → sessão | auth, cookies, senha temporária, expiração, papel | M D P; R I V — |
+| ADM-01 | equipe: login/refresh/logout/troca/recuperação → sessão | auth, cookies, senha temporária, expiração, papel | M D P; R I V parcial (login/me/negação anônima em API local) |
 | ADM-02 | equipe: painel → prioridade | contagens posts/newsletter, falha parcial, atalho | M D R P I parcial (falha ≠ zero); V — |
 | ADM-03a | autor: criar/editar/autosave → rascunho | posts, mídia, categorias, validação, concorrência, retomada | M D P; R I V — |
 | ADM-03b | editor: revisar/agendar/publicar/arquivar → estado | status, permissões, auditoria, falha e duplicidade | M D P; R I V — |
@@ -20,7 +20,7 @@ Legenda: M mapeado, D diagnosticado, R redesenhado, P planejado, I implementado,
 | ADM-04 | autor: upload/recorte/alt/exclusão → mídia | media/storage/processor, limites, erro parcial | M D P; R I V — |
 | ADM-05 | autor: vídeo → publicação/ordem | videos, plataforma/url/thumbnail, duplicidade | M D R P I parcial (rascunho/agendamento/erro); V — |
 | ADM-06 | editor: montar home → seção visível | homepage, nove tipos, posição, seleção, exclusão | M D R P I parcial; V — |
-| ADM-07 | editor: categoria/tag/autor → taxonomia | slugs, relacionamentos, duplicidade, ordem | M D P; R I V — |
+| ADM-07 | editor: categoria/tag/autor → taxonomia | slugs, relacionamentos, duplicidade, ordem | M D P; R I V parcial (tag CRUD/auditoria em API local) |
 | ADM-08 | admin: anúncio → veiculação/métrica | ads, alvo, data, prioridade, medição | M D R P I parcial (validação/erro); V — |
 | ADM-09 | editor/admin: newsletter → inscritos/exportação | consentimento, privacidade, acesso por papel | M D P; R I V — |
 | ADM-10 | admin: usuário/permissão → acesso | users, reset, papéis, auditoria, bloqueio | M D P; R I V — |
