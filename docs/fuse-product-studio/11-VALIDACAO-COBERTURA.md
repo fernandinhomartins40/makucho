@@ -6,7 +6,8 @@ Estado parcial em 22/09/2026. A documentação não é aceite final.
 
 - Workflow de produção `35798474885`: build e deploy na VPS concluídos com sucesso. A home respondeu HTTP 200 em 22/09/2026.
 - Capturas reais da home e do login em 390, 820, 1280 e 1440 px: `validacao/producao-*-exact.png`. As imagens são evidência de duas rotas e do primeiro viewport, não de todas as jornadas.
-- Home em 1280 px: `document.documentElement.scrollWidth` era 1500 px; em 1440 px, 1589 px. A navegação completa forçava overflow. O breakpoint do menu foi ajustado para recolhê-lo abaixo de 1600 px; falta verificar a correção publicada.
+- Home em 1280 px: `document.documentElement.scrollWidth` era 1500 px; em 1440 px, 1589 px. A navegação completa forçava overflow. O breakpoint do menu foi ajustado para recolhê-lo abaixo de 1600 px.
+- Reteste publicado após `be76aaf` (workflow `35799575355`, sucesso): em 1280 px, `scrollWidth` 1265 px; em 1440 px, 1425 px. Em 390 px, 390 px; em 820 px, 805 px. A rolagem horizontal de documento foi eliminada nesses quatro viewports. Isso não substitui os testes de 320/360/430/1024/1366/1920, zoom e navegação por teclado.
 - Home em 390 px não apresentou overflow (`scrollWidth` 390 px). O login também não apresentou overflow em 390/820 px e seu formulário estava visível.
 - A imagem de destaque publicada foi carregada com sucesso pelo navegador, mas o próprio arquivo mostra um placeholder azul com pequenos glifos ilegíveis. É uma pendência de conteúdo/mídia da publicação atual, não um erro de rede nem autorização para substituir registros no CMS.
 - Não houve acesso autenticado ao CMS nesta verificação; comportamento de gravação, papéis e estados internos permanece sem validação real.

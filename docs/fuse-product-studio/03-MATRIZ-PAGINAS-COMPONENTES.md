@@ -4,7 +4,7 @@ Todas as rotas foram encontradas cruzando `page.tsx`, imports, menu, controlador
 
 | Rota | Componentes próprios ou compartilhados | Estados prioritários | C/T/N/D | Estado |
 |---|---|---|---|---|
-| `/` | cabeçalho, radar, hero, cards, vídeo, temas, anúncio, newsletter, rodapé | vazio/API/sem campanha | normal/normal/overflow observado e corrigido em código/overflow observado e corrigido em código | A R I parcial; reteste publicado pendente |
+| `/` | cabeçalho, radar, hero, cards, vídeo, temas, anúncio, newsletter, rodapé | vazio/API/sem campanha | normal/normal/sem overflow após deploy/sem overflow após deploy | A R I V parcial; mídia de destaque e demais estados pendentes |
 | `/artigo/[slug]` | moldura, mídia, leitura, contador, relacionados, slots de artigo/lateral | 404/mídia ausente/longform/sem campanha | ?/?/?/? | A R I parcial |
 | `/autor/[slug]` | moldura, listagem, paginação | vazio/404 | ?/?/?/? | A R I parcial |
 | `/categoria/[slug]` | moldura, listagem, paginação | vazio/404 | ?/?/?/? | A R I parcial |
