@@ -40,6 +40,7 @@ export class TasksService {
   @Cron(CronExpression.EVERY_10_MINUTES, { name: 'expirar-anuncios' })
   async expirarAnuncios(): Promise<void> {
     await this.executar('expirar anúncios', () => this.ads.expirarVencidos());
+    await this.executar('marcar cobranças em atraso', () => this.ads.marcarAtrasados());
   }
 
   /** Atualiza o ticker a partir do provedor configurado. */

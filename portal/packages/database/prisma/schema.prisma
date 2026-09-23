@@ -76,6 +76,30 @@ enum AdDeviceTarget {
   MOBILE
 }
 
+/// Formatos padrão IAB (ver AD_FORMAT_DEFINITIONS em @makucho/types)
+enum AdFormat {
+  LEADERBOARD
+  BILLBOARD
+  RECTANGLE
+  HALF_PAGE
+}
+
+/// FIXED = valor do período; CPM = por mil impressões; CPC = por clique
+enum AdPricingModel {
+  FIXED
+  CPM
+  CPC
+}
+
+/// Cobrança controlada pela redação (sem gateway de pagamento)
+enum AdBillingStatus {
+  PENDING
+  INVOICED
+  PAID
+  OVERDUE
+  COURTESY
+}
+
 enum NewsletterStatus {
   ACTIVE
   UNSUBSCRIBED
@@ -119,6 +143,10 @@ enum ImagePreset {
   AVATAR
   CATEGORY
   FREEFORM
+  AD_LEADERBOARD
+  AD_BILLBOARD
+  AD_RECTANGLE
+  AD_HALF_PAGE
 }
 
 // ============================================================
@@ -636,6 +664,23 @@ model Advertisement {
   impressions Int @default(0)
   clicks      Int @default(0)
 
+  // ---- Comercial ----
+  format          AdFormat?
+  /// Patrocínio da posição: com um exclusivo ativo, só exclusivos aparecem nela
+  isExclusive     Boolean         @default(false) @map("is_exclusive")
+  pricingModel    AdPricingModel  @default(FIXED) @map("pricing_model")
+  /// R$: total do período (FIXED), por mil impressões (CPM) ou por clique (CPC)
+  price           Decimal?        @db.Decimal(12, 2)
+  /// CPM: ao atingir a meta, o anúncio deixa de ser exibido
+  impressionGoal  Int?            @map("impression_goal")
+  billingStatus   AdBillingStatus @default(PENDING) @map("billing_status")
+  billingDueDate  DateTime?       @map("billing_due_date")
+  paidAt          DateTime?       @map("paid_at")
+  contactName     String?         @map("contact_name") @db.VarChar(160)
+  contactEmail    String?         @map("contact_email") @db.VarChar(255)
+  contactPhone    String?         @map("contact_phone") @db.VarChar(40)
+  billingNotes    String?         @map("billing_notes") @db.VarChar(2000)
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -645,6 +690,7 @@ model Advertisement {
 
   @@index([status, startsAt, endsAt])
   @@index([priority(sort: Desc)])
+  @@index([billingStatus, billingDueDate])
   @@map("advertisements")
 }
 

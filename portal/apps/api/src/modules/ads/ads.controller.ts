@@ -104,6 +104,13 @@ export class AdsController {
     return this.ads.listar(filtro);
   }
 
+  @Get('summary')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Resumo comercial: vencimentos, cobrança, anunciantes e competição' })
+  async resumo() {
+    return this.ads.resumo();
+  }
+
   @Get('metrics')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Métricas de impressões e cliques' })

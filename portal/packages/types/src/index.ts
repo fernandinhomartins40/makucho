@@ -50,6 +50,55 @@ export type AdPlacement = (typeof AD_PLACEMENTS)[number];
 export const AD_DEVICE_TARGETS = ['ALL', 'DESKTOP', 'MOBILE'] as const;
 export type AdDeviceTarget = (typeof AD_DEVICE_TARGETS)[number];
 
+/**
+ * Formatos de anúncio (tamanhos padrão IAB). Cada formato só pode ocupar as
+ * posições onde cabe; o criativo é recortado no preset correspondente
+ * (resolução 2x para telas de alta densidade).
+ */
+export const AD_FORMATS = ['LEADERBOARD', 'BILLBOARD', 'RECTANGLE', 'HALF_PAGE'] as const;
+export type AdFormat = (typeof AD_FORMATS)[number];
+
+export interface AdFormatDefinition {
+  readonly key: AdFormat;
+  readonly label: string;
+  readonly width: number;
+  readonly height: number;
+  readonly preset: ImagePreset;
+  readonly placements: readonly AdPlacement[];
+  readonly description: string;
+}
+
+export const AD_FORMAT_DEFINITIONS: Record<AdFormat, AdFormatDefinition> = {
+  LEADERBOARD: {
+    key: 'LEADERBOARD', label: 'Banner horizontal', width: 728, height: 90, preset: 'AD_LEADERBOARD',
+    placements: ['HOME_TOP', 'HOME_AFTER_HERO', 'HOME_MIDDLE', 'ARTICLE_TOP', 'ARTICLE_BOTTOM', 'FOOTER'],
+    description: 'Faixa larga entre seções da home, no início/fim do artigo e no rodapé.',
+  },
+  BILLBOARD: {
+    key: 'BILLBOARD', label: 'Super banner', width: 970, height: 250, preset: 'AD_BILLBOARD',
+    placements: ['HOME_TOP', 'HOME_AFTER_HERO', 'HOME_MIDDLE', 'FOOTER'],
+    description: 'Grande destaque na home. Maior impacto visual.',
+  },
+  RECTANGLE: {
+    key: 'RECTANGLE', label: 'Retângulo médio', width: 300, height: 250, preset: 'AD_RECTANGLE',
+    placements: ['SIDEBAR_TOP', 'SIDEBAR_MIDDLE', 'ARTICLE_MIDDLE'],
+    description: 'Coluna lateral dos artigos e meio do texto.',
+  },
+  HALF_PAGE: {
+    key: 'HALF_PAGE', label: 'Meia página', width: 300, height: 600, preset: 'AD_HALF_PAGE',
+    placements: ['SIDEBAR_TOP', 'SIDEBAR_MIDDLE'],
+    description: 'Vertical na coluna lateral dos artigos.',
+  },
+};
+
+/** Como o cliente paga: valor fixo pelo período, por mil impressões ou por clique. */
+export const AD_PRICING_MODELS = ['FIXED', 'CPM', 'CPC'] as const;
+export type AdPricingModel = (typeof AD_PRICING_MODELS)[number];
+
+/** Controle de cobrança (sem gateway: a redação marca o que foi pago). */
+export const AD_BILLING_STATUSES = ['PENDING', 'INVOICED', 'PAID', 'OVERDUE', 'COURTESY'] as const;
+export type AdBillingStatus = (typeof AD_BILLING_STATUSES)[number];
+
 export const NEWSLETTER_STATUSES = ['ACTIVE', 'UNSUBSCRIBED', 'PENDING'] as const;
 export type NewsletterStatus = (typeof NEWSLETTER_STATUSES)[number];
 
@@ -88,6 +137,10 @@ export const IMAGE_PRESETS = [
   'AVATAR',
   'CATEGORY',
   'FREEFORM',
+  'AD_LEADERBOARD',
+  'AD_BILLBOARD',
+  'AD_RECTANGLE',
+  'AD_HALF_PAGE',
 ] as const;
 export type ImagePreset = (typeof IMAGE_PRESETS)[number];
 
@@ -138,6 +191,10 @@ export const IMAGE_PRESET_DEFINITIONS: Record<ImagePreset, ImagePresetDefinition
   AVATAR: preset('AVATAR', 'Avatar', 512, 512, 'Foto de autor ou usuário'),
   CATEGORY: preset('CATEGORY', 'Categoria', 1000, 560, 'Capa das categorias'),
   FREEFORM: preset('FREEFORM', 'Livre', 0, 0, 'Recorte na proporção original da imagem'),
+  AD_LEADERBOARD: preset('AD_LEADERBOARD', 'Anúncio · Banner horizontal', 1456, 180, 'Criativo 728×90 (em 2x)'),
+  AD_BILLBOARD: preset('AD_BILLBOARD', 'Anúncio · Super banner', 1940, 500, 'Criativo 970×250 (em 2x)'),
+  AD_RECTANGLE: preset('AD_RECTANGLE', 'Anúncio · Retângulo médio', 600, 500, 'Criativo 300×250 (em 2x)'),
+  AD_HALF_PAGE: preset('AD_HALF_PAGE', 'Anúncio · Meia página', 600, 1200, 'Criativo 300×600 (em 2x)'),
 };
 
 /** Larguras geradas para cada variante (secao 16). */
@@ -370,6 +427,47 @@ export interface AdvertisementDto {
   endsAt: string | null;
   impressions: number;
   clicks: number;
+
+  // ---- Comercial (gestão sem gateway de pagamento) ----
+  format: AdFormat | null;
+  /** Patrocínio da posição: enquanto ativo, só anúncios exclusivos aparecem nela. */
+  isExclusive: boolean;
+  pricingModel: AdPricingModel;
+  /** Valor em R$: total do período (FIXED), por mil impressões (CPM) ou por clique (CPC). */
+  price: number | null;
+  /** CPM: ao atingir a meta, o anúncio para de ser exibido. */
+  impressionGoal: number | null;
+  billingStatus: AdBillingStatus;
+  billingDueDate: string | null;
+  paidAt: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  billingNotes: string | null;
+  /** Calculado: valor a cobrar até agora (FIXED = total; CPM/CPC = pelo entregue). */
+  amountDue: number | null;
+  /** Calculado: peso na competição da posição (maior = aparece mais). */
+  competitionWeight: number;
+}
+
+/** Painel de anúncios: números e alertas para renovar e cobrar. */
+export interface AdsSummaryDto {
+  ativos: number;
+  vencendo: Array<{ id: string; name: string; advertiser: string | null; endsAt: string; dias: number }>;
+  vencidos: Array<{ id: string; name: string; advertiser: string | null; endsAt: string; dias: number; billingStatus: AdBillingStatus }>;
+  cobranca: {
+    contratadoMes: number;
+    recebido: number;
+    aReceber: number;
+    emAtraso: number;
+    atrasados: Array<{ id: string; name: string; advertiser: string | null; billingDueDate: string; valor: number }>;
+  };
+  anunciantes: Array<{ advertiser: string; anuncios: number; contratado: number; recebido: number; aReceber: number }>;
+  /** Fatia de exibições de cada anúncio ativo, por posição (soma 100%). */
+  competicao: Array<{
+    placement: AdPlacement;
+    anuncios: Array<{ id: string; name: string; advertiser: string | null; share: number; exclusivo: boolean }>;
+  }>;
 }
 
 // ============================================================

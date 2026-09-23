@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AD_FORMAT_DEFINITIONS } from '@makucho/types';
 import { REGEX_SLUG } from './slug';
 
 /**
@@ -402,18 +403,52 @@ export const camposAnuncioSchema = z.object({
     .min(1, 'Escolha ao menos uma posição no site'),
   startsAt: z.coerce.date().nullish(),
   endsAt: z.coerce.date().nullish(),
+
+  // ---- Comercial ----
+  format: z.enum(['LEADERBOARD', 'BILLBOARD', 'RECTANGLE', 'HALF_PAGE']).nullish(),
+  isExclusive: z.boolean().default(false),
+  pricingModel: z.enum(['FIXED', 'CPM', 'CPC']).default('FIXED'),
+  price: z.number().min(0, 'O valor não pode ser negativo').max(10_000_000).nullish(),
+  impressionGoal: z.number().int().min(1).max(1_000_000_000).nullish(),
+  billingStatus: z.enum(['PENDING', 'INVOICED', 'PAID', 'OVERDUE', 'COURTESY']).default('PENDING'),
+  billingDueDate: z.coerce.date().nullish(),
+  paidAt: z.coerce.date().nullish(),
+  contactName: z.string().max(160).trim().nullish(),
+  contactEmail: z.string().email('E-mail inválido').max(255).nullish().or(z.literal('').transform(() => null)),
+  contactPhone: z.string().max(40).trim().nullish(),
+  billingNotes: z.string().max(2000).nullish(),
 });
 
-export const criarAnuncioSchema = camposAnuncioSchema.refine(
-  (d) => !d.startsAt || !d.endsAt || d.endsAt.getTime() > d.startsAt.getTime(),
-  { message: 'A data final deve ser posterior à inicial', path: ['endsAt'] },
-);
+/** Cada formato só ocupa as posições onde cabe (ver AD_FORMAT_DEFINITIONS). */
+function posicoesCompativeis(d: { format?: string | null; placements?: string[] }): boolean {
+  if (!d.format || !d.placements) return true;
+  const def = AD_FORMAT_DEFINITIONS[d.format as keyof typeof AD_FORMAT_DEFINITIONS];
+  return d.placements.every((p) => (def.placements as readonly string[]).includes(p));
+}
 
-export const atualizarAnuncioSchema = camposAnuncioSchema.partial();
+export const criarAnuncioSchema = camposAnuncioSchema
+  .refine(
+    (d) => !d.startsAt || !d.endsAt || d.endsAt.getTime() > d.startsAt.getTime(),
+    { message: 'A data final deve ser posterior à inicial', path: ['endsAt'] },
+  )
+  .refine(posicoesCompativeis, {
+    message: 'Uma das posições não comporta este formato',
+    path: ['placements'],
+  })
+  .refine((d) => d.pricingModel === 'FIXED' || d.billingStatus === 'COURTESY' || (d.price ?? 0) > 0, {
+    message: 'Informe o valor por mil impressões ou por clique',
+    path: ['price'],
+  });
+
+export const atualizarAnuncioSchema = camposAnuncioSchema.partial().refine(posicoesCompativeis, {
+  message: 'Uma das posições não comporta este formato',
+  path: ['placements'],
+});
 
 export const filtroAnunciosSchema = paginacaoSchema.extend({
   status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'EXPIRED']).optional(),
   placement: posicaoAnuncioSchema.optional(),
+  billingStatus: z.enum(['PENDING', 'INVOICED', 'PAID', 'OVERDUE', 'COURTESY']).optional(),
 });
 
 export const eventoAnuncioSchema = z.object({

@@ -1,5 +1,6 @@
 import type {
   AdvertisementDto,
+  AdsSummaryDto,
   AuthUser,
   AuthorDto,
   CategoryDto,
@@ -250,6 +251,8 @@ export const painel = {
   excluirVideo: (id: string) => chamar<void>(`/videos/${id}`, { method: 'DELETE' }),
 
   // ---------- anuncios ----------
+  resumoAnuncios: () => chamar<AdsSummaryDto>('/ads/summary'),
+
   anuncios: (f: Pag & Record<string, unknown> = {}) =>
     chamar<PaginatedResponse<AdvertisementDto>>(
       `/ads${query(f as Record<string, string | number | undefined>)}`,

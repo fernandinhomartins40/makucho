@@ -2,16 +2,34 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type {
+  AdBillingStatus,
   AdDeviceTarget,
   AdPlacement,
+  AdPricingModel,
   AdStatus,
   AdvertisementDto,
+  AdsSummaryDto,
 } from '@makucho/types';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService, detectarDispositivo } from '../audit/audit.service';
 import { MediaService } from '../media/media.service';
 import { hashDeSessao, normalizarReferrer } from '../../common/utils/session.util';
 import type { AppConfig } from '../../config/configuration';
+
+/** Sorteio ponderado sem reposição: chance proporcional ao peso. */
+function sortearPonderado<T>(opcoes: Array<{ item: T; peso: number }>, quantidade: number): T[] {
+  const restantes = [...opcoes];
+  const escolhidos: T[] = [];
+  while (escolhidos.length < quantidade && restantes.length > 0) {
+    const total = restantes.reduce((soma, o) => soma + o.peso, 0);
+    let alvo = Math.random() * total;
+    let indice = restantes.findIndex((o) => (alvo -= o.peso) <= 0);
+    if (indice < 0) indice = restantes.length - 1;
+    escolhidos.push(restantes[indice]!.item);
+    restantes.splice(indice, 1);
+  }
+  return escolhidos;
+}
 
 /**
  * Publicidade (secao 25).
@@ -37,8 +55,15 @@ export class AdsService {
   };
 
   /**
-   * Anuncios a exibir em um slot. Considera janela de veiculacao, status e
-   * o dispositivo; dentro do slot, prioridade maior primeiro.
+   * Anúncios a exibir em um slot, escolhidos por competição de valor.
+   *
+   * 1. Elegíveis: ativos, com imagem, dentro do período, no dispositivo e
+   *    na posição, e sem ter batido a meta de impressões (CPM).
+   * 2. Patrocínio: havendo um exclusivo elegível, só exclusivos disputam.
+   * 3. Rotação ponderada: cada exibição sorteia com chance proporcional ao
+   *    eCPM (quanto o anúncio rende por mil exibições) vezes o bônus de
+   *    prioridade. Quem paga mais aparece mais, sem tirar do ar quem paga
+   *    menos. Cortesias e anúncios sem valor ficam com peso mínimo.
    */
   async paraExibicao(
     placement: AdPlacement,
@@ -47,7 +72,7 @@ export class AdsService {
   ): Promise<AdvertisementDto[]> {
     const agora = new Date();
 
-    const anuncios = await this.prisma.advertisement.findMany({
+    const candidatos = await this.prisma.advertisement.findMany({
       where: {
         deletedAt: null,
         status: 'ACTIVE',
@@ -60,12 +85,67 @@ export class AdsService {
         ...(dispositivo === 'ALL' ? {} : { device: { in: ['ALL', dispositivo] } }),
       },
       include: this.incluir,
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-      take: limite,
     });
 
-    const mobiles = await this.carregarMobiles(anuncios);
-    return anuncios.map((a) => this.paraDto(a, mobiles.get(a.mobileMediaId ?? '')));
+    let elegiveis = candidatos.filter((a) => !a.impressionGoal || a.impressions < a.impressionGoal);
+    if (elegiveis.some((a) => a.isExclusive)) elegiveis = elegiveis.filter((a) => a.isExclusive);
+    if (elegiveis.length === 0) return [];
+
+    const audiencia = await this.audienciaDiaria(placement);
+    const escolhidos = sortearPonderado(
+      elegiveis.map((a) => ({ item: a, peso: this.pesoCompeticao(a, audiencia) })),
+      limite,
+    );
+
+    const mobiles = await this.carregarMobiles(escolhidos);
+    return escolhidos.map((a) => this.paraDto(a, mobiles.get(a.mobileMediaId ?? ''), audiencia));
+  }
+
+  /** Impressões médias por dia na posição (últimos 7 dias; mínimo 100). */
+  private async audienciaDiaria(placement?: AdPlacement): Promise<number> {
+    const desde = new Date(Date.now() - 7 * 86400000);
+    const total = await this.prisma.adEvent.count({
+      where: { type: 'impression', createdAt: { gte: desde }, ...(placement ? { placement } : {}) },
+    });
+    return Math.max(100, total / 7);
+  }
+
+  /**
+   * eCPM em R$ × bônus de prioridade. É o que decide a disputa da posição.
+   * `audiencia` converte contratos de valor fixo em valor por mil exibições.
+   */
+  private pesoCompeticao(
+    a: {
+      pricingModel: AdPricingModel;
+      price: unknown;
+      billingStatus: AdBillingStatus;
+      startsAt: Date | null;
+      endsAt: Date | null;
+      impressions: number;
+      clicks: number;
+      priority: number;
+    },
+    audiencia: number,
+  ): number {
+    const preco = a.price === null || a.price === undefined ? 0 : Number(a.price);
+    let ecpm = 0;
+    if (a.billingStatus !== 'COURTESY' && preco > 0) {
+      if (a.pricingModel === 'CPM') {
+        ecpm = preco;
+      } else if (a.pricingModel === 'CPC') {
+        // CTR real depois de 200 impressões; antes disso, 1% de referência.
+        const ctr = a.impressions >= 200 ? a.clicks / a.impressions : 0.01;
+        ecpm = preco * ctr * 1000;
+      } else {
+        const dias =
+          a.startsAt && a.endsAt
+            ? Math.max(1, Math.ceil((a.endsAt.getTime() - a.startsAt.getTime()) / 86400000))
+            : 30;
+        ecpm = (preco / dias / audiencia) * 1000;
+      }
+    }
+    const base = Math.max(ecpm, 0.01); // cortesia/sem valor: só preenche espaço vazio
+    return Number((base * (1 + a.priority / 100)).toFixed(4));
   }
 
   async listar(filtro: {
@@ -74,9 +154,11 @@ export class AdsService {
     status?: AdStatus;
     placement?: AdPlacement;
     search?: string;
+    billingStatus?: AdBillingStatus;
   }) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filtro.status) where.status = filtro.status;
+    if (filtro.billingStatus) where.billingStatus = filtro.billingStatus;
     if (filtro.placement) where.placements = { some: { placement: filtro.placement } };
     if (filtro.search) {
       where.OR = [
@@ -89,7 +171,8 @@ export class AdsService {
       this.prisma.advertisement.findMany({
         where,
         include: this.incluir,
-        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+        // Os que vencem antes aparecem primeiro: é o que pede ação.
+        orderBy: [{ endsAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
         skip: (filtro.page - 1) * filtro.perPage,
         take: filtro.perPage,
       }),
@@ -133,6 +216,7 @@ export class AdsService {
       placements: AdPlacement[];
       [k: string]: unknown;
     };
+    if (campos.billingStatus === 'PAID' && !campos.paidAt) campos.paidAt = new Date();
     this.validarVeiculacao(
       (dados.status as AdStatus | undefined) ?? 'DRAFT',
       (dados.mediaId as string | null | undefined) ?? null,
@@ -184,6 +268,9 @@ export class AdsService {
       placements?: AdPlacement[];
       [k: string]: unknown;
     };
+    // Marcou como pago sem data: registra agora. Voltou a pendente: limpa.
+    if (campos.billingStatus === 'PAID' && campos.paidAt === undefined) campos.paidAt = new Date();
+    if (campos.billingStatus && campos.billingStatus !== 'PAID' && campos.paidAt === undefined) campos.paidAt = null;
     this.validarVeiculacao(
       (dados.status as AdStatus | undefined) ?? existe.status,
       dados.mediaId === undefined ? existe.mediaId : dados.mediaId as string | null,
@@ -359,6 +446,106 @@ export class AdsService {
       .sort((a, b) => b.impressions - a.impressions);
   }
 
+  /**
+   * Painel comercial: o que vence, o que venceu, o que cobrar e quem está
+   * ganhando cada posição.
+   */
+  async resumo(): Promise<AdsSummaryDto> {
+    const agora = new Date();
+    const dia = 86400000;
+    const inicioMes = new Date(agora.getFullYear(), agora.getMonth(), 1);
+    const todos = await this.prisma.advertisement.findMany({
+      where: { deletedAt: null },
+      include: { placements: true },
+      orderBy: { endsAt: 'asc' },
+    });
+    const valor = (a: (typeof todos)[number]) => this.valorDevido(a) ?? 0;
+    const dias = (d: Date) => Math.ceil((d.getTime() - agora.getTime()) / dia);
+    const ativoAgora = (a: (typeof todos)[number]) =>
+      a.status === 'ACTIVE' && (!a.startsAt || a.startsAt <= agora) && (!a.endsAt || a.endsAt >= agora);
+
+    const vencendo = todos
+      .filter((a) => ativoAgora(a) && a.endsAt && a.endsAt.getTime() - agora.getTime() <= 7 * dia)
+      .map((a) => ({ id: a.id, name: a.name, advertiser: a.advertiser, endsAt: a.endsAt!.toISOString(), dias: dias(a.endsAt!) }));
+
+    const vencidos = todos
+      .filter((a) => (a.status === 'EXPIRED' || (a.endsAt && a.endsAt < agora)) && a.endsAt && agora.getTime() - a.endsAt.getTime() <= 90 * dia)
+      .map((a) => ({
+        id: a.id, name: a.name, advertiser: a.advertiser, endsAt: a.endsAt!.toISOString(),
+        dias: Math.abs(dias(a.endsAt!)), billingStatus: a.billingStatus,
+      }))
+      .sort((x, y) => x.dias - y.dias);
+
+    const cobraveis = todos.filter((a) => a.billingStatus !== 'COURTESY');
+    const soma = (lista: typeof todos) => Number(lista.reduce((t, a) => t + valor(a), 0).toFixed(2));
+    const atrasados = cobraveis.filter((a) => a.billingStatus === 'OVERDUE');
+
+    const porAnunciante = new Map<string, typeof todos>();
+    for (const a of cobraveis) {
+      const chave = a.advertiser?.trim() || 'Sem anunciante';
+      porAnunciante.set(chave, [...(porAnunciante.get(chave) ?? []), a]);
+    }
+
+    // Competição: fatia de cada anúncio elegível agora, por posição.
+    const audiencias = new Map<string, number>();
+    const competicao: AdsSummaryDto['competicao'] = [];
+    const ativos = todos.filter((a) => ativoAgora(a) && a.mediaId && (!a.impressionGoal || a.impressions < a.impressionGoal));
+    const posicoes = [...new Set(ativos.flatMap((a) => a.placements.map((p) => p.placement)))];
+    for (const placement of posicoes) {
+      if (!audiencias.has(placement)) audiencias.set(placement, await this.audienciaDiaria(placement));
+      let naPosicao = ativos.filter((a) => a.placements.some((p) => p.placement === placement));
+      if (naPosicao.some((a) => a.isExclusive)) naPosicao = naPosicao.filter((a) => a.isExclusive);
+      const pesos = naPosicao.map((a) => ({ a, peso: this.pesoCompeticao(a, audiencias.get(placement)!) }));
+      const total = pesos.reduce((t, x) => t + x.peso, 0) || 1;
+      competicao.push({
+        placement,
+        anuncios: pesos
+          .map(({ a, peso }) => ({ id: a.id, name: a.name, advertiser: a.advertiser, share: Number(((peso / total) * 100).toFixed(1)), exclusivo: a.isExclusive }))
+          .sort((x, y) => y.share - x.share),
+      });
+    }
+
+    return {
+      ativos: todos.filter(ativoAgora).length,
+      vencendo,
+      vencidos,
+      cobranca: {
+        contratadoMes: soma(cobraveis.filter((a) => (a.startsAt ?? a.createdAt) >= inicioMes)),
+        recebido: soma(cobraveis.filter((a) => a.billingStatus === 'PAID')),
+        aReceber: soma(cobraveis.filter((a) => a.billingStatus === 'PENDING' || a.billingStatus === 'INVOICED')),
+        emAtraso: soma(atrasados),
+        atrasados: atrasados.map((a) => ({
+          id: a.id, name: a.name, advertiser: a.advertiser,
+          billingDueDate: (a.billingDueDate ?? a.endsAt ?? a.createdAt).toISOString(), valor: valor(a),
+        })),
+      },
+      anunciantes: [...porAnunciante.entries()]
+        .map(([advertiser, lista]) => ({
+          advertiser,
+          anuncios: lista.length,
+          contratado: soma(lista),
+          recebido: soma(lista.filter((a) => a.billingStatus === 'PAID')),
+          aReceber: soma(lista.filter((a) => a.billingStatus !== 'PAID')),
+        }))
+        .sort((x, y) => y.contratado - x.contratado),
+      competicao,
+    };
+  }
+
+  /** Cobrança vencida e não paga vira "Em atraso" (tarefa agendada). */
+  async marcarAtrasados(): Promise<number> {
+    const { count } = await this.prisma.advertisement.updateMany({
+      where: {
+        deletedAt: null,
+        billingStatus: { in: ['PENDING', 'INVOICED'] },
+        billingDueDate: { lt: new Date() },
+      },
+      data: { billingStatus: 'OVERDUE' },
+    });
+    if (count > 0) this.logger.log(`${count} cobrança(s) marcada(s) como em atraso`);
+    return count;
+  }
+
   /** Expira automaticamente o que passou da data final (tarefa agendada). */
   async expirarVencidos(): Promise<number> {
     const { count } = await this.prisma.advertisement.updateMany({
@@ -387,9 +574,28 @@ export class AdsService {
     return new Map(midias.map((m) => [m.id, m as never]));
   }
 
+  /** Quanto cobrar até agora: FIXED = total; CPM/CPC = pelo que foi entregue. */
+  private valorDevido(a: {
+    pricingModel: AdPricingModel;
+    price: unknown;
+    billingStatus: AdBillingStatus;
+    impressions: number;
+    clicks: number;
+  }): number | null {
+    if (a.billingStatus === 'COURTESY') return 0;
+    if (a.price === null || a.price === undefined) return null;
+    const preco = Number(a.price);
+    const valor =
+      a.pricingModel === 'CPM' ? (a.impressions / 1000) * preco
+        : a.pricingModel === 'CPC' ? a.clicks * preco
+          : preco;
+    return Number(valor.toFixed(2));
+  }
+
   private paraDto(
     anuncio: Record<string, unknown>,
     mobileMedia?: Parameters<MediaService['paraDto']>[0],
+    audiencia = 1000,
   ): AdvertisementDto {
     const a = anuncio as {
       id: string;
@@ -410,6 +616,18 @@ export class AdsService {
       endsAt: Date | null;
       impressions: number;
       clicks: number;
+      format: AdvertisementDto['format'];
+      isExclusive: boolean;
+      pricingModel: AdPricingModel;
+      price: unknown;
+      impressionGoal: number | null;
+      billingStatus: AdBillingStatus;
+      billingDueDate: Date | null;
+      paidAt: Date | null;
+      contactName: string | null;
+      contactEmail: string | null;
+      contactPhone: string | null;
+      billingNotes: string | null;
     };
 
     return {
@@ -432,6 +650,20 @@ export class AdsService {
       endsAt: a.endsAt ? a.endsAt.toISOString() : null,
       impressions: a.impressions,
       clicks: a.clicks,
+      format: a.format ?? null,
+      isExclusive: a.isExclusive ?? false,
+      pricingModel: a.pricingModel ?? 'FIXED',
+      price: a.price === null || a.price === undefined ? null : Number(a.price),
+      impressionGoal: a.impressionGoal ?? null,
+      billingStatus: a.billingStatus ?? 'PENDING',
+      billingDueDate: a.billingDueDate ? a.billingDueDate.toISOString() : null,
+      paidAt: a.paidAt ? a.paidAt.toISOString() : null,
+      contactName: a.contactName ?? null,
+      contactEmail: a.contactEmail ?? null,
+      contactPhone: a.contactPhone ?? null,
+      billingNotes: a.billingNotes ?? null,
+      amountDue: this.valorDevido(a),
+      competitionWeight: this.pesoCompeticao(a, audiencia),
     };
   }
 }
