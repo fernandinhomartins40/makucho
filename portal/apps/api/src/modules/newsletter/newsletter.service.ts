@@ -113,7 +113,10 @@ export class NewsletterService {
 
   async listar(filtro: { page: number; perPage: number; status?: string; search?: string }) {
     const where: Record<string, unknown> = {};
-    if (filtro.status) where.status = filtro.status;
+    // Status fora do enum viraria erro 500 no Prisma: ignorar é mais seguro.
+    if (filtro.status && ['ACTIVE', 'PENDING', 'UNSUBSCRIBED'].includes(filtro.status)) {
+      where.status = filtro.status;
+    }
     if (filtro.search) where.email = { contains: filtro.search, mode: 'insensitive' };
 
     const [inscritos, total] = await Promise.all([
@@ -182,8 +185,9 @@ export class NewsletterService {
   }
 
   async estatisticas() {
-    const [ativos, cancelados, ultimos30] = await Promise.all([
+    const [ativos, pendentes, cancelados, ultimos30] = await Promise.all([
       this.prisma.newsletterSubscriber.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.newsletterSubscriber.count({ where: { status: 'PENDING' } }),
       this.prisma.newsletterSubscriber.count({ where: { status: 'UNSUBSCRIBED' } }),
       this.prisma.newsletterSubscriber.count({
         where: { status: 'ACTIVE', createdAt: { gte: new Date(Date.now() - 30 * 86400000) } },
@@ -192,7 +196,9 @@ export class NewsletterService {
 
     return {
       active: ativos,
+      pending: pendentes,
       unsubscribed: cancelados,
+      total: ativos + pendentes + cancelados,
       last30Days: ultimos30,
       provider: this.config.get('newsletter', { infer: true }).provider,
     };

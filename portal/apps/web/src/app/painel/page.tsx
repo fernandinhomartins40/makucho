@@ -45,7 +45,7 @@ function Painel() {
         rascunhos: rascunho.status === 'fulfilled' ? rascunho.value.meta.total : null,
         publicados: publicado.status === 'fulfilled' ? publicado.value.meta.total : null,
         agendados: agendado.status === 'fulfilled' ? agendado.value.meta.total : null,
-        inscritos: news.status === 'fulfilled' ? news.value?.confirmed ?? null : null,
+        inscritos: news.status === 'fulfilled' ? news.value?.active ?? null : null,
       });
       setRecentes(ultimos.status === 'fulfilled' ? ultimos.value.data : []);
       setCarregando(false);

@@ -28,7 +28,7 @@ function Newsletter() {
   const [itens, setItens] = useState<Inscrito[]>([]);
   const [stats, setStats] = useState<{
     total: number;
-    confirmed: number;
+    active: number;
     pending: number;
     unsubscribed: number;
   } | null>(null);
@@ -105,19 +105,19 @@ function Newsletter() {
       {stats && (
         <div className="pn-cartoes">
           <div className="pn-cartao">
-            <strong>{stats.confirmed.toLocaleString('pt-BR')}</strong>
-            <span>Confirmados</span>
+            <strong>{(stats.active ?? 0).toLocaleString('pt-BR')}</strong>
+            <span>Ativos</span>
           </div>
           <div className="pn-cartao">
-            <strong>{stats.pending.toLocaleString('pt-BR')}</strong>
+            <strong>{(stats.pending ?? 0).toLocaleString('pt-BR')}</strong>
             <span>Pendentes</span>
           </div>
           <div className="pn-cartao">
-            <strong>{stats.unsubscribed.toLocaleString('pt-BR')}</strong>
+            <strong>{(stats.unsubscribed ?? 0).toLocaleString('pt-BR')}</strong>
             <span>Cancelados</span>
           </div>
           <div className="pn-cartao">
-            <strong>{stats.total.toLocaleString('pt-BR')}</strong>
+            <strong>{(stats.total ?? 0).toLocaleString('pt-BR')}</strong>
             <span>Total</span>
           </div>
         </div>
@@ -142,7 +142,7 @@ function Newsletter() {
               }}
             >
               <option value="">Todos</option>
-              <option value="CONFIRMED">Confirmados</option>
+              <option value="ACTIVE">Ativos</option>
               <option value="PENDING">Pendentes</option>
               <option value="UNSUBSCRIBED">Cancelados</option>
             </Selecao>

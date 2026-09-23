@@ -257,7 +257,7 @@ export const painel = {
       `/newsletter${query(f)}`,
     ),
   estatisticasNewsletter: () =>
-    chamar<{ total: number; confirmed: number; pending: number; unsubscribed: number }>(
+    chamar<{ total: number; active: number; pending: number; unsubscribed: number; last30Days: number; provider: string }>(
       '/newsletter/stats',
     ),
 
