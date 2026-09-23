@@ -1,0 +1,58 @@
+# Pauta diária sem IA: boletim de mercado + notícias da Agência Brasil.
+# Script e instruções em portal/scripts/pauta-diaria/.
+#
+# Configuração no GitHub (Settings → Secrets and variables → Actions):
+#   secrets   MAKUCHO_EMAIL, MAKUCHO_SENHA  (usuário Editor criado no painel)
+#   variables PAUTA_STATUS (PUBLISHED | REVIEW | DRAFT; padrão REVIEW)
+#             MAKUCHO_API_URL (padrão https://makucho.com.br/api)
+name: Pauta diária
+
+on:
+  schedule:
+    # 21:30 UTC = 18:30 em Brasília, depois do fechamento da B3.
+    - cron: '30 21 * * *'
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: 'Só simular (não grava nada)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: pauta-diaria
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pauta:
+    name: Criar publicações do dia
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: portal/scripts/pauta-diaria/requirements.txt
+
+      - name: Instalar dependências
+        run: pip install -r portal/scripts/pauta-diaria/requirements.txt
+
+      - name: Rodar pauta
+        env:
+          MAKUCHO_API_URL: ${{ vars.MAKUCHO_API_URL || 'https://makucho.com.br/api' }}
+          MAKUCHO_EMAIL: ${{ secrets.MAKUCHO_EMAIL }}
+          MAKUCHO_SENHA: ${{ secrets.MAKUCHO_SENHA }}
+          PAUTA_STATUS: ${{ vars.PAUTA_STATUS || 'REVIEW' }}
+          PAUTA_SIMULAR: ${{ inputs.simular && '1' || '0' }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          if [ -z "$MAKUCHO_EMAIL" ] || [ -z "$MAKUCHO_SENHA" ]; then
+            echo "::error::Configure os secrets MAKUCHO_EMAIL e MAKUCHO_SENHA (veja portal/scripts/pauta-diaria/README.md)."
+            exit 1
+          fi
+          python portal/scripts/pauta-diaria/pauta_diaria.py

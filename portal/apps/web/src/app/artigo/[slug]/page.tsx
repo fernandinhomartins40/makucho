@@ -28,7 +28,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
       title: post.seoTitle ?? post.title,
       description: post.seoDescription ?? post.excerpt ?? undefined,
-      alternates: { canonical: `/artigo/${post.slug}` },
+      // Conteúdo republicado (ex.: Agência Brasil) aponta para o original:
+      // sem isso, buscadores tratam a cópia como conteúdo duplicado.
+      alternates: { canonical: post.canonicalUrl ?? `/artigo/${post.slug}` },
       openGraph: {
         type: "article",
         title: post.title,
