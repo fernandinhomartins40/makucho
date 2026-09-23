@@ -2959,3 +2959,6 @@
 .pn .pn-integracao > .pn-dica a { color: var(--pn-azul); }
 .pn .pn-integracao-form { display: grid; gap: 4px; max-width: 560px; }
 .pn .pn-integracao-form .pn-acoes { justify-content: flex-start; }
+
+/* Editar é a ação principal da linha: azul, antes das demais. */
+.pn .pn-tabela .pn-acao-editar { color: var(--pn-azul); }

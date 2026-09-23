@@ -258,15 +258,18 @@ function Lista() {
                     </td>
                     <td>
                       <div className="pn-acoes">
+                        <Link href={`/painel/publicacoes/${p.id}`} className="pn-botao pn-botao-fantasma pn-acao-editar">
+                          Editar
+                        </Link>
                         {p.status === 'PUBLISHED' && (
                           <a
                             href={`/artigo/${p.slug}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            title="Ver no site"
+                            aria-label={`Ver “${p.title}” no site (abre em nova aba)`}
                             className="pn-botao pn-botao-fantasma"
                           >
-                            Ver
+                            Ver no site
                           </a>
                         )}
                         <Botao variante="fantasma" carregando={duplicando === p.id} disabled={duplicando !== null} onClick={() => void duplicar(p)}>

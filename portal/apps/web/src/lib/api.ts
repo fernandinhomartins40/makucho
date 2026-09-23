@@ -24,8 +24,10 @@ const naoENavegador = typeof window === 'undefined';
 
 export interface OpcoesBusca extends RequestInit {
   /**
-   * Segundos de cache. O portal e conteudo editorial: revalidar a cada
-   * minuto deixa a home instantanea sem exibir noticia velha.
+   * Segundos de cache (0 = sempre buscar). As leituras de conteudo usam 0:
+   * com cache, a primeira visita depois de uma edicao no painel ainda
+   * mostrava a versao antiga (ate 5 min no artigo). As paginas ja sao
+   * renderizadas a cada visita, entao o custo e so a chamada a API.
    */
   revalidate?: number;
 }
@@ -49,7 +51,7 @@ export class ApiError extends Error {
 const TIMEOUT_MS = 10_000;
 
 async function buscar<T>(caminho: string, opcoes: OpcoesBusca = {}): Promise<T> {
-  const { revalidate = 60, ...init } = opcoes;
+  const { revalidate = 0, ...init } = opcoes;
   const base = naoENavegador ? BASE_SERVIDOR : BASE_NAVEGADOR;
 
   const resposta = await fetch(`${base}${caminho}`, {
@@ -81,7 +83,7 @@ async function buscar<T>(caminho: string, opcoes: OpcoesBusca = {}): Promise<T> 
 
 export const api = {
   /** Tudo o que a home precisa, em uma requisição só. */
-  homepage: () => buscar<HomepagePayload>('/homepage', { revalidate: 60 }),
+  homepage: () => buscar<HomepagePayload>('/homepage', { revalidate: 0 }),
 
   anuncios: (posicao: string) =>
     buscar<AdvertisementDto[]>(`/ads/serve/${encodeURIComponent(posicao)}?limit=1`, {
@@ -101,31 +103,31 @@ export const api = {
         .filter(([, v]) => v !== undefined && v !== '')
         .map(([k, v]) => [k, String(v)]),
     );
-    return buscar<PaginatedResponse<PostSummaryDto>>(`/posts?${query}`, { revalidate: 60 });
+    return buscar<PaginatedResponse<PostSummaryDto>>(`/posts?${query}`, { revalidate: 0 });
   },
 
-  post: (slug: string) => buscar<PostDto>(`/posts/slug/${encodeURIComponent(slug)}`, { revalidate: 300 }),
+  post: (slug: string) => buscar<PostDto>(`/posts/slug/${encodeURIComponent(slug)}`, { revalidate: 0 }),
 
   relacionados: (id: string) =>
-    buscar<PostSummaryDto[]>(`/posts/${id}/related`, { revalidate: 300 }),
+    buscar<PostSummaryDto[]>(`/posts/${id}/related`, { revalidate: 0 }),
 
   maisLidos: (limite = 5, dias?: number) =>
     buscar<PostSummaryDto[]>(
       `/posts/most-read?limit=${limite}${dias ? `&days=${dias}` : ''}`,
-      { revalidate: 300 },
+      { revalidate: 0 },
     ),
 
-  categorias: () => buscar<CategoryDto[]>('/categories', { revalidate: 300 }),
+  categorias: () => buscar<CategoryDto[]>('/categories', { revalidate: 0 }),
 
-  tags: () => buscar<TagDto[]>('/tags', { revalidate: 300 }),
+  tags: () => buscar<TagDto[]>('/tags', { revalidate: 0 }),
 
-  tag: (slug: string) => buscar<TagDto>(`/tags/slug/${encodeURIComponent(slug)}`, { revalidate: 300 }),
+  tag: (slug: string) => buscar<TagDto>(`/tags/slug/${encodeURIComponent(slug)}`, { revalidate: 0 }),
 
   autor: (slug: string) =>
-    buscar<AuthorDto>(`/authors/slug/${encodeURIComponent(slug)}`, { revalidate: 300 }),
+    buscar<AuthorDto>(`/authors/slug/${encodeURIComponent(slug)}`, { revalidate: 0 }),
 
   videos: (page = 1) =>
-    buscar<PaginatedResponse<VideoDto>>(`/videos?page=${page}&perPage=12`, { revalidate: 120 }),
+    buscar<PaginatedResponse<VideoDto>>(`/videos?page=${page}&perPage=12`, { revalidate: 0 }),
 
   busca: (q: string, page = 1) =>
     buscar<PaginatedResponse<PostSummaryDto> & { term: string }>(
