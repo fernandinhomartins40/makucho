@@ -13,7 +13,7 @@ Todas as rotas foram encontradas cruzando `page.tsx`, imports, menu, controlador
 | `/videos` | moldura, grade, links externos, paginação | vazio/erro | normal/?/normal/? | A R I V parcial |
 | `/sobre` | moldura, conteúdo institucional, CTA | settings ausentes/erro | normal/?/normal/? | A R I V parcial |
 | `/contato` | moldura, e-mail configurado, CTA | e-mail ausente/erro | normal/?/normal/? | A R I V parcial |
-| 404 | moldura/retorno | endereço inválido/recuperação | normal/?/normal/? | A R I V parcial; metadados pendentes de reteste |
+| 404 | moldura/retorno | endereço inválido/recuperação | normal/?/normal/? | A R I V parcial; título/noindex publicados e retestados |
 | erro | retry global/retorno | falha de API/recuperação | ?/?/?/? | A R I parcial |
 | `/painel/entrar` | login, campos, aviso | envio/erro/sessão ativa | V/V/V/V (normal) | A R I V parcial; captura de produção 390/820/1280/1440 |
 | `/painel/senha` | moldura, formulário | obrigatório/erro/sucesso | ?/?/?/? | A |

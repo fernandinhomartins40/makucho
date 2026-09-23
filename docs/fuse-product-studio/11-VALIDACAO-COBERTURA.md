@@ -12,7 +12,7 @@ Estado parcial em 22/09/2026. A documentação não é aceite final.
 - A imagem de destaque publicada foi carregada com sucesso pelo navegador, mas o próprio arquivo mostra um placeholder azul com pequenos glifos ilegíveis. É uma pendência de conteúdo/mídia da publicação atual, não um erro de rede nem autorização para substituir registros no CMS.
 - Não houve acesso autenticado ao CMS nesta verificação; comportamento de gravação, papéis e estados internos permanece sem validação real.
 - Smoke HTTP + browser em produção: artigo publicado, categoria Economia, tag Copom, autora Helena Braga, busca `selic`, vídeos, Sobre e Contato responderam 200; URL inexistente respondeu 404. Em 390 e 1280 px, cada rota exibiu `h1` específico e `scrollWidth` não excedeu o viewport. Isso verifica a renderização principal com dados existentes, não paginação, teclado, erros nem ações de escrita.
-- A página 404 renderizou o estado de recuperação, mas herdava o título genérico. O título específico foi adicionado; o `noindex` já era emitido automaticamente pelo Next.js (confirmado no HTML gerado), sem duplicar a tag. Deploy e reteste pendentes.
+- A página 404 renderizou o estado de recuperação, mas herdava o título genérico. Após `31e17ce`, o workflow `35801349011` concluiu com sucesso e o HTML público retornou HTTP 404, título `Página não encontrada | MAKUCHO` e `noindex`.
 
 Ambiente local: a API em `localhost:3001` não está em execução e não há `.env` em `portal/` ou `portal/apps/api/`. Não foi criado dado demonstrativo nem aplicada migração para simular integração. A inspeção de rotas dependentes de API e de sessão autenticada precisa de ambiente configurado.
 
