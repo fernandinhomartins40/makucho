@@ -20,6 +20,8 @@ Estado parcial em 22/09/2026. A documentação não é aceite final.
 - API local em `localhost:3001` respondeu HTTP 200 em `/api/health` usando armazenamento em disco local.
 - `validate-local-api.mjs` executou: `GET /auth/me` anônimo 401; `POST /tags` anônimo 401; login `SUPER_ADMIN` 200; `/auth/me` autenticado 200; criar tag 201; editar 200; ler persistência 200; auditoria 200 com ID do registro; excluir item de teste 204; leitura seguinte confirmou ausência. Credenciais e cookies não foram registrados na saída.
 - Uma única tentativa com as credenciais do `.env` local contra o login de produção retornou 401; não houve retry. Portanto, sessão e permissões do CMS publicado continuam sem validação. Testes locais provam apenas esse fluxo específico com `SUPER_ADMIN`, não todos os papéis nem as telas no navegador.
+- Frontend local em `localhost:3100`: rota `/painel/entrar` respondeu HTTP 200 depois da compilação de desenvolvimento. O usuário semeado exige troca de senha no primeiro acesso, portanto esse check não prova navegação autenticada do CMS.
+- A suíte da API foi repetida: 30 testes de conteúdo, 9 de storage, 6 de seleção/publicação, 5 de anúncios e 6 de publicação/agendamento passaram. Esses testes cobrem regras isoladas; não substituem a matriz de jornadas/estados no navegador.
 
 | Área | Evidência concluída | Falta para aceite |
 |---|---|---|
