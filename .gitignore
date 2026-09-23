@@ -54,3 +54,7 @@ apps/api/.env
 # Em producao vivem no volume makucho-media-data.
 apps/api/storage/
 portal/apps/api/storage/
+
+# Python
+__pycache__/
+*.pyc
