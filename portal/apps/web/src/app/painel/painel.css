@@ -2962,3 +2962,87 @@
 
 /* Editar é a ação principal da linha: azul, antes das demais. */
 .pn .pn-tabela .pn-acao-editar { color: var(--pn-azul); }
+
+/* ---------- mídia: atalhos nas miniaturas ---------- */
+.pn .pn-midia-cartao {
+  position: relative;
+}
+
+.pn .pn-midia-cartao > .pn-midia-item {
+  width: 100%;
+}
+
+.pn-midia-atalhos {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgb(10 31 68 / 78%);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+/* Aparece no hover e quando algo no cartão recebe foco (teclado). */
+.pn-midia-cartao:hover .pn-midia-atalhos,
+.pn-midia-cartao:focus-within .pn-midia-atalhos {
+  opacity: 1;
+  transform: none;
+}
+
+/* Telas de toque não têm hover: atalhos sempre visíveis. */
+@media (hover: none) {
+  .pn-midia-atalhos {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pn-midia-atalhos button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.pn-midia-atalhos button:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
+.pn-midia-atalhos button:focus-visible {
+  outline: 2px solid #6fa8ff;
+  outline-offset: 0;
+}
+
+.pn-midia-atalhos .pn-midia-atalho-perigo:hover {
+  background: #dc2626;
+}
+
+.pn-visualizador {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.pn-visualizador img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #eef4fc;
+}
+
+.pn-visualizador figcaption {
+  color: var(--pn-suave, #5a6882);
+  font-size: 0.8rem;
+}

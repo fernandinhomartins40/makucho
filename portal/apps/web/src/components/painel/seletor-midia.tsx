@@ -240,36 +240,83 @@ export function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CA
 // GRADE DA BIBLIOTECA
 // ============================================================
 
+/** Ícones dos atalhos das miniaturas (SVG inline, sem biblioteca). */
+function IconeAtalho({ d }: { d: string }) {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+const ICONE_VER = 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 100-6 3 3 0 000 6z';
+const ICONE_EDITAR = 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4';
+const ICONE_EXCLUIR = 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3';
+
 export function GradeMidia({
   itens,
   selecionado,
   aoEscolher,
+  atalhos,
 }: {
   itens: MediaDto[];
   selecionado?: string | null;
   aoEscolher: (m: MediaDto) => void;
+  /** Só na biblioteca: no seletor, clicar na imagem é escolhê-la. */
+  atalhos?: {
+    aoVer: (m: MediaDto) => void;
+    aoEditar: (m: MediaDto) => void;
+    aoExcluir?: (m: MediaDto) => void;
+  };
 }) {
   return (
     <div className="pn-grade-midia">
-      {itens.map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          onClick={() => aoEscolher(m)}
-          className={`pn-midia-item ${selecionado === m.id ? 'pn-midia-sel' : ''}`}
-          title={m.alt ?? m.filename ?? ''}
-        >
-          <NextImage
-            src={miniatura(m)}
-            alt={m.alt ?? ''}
-            width={160}
-            height={110}
-            sizes="160px"
-            unoptimized
-          />
-          <span>{m.alt || m.filename || 'sem descrição'}</span>
-        </button>
-      ))}
+      {itens.map((m) => {
+        const nome = m.alt || m.filename || 'sem descrição';
+        const cartao = (
+          <button
+            type="button"
+            onClick={() => aoEscolher(m)}
+            className={`pn-midia-item ${selecionado === m.id ? 'pn-midia-sel' : ''}`}
+            title={m.alt ?? m.filename ?? ''}
+          >
+            <NextImage
+              src={miniatura(m)}
+              alt={m.alt ?? ''}
+              width={160}
+              height={110}
+              sizes="160px"
+              unoptimized
+            />
+            <span>{nome}</span>
+          </button>
+        );
+        if (!atalhos) return <div key={m.id} className="pn-midia-cartao">{cartao}</div>;
+        return (
+          <div key={m.id} className="pn-midia-cartao">
+            {cartao}
+            <div className="pn-midia-atalhos" role="group" aria-label={`Ações para ${nome}`}>
+              <button type="button" onClick={() => atalhos.aoVer(m)} aria-label={`Ver ${nome}`} title="Ver">
+                <IconeAtalho d={ICONE_VER} />
+              </button>
+              <button type="button" onClick={() => atalhos.aoEditar(m)} aria-label={`Editar ${nome}`} title="Editar">
+                <IconeAtalho d={ICONE_EDITAR} />
+              </button>
+              {atalhos.aoExcluir && (
+                <button
+                  type="button"
+                  className="pn-midia-atalho-perigo"
+                  onClick={() => atalhos.aoExcluir?.(m)}
+                  aria-label={`Excluir ${nome}`}
+                  title="Excluir"
+                >
+                  <IconeAtalho d={ICONE_EXCLUIR} />
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

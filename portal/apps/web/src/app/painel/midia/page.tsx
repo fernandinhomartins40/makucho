@@ -46,6 +46,7 @@ function Midia() {
   const [detalhe, setDetalhe] = useState<MediaDto | null>(null);
   // Imagem cujo arquivo está sendo trocado (mesmo id, todos os usos atualizam).
   const [substituindo, setSubstituindo] = useState<MediaDto | null>(null);
+  const [visualizar, setVisualizar] = useState<MediaDto | null>(null);
   const [ocupadoSubstituindo, setOcupadoSubstituindo] = useState(false);
   const [excluir, setExcluir] = useState<MediaDto | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -155,7 +156,15 @@ function Midia() {
             }
           />
         ) : (
-          <GradeMidia itens={itens} aoEscolher={setDetalhe} />
+          <GradeMidia
+            itens={itens}
+            aoEscolher={setDetalhe}
+            atalhos={{
+              aoVer: setVisualizar,
+              aoEditar: setDetalhe,
+              aoExcluir: pode(usuario, 'EDITOR') ? setExcluir : undefined,
+            }}
+          />
         )}
 
         {!erroLista && <Paginacao pagina={meta.page} totalPaginas={meta.totalPages} aoMudar={setPagina} />}
@@ -284,6 +293,47 @@ function Midia() {
               />
             </Campo>
           </>
+        )}
+      </Modal>
+
+      <Modal
+        titulo={visualizar?.alt || visualizar?.originalFilename || 'Imagem'}
+        aberto={visualizar !== null}
+        aoFechar={() => setVisualizar(null)}
+        largura={1000}
+        rodape={
+          <>
+            <Botao variante="fantasma" onClick={() => setVisualizar(null)}>Fechar</Botao>
+            <Botao
+              variante="primario"
+              onClick={() => {
+                setDetalhe(visualizar);
+                setVisualizar(null);
+              }}
+            >
+              Editar
+            </Botao>
+          </>
+        }
+      >
+        {visualizar && (
+          <figure className="pn-visualizador">
+            <NextImage
+              src={
+                visualizar.variants?.find((v) => v.type === 'LARGE' && v.format === 'webp')?.url ??
+                visualizar.variants?.find((v) => v.type === 'MEDIUM' && v.format === 'webp')?.url ??
+                visualizar.url
+              }
+              alt={visualizar.alt ?? ''}
+              width={visualizar.width ?? 1200}
+              height={visualizar.height ?? 675}
+              unoptimized
+            />
+            <figcaption>
+              {visualizar.width && visualizar.height ? `${visualizar.width} × ${visualizar.height} px` : ''}
+              {visualizar.credit ? ` · Crédito: ${visualizar.credit}` : ''}
+            </figcaption>
+          </figure>
         )}
       </Modal>
 
