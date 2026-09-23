@@ -5,6 +5,7 @@ import type {
   CategoryDto,
   HomepageSectionAdminDto,
   HomepageSectionDto,
+  MarketIndicatorDto,
   MediaDto,
   MediaUploadConfigDto,
   PaginatedResponse,
@@ -203,6 +204,14 @@ export const painel = {
   // O backend reaproveita o schema da home aqui: a chave e "sections".
   reordenarCategorias: (sections: Array<{ id: string; position: number }>) =>
     chamar<void>('/categories/reorder', { method: 'PUT', body: { sections } }),
+
+  // ---------- mercado (Radar da home) ----------
+  indicadores: () => chamar<MarketIndicatorDto[]>('/market/indicators/admin'),
+  /** Cria ou atualiza pelo simbolo (upsert na API). */
+  salvarIndicador: (d: unknown) =>
+    chamar<MarketIndicatorDto>('/market/indicators', { method: 'POST', body: d }),
+  excluirIndicador: (id: string) => chamar<void>(`/market/indicators/${id}`, { method: 'DELETE' }),
+  sincronizarMercado: () => chamar<{ updated: number }>('/market/sync', { method: 'POST' }),
 
   tags: () => chamar<TagDto[]>('/tags'),
   criarTag: (d: unknown) => chamar<TagDto>('/tags', { method: 'POST', body: d }),

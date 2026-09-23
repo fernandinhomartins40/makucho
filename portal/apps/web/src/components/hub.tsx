@@ -200,17 +200,22 @@ export function CardVideo({
 export function TituloSecao({
   id,
   titulo,
+  subtitulo,
   href,
   rotulo,
 }: {
   id?: string;
   titulo: string;
+  subtitulo?: string | null;
   href?: string;
   rotulo?: string;
 }) {
   return (
     <div className="hub-section-heading">
-      <h2 id={id}>{titulo}</h2>
+      <div>
+        <h2 id={id}>{titulo}</h2>
+        {subtitulo && <p className="hub-section-subtitle">{subtitulo}</p>}
+      </div>
       {href && (
         <Link href={href}>
           {rotulo} <Seta size={16} />

@@ -339,6 +339,7 @@ function Categorias() {
 
             <CampoImagem
               rotulo="Capa da categoria"
+              preset="CATEGORY"
               midia={form.coverImage}
               aoMudar={(m) => setForm({ ...form, coverImage: m })}
             />

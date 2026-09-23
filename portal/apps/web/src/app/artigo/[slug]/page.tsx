@@ -106,7 +106,7 @@ export default async function PaginaArtigo({ params }: Props) {
   return (
     <>
       <Cabecalho categorias={dados.categories} nomeDoSite={nomeDoSite} />
-      <Radar indicadores={dados.indicators} />
+      {dados.settings["ticker.enabled"] !== false && <Radar indicadores={dados.indicators} />}
 
       {/* Serializamos um objeto proprio; nada aqui vem do editor. */}
       <script

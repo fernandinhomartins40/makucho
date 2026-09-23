@@ -2947,3 +2947,8 @@
   max-width: none;
   object-fit: cover;
 }
+
+.pn .pn-sobe,
+.pn .pn-tabela td.pn-sobe { color: #0e7a55; font-weight: 600; }
+.pn .pn-desce,
+.pn .pn-tabela td.pn-desce { color: #c81e2e; font-weight: 600; }

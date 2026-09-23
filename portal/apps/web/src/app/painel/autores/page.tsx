@@ -264,6 +264,7 @@ function Autores() {
 
             <CampoImagem
               rotulo="Foto"
+              preset="AVATAR"
               midia={form.avatar}
               aoMudar={(m) => setForm({ ...form, avatar: m })}
               dica="Use o formato Avatar ao enviar."

@@ -403,6 +403,7 @@ function Videos() {
 
             <CampoImagem
               rotulo="Capa"
+              preset="VIDEO_THUMBNAIL"
               midia={form.thumbnail}
               aoMudar={(m) => setForm({ ...form, thumbnail: m })}
               dica="Use o formato Capa de vídeo (16:9) ao enviar."

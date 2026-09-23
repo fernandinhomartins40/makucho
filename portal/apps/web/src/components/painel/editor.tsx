@@ -209,6 +209,7 @@ function Barra({ editor }: { editor: Editor }) {
         aberto={midiaAberta}
         aoFechar={() => setMidiaAberta(false)}
         aoEscolher={inserirImagem}
+        preset="FREEFORM"
       />
     </>
   );

@@ -14,7 +14,7 @@ import { Lupa } from "@/components/icones";
 
 const NAVEGACAO = [
   { rotulo: "Início", href: "/" },
-  { rotulo: "Análises", href: "/categoria/economia" },
+  { rotulo: "Análises", href: "/conteudos" },
   { rotulo: "Vídeos", href: "/videos" },
   { rotulo: "Sobre", href: "/sobre" },
 ];

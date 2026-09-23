@@ -185,8 +185,9 @@ export default async function Home() {
           <section className="hub-section" aria-labelledby={id}>
             <TituloSecao
               id={id}
-              titulo="Conteúdos recentes"
-              href="/busca?q=economia"
+              titulo={item.title ?? "Conteúdos recentes"}
+              subtitulo={item.subtitle}
+              href="/conteudos"
               rotulo="Ver todos"
             />
             <div className="hub-grid hub-grid-recentes">
@@ -211,9 +212,31 @@ export default async function Home() {
               ))}
             </div>
           </section>
-          <AnuncioSlot posicao="HOME_MIDDLE" />
         </div>
       );
+    }
+
+    // "Em alta", "Mais lidas" e "Seleção manual": mesma grade de cards,
+    // com o conteúdo que a API monta para cada tipo.
+    if (item.type === "TRENDING" || item.type === "MOST_READ" || item.type === "CUSTOM_POSTS") {
+      const artigos = item.posts.filter((post) => post.id !== destaque?.id).slice(0, 3);
+      if (!artigos.length) return null;
+      const padrao = { TRENDING: "Em alta", MOST_READ: "Mais lidas", CUSTOM_POSTS: "Seleção MAKUCHO" }[item.type];
+      return (
+        <section key={item.id} className="hub-section" aria-labelledby={id}>
+          <TituloSecao id={id} titulo={item.title ?? padrao} subtitulo={item.subtitle} href="/conteudos" rotulo="Ver todos" />
+          <div className="hub-grid">
+            {artigos.map((post, index) => (
+              <CardArtigo key={post.id} post={post} fallbackImage={index % 2 ? fallbackCards[1] : fallbackCards[0]} />
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    if (item.type === "AD_SLOT") {
+      const posicao = typeof item.config?.placement === "string" ? item.config.placement : "HOME_MIDDLE";
+      return <AnuncioSlot key={item.id} posicao={posicao} />;
     }
 
     if (item.type === "VIDEOS") {
@@ -221,7 +244,7 @@ export default async function Home() {
       if (!videos.length) return null;
       return (
         <section key={item.id} className="hub-videos" aria-labelledby={id}>
-          <TituloSecao id={id} titulo="Assista e entenda" href="/videos" rotulo="Ver mais vídeos" />
+          <TituloSecao id={id} titulo={item.title ?? "Assista e entenda"} subtitulo={item.subtitle} href="/videos" rotulo="Ver mais vídeos" />
           <div className="hub-grid">
             {videos.map((video, index) => (
               <CardVideo
@@ -236,11 +259,11 @@ export default async function Home() {
     }
 
     if (item.type === "CATEGORIES") {
-      const temas = temasEmDestaque(dados.categories);
+      const temas = temasEmDestaque(dados.categories.filter((c) => c.showInHomepage));
       if (!temas.length) return null;
       return (
         <section key={item.id} className="hub-section hub-topics" aria-labelledby={id}>
-          <TituloSecao id={id} titulo="Temas para acompanhar" />
+          <TituloSecao id={id} titulo={item.title ?? "Temas para acompanhar"} subtitulo={item.subtitle} />
           <nav aria-label="Temas">
             {temas.map((categoria) => (
               <Link key={categoria.id} href={`/categoria/${categoria.slug}`}>
@@ -260,7 +283,19 @@ export default async function Home() {
     }
 
     if (item.type === "NEWSLETTER") {
-      return <Newsletter key={item.id} variante="faixa" origem="home-content-hub" />;
+      const texto = (chave: string) => {
+        const valor = dados.settings[chave];
+        return typeof valor === "string" && valor.trim() ? valor : undefined;
+      };
+      return (
+        <Newsletter
+          key={item.id}
+          variante="faixa"
+          origem="home-content-hub"
+          titulo={item.title ?? texto("newsletter.title")}
+          descricao={item.subtitle ?? texto("newsletter.description")}
+        />
+      );
     }
 
     return null;
@@ -269,7 +304,7 @@ export default async function Home() {
   return (
     <>
       <Cabecalho categorias={dados.categories} nomeDoSite={nome} />
-      <Radar indicadores={dados.indicators} />
+      {dados.settings["ticker.enabled"] !== false && <Radar indicadores={dados.indicators} />}
       <main className="hub-main">
         <div className="hub-container">
           {!destaque && <h1 className="hub-fallback-title">{nome}: economia sem complicação</h1>}

@@ -25,10 +25,12 @@ export function miniatura(m: MediaDto): string {
 // ENVIO COM RECORTE
 // ============================================================
 
-function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void; aoOcupar: (ocupado: boolean) => void }) {
+function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void; aoOcupar: (ocupado: boolean) => void; presetInicial?: ImagePreset }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string>('');
-  const [preset, setPreset] = useState<ImagePreset>('POST_CARD');
+  const [preset, setPreset] = useState<ImagePreset>(presetInicial);
+  // Proporcao real do arquivo: o formato "livre" recorta mantendo-a.
+  const [proporcaoOriginal, setProporcaoOriginal] = useState<number | null>(null);
   const [posicao, setPosicao] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [area, setArea] = useState<Area | null>(null);
@@ -53,6 +55,10 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
     if (!arquivo) return;
     const url = URL.createObjectURL(arquivo);
     setPrevia(url);
+    setProporcaoOriginal(null);
+    const img = new window.Image();
+    img.onload = () => setProporcaoOriginal(img.naturalWidth / img.naturalHeight || 1);
+    img.src = url;
     return () => URL.revokeObjectURL(url);
   }, [arquivo]);
 
@@ -81,6 +87,10 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
 
   async function enviar() {
     if (!arquivo || enviando) return;
+    if (!area) {
+      setErro('Ajuste o enquadramento da imagem antes de enviar.');
+      return;
+    }
     setErro('');
     setEnviando(true);
     aoOcupar(true);
@@ -95,7 +105,7 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
 
       // O recorte vai em pixels da imagem original: o Sharp corta no
       // servidor, entao o arquivo final e sempre o mesmo que aparece aqui.
-      if (!livre && area) {
+      if (area) {
         form.append(
           'crop',
           JSON.stringify({
@@ -148,20 +158,18 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
         </Selecao>
       </Campo>
 
-      {livre ? (
-        <div className="pn-previa-livre">
-          {/* Imagem local do navegador: o next/image nao otimiza blob:. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={previa} alt="Pré-visualização" />
-        </div>
+      {livre && !proporcaoOriginal ? (
+        <p className="pn-dica">Lendo a imagem…</p>
       ) : (
         <>
           <div className="pn-recorte">
             <Cropper
+              // Trocar o formato recria o cropper com a proporcao nova.
+              key={`${preset}-${proporcaoOriginal ?? 0}`}
               image={previa}
               crop={posicao}
               zoom={zoom}
-              aspect={definicao.aspectRatio}
+              aspect={livre ? proporcaoOriginal ?? 1 : definicao.aspectRatio}
               onCropChange={setPosicao}
               onZoomChange={setZoom}
               onCropComplete={(_, pixels) => setArea(pixels)}
@@ -180,6 +188,11 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
           </label>
         </>
       )}
+
+      <p className="pn-dica pn-otimizacao">
+        No envio, a imagem é recortada como acima, comprimida e convertida para WebP e AVIF em
+        vários tamanhos. O arquivo original não é guardado.
+      </p>
 
       <Campo
         rotulo="Texto alternativo"
@@ -204,7 +217,7 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar }: { aoEnviar: (m: MediaDto) => 
         <Botao variante="neutro" onClick={() => setArquivo(null)} disabled={enviando}>
           Trocar imagem
         </Botao>
-        <Botao variante="primario" carregando={enviando} onClick={enviar}>
+        <Botao variante="primario" carregando={enviando} disabled={!area} onClick={enviar}>
           {enviando ? 'Enviando…' : 'Enviar'}
         </Botao>
       </div>
@@ -259,11 +272,14 @@ export function SeletorMidia({
   aoFechar,
   aoEscolher,
   selecionado,
+  preset,
 }: {
   aberto: boolean;
   aoFechar: () => void;
   aoEscolher: (m: MediaDto) => void;
   selecionado?: string | null;
+  /** Formato de recorte sugerido para o campo que abriu o seletor. */
+  preset?: ImagePreset;
 }) {
   const [aba, setAba] = useState<'biblioteca' | 'enviar'>('biblioteca');
   const [itens, setItens] = useState<MediaDto[]>([]);
@@ -347,6 +363,7 @@ export function SeletorMidia({
 
       {aba === 'enviar' ? (
         <Envio
+          presetInicial={preset}
           aoOcupar={setEnviando}
           aoCancelar={() => setAba('biblioteca')}
           aoEnviar={(m) => {
@@ -421,11 +438,14 @@ export function CampoImagem({
   midia,
   aoMudar,
   dica,
+  preset,
 }: {
   rotulo: string;
   midia: MediaDto | null;
   aoMudar: (m: MediaDto | null) => void;
   dica?: string;
+  /** Formato de recorte deste campo (avatar, capa, banner...). */
+  preset?: ImagePreset;
 }) {
   const [aberto, setAberto] = useState(false);
 
@@ -468,6 +488,7 @@ export function CampoImagem({
         aoFechar={() => setAberto(false)}
         aoEscolher={aoMudar}
         selecionado={midia?.id}
+        preset={preset}
       />
     </div>
   );

@@ -137,7 +137,7 @@ export const IMAGE_PRESET_DEFINITIONS: Record<ImagePreset, ImagePresetDefinition
   SIDEBAR: preset('SIDEBAR', 'Barra lateral', 600, 400, 'Itens da coluna lateral'),
   AVATAR: preset('AVATAR', 'Avatar', 512, 512, 'Foto de autor ou usuário'),
   CATEGORY: preset('CATEGORY', 'Categoria', 1000, 560, 'Capa das categorias'),
-  FREEFORM: preset('FREEFORM', 'Livre', 0, 0, 'Sem recorte fixo'),
+  FREEFORM: preset('FREEFORM', 'Livre', 0, 0, 'Recorte na proporção original da imagem'),
 };
 
 /** Larguras geradas para cada variante (secao 16). */
@@ -387,6 +387,8 @@ export interface MarketIndicatorDto {
   changeAbsolute: number | null;
   source: string;
   position: number;
+  /** Indicadores inativos ficam fora do Radar; so o painel os lista. */
+  isActive?: boolean;
   lastUpdatedAt: string;
 }
 

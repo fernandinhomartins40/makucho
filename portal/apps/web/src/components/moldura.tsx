@@ -35,7 +35,7 @@ export async function Moldura({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Cabecalho categorias={dados.categories} nomeDoSite={nomeDoSite} />
-      <Radar indicadores={dados.indicators} />
+      {dados.settings["ticker.enabled"] !== false && <Radar indicadores={dados.indicators} />}
       <main className="portal-main">
         <div className="portal-container">{children}</div>
       </main>

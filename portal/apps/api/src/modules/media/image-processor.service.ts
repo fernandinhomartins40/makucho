@@ -160,7 +160,12 @@ export class ImageProcessorService {
     let pipeline = sharp(buffer, { failOn: 'error' }).rotate();
 
     if (crop) {
-      pipeline = this.aplicarRecorte(pipeline, crop);
+      // Dimensoes ja com a rotacao do EXIF aplicada (orientacao >= 5 gira 90°).
+      const meta = await sharp(buffer).metadata();
+      const girada = (meta.orientation ?? 1) >= 5;
+      const largura = (girada ? meta.height : meta.width) ?? 0;
+      const altura = (girada ? meta.width : meta.height) ?? 0;
+      pipeline = this.aplicarRecorte(pipeline, crop, largura, altura);
     }
 
     const definicao = IMAGE_PRESET_DEFINITIONS[preset];
@@ -205,8 +210,8 @@ export class ImageProcessorService {
       }
     }
 
-    // JPEG de compatibilidade, para leitores de feed e clientes antigos.
-    variantes.push(await this.gerarVariante(baseBuffer, 'MEDIUM', 'jpeg', 1024));
+    // Sem JPEG: o site so serve WebP/AVIF (suporte universal nos
+    // navegadores atuais) e o storage guarda apenas formatos otimizados.
 
     const [corDominante, blurDataUrl] = await Promise.all([
       this.extrairCorDominante(baseBuffer),
@@ -218,19 +223,34 @@ export class ImageProcessorService {
       variantes,
       largura,
       altura,
-      checksum: createHash('sha256').update(buffer).digest('hex'),
+      // Identifica o RESULTADO, nao so o arquivo: a mesma foto com outro
+      // recorte/formato gera outras chaves no storage. Antes, as variantes
+      // pequenas colidiam e uma sobrescrevia a outra.
+      checksum: createHash('sha256')
+        .update(buffer)
+        .update(`|${preset}|${crop ? `${Math.round(crop.x)},${Math.round(crop.y)},${Math.round(crop.width)},${Math.round(crop.height)}` : 'sem-recorte'}`)
+        .digest('hex'),
       corDominante,
       blurDataUrl,
     };
   }
 
-  private aplicarRecorte(pipeline: sharp.Sharp, crop: AreaRecorte): sharp.Sharp {
-    // O cropper envia numeros fracionarios; extract() exige inteiros.
+  private aplicarRecorte(
+    pipeline: sharp.Sharp,
+    crop: AreaRecorte,
+    larguraImagem: number,
+    alturaImagem: number,
+  ): sharp.Sharp {
+    // O cropper envia numeros fracionarios; extract() exige inteiros e
+    // recusa areas que passem da borda. Arredondar pode estourar 1px, entao
+    // limitamos a area a imagem.
+    const left = Math.min(Math.max(0, Math.round(crop.x)), Math.max(0, larguraImagem - 1));
+    const top = Math.min(Math.max(0, Math.round(crop.y)), Math.max(0, alturaImagem - 1));
     return pipeline.extract({
-      left: Math.max(0, Math.round(crop.x)),
-      top: Math.max(0, Math.round(crop.y)),
-      width: Math.max(1, Math.round(crop.width)),
-      height: Math.max(1, Math.round(crop.height)),
+      left,
+      top,
+      width: Math.max(1, Math.min(Math.round(crop.width), larguraImagem - left)),
+      height: Math.max(1, Math.min(Math.round(crop.height), alturaImagem - top)),
     });
   }
 

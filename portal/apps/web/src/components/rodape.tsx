@@ -14,12 +14,16 @@ export function Rodape({
   settings: SiteSettings;
 }) {
   const nome = (settings['site.name'] as string) ?? 'MAKUCHO';
+  const sobre =
+    typeof settings['site.description'] === 'string' && settings['site.description'].trim()
+      ? settings['site.description']
+      : 'Conteúdo independente sobre economia, finanças e o futuro do dinheiro.';
   const copyright =
     (settings['footer.copyright'] as string) ?? `${nome}. Todos os direitos reservados.`;
 
   const navegacao = [
     { rotulo: 'Início', href: '/' },
-    { rotulo: 'Análises', href: '/categoria/economia' },
+    { rotulo: 'Análises', href: '/conteudos' },
     { rotulo: 'Vídeos', href: '/videos' },
     { rotulo: 'Sobre', href: '/sobre' },
   ];
@@ -48,9 +52,7 @@ export function Rodape({
               height={220}
               className="marca-imagem"
             />
-            <p className="rodape-sobre">
-              Conteúdo independente sobre economia, finanças e o futuro do dinheiro.
-            </p>
+            <p className="rodape-sobre">{sobre}</p>
           </div>
 
           <nav className="rodape-nav" aria-label="Rodapé">

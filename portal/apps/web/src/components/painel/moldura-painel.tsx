@@ -42,6 +42,7 @@ const MENU: ItemMenu[] = [
   { href: '/painel/tags', grupo: 'organizacao', rotulo: 'Tags', minimo: 'AUTHOR', icone: <I d="M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01" /> },
   { href: '/painel/autores', grupo: 'organizacao', rotulo: 'Autores', minimo: 'EDITOR', icone: <I d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0" /> },
   { href: '/painel/home', grupo: 'site', rotulo: 'Home', minimo: 'EDITOR', icone: <I d="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" /> },
+  { href: '/painel/mercado', grupo: 'site', rotulo: 'Mercado', minimo: 'EDITOR', icone: <I d="M3 17l6-6 4 4 8-8M15 7h6v6" /> },
   { href: '/painel/anuncios', grupo: 'site', rotulo: 'Anúncios', minimo: 'ADMIN', icone: <I d="M3 8h18v9H3zM7 21h10M12 17v4" /> },
   { href: '/painel/newsletter', grupo: 'site', rotulo: 'Newsletter', minimo: 'EDITOR', icone: <I d="M3 5h18v14H3zM3 6l9 7 9-7" /> },
   { href: '/painel/usuarios', grupo: 'admin', rotulo: 'Usuários', minimo: 'ADMIN', icone: <I d="M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a4 4 0 100-8M22 21a7 7 0 00-5-6.7" /> },

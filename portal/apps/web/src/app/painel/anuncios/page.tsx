@@ -368,12 +368,14 @@ function Anuncios() {
 
             <CampoImagem
               rotulo="Imagem"
+              preset="FREEFORM"
               midia={form.media}
               aoMudar={(m) => setForm({ ...form, media: m })}
             />
 
             <CampoImagem
               rotulo="Imagem para celular"
+              preset="FREEFORM"
               midia={form.mobileMedia}
               aoMudar={(m) => setForm({ ...form, mobileMedia: m })}
               dica="Opcional. Sem ela, a imagem principal é usada em qualquer tela."

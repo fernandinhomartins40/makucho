@@ -124,6 +124,7 @@ export class MarketService {
     changeAbsolute: unknown;
     source: string;
     position: number;
+    isActive?: boolean;
     lastUpdatedAt: Date;
   }): MarketIndicatorDto {
     return {
@@ -141,6 +142,7 @@ export class MarketService {
         indicador.changeAbsolute === null ? null : Number(indicador.changeAbsolute),
       source: indicador.source,
       position: indicador.position,
+      isActive: indicador.isActive,
       lastUpdatedAt: indicador.lastUpdatedAt.toISOString(),
     };
   }

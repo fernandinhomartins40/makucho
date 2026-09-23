@@ -484,6 +484,7 @@ export function FormularioPost({ id }: { id?: string }) {
 
             <CampoImagem
               rotulo="Imagem de compartilhamento"
+              preset="SOCIAL"
               midia={dados.ogImage}
               aoMudar={(m) => atualizar('ogImage', m)}
               dica="Usada no WhatsApp e nas redes. Sem ela, vale a capa."
@@ -549,6 +550,7 @@ export function FormularioPost({ id }: { id?: string }) {
           <div className="pn-bloco">
             <CampoImagem
               rotulo="Imagem de capa"
+              preset="HERO"
               midia={dados.coverImage}
               aoMudar={(m) => atualizar('coverImage', m)}
             />
