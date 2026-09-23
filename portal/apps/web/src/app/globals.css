@@ -2340,8 +2340,8 @@ main {
    mesma medida de leitura e o mesmo fundo da home, sem afetar o Studio. */
 .portal-main {
   min-height: 60vh;
-  padding-block: clamp(32px, 5vw, 64px);
-  background: #f7faff;
+  padding-block: 36px 56px;
+  background: #fff;
 }
 
 .portal-container {
@@ -2349,53 +2349,155 @@ main {
   margin-inline: auto;
 }
 
+/* Cabeçalho das páginas internas: mesma escala do destaque da home. */
 .portal-main .cabecalho-pagina {
   max-width: 760px;
-  margin-bottom: clamp(28px, 4vw, 48px);
+  margin-bottom: 32px;
 }
 
 .portal-main .cabecalho-pagina h1 {
-  color: #061735;
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  letter-spacing: -0.05em;
-  line-height: 1.06;
+  margin-top: 12px;
+  color: #0a1f44;
+  font-size: clamp(2rem, 3.4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .portal-main .cabecalho-pagina p {
+  max-width: 62ch;
   margin-top: 12px;
-  color: #42526f;
-  font-size: 1rem;
-}
-
-.portal-main .grade-cards {
-  gap: 20px;
-}
-
-.portal-main .card {
-  border-color: #dce6f4;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgb(7 27 62 / 0.06);
-}
-
-.portal-main .card-capa {
-  aspect-ratio: 16 / 9;
-}
-
-.portal-main .card-corpo {
-  gap: 10px;
-  padding: 18px;
-}
-
-.portal-main .card-titulo {
-  color: #12213f;
+  color: #4a5a76;
   font-size: 1.05rem;
-  letter-spacing: -0.025em;
+  line-height: 1.55;
 }
 
-.portal-main .card-resumo {
-  color: #42526f;
-  font-size: 0.87rem;
-  line-height: 1.55;
+.portal-main .cabecalho-pagina .cabecalho-pagina-total {
+  color: #71809c;
+  font-size: 0.82rem;
+}
+
+.cabecalho-autor {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.hub-avatar-grande {
+  width: 84px;
+  height: 84px;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.hub-avatar-grande img {
+  width: 52px;
+  height: 52px;
+}
+
+.hub-avatar-grande img.hub-avatar-foto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Card sem capa: a marca sobre o azul-claro da home. */
+.hub-card-vazio {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: #eef4fc;
+}
+
+.hub-card-vazio img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.portal-main .paginacao {
+  margin-top: 36px;
+}
+
+.portal-main .paginacao-link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 22px;
+  border: 1px solid #1f6bff;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f6bff;
+  font-size: 0.86rem;
+}
+
+.portal-main .paginacao-link:hover {
+  background: #1f6bff;
+  color: #fff;
+}
+
+.portal-main .vazio {
+  padding: 48px 24px;
+  border: 1px dashed #c7d4e6;
+  border-radius: 12px;
+  background: #f7faff;
+  color: #5a6882;
+}
+
+/* Artigo */
+.artigo-main .hub-eyebrow:hover {
+  text-decoration: underline;
+}
+
+.artigo-leitura .artigo-meta {
+  gap: 10px 26px;
+  border-color: #e3ebf6;
+  color: #71809c;
+}
+
+.artigo-leitura .artigo-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.artigo-leitura .artigo-meta strong {
+  color: #0a1f44;
+}
+
+.artigo-tags .etiqueta-clara {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #eef4fc;
+  color: #1f6bff;
+}
+
+.artigo-main .sidebar .hub-section-heading h2 {
+  color: #0a1f44;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.artigo-main .sidebar > section {
+  padding: 22px;
+  border: 1px solid #e3ebf6;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.artigo-main .ranking-numero {
+  color: #b7c7dd;
+}
+
+.artigo-main .ranking-item:hover .ranking-numero,
+.artigo-main .ranking-item:hover .ranking-titulo {
+  color: #1f6bff;
+}
+
+.artigo-main .ranking-titulo {
+  color: #0a1f44;
 }
 
 .portal-busca-form {
@@ -2419,8 +2521,8 @@ main {
   min-width: 0;
   flex: 1;
   padding: 11px 13px;
-  border: 1px solid #b7c8df;
-  border-radius: 8px;
+  border: 1px solid #c7d4e6;
+  border-radius: 6px;
   background: #fff;
   color: #102244;
   font: inherit;
@@ -2430,26 +2532,27 @@ main {
   min-height: 44px;
   padding: 10px 17px;
   border: 0;
-  border-radius: 8px;
-  background: #1769e8;
+  border-radius: 6px;
+  background: #1f6bff;
   color: #fff;
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .portal-erro-pagina {
   display: grid;
   align-items: center;
-  min-height: 70dvh;
+  min-height: 50dvh;
 }
 
 .portal-erro-pagina h1 {
-  margin: 10px 0 16px;
-  color: #061735;
-  font-size: clamp(2.3rem, 5vw, 4.5rem);
-  letter-spacing: -0.055em;
-  line-height: 1.05;
+  margin: 12px 0 16px;
+  color: #0a1f44;
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
 }
 
 .portal-erro-pagina p {
@@ -2460,20 +2563,21 @@ main {
 
 .portal-institucional {
   max-width: 800px;
-  padding-block: clamp(24px, 5vw, 70px);
+  padding-block: 12px 24px;
 }
 
 .portal-institucional h1 {
-  margin: 10px 0 18px;
-  color: #061735;
-  font-size: clamp(2.2rem, 5vw, 4.5rem);
-  line-height: 1.06;
-  letter-spacing: -0.055em;
+  margin: 12px 0 18px;
+  color: #0a1f44;
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .portal-institucional h2 {
   margin: 0 0 12px;
-  color: #102244;
+  color: #0a1f44;
   font-size: clamp(1.3rem, 2.5vw, 1.8rem);
   letter-spacing: -0.035em;
 }
@@ -2491,7 +2595,7 @@ main {
 .portal-institucional section {
   margin-top: clamp(30px, 5vw, 60px);
   padding-top: 25px;
-  border-top: 1px solid #dbe5f3;
+  border-top: 1px solid #e3ebf6;
 }
 
 @media (max-width: 479px) {
@@ -2502,6 +2606,7 @@ main {
 
 .artigo-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(28px, 5vw, 64px);
   align-items: start;
 }
@@ -2509,17 +2614,16 @@ main {
 .artigo-leitura {
   max-width: 760px;
   padding: clamp(22px, 4vw, 48px);
-  border: 1px solid #dce6f4;
-  border-radius: 20px;
+  border: 1px solid #e3ebf6;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 10px 32px rgb(7 27 62 / 0.06);
 }
 
 .artigo-leitura .artigo-titulo {
-  color: #061735;
-  font-size: clamp(2rem, 4.2vw, 3.5rem);
-  line-height: 1.06;
-  letter-spacing: -0.055em;
+  color: #0a1f44;
+  font-size: clamp(2rem, 3.4vw, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
 }
 
 .artigo-leitura .artigo-subtitulo {
@@ -2537,7 +2641,7 @@ main {
 }
 
 .artigo-capa-imagem {
-  border-radius: 16px;
+  border-radius: 12px;
 }
 
 .artigo-capa figcaption {

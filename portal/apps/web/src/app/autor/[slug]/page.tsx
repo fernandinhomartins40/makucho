@@ -46,23 +46,21 @@ export default async function PaginaAutor({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header
-        className="cabecalho-pagina"
-        style={{ display: 'flex', gap: 16, alignItems: 'center' }}
-      >
-        {avatar && (
+      <header className="cabecalho-pagina cabecalho-autor">
+        <span className="hub-avatar hub-avatar-grande" aria-hidden="true">
           <Image
-            src={avatar}
-            alt={autor.name}
+            src={avatar ?? '/brand/makucho-symbol-white.webp'}
+            alt=""
             width={84}
             height={84}
-            style={{ borderRadius: '50%', objectFit: 'cover' }}
+            className={avatar ? 'hub-avatar-foto' : undefined}
           />
-        )}
+        </span>
         <div>
+          <span className="hub-eyebrow">Autor</span>
           <h1>{autor.name}</h1>
-          {autor.role && <p>{autor.role}</p>}
-          {autor.bio && <p style={{ maxWidth: '62ch' }}>{autor.bio}</p>}
+          {autor.role && <p className="cabecalho-pagina-total">{autor.role}</p>}
+          {autor.bio && <p>{autor.bio}</p>}
         </div>
       </header>
 

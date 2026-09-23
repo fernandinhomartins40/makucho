@@ -1,6 +1,7 @@
 import type { HomepagePayload } from "@makucho/types";
 import { api } from "@/lib/api";
 import { Cabecalho } from "@/components/cabecalho";
+import { Radar } from "@/components/radar";
 import { Rodape } from "@/components/rodape";
 
 /**
@@ -33,12 +34,8 @@ export async function Moldura({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Cabecalho
-        categorias={dados.categories}
-        indicadores={dados.indicators}
-        socials={dados.socials}
-        nomeDoSite={nomeDoSite}
-      />
+      <Cabecalho categorias={dados.categories} nomeDoSite={nomeDoSite} />
+      <Radar indicadores={dados.indicators} />
       <main className="portal-main">
         <div className="portal-container">{children}</div>
       </main>

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { ApiError, api } from '@/lib/api';
 import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
+import { CabecalhoPagina } from '@/components/hub';
 import { Listagem } from '@/components/listagem';
 
 export const dynamic = 'force-dynamic';
@@ -44,10 +45,9 @@ export default async function PaginaTag({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="cabecalho-pagina">
-        <h1>#{tag.name}</h1>
-        <p>{resultado.meta.total} artigo(s) sobre este assunto</p>
-      </header>
+      <CabecalhoPagina rotulo="Assunto" titulo={`#${tag.name}`}>
+        <p className="cabecalho-pagina-total">{resultado.meta.total} artigo(s) sobre este assunto</p>
+      </CabecalhoPagina>
 
       <Listagem
         resultado={resultado}

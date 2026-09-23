@@ -4,100 +4,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type {
-  CategoryDto,
-  MarketIndicatorDto,
-  SocialProfileDto,
-} from "@makucho/types";
-import {
-  IconeIndicador,
-  Lupa,
-  TriEmAlta,
-  TriEmBaixa,
-} from "@/components/icones";
+import type { CategoryDto } from "@makucho/types";
+import { Lupa } from "@/components/icones";
 
 /**
- * Cabecalho e ticker (secoes 19 e 20).
- *
- * Componente de servidor: nao envia JavaScript ao navegador. O unico
- * elemento interativo e a busca, que funciona por GET nativo — sem JS,
- * continua funcionando.
+ * Cabeçalho do portal (seção 20): marca, navegação principal, busca e
+ * as chamadas "Entrar" e "Acompanhe". No mobile, tudo vai para o menu.
  */
-
-function formatarValor(valor: number, unidade: string | null): string {
-  const casas = Math.abs(valor) >= 1000 ? 2 : 2;
-  const numero = valor.toLocaleString("pt-BR", {
-    minimumFractionDigits: casas,
-    maximumFractionDigits: casas,
-  });
-
-  if (unidade === "R$" || unidade === "US$") return `${unidade} ${numero}`;
-  if (unidade === "a.a." || unidade === "%") return `${numero}%`;
-  return numero;
-}
-
-function Ticker({ indicadores }: { indicadores: MarketIndicatorDto[] }) {
-  if (indicadores.length === 0) return null;
-
-  const hoje = new Date().toLocaleDateString("pt-BR", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  return (
-    <div className="ticker">
-      <div className="container ticker-linha">
-        {indicadores.map((i) => {
-          const variacao = i.changePercent ?? 0;
-          const classe =
-            variacao > 0 ? "sobe" : variacao < 0 ? "desce" : "neutro";
-
-          return (
-            <div key={i.id} className="ticker-item">
-              <span className="ticker-icone">
-                <IconeIndicador symbol={i.symbol} icon={i.icon} />
-              </span>
-              <span className="ticker-dados">
-                <span className="ticker-nome">
-                  {i.label}
-                  {i.unit && i.unit !== "pts" ? ` (${i.unit})` : ""}
-                </span>
-                <span className="ticker-valor-linha">
-                  <span className="ticker-valor">
-                    {formatarValor(i.value, i.unit)}
-                  </span>
-                  <span className={`ticker-var ${classe}`}>
-                    {variacao > 0 && <TriEmAlta />}
-                    {variacao < 0 && <TriEmBaixa />}
-                    {variacao === 0
-                      ? "— 0,00%"
-                      : `${Math.abs(variacao).toFixed(2).replace(".", ",")}%`}
-                  </span>
-                </span>
-              </span>
-            </div>
-          );
-        })}
-
-        <div className="ticker-item ticker-data">
-          <span className="ticker-icone">
-            <IconeIndicador symbol="IPCA" icon={null} />
-          </span>
-          <span className="ticker-dados">
-            <span className="ticker-nome">Mercado hoje</span>
-            <span
-              className="ticker-valor"
-              style={{ fontSize: "0.74rem", fontWeight: 500 }}
-            >
-              {hoje}
-            </span>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 const NAVEGACAO = [
   { rotulo: "Início", href: "/" },
@@ -108,12 +21,9 @@ const NAVEGACAO = [
 
 export function Cabecalho({
   categorias,
-  indicadores,
   nomeDoSite = "MAKUCHO",
 }: {
   categorias: CategoryDto[];
-  indicadores: MarketIndicatorDto[];
-  socials?: SocialProfileDto[];
   nomeDoSite?: string;
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
@@ -141,7 +51,6 @@ export function Cabecalho({
     href === "/" ? rota === "/" : rota.startsWith(href);
 
   return (
-    <>
       <header className="topo">
         <div className="container topo-linha">
           <Link
@@ -239,9 +148,6 @@ export function Cabecalho({
           </nav>
         </div>
       </header>
-
-      <Ticker indicadores={indicadores} />
-    </>
   );
 }
 

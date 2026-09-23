@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { api } from '@/lib/api';
 import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
+import { CabecalhoPagina } from '@/components/hub';
 import { Listagem } from '@/components/listagem';
 
 // Resultado de busca nunca se cacheia: o termo muda a cada visita.
@@ -19,7 +20,7 @@ type Props = { searchParams: Promise<{ q?: string; page?: string }> };
 function FormularioBusca({ termo = '' }: { termo?: string }) {
   return (
     <form action="/busca" role="search" className="portal-busca-form">
-      <label htmlFor="busca-pagina">O que você quer entender?</label>
+      <label htmlFor="busca-pagina" className="so-leitor-de-tela">Buscar no portal</label>
       <div>
         <input id="busca-pagina" type="search" name="q" defaultValue={termo} minLength={2} required placeholder="Ex.: Selic, dólar, investimentos" />
         <button type="submit">Buscar</button>
@@ -36,9 +37,7 @@ export default async function PaginaBusca({ searchParams }: Props) {
   if (termo.length < 2) {
     return (
       <Moldura>
-        <header className="cabecalho-pagina">
-          <h1>Busca</h1>
-        </header>
+        <CabecalhoPagina rotulo="Busca" titulo="O que você quer entender?" />
         <FormularioBusca termo={termo} />
         <p className="vazio">Digite ao menos dois caracteres para buscar.</p>
       </Moldura>
@@ -50,9 +49,7 @@ export default async function PaginaBusca({ searchParams }: Props) {
   if (!resultado) {
     return (
       <Moldura>
-        <header className="cabecalho-pagina">
-          <h1>Busca</h1>
-        </header>
+        <CabecalhoPagina rotulo="Busca" titulo="O que você quer entender?" />
         <FormularioBusca termo={termo} />
         <p className="vazio">Não foi possível buscar agora. Tente novamente em instantes.</p>
       </Moldura>
@@ -61,13 +58,12 @@ export default async function PaginaBusca({ searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="cabecalho-pagina">
-        <h1>Resultados para “{termo}”</h1>
-        <p>
+      <CabecalhoPagina rotulo="Busca" titulo={<>Resultados para “{termo}”</>}>
+        <p className="cabecalho-pagina-total">
           {resultado.meta.total} resultado{resultado.meta.total === 1 ? '' : 's'} encontrado
           {resultado.meta.total === 1 ? '' : 's'}
         </p>
-      </header>
+      </CabecalhoPagina>
 
       <FormularioBusca termo={termo} />
 

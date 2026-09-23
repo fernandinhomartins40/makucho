@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { ApiError, api } from '@/lib/api';
 import { paginaDaUrl } from '@/lib/paginacao';
 import { Moldura } from '@/components/moldura';
+import { CabecalhoPagina } from '@/components/hub';
 import { Listagem } from '@/components/listagem';
 
 export const dynamic = 'force-dynamic';
@@ -51,11 +52,10 @@ export default async function PaginaCategoria({ params, searchParams }: Props) {
 
   return (
     <Moldura>
-      <header className="cabecalho-pagina">
-        <h1>{categoria.name}</h1>
+      <CabecalhoPagina rotulo="Editoria" titulo={categoria.name}>
         {categoria.description && <p>{categoria.description}</p>}
-        <p>{resultado.meta.total} artigo(s) publicado(s)</p>
-      </header>
+        <p className="cabecalho-pagina-total">{resultado.meta.total} artigo(s) publicado(s)</p>
+      </CabecalhoPagina>
 
       <Listagem
         resultado={resultado}

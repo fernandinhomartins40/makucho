@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { PaginatedResponse, PostSummaryDto } from '@makucho/types';
-import { CardArtigo } from '@/components/card-artigo';
+import { CardArtigo } from '@/components/hub';
 
 /**
  * Grade de artigos com paginacao, usada por categoria, tag, autor e
@@ -32,7 +32,7 @@ export function Listagem({
 
   return (
     <>
-      <div className="grade-cards">
+      <div className="hub-grid">
         {data.map((post, i) => (
           <CardArtigo key={post.id} post={post} prioridade={i < 4} />
         ))}

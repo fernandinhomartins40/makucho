@@ -4,8 +4,9 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ApiError, api, urlDaImagem } from "@/lib/api";
 import { Cabecalho } from "@/components/cabecalho";
+import { Radar } from "@/components/radar";
 import { Rodape } from "@/components/rodape";
-import { CardArtigo, formatarData } from "@/components/card-artigo";
+import { CardArtigo, TituloSecao, dataCurta } from "@/components/hub";
 import { ContadorDeLeitura } from "@/components/contador-leitura";
 import { AnuncioSlot } from "@/components/anuncio-home";
 import { Calendario, Relogio } from "@/components/icones";
@@ -104,12 +105,8 @@ export default async function PaginaArtigo({ params }: Props) {
 
   return (
     <>
-      <Cabecalho
-        categorias={dados.categories}
-        indicadores={dados.indicators}
-        socials={dados.socials}
-        nomeDoSite={nomeDoSite}
-      />
+      <Cabecalho categorias={dados.categories} nomeDoSite={nomeDoSite} />
+      <Radar indicadores={dados.indicators} />
 
       {/* Serializamos um objeto proprio; nada aqui vem do editor. */}
       <script
@@ -124,12 +121,7 @@ export default async function PaginaArtigo({ params }: Props) {
           <article className="artigo artigo-leitura">
             <Link
               href={`/categoria/${post.category.slug}`}
-              className="etiqueta"
-              style={
-                post.category.color
-                  ? { background: post.category.color }
-                  : undefined
-              }
+              className="hub-eyebrow"
             >
               {post.category.name}
             </Link>
@@ -146,15 +138,15 @@ export default async function PaginaArtigo({ params }: Props) {
                 </Link>
               )}
               {post.publishedAt && (
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <Calendario />
+                <span>
+                  <Calendario size={15} />
                   <time dateTime={post.publishedAt}>
-                    {formatarData(post.publishedAt)}
+                    {dataCurta(post.publishedAt)}
                   </time>
                 </span>
               )}
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <Relogio />
+              <span>
+                <Relogio size={15} />
                 {post.readingTimeMinutes} min de leitura
               </span>
             </div>
@@ -207,9 +199,7 @@ export default async function PaginaArtigo({ params }: Props) {
           <aside className="sidebar">
             <AnuncioSlot posicao="SIDEBAR_TOP" />
             <section>
-              <div className="secao-cabecalho">
-                <h2 className="secao-titulo">Mais lidas</h2>
-              </div>
+              <TituloSecao titulo="Mais lidas" />
               <div className="ranking">
                 {dados.mostRead.slice(0, 5).map((p, i) => {
                   const mini = urlDaImagem(p.coverImage, "THUMBNAIL");
@@ -245,11 +235,9 @@ export default async function PaginaArtigo({ params }: Props) {
 
         {relacionados.length > 0 && (
           <div className="portal-container">
-            <section className="secao artigo-relacionados">
-              <div className="secao-cabecalho">
-                <h2 className="secao-titulo">Leia também</h2>
-              </div>
-              <div className="grade-cards">
+            <section className="hub-section artigo-relacionados">
+              <TituloSecao titulo="Leia também" />
+              <div className="hub-grid">
                 {relacionados.map((p) => (
                   <CardArtigo key={p.id} post={p} />
                 ))}
