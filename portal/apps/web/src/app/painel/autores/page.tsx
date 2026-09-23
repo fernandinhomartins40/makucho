@@ -212,7 +212,7 @@ function Autores() {
                           width={34}
                           height={34}
                           unoptimized
-                          style={{ borderRadius: '50%', objectFit: 'cover' }}
+                          style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }}
                         />
                       ) : (
                         <span className="pn-avatar-vazio">{a.name.charAt(0).toUpperCase()}</span>

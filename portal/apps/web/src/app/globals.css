@@ -82,6 +82,19 @@ svg {
   max-width: 100%;
 }
 
+/* max-width encolhe so a largura; sem height:auto a altura do atributo
+   continua e a imagem estica (capa do artigo, avatares em colunas
+   estreitas). Regras com altura propria continuam valendo. */
+img,
+video {
+  height: auto;
+}
+
+/* Icone dentro de flex nao pode ser espremido pelo texto ao lado. */
+svg {
+  flex-shrink: 0;
+}
+
 a {
   color: inherit;
   text-decoration: none;

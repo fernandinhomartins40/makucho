@@ -274,7 +274,7 @@ function Videos() {
                           width={60}
                           height={38}
                           unoptimized
-                          style={{ borderRadius: 5, objectFit: 'cover' }}
+                          style={{ width: 60, height: 38, borderRadius: 5, objectFit: 'cover' }}
                         />
                       ) : (
                         <span className="pn-avatar-vazio">▶</span>

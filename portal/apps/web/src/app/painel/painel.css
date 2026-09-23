@@ -2939,3 +2939,11 @@
     padding: 12px;
   }
 }
+
+/* Avatares e miniaturas das tabelas mantêm o tamanho declarado mesmo
+   quando a coluna aperta (antes o avatar redondo virava oval). */
+.pn .pn-tabela img {
+  flex-shrink: 0;
+  max-width: none;
+  object-fit: cover;
+}
