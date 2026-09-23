@@ -13,14 +13,23 @@ import {
   Vazio,
 } from '@/components/painel/ui';
 
+// Todas as acoes e recursos que a API registra (grep em apps/api: action/resource).
 const ACOES: Record<string, { rotulo: string; cor: string }> = {
   create: { rotulo: 'criou', cor: '#16a34a' },
-  update: { rotulo: 'alterou', cor: '#1a5fd4' },
+  update: { rotulo: 'alterou', cor: '#1f6bff' },
   delete: { rotulo: 'excluiu', cor: '#dc2626' },
-  login: { rotulo: 'entrou', cor: '#64748b' },
-  logout: { rotulo: 'saiu', cor: '#94a3b8' },
-  publish: { rotulo: 'publicou', cor: '#16a34a' },
-  restore: { rotulo: 'restaurou', cor: '#8b5cf6' },
+  duplicate: { rotulo: 'duplicou', cor: '#0891b2' },
+  reorder: { rotulo: 'reordenou', cor: '#1f6bff' },
+  export: { rotulo: 'exportou', cor: '#7c3aed' },
+  publish_scheduled: { rotulo: 'publicou (agendado)', cor: '#16a34a' },
+  login: { rotulo: 'entrou', cor: '#475569' },
+  logout: { rotulo: 'saiu', cor: '#64748b' },
+  login_failed: { rotulo: 'falha de login', cor: '#dc2626' },
+  password_changed: { rotulo: 'trocou a senha', cor: '#7c3aed' },
+  reset_password: { rotulo: 'redefiniu senha', cor: '#7c3aed' },
+  password_reset_requested: { rotulo: 'pediu nova senha', cor: '#b45309' },
+  password_reset_completed: { rotulo: 'concluiu nova senha', cor: '#7c3aed' },
+  refresh_token_reuse: { rotulo: 'sessão suspeita', cor: '#dc2626' },
 };
 
 const RECURSOS: Record<string, string> = {
@@ -30,10 +39,13 @@ const RECURSOS: Record<string, string> = {
   tag: 'tag',
   author: 'autor',
   video: 'vídeo',
-  ad: 'anúncio',
+  advertisement: 'anúncio',
   user: 'usuário',
-  setting: 'configuração',
-  homepage: 'home',
+  settings: 'configurações',
+  social_profile: 'rede social',
+  market_indicator: 'indicador de mercado',
+  homepage_section: 'seção da home',
+  newsletter: 'newsletter',
   auth: 'sessão',
 };
 
@@ -127,7 +139,7 @@ function Auditoria() {
           />
         ) : (
           <div className="pn-tabela-area">
-            <table className="pn-tabela">
+            <table className="pn-tabela pn-tabela-auditoria">
               <thead>
                 <tr>
                   <th>Quando</th>

@@ -312,7 +312,7 @@ function Anuncios() {
                           <Botao variante="fantasma" onClick={() => abrir(a)}>
                             Editar
                           </Botao>
-                          <Botao variante="fantasma" onClick={() => setExcluir(a)}>
+                          <Botao variante="perigo-suave" onClick={() => setExcluir(a)}>
                             Excluir
                           </Botao>
                         </div>

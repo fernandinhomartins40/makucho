@@ -169,7 +169,7 @@ function Tags() {
                         <Botao variante="fantasma" onClick={() => abrir(t)}>
                           Editar
                         </Botao>
-                        <Botao variante="fantasma" onClick={() => setExcluir(t)}>
+                        <Botao variante="perigo-suave" onClick={() => setExcluir(t)}>
                           Excluir
                         </Botao>
                       </div>

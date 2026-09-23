@@ -304,7 +304,7 @@ function Videos() {
                         <Botao variante="fantasma" onClick={() => abrir(v)}>
                           Editar
                         </Botao>
-                        <Botao variante="fantasma" onClick={() => setExcluir(v)}>
+                        <Botao variante="perigo-suave" onClick={() => setExcluir(v)}>
                           Excluir
                         </Botao>
                       </div>

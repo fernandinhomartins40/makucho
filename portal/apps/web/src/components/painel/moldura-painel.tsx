@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { UserRole } from '@makucho/types';
 import { pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
-import { Botao, Carregando } from '@/components/painel/ui';
+import { Carregando } from '@/components/painel/ui';
 
 interface ItemMenu {
   href: string;
@@ -15,7 +15,17 @@ interface ItemMenu {
   icone: React.ReactNode;
   /** Papel minimo; o backend valida de novo em cada rota. */
   minimo: UserRole;
+  /** Grupo da navegacao lateral: menos itens soltos para escanear. */
+  grupo: 'inicio' | 'conteudo' | 'organizacao' | 'site' | 'admin';
 }
+
+const GRUPOS: Array<{ id: ItemMenu['grupo']; rotulo: string | null }> = [
+  { id: 'inicio', rotulo: null },
+  { id: 'conteudo', rotulo: 'Conteúdo' },
+  { id: 'organizacao', rotulo: 'Organização' },
+  { id: 'site', rotulo: 'Site' },
+  { id: 'admin', rotulo: 'Administração' },
+];
 
 const I = ({ d }: { d: string }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -24,19 +34,19 @@ const I = ({ d }: { d: string }) => (
 );
 
 const MENU: ItemMenu[] = [
-  { href: '/painel', rotulo: 'Visão geral', minimo: 'AUTHOR', icone: <I d="M3 12h7V3H3zM14 21h7v-9h-7zM14 9h7V3h-7zM3 21h7v-6H3z" /> },
-  { href: '/painel/publicacoes', rotulo: 'Publicações', minimo: 'AUTHOR', icone: <I d="M4 4h11l5 5v11H4zM15 4v5h5M8 13h8M8 17h5" /> },
-  { href: '/painel/midia', rotulo: 'Mídia', minimo: 'AUTHOR', icone: <I d="M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6" /> },
-  { href: '/painel/videos', rotulo: 'Vídeos', minimo: 'AUTHOR', icone: <I d="M3 5h13v14H3zM16 10l5-3v10l-5-3z" /> },
-  { href: '/painel/categorias', rotulo: 'Categorias', minimo: 'EDITOR', icone: <I d="M3 6h18M3 12h18M3 18h12" /> },
-  { href: '/painel/tags', rotulo: 'Tags', minimo: 'AUTHOR', icone: <I d="M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01" /> },
-  { href: '/painel/autores', rotulo: 'Autores', minimo: 'EDITOR', icone: <I d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0" /> },
-  { href: '/painel/home', rotulo: 'Home', minimo: 'EDITOR', icone: <I d="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" /> },
-  { href: '/painel/anuncios', rotulo: 'Anúncios', minimo: 'ADMIN', icone: <I d="M3 8h18v9H3zM7 21h10M12 17v4" /> },
-  { href: '/painel/newsletter', rotulo: 'Newsletter', minimo: 'EDITOR', icone: <I d="M3 5h18v14H3zM3 6l9 7 9-7" /> },
-  { href: '/painel/usuarios', rotulo: 'Usuários', minimo: 'ADMIN', icone: <I d="M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a4 4 0 100-8M22 21a7 7 0 00-5-6.7" /> },
-  { href: '/painel/configuracoes', rotulo: 'Configurações', minimo: 'ADMIN', icone: <I d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 004 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0011 4a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0020 11a2 2 0 110 4z" /> },
-  { href: '/painel/auditoria', rotulo: 'Auditoria', minimo: 'ADMIN', icone: <I d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /> },
+  { href: '/painel', grupo: 'inicio', rotulo: 'Visão geral', minimo: 'AUTHOR', icone: <I d="M3 12h7V3H3zM14 21h7v-9h-7zM14 9h7V3h-7zM3 21h7v-6H3z" /> },
+  { href: '/painel/publicacoes', grupo: 'conteudo', rotulo: 'Publicações', minimo: 'AUTHOR', icone: <I d="M4 4h11l5 5v11H4zM15 4v5h5M8 13h8M8 17h5" /> },
+  { href: '/painel/midia', grupo: 'conteudo', rotulo: 'Mídia', minimo: 'AUTHOR', icone: <I d="M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6" /> },
+  { href: '/painel/videos', grupo: 'conteudo', rotulo: 'Vídeos', minimo: 'AUTHOR', icone: <I d="M3 5h13v14H3zM16 10l5-3v10l-5-3z" /> },
+  { href: '/painel/categorias', grupo: 'organizacao', rotulo: 'Categorias', minimo: 'EDITOR', icone: <I d="M3 6h18M3 12h18M3 18h12" /> },
+  { href: '/painel/tags', grupo: 'organizacao', rotulo: 'Tags', minimo: 'AUTHOR', icone: <I d="M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01" /> },
+  { href: '/painel/autores', grupo: 'organizacao', rotulo: 'Autores', minimo: 'EDITOR', icone: <I d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0" /> },
+  { href: '/painel/home', grupo: 'site', rotulo: 'Home', minimo: 'EDITOR', icone: <I d="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" /> },
+  { href: '/painel/anuncios', grupo: 'site', rotulo: 'Anúncios', minimo: 'ADMIN', icone: <I d="M3 8h18v9H3zM7 21h10M12 17v4" /> },
+  { href: '/painel/newsletter', grupo: 'site', rotulo: 'Newsletter', minimo: 'EDITOR', icone: <I d="M3 5h18v14H3zM3 6l9 7 9-7" /> },
+  { href: '/painel/usuarios', grupo: 'admin', rotulo: 'Usuários', minimo: 'ADMIN', icone: <I d="M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a4 4 0 100-8M22 21a7 7 0 00-5-6.7" /> },
+  { href: '/painel/configuracoes', grupo: 'admin', rotulo: 'Configurações', minimo: 'ADMIN', icone: <I d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 004 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0011 4a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0020 11a2 2 0 110 4z" /> },
+  { href: '/painel/auditoria', grupo: 'admin', rotulo: 'Auditoria', minimo: 'ADMIN', icone: <I d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /> },
 ];
 
 export function MolduraPainel({ children }: { children: React.ReactNode }) {
@@ -85,6 +95,10 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
   }
 
   const itens = MENU.filter((i) => pode(usuario, i.minimo));
+  const atual = [...MENU]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((i) => (i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href)))
+    ?? (caminho === '/painel/senha' ? { href: '/painel/senha', rotulo: 'Minha conta' } : undefined);
 
   return (
     <div className={`pn ${menuAberto ? 'pn-menu-aberto' : ''}`}>
@@ -101,22 +115,38 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="pn-nav" aria-label="Navegação do painel">
-          {itens.map((i) => {
-            const ativo = i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href);
+          {GRUPOS.map((g) => {
+            const doGrupo = itens.filter((i) => i.grupo === g.id);
+            if (!doGrupo.length) return null;
             return (
-              <Link key={i.href} href={i.href} className={ativo ? 'pn-nav-ativo' : ''} aria-current={ativo ? 'page' : undefined}>
-                {i.icone}
-                {i.rotulo}
-              </Link>
+              <div key={g.id} className="pn-nav-grupo">
+                {g.rotulo && <span className="pn-nav-rotulo">{g.rotulo}</span>}
+                {doGrupo.map((i) => {
+                  const ativo = i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href);
+                  return (
+                    <Link key={i.href} href={i.href} className={ativo ? 'pn-nav-ativo' : ''} aria-current={ativo ? 'page' : undefined}>
+                      {i.icone}
+                      {i.rotulo}
+                    </Link>
+                  );
+                })}
+              </div>
             );
           })}
         </nav>
 
         <div className="pn-lateral-pe">
-          <Link href="/" target="_blank" rel="noopener noreferrer" className="pn-ver-site">
-            <I d="M18 13v6H5V6h6M15 3h6v6M10 14L21 3" />
-            Ver o site
+          <Link href="/painel/senha" className="pn-conta" aria-current={caminho === '/painel/senha' ? 'page' : undefined}>
+            <span className="pn-avatar" aria-hidden="true">{usuario.name.charAt(0).toUpperCase()}</span>
+            <span className="pn-conta-texto">
+              <strong>{usuario.name}</strong>
+              <small>{rotuloPapel(usuario.role)} · Minha conta</small>
+            </span>
           </Link>
+          <button type="button" className="pn-sair" onClick={() => void sair()}>
+            <I d="M15 12H3M11 8l-4 4 4 4M15 4h4a2 2 0 012 2v12a2 2 0 01-2 2h-4" />
+            Sair
+          </button>
         </div>
       </aside>
 
@@ -134,17 +164,21 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
             <I d="M3 6h18M3 12h18M3 18h18" />
           </button>
 
-          <div className="pn-usuario">
-            <span>
-              <strong>{usuario.name}</strong>
-              <small>{rotuloPapel(usuario.role)}</small>
-            </span>
-            <Link href="/painel/senha" className="pn-avatar" title="Minha conta">
-              {usuario.name.charAt(0).toUpperCase()}
+          <nav className="pn-trilha" aria-label="Você está em">
+            <Link href="/painel">Painel</Link>
+            {atual && atual.href !== '/painel' && (
+              <>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page">{atual.rotulo}</span>
+              </>
+            )}
+          </nav>
+
+          <div className="pn-topo-acoes">
+            <Link href="/" target="_blank" rel="noopener noreferrer" className="pn-botao pn-botao-fantasma pn-topo-site">
+              <I d="M18 13v6H5V6h6M15 3h6v6M10 14L21 3" />
+              <span>Ver o site</span>
             </Link>
-            <Botao variante="fantasma" onClick={() => void sair()}>
-              Sair
-            </Botao>
           </div>
         </header>
 
@@ -176,13 +210,16 @@ export function TituloPagina({
   titulo,
   descricao,
   acoes,
+  fixo = false,
 }: {
   titulo: string;
   descricao?: string;
   acoes?: React.ReactNode;
+  /** Formularios longos: o cabecalho (e o botao de salvar) acompanha a rolagem. */
+  fixo?: boolean;
 }) {
   return (
-    <header className="pn-titulo">
+    <header className={`pn-titulo${fixo ? ' pn-titulo-fixo' : ''}`}>
       <div>
         <h1>{titulo}</h1>
         {descricao && <p>{descricao}</p>}

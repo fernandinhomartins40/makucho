@@ -254,7 +254,7 @@ function Categorias() {
                         <Botao variante="fantasma" onClick={() => abrir(c)}>
                           Editar
                         </Botao>
-                        <Botao variante="fantasma" onClick={() => setExcluir(c)}>
+                        <Botao variante="perigo-suave" onClick={() => setExcluir(c)}>
                           Excluir
                         </Botao>
                       </div>

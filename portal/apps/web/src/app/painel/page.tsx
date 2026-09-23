@@ -84,13 +84,20 @@ function Painel() {
             </div>
           )}
           <div className="pn-cartoes">
-            <Cartao rotulo="Publicados" valor={resumo?.publicados ?? null} href="/painel/publicacoes?status=PUBLISHED" />
-            <Cartao rotulo="Rascunhos" valor={resumo?.rascunhos ?? null} href="/painel/publicacoes?status=DRAFT" />
-            <Cartao rotulo="Agendados" valor={resumo?.agendados ?? null} href="/painel/publicacoes?status=SCHEDULED" />
+            <Cartao rotulo="Publicados" valor={resumo?.publicados ?? null} href="/painel/publicacoes?status=PUBLISHED" icone="M5 12l4 4L19 6" tom="ok" />
+            <Cartao rotulo="Rascunhos" valor={resumo?.rascunhos ?? null} href="/painel/publicacoes?status=DRAFT" icone="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" tom="neutro" />
+            <Cartao rotulo="Agendados" valor={resumo?.agendados ?? null} href="/painel/publicacoes?status=SCHEDULED" icone="M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" tom="agenda" />
             {resumo?.inscritos !== null && resumo !== null && (
-              <Cartao rotulo="Inscritos na newsletter" valor={resumo.inscritos ?? 0} href="/painel/newsletter" />
+              <Cartao rotulo="Inscritos na newsletter" valor={resumo.inscritos ?? 0} href="/painel/newsletter" icone="M3 5h18v14H3zM3 6l9 7 9-7" tom="azul" />
             )}
           </div>
+
+          <section className="pn-atalhos" aria-label="Ações rápidas">
+            <Atalho href="/painel/publicacoes/nova" titulo="Escrever publicação" texto="Análise, notícia ou artigo com vídeo" icone="M12 5v14M5 12h14" />
+            <Atalho href="/painel/midia" titulo="Enviar imagens" texto="Capas e fotos para os conteúdos" icone="M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6" />
+            <Atalho href="/painel/home" titulo="Montar a home" texto="Ordem e visibilidade das seções" icone="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" />
+            <Atalho href="/" titulo="Ver o site" texto="Abrir o portal em nova aba" icone="M18 13v6H5V6h6M15 3h6v6M10 14L21 3" externo />
+          </section>
 
           <section className="pn-bloco">
             <header className="pn-bloco-topo">
@@ -132,11 +139,61 @@ function Painel() {
   );
 }
 
-function Cartao({ rotulo, valor, href }: { rotulo: string; valor: number | null; href: string }) {
+function Icone({ d }: { d: string }) {
   return (
-    <Link href={href} className="pn-cartao">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}
+
+function Cartao({
+  rotulo,
+  valor,
+  href,
+  icone,
+  tom,
+}: {
+  rotulo: string;
+  valor: number | null;
+  href: string;
+  icone: string;
+  tom: 'ok' | 'neutro' | 'agenda' | 'azul';
+}) {
+  return (
+    <Link href={href} className={`pn-cartao pn-cartao-${tom}`}>
+      <span className="pn-cartao-icone"><Icone d={icone} /></span>
       <strong>{valor === null ? '—' : valor.toLocaleString('pt-BR')}</strong>
       <span>{rotulo}</span>
+    </Link>
+  );
+}
+
+function Atalho({
+  href,
+  titulo,
+  texto,
+  icone,
+  externo = false,
+}: {
+  href: string;
+  titulo: string;
+  texto: string;
+  icone: string;
+  externo?: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className="pn-atalho"
+      target={externo ? '_blank' : undefined}
+      rel={externo ? 'noopener noreferrer' : undefined}
+    >
+      <span className="pn-atalho-icone"><Icone d={icone} /></span>
+      <span>
+        <strong>{titulo}</strong>
+        <small>{texto}</small>
+      </span>
     </Link>
   );
 }

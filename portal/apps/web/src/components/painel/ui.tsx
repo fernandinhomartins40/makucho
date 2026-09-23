@@ -72,7 +72,7 @@ export function Alternador({
 // BOTOES
 // ============================================================
 
-type Variante = 'primario' | 'neutro' | 'perigo' | 'fantasma';
+type Variante = 'primario' | 'neutro' | 'perigo' | 'fantasma' | 'perigo-suave';
 
 export function Botao({
   variante = 'neutro',
@@ -116,7 +116,9 @@ export function Aviso({
 
 export function Etiqueta({ texto, cor }: { texto: string; cor?: string }) {
   return (
-    <span className="pn-selo" style={cor ? { background: cor } : undefined}>
+    // A cor vira variavel: o CSS tinge o fundo e escurece o texto, em vez
+    // de um selo solido e saturado competindo com o conteudo.
+    <span className="pn-selo" style={cor ? ({ '--selo': cor } as React.CSSProperties) : undefined}>
       {texto}
     </span>
   );
@@ -293,6 +295,11 @@ export function Confirmacao({
 export function Vazio({ titulo, descricao, acao }: { titulo: string; descricao?: string; acao?: React.ReactNode }) {
   return (
     <div className="pn-vazio">
+      <span className="pn-vazio-icone" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 7h16l-1.5 12a2 2 0 01-2 1.8h-9a2 2 0 01-2-1.8zM9 7V5a3 3 0 016 0v2" />
+        </svg>
+      </span>
       <strong>{titulo}</strong>
       {descricao && <p>{descricao}</p>}
       {acao}

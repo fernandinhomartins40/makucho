@@ -171,6 +171,7 @@ function Configuracoes() {
     <>
       <TituloPagina
         titulo="Configurações"
+        fixo
         descricao="Nome do site, SEO e redes sociais."
         acoes={
           <Botao variante="primario" carregando={salvando} onClick={salvar}>
@@ -273,7 +274,7 @@ function Configuracoes() {
                   setErroRede('');
                   setRede({ id: r.id, platform: r.platform, label: r.label, url: r.url, handle: r.handle ?? '', followerCount: r.followerCount?.toString() ?? '' });
                 }}>Editar</Botao>
-                <Botao variante="fantasma" onClick={() => setExcluirRede(r)}>
+                <Botao variante="perigo-suave" onClick={() => setExcluirRede(r)}>
                   Excluir
                 </Botao>
               </li>

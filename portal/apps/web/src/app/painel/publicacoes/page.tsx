@@ -240,10 +240,10 @@ function Lista() {
                 {posts.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <Link href={`/painel/publicacoes/${p.id}`}>{p.title}</Link>
+                      <Link href={`/painel/publicacoes/${p.id}`} className="pn-tabela-titulo">{p.title}</Link>
                       {p.videoPlatform && (
-                        <small style={{ display: 'block', color: 'var(--pn-suave)' }}>
-                          vídeo · {p.videoPlatform.toLowerCase()}
+                        <small className="pn-tabela-sub">
+                          Com vídeo · {({ YOUTUBE: 'YouTube', INSTAGRAM: 'Instagram', TIKTOK: 'TikTok' } as Record<string, string>)[p.videoPlatform] ?? p.videoPlatform}
                         </small>
                       )}
                     </td>
@@ -272,7 +272,7 @@ function Lista() {
                         <Botao variante="fantasma" carregando={duplicando === p.id} disabled={duplicando !== null} onClick={() => void duplicar(p)}>
                           Duplicar
                         </Botao>
-                        <Botao variante="fantasma" onClick={() => setExcluir(p)}>
+                        <Botao variante="perigo-suave" onClick={() => setExcluir(p)}>
                           Excluir
                         </Botao>
                       </div>

@@ -261,7 +261,10 @@ function Home() {
                 </div>
 
                 <div className="pn-secao-corpo">
-                  <strong>{s.title || TIPOS[s.type].rotulo}</strong>
+                  <strong>
+                    {s.title || TIPOS[s.type].rotulo}
+                    {!s.isVisible && <span className="pn-secao-selo">Oculta na home</span>}
+                  </strong>
                   <small>
                     {TIPOS[s.type].descricao}
                     {s.config?.limit ? ` · ${String(s.config.limit)} itens` : ''}
@@ -275,7 +278,7 @@ function Home() {
                   <Botao variante="fantasma" onClick={() => abrir(s)}>
                     Editar
                   </Botao>
-                  <Botao variante="fantasma" onClick={() => setExcluir(s)}>
+                  <Botao variante="perigo-suave" onClick={() => setExcluir(s)}>
                     Excluir
                   </Botao>
                 </div>

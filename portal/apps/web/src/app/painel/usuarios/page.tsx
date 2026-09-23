@@ -211,7 +211,7 @@ function Usuarios() {
                           <Botao variante="fantasma" onClick={() => setResetar(u)}>Resetar senha</Botao>
                         )}
                         {u.id !== eu?.id && papeis.includes(u.role) && (
-                          <Botao variante="fantasma" onClick={() => setExcluir(u)}>
+                          <Botao variante="perigo-suave" onClick={() => setExcluir(u)}>
                             Excluir
                           </Botao>
                         )}
