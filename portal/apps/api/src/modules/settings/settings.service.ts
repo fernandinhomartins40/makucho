@@ -31,10 +31,18 @@ export class SettingsService {
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Chaves secretas (tokens de integração): nunca saem na leitura pública,
+   * não aparecem na tela genérica de configurações e só são gravadas por
+   * salvarSegredo(). O padrão do banco é isPublic=true, então sem esta
+   * lista um token salvo pela tela genérica iria parar no site.
+   */
+  static readonly CHAVES_SECRETAS = ['market.brapiToken'];
+
   /** Configurações visíveis ao portal (isPublic). */
   async publicas(): Promise<SiteSettings> {
     const registros = await this.prisma.siteSetting.findMany({
-      where: { isPublic: true },
+      where: { isPublic: true, key: { notIn: SettingsService.CHAVES_SECRETAS } },
       select: { key: true, value: true },
     });
     return Object.fromEntries(registros.map((r) => [r.key, r.value]));
@@ -48,7 +56,10 @@ export class SettingsService {
    */
   async todas(grupo?: string): Promise<ConfiguracaoRegistro[]> {
     return this.prisma.siteSetting.findMany({
-      where: grupo ? { group: grupo } : {},
+      where: {
+        key: { notIn: SettingsService.CHAVES_SECRETAS },
+        ...(grupo ? { group: grupo } : {}),
+      },
       orderBy: [{ group: 'asc' }, { key: 'asc' }],
     });
   }
@@ -67,6 +78,8 @@ export class SettingsService {
     userId: string,
     request: Request,
   ): Promise<SiteSettings> {
+    // Segredos só por salvarSegredo(): a tela genérica não grava nem sobrescreve.
+    itens = itens.filter((item) => !SettingsService.CHAVES_SECRETAS.includes(item.key));
     await this.prisma.$transaction(
       itens.map((item) =>
         this.prisma.siteSetting.upsert({
@@ -92,6 +105,46 @@ export class SettingsService {
     });
 
     return this.publicas();
+  }
+
+  // ============================================================
+  // SEGREDOS DE INTEGRAÇÃO
+  // ============================================================
+
+  async obterSegredo(chave: string): Promise<string | null> {
+    const registro = await this.prisma.siteSetting.findUnique({ where: { key: chave } });
+    return typeof registro?.value === 'string' && registro.value ? registro.value : null;
+  }
+
+  /** Grava (ou remove, com null) um segredo; a auditoria nunca leva o valor. */
+  async salvarSegredo(chave: string, valor: string | null, userId: string, request: Request): Promise<void> {
+    if (!SettingsService.CHAVES_SECRETAS.includes(chave)) {
+      throw new Error(`Chave ${chave} não é um segredo registrado`);
+    }
+    if (valor === null) {
+      await this.prisma.siteSetting.deleteMany({ where: { key: chave } });
+    } else {
+      await this.prisma.siteSetting.upsert({
+        where: { key: chave },
+        update: { value: valor, isPublic: false },
+        create: {
+          key: chave,
+          value: valor,
+          type: 'secret',
+          group: 'integrations',
+          label: 'Token de integração',
+          isPublic: false,
+        },
+      });
+    }
+    await this.audit.registrar({
+      userId,
+      action: 'update',
+      resource: 'settings',
+      summary: valor === null ? `Integração removida: ${chave}` : `Integração configurada: ${chave}`,
+      metadata: { keys: [chave] },
+      request,
+    });
   }
 
   private tipoDe(valor: unknown): string {

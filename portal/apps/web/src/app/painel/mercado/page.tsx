@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { MarketIndicatorDto } from '@makucho/types';
-import { ErroApi, painel, pode } from '@/lib/painel';
+import { ErroApi, painel, pode, type IntegracaoMercado } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import {
@@ -58,6 +58,131 @@ function formatar(i: MarketIndicatorDto) {
   if (i.unit === 'R$' || i.unit === 'US$') return `${i.unit} ${valor}`;
   if (i.unit === '%' || i.unit === 'a.a.') return `${valor}%${i.unit === 'a.a.' ? ' a.a.' : ''}`;
   return valor;
+}
+
+/**
+ * Token da brapi (Ibovespa). Fica guardado como segredo na API: a tela só
+ * recebe se está configurado e os 4 últimos caracteres.
+ */
+function FonteIbovespa({ aoMudar }: { aoMudar: () => void }) {
+  const recado = useRecado();
+  const [status, setStatus] = useState<IntegracaoMercado | null>(null);
+  const [token, setToken] = useState('');
+  const [visivel, setVisivel] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [removendo, setRemovendo] = useState(false);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    try {
+      setStatus(await painel.integracaoMercado());
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : 'Não foi possível ler a configuração.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token.trim()) {
+      setErro('Cole o token gerado em brapi.dev/dashboard.');
+      return;
+    }
+    setSalvando(true);
+    setErro('');
+    try {
+      setStatus(await painel.salvarIntegracaoMercado(token.trim()));
+      setToken('');
+      setVisivel(false);
+      recado.ok('Token válido e salvo. O Ibovespa já foi atualizado pela brapi.');
+      aoMudar();
+    } catch (e2) {
+      setErro(e2 instanceof ErroApi ? e2.message : 'Não foi possível salvar o token.');
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function remover() {
+    setRemovendo(true);
+    setErro('');
+    try {
+      setStatus(await painel.salvarIntegracaoMercado(null));
+      recado.ok('Token removido do painel.');
+      aoMudar();
+    } catch (e) {
+      setErro(e instanceof ErroApi ? e.message : 'Não foi possível remover o token.');
+    } finally {
+      setRemovendo(false);
+    }
+  }
+
+  const brapi = status?.brapi;
+  const ibov = status?.ibovespa;
+
+  return (
+    <section className="pn-bloco pn-integracao" aria-labelledby="fonte-ibovespa">
+      <div className="pn-bloco-topo">
+        <h2 id="fonte-ibovespa">Fonte do Ibovespa</h2>
+        {brapi && (
+          <span
+            className="pn-selo"
+            style={{ '--selo': brapi.configurado ? '#16a34a' : '#b45309' } as React.CSSProperties}
+          >
+            {brapi.configurado ? `brapi conectada ${brapi.final ?? ''}` : 'Sem token: usando Yahoo Finance'}
+          </span>
+        )}
+      </div>
+
+      <p className="pn-dica">
+        Com um token gratuito da <a href="https://brapi.dev/dashboard" target="_blank" rel="noopener noreferrer">brapi.dev</a> (15 mil
+        consultas por mês), o Ibovespa vem de uma fonte oficial. Sem token, o portal usa o Yahoo Finance, que
+        funciona mas não é oficial.
+        {ibov && (
+          <>
+            {' '}Último valor: <strong>{ibov.valor.toLocaleString('pt-BR')}</strong> via {ibov.fonte},{' '}
+            {new Date(ibov.atualizadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}.
+          </>
+        )}
+        {brapi?.origem === 'ambiente' && ' O token atual vem da configuração do servidor; salvar aqui passa a valer o do painel.'}
+      </p>
+
+      <Aviso tipo="erro">{erro}</Aviso>
+
+      <form className="pn-integracao-form" onSubmit={salvar}>
+        <Campo rotulo={brapi?.origem === 'painel' ? 'Trocar token' : 'Token da brapi'}>
+          <div className="pn-senha">
+            <Entrada
+              type={visivel ? 'text' : 'password'}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="Cole aqui o token de brapi.dev/dashboard"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button type="button" onClick={() => setVisivel((v) => !v)} aria-label={visivel ? 'Ocultar o token' : 'Mostrar o token'} aria-pressed={visivel}>
+              {visivel ? 'ocultar' : 'mostrar'}
+            </button>
+          </div>
+        </Campo>
+        <div className="pn-acoes">
+          <Botao type="submit" variante="primario" carregando={salvando} disabled={removendo}>
+            Salvar e testar
+          </Botao>
+          {brapi?.origem === 'painel' && (
+            <Botao type="button" variante="perigo-suave" carregando={removendo} disabled={salvando} onClick={() => void remover()}>
+              Remover token
+            </Botao>
+          )}
+        </div>
+      </form>
+
+      {recado.elemento}
+    </section>
+  );
 }
 
 function Mercado() {
@@ -195,6 +320,8 @@ function Mercado() {
         brapi/Yahoo Finance, Selic e IPCA pelo Banco Central. Não é preciso cadastrar nada — valores
         editados aqui são substituídos na próxima atualização. O Radar mostra Ibovespa, Dólar e Bitcoin.
       </Aviso>
+
+      {pode(usuario, 'ADMIN') && <FonteIbovespa aoMudar={() => void carregar()} />}
 
       <div className="pn-bloco">
         {carregando ? (

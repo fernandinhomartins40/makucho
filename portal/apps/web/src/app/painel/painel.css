@@ -2952,3 +2952,10 @@
 .pn .pn-tabela td.pn-sobe { color: #0e7a55; font-weight: 600; }
 .pn .pn-desce,
 .pn .pn-tabela td.pn-desce { color: #c81e2e; font-weight: 600; }
+
+/* ---------- mercado: fonte do Ibovespa ---------- */
+.pn .pn-integracao .pn-bloco-topo { flex-wrap: wrap; gap: 10px; }
+.pn .pn-integracao > .pn-dica { display: block; max-width: 72ch; margin: 0 0 14px; line-height: 1.55; }
+.pn .pn-integracao > .pn-dica a { color: var(--pn-azul); }
+.pn .pn-integracao-form { display: grid; gap: 4px; max-width: 560px; }
+.pn .pn-integracao-form .pn-acoes { justify-content: flex-start; }

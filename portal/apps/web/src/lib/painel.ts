@@ -121,6 +121,12 @@ export interface RegistroAuditoria {
   user: { id: string; name: string; email: string; role: string } | null;
 }
 
+/** Status da fonte de cotações: o token nunca volta inteiro, só o final. */
+export interface IntegracaoMercado {
+  brapi: { configurado: boolean; origem: 'painel' | 'ambiente' | null; final: string | null };
+  ibovespa: { valor: number; fonte: string; atualizadoEm: string } | null;
+}
+
 /** Configuracao como o backend descreve: o formulario se monta a partir disto. */
 export interface Configuracao {
   id: string;
@@ -212,6 +218,10 @@ export const painel = {
     chamar<MarketIndicatorDto>('/market/indicators', { method: 'POST', body: d }),
   excluirIndicador: (id: string) => chamar<void>(`/market/indicators/${id}`, { method: 'DELETE' }),
   sincronizarMercado: () => chamar<{ updated: number }>('/market/sync', { method: 'POST' }),
+  integracaoMercado: () => chamar<IntegracaoMercado>('/market/integration'),
+  /** O token é testado na brapi antes de ser salvo; null remove. */
+  salvarIntegracaoMercado: (brapiToken: string | null) =>
+    chamar<IntegracaoMercado>('/market/integration', { method: 'PUT', body: { brapiToken } }),
 
   tags: () => chamar<TagDto[]>('/tags'),
   criarTag: (d: unknown) => chamar<TagDto>('/tags', { method: 'POST', body: d }),

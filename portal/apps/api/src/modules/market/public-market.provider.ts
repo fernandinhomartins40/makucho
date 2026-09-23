@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { AppConfig } from '../../config/configuration';
+import { SettingsService } from '../settings/settings.service';
 import type { CotacaoExterna, MarketDataProvider } from './market-data.provider';
 
 /**
@@ -9,7 +10,8 @@ import type { CotacaoExterna, MarketDataProvider } from './market-data.provider'
  * - Dólar, Euro, Bitcoin: AwesomeAPI (economia.awesomeapi.com.br), sem chave.
  * - Selic (meta, série 432) e IPCA 12 meses (série 13522): API SGS do
  *   Banco Central, sem chave.
- * - Ibovespa (^BVSP): brapi.dev quando MARKET_DATA_API_KEY tem um token
+ * - Ibovespa (^BVSP): brapi.dev quando há token — o salvo no painel
+ *   (Mercado → Fonte do Ibovespa) ou, na falta dele, MARKET_DATA_API_KEY
  *   (plano gratuito: 15 mil req/mês); sem token, o endpoint de gráfico do
  *   Yahoo Finance, que é público mas não oficial e pode mudar sem aviso.
  *
@@ -39,10 +41,39 @@ const numero = (v: unknown): number | null => {
 export class PublicMarketProvider implements MarketDataProvider {
   readonly nome = 'automático';
   private readonly logger = new Logger('MarketData');
-  private readonly tokenBrapi: string | undefined;
+  private readonly tokenAmbiente: string | undefined;
 
-  constructor(config: ConfigService<AppConfig, true>) {
-    this.tokenBrapi = config.get('market', { infer: true }).apiKey?.trim() || undefined;
+  constructor(
+    config: ConfigService<AppConfig, true>,
+    private readonly settings: SettingsService,
+  ) {
+    this.tokenAmbiente = config.get('market', { infer: true }).apiKey?.trim() || undefined;
+  }
+
+  /** O token do painel vale mais que o do ambiente; lido a cada sincronização. */
+  async tokenBrapi(): Promise<{ token: string; origem: 'painel' | 'ambiente' } | null> {
+    const doPainel = await this.settings.obterSegredo('market.brapiToken').catch(() => null);
+    if (doPainel) return { token: doPainel, origem: 'painel' };
+    return this.tokenAmbiente ? { token: this.tokenAmbiente, origem: 'ambiente' } : null;
+  }
+
+  /** Consulta o Ibovespa com o token informado, para validar antes de salvar. */
+  async testarBrapi(token: string): Promise<{ ok: true; valor: number } | { ok: false; mensagem: string }> {
+    try {
+      const resposta = await fetch('https://brapi.dev/api/quote/%5EBVSP', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const corpo = (await resposta.json().catch(() => ({}))) as {
+        message?: string;
+        results?: Array<{ regularMarketPrice?: number }>;
+      };
+      const valor = numero(corpo.results?.[0]?.regularMarketPrice);
+      if (resposta.ok && valor !== null) return { ok: true, valor };
+      return { ok: false, mensagem: corpo.message ?? `A brapi respondeu ${resposta.status}` };
+    } catch (erro) {
+      return { ok: false, mensagem: erro instanceof Error ? erro.message : 'Não foi possível falar com a brapi' };
+    }
   }
 
   /** Qual fonte atende cada símbolo (pelo código gravado no indicador). */
@@ -94,11 +125,12 @@ export class PublicMarketProvider implements MarketDataProvider {
   }
 
   private async ibovespa(simbolo: string): Promise<CotacaoExterna | null> {
-    if (this.tokenBrapi) {
+    const brapi = await this.tokenBrapi();
+    if (brapi) {
       // Token vencido ou limite mensal estourado: cai para o Yahoo abaixo.
       const dados = await json<{
         results?: Array<{ regularMarketPrice: number; regularMarketChangePercent: number; regularMarketChange: number; regularMarketTime: string }>;
-      }>('https://brapi.dev/api/quote/%5EBVSP', { Authorization: `Bearer ${this.tokenBrapi}` }).catch((erro: unknown) => {
+      }>('https://brapi.dev/api/quote/%5EBVSP', { Authorization: `Bearer ${brapi.token}` }).catch((erro: unknown) => {
         this.logger.warn(`brapi indisponível, usando Yahoo: ${erro instanceof Error ? erro.message : String(erro)}`);
         return { results: undefined };
       });
