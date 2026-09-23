@@ -80,7 +80,9 @@ const envSchema = z
     ANALYTICS_VIEW_DEDUPE_MINUTES: z.coerce.number().int().min(1).default(30),
 
     // ---- Ticker ----
-    MARKET_DATA_PROVIDER: z.enum(['manual', 'api']).default('manual'),
+    // 'auto' (padrão) busca cotações em fontes públicas; 'off' deixa só o painel.
+    // 'manual' e 'api' são aceitos por compatibilidade e também ativam o automático.
+    MARKET_DATA_PROVIDER: z.enum(['auto', 'off', 'manual', 'api']).default('auto'),
     MARKET_DATA_API_KEY: z.string().optional(),
     MARKET_DATA_REFRESH_MINUTES: z.coerce.number().int().min(1).default(15),
 

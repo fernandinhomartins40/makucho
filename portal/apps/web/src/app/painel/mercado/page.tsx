@@ -21,7 +21,8 @@ import {
 
 /**
  * Indicadores do Radar do mercado (faixa abaixo do cabecalho do site).
- * Com MARKET_DATA_PROVIDER=manual, esta tela e a unica fonte dos valores.
+ * A API atualiza os valores sozinha a cada 10 minutos (fontes publicas);
+ * aqui a redacao acompanha, oculta ou corrige.
  */
 
 interface Formulario {
@@ -160,7 +161,7 @@ function Mercado() {
       if (r.updated > 0) {
         recado.ok(`${r.updated} indicador(es) atualizados pela fonte externa.`);
       } else {
-        recado.erro('Nenhum indicador atualizado: a fonte automática não está configurada. Edite os valores manualmente.');
+        recado.erro('Nenhuma cotação atualizada agora: as fontes podem estar fora do ar. O Radar mantém os últimos valores.');
       }
       await carregar();
     } catch (e) {
@@ -190,8 +191,9 @@ function Mercado() {
       />
 
       <Aviso tipo="info">
-        O Radar do site mostra Ibovespa, Dólar e Bitcoin (códigos que contenham IBOV, USD e BTC). Os
-        demais indicadores ficam salvos, mas não aparecem no Radar.
+        Atualização automática a cada 10 minutos: Dólar, Euro e Bitcoin pela AwesomeAPI, Ibovespa pela
+        brapi/Yahoo Finance, Selic e IPCA pelo Banco Central. Não é preciso cadastrar nada — valores
+        editados aqui são substituídos na próxima atualização. O Radar mostra Ibovespa, Dólar e Bitcoin.
       </Aviso>
 
       <div className="pn-bloco">

@@ -13,6 +13,8 @@ export interface CotacaoExterna {
   changeAbsolute?: number | null;
   /** Momento da cotação na origem, quando a fonte informa. */
   quotedAt?: Date | null;
+  /** Fonte desta cotação, quando o provedor combina várias (gravada em `source`). */
+  source?: string;
 }
 
 export interface MarketDataProvider {

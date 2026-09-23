@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, type OnApplicationBootstrap } from '@nestjs/common';
 import type { Request } from 'express';
 import type { MarketIndicatorDto } from '@makucho/types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,7 +7,7 @@ import { MARKET_DATA_PROVIDER, type MarketDataProvider } from './market-data.pro
 
 /** Ticker financeiro do topo do site (seção 19). */
 @Injectable()
-export class MarketService {
+export class MarketService implements OnApplicationBootstrap {
   private readonly logger = new Logger('Market');
 
   constructor(
@@ -15,6 +15,23 @@ export class MarketService {
     private readonly audit: AuditService,
     @Inject(MARKET_DATA_PROVIDER) private readonly provedor: MarketDataProvider,
   ) {}
+
+  /**
+   * Primeira carga logo que a API sobe (o cron roda a cada 10 min): um
+   * deploy não deixa o Radar com valores velhos. Sem await, para não
+   * atrasar a subida se uma fonte estiver lenta.
+   */
+  onApplicationBootstrap(): void {
+    if (this.provedor.nome === 'manual') return;
+    void this.sincronizar().catch(() => undefined);
+  }
+
+  /** O Radar precisa destes três; os que faltarem são criados na sincronização. */
+  private static readonly RADAR = [
+    { symbol: 'IBOVESPA', chave: 'IBOV', label: 'Ibovespa', unit: 'pts', position: 0 },
+    { symbol: 'USD', chave: 'USD', label: 'Dólar', unit: 'R$', position: 1 },
+    { symbol: 'BTC', chave: 'BTC', label: 'Bitcoin', unit: 'US$', position: 3 },
+  ];
 
   async listar(apenasAtivos = true): Promise<MarketIndicatorDto[]> {
     const indicadores = await this.prisma.marketIndicator.findMany({
@@ -77,24 +94,54 @@ export class MarketService {
    * uma integracao real for plugada.
    */
   async sincronizar(): Promise<number> {
-    const ativos = await this.prisma.marketIndicator.findMany({
-      where: { isActive: true },
-      select: { symbol: true },
-    });
-    if (ativos.length === 0) return 0;
+    const [ativos, todos] = await Promise.all([
+      this.prisma.marketIndicator.findMany({ where: { isActive: true }, select: { symbol: true } }),
+      this.prisma.marketIndicator.findMany({ select: { symbol: true } }),
+    ]);
+    // Indicadores do Radar que nunca existiram: também são consultados, e só
+    // são criados se a fonte devolver um valor (nunca aparece "0" no site).
+    // Um indicador desativado no painel continua existindo e não é recriado.
+    const faltantes =
+      this.provedor.nome === 'manual'
+        ? []
+        : MarketService.RADAR.filter(
+            (r) => !todos.some((t) => t.symbol.toUpperCase().includes(r.chave)),
+          );
+    const simbolos = [...ativos.map((a) => a.symbol), ...faltantes.map((f) => f.symbol)];
+    if (simbolos.length === 0) return 0;
 
     let atualizados = 0;
     try {
-      const cotacoes = await this.provedor.cotacoes(ativos.map((a) => a.symbol));
+      const cotacoes = await this.provedor.cotacoes(simbolos);
 
       for (const cotacao of cotacoes) {
+        const novo = faltantes.find((f) => f.symbol === cotacao.symbol);
+        if (novo) {
+          await this.prisma.marketIndicator.create({
+            data: {
+              symbol: novo.symbol,
+              label: novo.label,
+              unit: novo.unit,
+              position: novo.position,
+              isActive: true,
+              value: cotacao.value,
+              changePercent: cotacao.changePercent ?? null,
+              changeAbsolute: cotacao.changeAbsolute ?? null,
+              source: cotacao.source ?? this.provedor.nome,
+              lastUpdatedAt: cotacao.quotedAt ?? new Date(),
+            } as never,
+          });
+          this.logger.log(`Indicador ${novo.symbol} criado automaticamente para o Radar`);
+          atualizados += 1;
+          continue;
+        }
         await this.prisma.marketIndicator.updateMany({
           where: { symbol: cotacao.symbol },
           data: {
             value: cotacao.value,
             changePercent: cotacao.changePercent ?? null,
             changeAbsolute: cotacao.changeAbsolute ?? null,
-            source: this.provedor.nome,
+            source: cotacao.source ?? this.provedor.nome,
             lastUpdatedAt: cotacao.quotedAt ?? new Date(),
           },
         });
