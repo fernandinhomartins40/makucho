@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { api } from '@/lib/api';
+import { Cadeado } from '@/components/icones';
 
 /**
  * Inscricao na newsletter (secao 29).
@@ -112,31 +113,38 @@ export function Newsletter({
   }
 
   return (
-    <section className="news-faixa" id="newsletter">
-      <div className="news-faixa-marca">
-        <Image src="/brand/makucho-symbol-metallic-master.webp" alt="" width={44} height={44} aria-hidden="true" />
-        <div>
-          <h2>{titulo ?? 'Economia sem complicação, direto no seu e-mail.'}</h2>
-          <p>
-            {descricao ??
-              'Receba análises, conteúdos exclusivos, novidades e os principais destaques da semana.'}
-          </p>
-        </div>
+    <section className="news-faixa" id="newsletter" aria-labelledby="newsletter-titulo">
+      <div className="news-faixa-texto">
+        <span className="news-faixa-rotulo">Newsletter MAKUCHO</span>
+        <h2 id="newsletter-titulo">{titulo ?? 'Receba a análise que importa'}</h2>
+        <p>{descricao ?? 'Conteúdo exclusivo, direto no seu e-mail. Sem ruído, sem complicação.'}</p>
       </div>
 
       {estado === 'ok' ? (
-        <p role="status" style={{ fontWeight: 600, flex: '1 1 380px' }}>
+        <p role="status" className="news-faixa-ok">
           {mensagem}
         </p>
       ) : (
         <form className="news-faixa-form" onSubmit={enviar}>
-          {campo}
-          <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
-            {estado === 'enviando' ? 'Enviando…' : 'Quero receber'}
-          </button>
-          {consentimento}
+          <div className="news-faixa-linha">
+            {campo}
+            <button className="botao-azul" type="submit" disabled={estado === 'enviando'}>
+              {estado === 'enviando' ? 'Enviando…' : 'Quero acompanhar'}
+            </button>
+          </div>
+          <label className="news-consentimento">
+            <input
+              type="checkbox"
+              name="consentimento"
+              checked={consentiu}
+              onChange={(evento) => setConsentiu(evento.target.checked)}
+              required
+            />
+            <Cadeado size={13} />
+            <span>Quero receber os e-mails do MAKUCHO. Sem spam. Você pode cancelar quando quiser.</span>
+          </label>
           {estado === 'erro' && (
-            <p role="alert" style={{ flexBasis: '100%', fontSize: '0.78rem' }}>
+            <p role="alert" className="news-faixa-erro">
               {mensagem}
             </p>
           )}

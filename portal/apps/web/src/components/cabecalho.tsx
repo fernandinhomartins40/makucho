@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type {
   CategoryDto,
@@ -10,7 +11,6 @@ import type {
 } from "@makucho/types";
 import {
   IconeIndicador,
-  IconeRede,
   Lupa,
   TriEmAlta,
   TriEmBaixa,
@@ -99,10 +99,16 @@ function Ticker({ indicadores }: { indicadores: MarketIndicatorDto[] }) {
   );
 }
 
+const NAVEGACAO = [
+  { rotulo: "Início", href: "/" },
+  { rotulo: "Análises", href: "/categoria/economia" },
+  { rotulo: "Vídeos", href: "/videos" },
+  { rotulo: "Sobre", href: "/sobre" },
+];
+
 export function Cabecalho({
   categorias,
   indicadores,
-  socials = [],
   nomeDoSite = "MAKUCHO",
 }: {
   categorias: CategoryDto[];
@@ -113,6 +119,7 @@ export function Cabecalho({
   const [menuAberto, setMenuAberto] = useState(false);
   const botaoMenu = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLElement>(null);
+  const rota = usePathname();
   const doMenu = categorias.filter((c) => c.showInMenu).slice(0, 6);
 
   useEffect(() => {
@@ -129,6 +136,9 @@ export function Cabecalho({
     menu.current?.querySelector<HTMLAnchorElement>("a")?.focus();
     return () => document.removeEventListener("keydown", aoTeclar);
   }, [menuAberto]);
+
+  const ativo = (href: string) =>
+    href === "/" ? rota === "/" : rota.startsWith(href);
 
   return (
     <>
@@ -149,6 +159,31 @@ export function Cabecalho({
             />
           </Link>
 
+          <nav className="topo-nav" aria-label="Principal">
+            {NAVEGACAO.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={ativo(item.href) ? "ativo" : undefined}
+                aria-current={ativo(item.href) ? "page" : undefined}
+              >
+                {item.rotulo}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="topo-direita">
+            <Link href="/busca" className="topo-busca" aria-label="Buscar no portal">
+              <Lupa size={20} />
+            </Link>
+            <Link href="/painel/entrar" className="botao-entrar" rel="nofollow">
+              Entrar
+            </Link>
+            <Link href="/#newsletter" className="botao-inscrever">
+              Acompanhe
+            </Link>
+          </div>
+
           <button
             ref={botaoMenu}
             type="button"
@@ -167,7 +202,7 @@ export function Cabecalho({
             ref={menu}
             id="menu-editorias"
             className={`menu ${menuAberto ? "menu-aberto" : ""}`}
-            aria-label="Editorias"
+            aria-label="Menu"
           >
             <form className="menu-busca" action="/busca" role="search">
               <label htmlFor="menu-busca-input">Buscar no portal</label>
@@ -176,13 +211,16 @@ export function Cabecalho({
                 <button type="submit" aria-label="Buscar"><Lupa size={18} /></button>
               </div>
             </form>
-            <Link
-              href="/"
-              className="ativo"
-              onClick={() => setMenuAberto(false)}
-            >
-              Início
-            </Link>
+            {NAVEGACAO.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={ativo(item.href) ? "ativo" : undefined}
+                onClick={() => setMenuAberto(false)}
+              >
+                {item.rotulo}
+              </Link>
+            ))}
             {doMenu.map((c) => (
               <Link
                 key={c.id}
@@ -192,53 +230,13 @@ export function Cabecalho({
                 {c.name}
               </Link>
             ))}
-            <Link href="/videos" onClick={() => setMenuAberto(false)}>
-              Vídeos
-            </Link>
-            <Link href="/sobre" onClick={() => setMenuAberto(false)}>
-              Sobre
+            <Link href="/painel/entrar" rel="nofollow" onClick={() => setMenuAberto(false)}>
+              Entrar
             </Link>
             <Link href="/#newsletter" onClick={() => setMenuAberto(false)}>
               Acompanhe
             </Link>
           </nav>
-
-          <div className="topo-direita">
-            <form className="busca" action="/busca" role="search">
-              <label htmlFor="busca" className="so-leitor-de-tela">
-                Buscar no portal
-              </label>
-              <Lupa />
-              <input
-                id="busca"
-                type="search"
-                name="q"
-                placeholder="Buscar conteúdos..."
-                minLength={2}
-                required
-              />
-            </form>
-
-            {socials.length > 0 && (
-              <div className="redes-topo">
-                {socials.slice(0, 3).map((s) => (
-                  <a
-                    key={s.id}
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={s.label}
-                  >
-                    <IconeRede platform={s.platform} size={17} />
-                  </a>
-                ))}
-              </div>
-            )}
-
-            <Link href="/#newsletter" className="botao-inscrever">
-              Inscreva-se
-            </Link>
-          </div>
         </div>
       </header>
 

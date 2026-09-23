@@ -95,6 +95,103 @@ export function TriEmBaixa({ className, size = 9 }: Props) {
   );
 }
 
+export function SetaAlta({ className, size = 20 }: Props) {
+  return (
+    <svg className={className} {...base(size)}>
+      <path d="M6 18 18 6M9 6h9v9" />
+    </svg>
+  );
+}
+
+export function SetaBaixa({ className, size = 20 }: Props) {
+  return (
+    <svg className={className} {...base(size)}>
+      <path d="M6 6l12 12M18 9v9H9" />
+    </svg>
+  );
+}
+
+export function Lampada({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z" />
+      <path d="M12 0v1M3 3l.7.7M21 3l-.7.7M0 11h1M23 11h1" />
+    </svg>
+  );
+}
+
+export function PlayCirculo({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="m10 8.5 5 3.5-5 3.5z" />
+    </svg>
+  );
+}
+
+export function Barras({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <rect x="4" y="13" width="4" height="7" rx="1" />
+      <rect x="10" y="9" width="4" height="11" rx="1" />
+      <rect x="16" y="4" width="4" height="16" rx="1" />
+    </svg>
+  );
+}
+
+export function Tendencia({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <path d="m3 17 6-6 4 4 8-8M15 7h6v6" />
+    </svg>
+  );
+}
+
+export function Cartao({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <rect x="2.5" y="5" width="19" height="14" rx="2" />
+      <path d="M2.5 10h19M6 15h4" />
+    </svg>
+  );
+}
+
+export function Chip({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <rect x="6" y="6" width="12" height="12" rx="1.5" />
+      <rect x="9.5" y="9.5" width="5" height="5" />
+      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" />
+    </svg>
+  );
+}
+
+export function Globo({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z" />
+    </svg>
+  );
+}
+
+export function Maleta({ className, size = 22 }: Props) {
+  return (
+    <svg className={className} {...base(size)} strokeWidth={1.6}>
+      <rect x="3" y="7" width="18" height="13" rx="2" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 13h18" />
+    </svg>
+  );
+}
+
+export function Cadeado({ className, size = 14 }: Props) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1Zm2 0h6V7a3 3 0 0 0-6 0Z" />
+    </svg>
+  );
+}
+
 // ============================================================
 // REDES SOCIAIS
 // ============================================================

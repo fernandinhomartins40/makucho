@@ -38,6 +38,14 @@ export function AnuncioSlot({ posicao }: { posicao: string }) {
     return () => observer.disconnect();
   }, [anuncio, posicao]);
 
+  if (!anuncio && posicao === 'HOME_MIDDLE') {
+    return (
+      <aside className="hub-ad" aria-label="Espaço publicitário reservado">
+        <span>Publicidade</span>
+        <div>Google Ads (728 × 90)</div>
+      </aside>
+    );
+  }
   if (!anuncio) return null;
   const imagem = urlDaImagem(anuncio.media, 'LARGE');
   const imagemMobile = urlDaImagem(anuncio.mobileMedia, 'MEDIUM');
