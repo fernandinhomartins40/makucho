@@ -10,10 +10,10 @@ import type { CotacaoExterna, MarketDataProvider } from './market-data.provider'
  * - Dólar, Euro, Bitcoin: AwesomeAPI (economia.awesomeapi.com.br), sem chave.
  * - Selic (meta, série 432) e IPCA 12 meses (série 13522): API SGS do
  *   Banco Central, sem chave.
- * - Ibovespa (^BVSP): brapi.dev quando há token — o salvo no painel
- *   (Mercado → Fonte do Ibovespa) ou, na falta dele, MARKET_DATA_API_KEY
- *   (plano gratuito: 15 mil req/mês); sem token, o endpoint de gráfico do
- *   Yahoo Finance, que é público mas não oficial e pode mudar sem aviso.
+ * - Ibovespa (^BVSP): endpoint de gráfico do Yahoo Finance (público, não
+ *   oficial, menor atraso). Se ele falhar e houver token da brapi — o salvo
+ *   no painel (Mercado → Fonte do Ibovespa) ou MARKET_DATA_API_KEY —, a
+ *   brapi.dev entra como reserva (grátis: 15 mil req/mês, ~30 min de atraso).
  *
  * Cada fonte é consultada isoladamente: a falha de uma não impede as
  * outras, e o indicador que falhar mantém o último valor gravado.
@@ -124,29 +124,29 @@ export class PublicMarketProvider implements MarketDataProvider {
     };
   }
 
+  /**
+   * Yahoo primeiro (menor atraso); a brapi, se houver token, é a reserva
+   * quando o Yahoo falhar. O plano gratuito da brapi tem ~30 min de atraso.
+   */
   private async ibovespa(simbolo: string): Promise<CotacaoExterna | null> {
-    const brapi = await this.tokenBrapi();
-    if (brapi) {
-      // Token vencido ou limite mensal estourado: cai para o Yahoo abaixo.
-      const dados = await json<{
-        results?: Array<{ regularMarketPrice: number; regularMarketChangePercent: number; regularMarketChange: number; regularMarketTime: string }>;
-      }>('https://brapi.dev/api/quote/%5EBVSP', { Authorization: `Bearer ${brapi.token}` }).catch((erro: unknown) => {
-        this.logger.warn(`brapi indisponível, usando Yahoo: ${erro instanceof Error ? erro.message : String(erro)}`);
-        return { results: undefined };
-      });
-      const r = dados.results?.[0];
-      if (r && numero(r.regularMarketPrice) !== null) {
-        return {
-          symbol: simbolo,
-          value: r.regularMarketPrice,
-          changePercent: numero(r.regularMarketChangePercent),
-          changeAbsolute: numero(r.regularMarketChange),
-          quotedAt: r.regularMarketTime ? new Date(r.regularMarketTime) : null,
-          source: 'brapi',
-        };
-      }
+    let falhaYahoo: unknown = null;
+    try {
+      const cotacao = await this.ibovespaYahoo(simbolo);
+      if (cotacao) return cotacao;
+      falhaYahoo = new Error('Yahoo respondeu sem cotação');
+    } catch (erro) {
+      falhaYahoo = erro;
     }
 
+    const brapi = await this.tokenBrapi();
+    if (!brapi) throw falhaYahoo;
+    this.logger.warn(
+      `Yahoo indisponível, usando brapi: ${falhaYahoo instanceof Error ? falhaYahoo.message : String(falhaYahoo)}`,
+    );
+    return this.ibovespaBrapi(simbolo, brapi.token);
+  }
+
+  private async ibovespaYahoo(simbolo: string): Promise<CotacaoExterna | null> {
     const dados = await json<{
       chart?: { result?: Array<{ meta: { regularMarketPrice: number; chartPreviousClose?: number; previousClose?: number; regularMarketTime?: number } }> };
     }>('https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=1d&interval=1d', {
@@ -164,6 +164,22 @@ export class PublicMarketProvider implements MarketDataProvider {
       changeAbsolute: anterior ? valor - anterior : null,
       quotedAt: meta.regularMarketTime ? new Date(meta.regularMarketTime * 1000) : null,
       source: 'Yahoo Finance',
+    };
+  }
+
+  private async ibovespaBrapi(simbolo: string, token: string): Promise<CotacaoExterna | null> {
+    const dados = await json<{
+      results?: Array<{ regularMarketPrice: number; regularMarketChangePercent: number; regularMarketChange: number; regularMarketTime: string }>;
+    }>('https://brapi.dev/api/quote/%5EBVSP', { Authorization: `Bearer ${token}` });
+    const r = dados.results?.[0];
+    if (!r || numero(r.regularMarketPrice) === null) return null;
+    return {
+      symbol: simbolo,
+      value: r.regularMarketPrice,
+      changePercent: numero(r.regularMarketChangePercent),
+      changeAbsolute: numero(r.regularMarketChange),
+      quotedAt: r.regularMarketTime ? new Date(r.regularMarketTime) : null,
+      source: 'brapi',
     };
   }
 

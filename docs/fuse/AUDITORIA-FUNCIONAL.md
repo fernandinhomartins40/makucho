@@ -11,7 +11,7 @@ Extração estática de 106 rotas NestJS e das chamadas do web (`lib/api.ts`, `l
 | Chamadas do front sem rota na API | **0** |
 | Rotas usadas pelo front | 81 (eram 77; +4 de mercado) |
 | Lacuna corrigida | Indicadores do Radar (`/market/*`) não tinham tela: com `MARKET_DATA_PROVIDER=manual` os valores ficavam congelados no seed. Criado `/painel/mercado`. |
-| Radar automático | `PublicMarketProvider` (padrão): Dólar/Euro/Bitcoin pela AwesomeAPI, Ibovespa pela brapi (com token) ou Yahoo Finance, Selic/IPCA pelo Banco Central (SGS). Sincroniza na subida e a cada 10 min; cria sozinho Ibovespa/Dólar/Bitcoin se faltarem. `MARKET_DATA_PROVIDER=off` desliga. |
+| Radar automático | `PublicMarketProvider` (padrão): Dólar/Euro/Bitcoin pela AwesomeAPI, Ibovespa pelo Yahoo Finance com a brapi (token salvo no painel) de reserva, Selic/IPCA pelo Banco Central (SGS). Sincroniza na subida e a cada 10 min; cria sozinho Ibovespa/Dólar/Bitcoin se faltarem. `MARKET_DATA_PROVIDER=off` desliga. |
 | Rotas ainda sem tela (conscientemente) | `analytics/*` (métricas), `auth/forgot-password` e `reset-password` (dependem de provedor de e-mail, não configurado), `videos/reorder`, `videos/:id/view`, `search/suggestions`, `tags/popular`, leituras públicas redundantes (`/authors`, `/settings/public`…). |
 
 ## 2. Landing e dados persistidos

@@ -97,7 +97,7 @@ function FonteIbovespa({ aoMudar }: { aoMudar: () => void }) {
       setStatus(await painel.salvarIntegracaoMercado(token.trim()));
       setToken('');
       setVisivel(false);
-      recado.ok('Token válido e salvo. O Ibovespa já foi atualizado pela brapi.');
+      recado.ok('Token válido e salvo. A brapi fica de reserva caso o Yahoo Finance falhe.');
       aoMudar();
     } catch (e2) {
       setErro(e2 instanceof ErroApi ? e2.message : 'Não foi possível salvar o token.');
@@ -132,15 +132,15 @@ function FonteIbovespa({ aoMudar }: { aoMudar: () => void }) {
             className="pn-selo"
             style={{ '--selo': brapi.configurado ? '#16a34a' : '#b45309' } as React.CSSProperties}
           >
-            {brapi.configurado ? `brapi conectada ${brapi.final ?? ''}` : 'Sem token: usando Yahoo Finance'}
+            {brapi.configurado ? `Reserva brapi ativa ${brapi.final ?? ''}` : 'Sem reserva: só Yahoo Finance'}
           </span>
         )}
       </div>
 
       <p className="pn-dica">
-        Com um token gratuito da <a href="https://brapi.dev/dashboard" target="_blank" rel="noopener noreferrer">brapi.dev</a> (15 mil
-        consultas por mês), o Ibovespa vem de uma fonte oficial. Sem token, o portal usa o Yahoo Finance, que
-        funciona mas não é oficial.
+        O Ibovespa vem do Yahoo Finance, que tem o menor atraso. Com um token gratuito da{' '}
+        <a href="https://brapi.dev/dashboard" target="_blank" rel="noopener noreferrer">brapi.dev</a>, a brapi entra
+        automaticamente como reserva se o Yahoo falhar (plano grátis: 15 mil consultas por mês, cerca de 30 min de atraso).
         {ibov && (
           <>
             {' '}Último valor: <strong>{ibov.valor.toLocaleString('pt-BR')}</strong> via {ibov.fonte},{' '}
@@ -316,8 +316,8 @@ function Mercado() {
       />
 
       <Aviso tipo="info">
-        Atualização automática a cada 10 minutos: Dólar, Euro e Bitcoin pela AwesomeAPI, Ibovespa pela
-        brapi/Yahoo Finance, Selic e IPCA pelo Banco Central. Não é preciso cadastrar nada — valores
+        Atualização automática a cada 10 minutos: Dólar, Euro e Bitcoin pela AwesomeAPI, Ibovespa pelo
+        Yahoo Finance (com a brapi de reserva), Selic e IPCA pelo Banco Central. Não é preciso cadastrar nada — valores
         editados aqui são substituídos na próxima atualização. O Radar mostra Ibovespa, Dólar e Bitcoin.
       </Aviso>
 
