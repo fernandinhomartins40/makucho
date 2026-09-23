@@ -1,21 +1,21 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_NAME ?? 'MAKUCHO';
 const URL_SITE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://makucho.com.br';
 
 /**
- * Inter pelo next/font: o arquivo e baixado no build e servido do nosso
- * dominio, sem chamada ao Google em tempo de execucao. display=swap
- * evita texto invisivel enquanto a fonte carrega.
- *
- * O subset latin cobre portugues e pesa uma fracao do arquivo completo.
+ * Inter servida do proprio repositorio (licenca SIL OFL). O next/font/google
+ * baixava a fonte do Google DURANTE o build, e a falha dessa chamada dentro
+ * do builder Docker derrubava o deploy. Arquivo variavel (pesos 400-900),
+ * subset latin: cobre o portugues. display=swap evita texto invisivel.
  */
-const inter = Inter({
-  subsets: ['latin'],
+const inter = localFont({
+  src: './fonts/inter-latin-var.woff2',
+  weight: '400 900',
+  style: 'normal',
   display: 'swap',
-  weight: ['400', '500', '600', '700', '800', '900'],
   variable: '--fonte-inter',
 });
 

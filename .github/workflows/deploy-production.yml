@@ -41,22 +41,51 @@ env:
 
 jobs:
   # ============================================================
-  # JOB 1 - Build
+  # JOB 1 - Versao da release
+  # Um id unico para API e web: os builds rodam em paralelo e o deploy
+  # precisa das duas imagens com a mesma tag.
   # ============================================================
-  build:
-    name: Build e publicar no GHCR
+  versao:
+    name: Definir versão
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 5
     outputs:
       release: ${{ steps.meta.outputs.release }}
+    steps:
+      - name: Definir versao da release
+        id: meta
+        run: echo "release=${GITHUB_SHA::7}-$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+  # ============================================================
+  # JOB 2 - Build (API e web em paralelo)
+  # Antes eram passos sequenciais no mesmo job: o tempo total era a soma
+  # dos dois. Em jobs separados o total cai para o do build mais lento.
+  # ============================================================
+  build:
+    name: Build ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [versao]
+    strategy:
+      # Se um build falhar, o outro continua: o cache dele fica pronto para
+      # a proxima tentativa. O deploy nao roda sem os dois.
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            dockerfile: api.Dockerfile
+            build-args: ''
+          - app: web
+            dockerfile: web.Dockerfile
+            # Variaveis NEXT_PUBLIC_* sao embutidas no bundle durante o
+            # build: precisam existir aqui, nao apenas em runtime.
+            build-args: |
+              NEXT_PUBLIC_SITE_URL=https://makucho.com.br
+              NEXT_PUBLIC_API_URL=/api
+              NEXT_PUBLIC_SITE_NAME=MAKUCHO
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Definir versao da release
-        id: meta
-        run: echo "release=$(git rev-parse --short HEAD)-$(date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -66,47 +95,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build da API
+      - name: Build e publicar ${{ matrix.app }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: portal/infrastructure/docker/api.Dockerfile
+          file: portal/infrastructure/docker/${{ matrix.dockerfile }}
           push: true
+          build-args: ${{ matrix.build-args }}
           tags: |
-            ${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.release }}
-            ${{ env.IMAGE_PREFIX }}-api:latest
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:${{ needs.versao.outputs.release }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:latest
           # O cache do registro leva o build de minutos a segundos
           # quando so o codigo mudou. ignore-error porque no primeiro
           # build o cache ainda nao existe.
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-api:buildcache,mode=max,ignore-error=true
-
-      - name: Build do Web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: portal/infrastructure/docker/web.Dockerfile
-          push: true
-          # Variaveis NEXT_PUBLIC_* sao embutidas no bundle durante o
-          # build: precisam existir aqui, nao apenas em runtime.
-          build-args: |
-            NEXT_PUBLIC_SITE_URL=https://makucho.com.br
-            NEXT_PUBLIC_API_URL=/api
-            NEXT_PUBLIC_SITE_NAME=MAKUCHO
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.release }}
-            ${{ env.IMAGE_PREFIX }}-web:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,ignore-error=true
-          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-web:buildcache,mode=max,ignore-error=true
+          cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache,ignore-error=true
+          cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.app }}:buildcache,mode=max,ignore-error=true
 
   # ============================================================
-  # JOB 2 - Deploy
+  # JOB 3 - Deploy
   # ============================================================
   deploy:
     name: Deploy na VPS
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [build]
+    needs: [versao, build]
 
     environment:
       name: production
@@ -146,7 +158,7 @@ jobs:
           SSHPASS: ${{ secrets.VPS_PASSWORD }}
         run: |
           set -euo pipefail
-          DIR="${{ env.APP_ROOT }}/releases/${{ needs.build.outputs.release }}"
+          DIR="${{ env.APP_ROOT }}/releases/${{ needs.versao.outputs.release }}"
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p '$DIR'"
 
           # So o necessario para subir o stack: compose, nginx interno e
@@ -171,7 +183,7 @@ jobs:
              SECONDARY_DOMAIN='${{ env.SECONDARY_DOMAIN }}' \
              SEED_ADMIN_EMAIL='${{ secrets.SEED_ADMIN_EMAIL }}' \
              SEED_ADMIN_PASSWORD='${{ secrets.SEED_ADMIN_PASSWORD }}' \
-             bash '${{ env.APP_ROOT }}/releases/${{ needs.build.outputs.release }}/.github/scripts/portal-provision-env.sh'"
+             bash '${{ env.APP_ROOT }}/releases/${{ needs.versao.outputs.release }}/.github/scripts/portal-provision-env.sh'"
 
       - name: Preparar host, vhost e SSL
         env:
@@ -187,7 +199,7 @@ jobs:
              SSL_EMAIL='${{ env.SSL_EMAIL }}' \
              CLIENT_MAX_BODY='20m' \
              PROXY_TIMEOUT='120s' \
-             bash '${{ env.APP_ROOT }}/releases/${{ needs.build.outputs.release }}/.github/scripts/provision-host.sh'"
+             bash '${{ env.APP_ROOT }}/releases/${{ needs.versao.outputs.release }}/.github/scripts/provision-host.sh'"
 
       - name: Autenticar VPS no GHCR
         env:
@@ -206,11 +218,11 @@ jobs:
         run: |
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
             "APP_ROOT='${{ env.APP_ROOT }}' \
-             RELEASE='${{ needs.build.outputs.release }}' \
+             RELEASE='${{ needs.versao.outputs.release }}' \
              DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
              REGISTRY_IMAGE_WEB='${{ env.IMAGE_PREFIX }}-web' \
              REGISTRY_IMAGE_API='${{ env.IMAGE_PREFIX }}-api' \
-             bash '${{ env.APP_ROOT }}/releases/${{ needs.build.outputs.release }}/.github/scripts/remote-deploy.sh'"
+             bash '${{ env.APP_ROOT }}/releases/${{ needs.versao.outputs.release }}/.github/scripts/remote-deploy.sh'"
 
       - name: Health check interno
         env:
@@ -219,8 +231,8 @@ jobs:
           sshpass -e ssh ${{ env.SSH_OPTS }} ${{ env.VPS_USER }}@${{ env.VPS_HOST }} \
             "APP_ROOT='${{ env.APP_ROOT }}' \
              DEPLOY_PORT='${{ env.DEPLOY_PORT }}' \
-             RELEASE='${{ needs.build.outputs.release }}' \
-             bash '${{ env.APP_ROOT }}/releases/${{ needs.build.outputs.release }}/.github/scripts/remote-health-check.sh'"
+             RELEASE='${{ needs.versao.outputs.release }}' \
+             bash '${{ env.APP_ROOT }}/releases/${{ needs.versao.outputs.release }}/.github/scripts/remote-health-check.sh'"
 
       - name: Verificar pelo dominio publico
         run: |
@@ -255,4 +267,4 @@ jobs:
           checar "${{ env.CANONICAL_URL }}/api/health" "api"
 
           [ "$falhou" -eq 0 ] || exit 1
-          echo "deploy ${{ needs.build.outputs.release }} verificado em ${{ env.CANONICAL_URL }}"
+          echo "deploy ${{ needs.versao.outputs.release }} verificado em ${{ env.CANONICAL_URL }}"

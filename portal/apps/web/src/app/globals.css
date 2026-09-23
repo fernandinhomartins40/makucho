@@ -46,8 +46,10 @@
   --gap: 20px;
 
   /* Inter cobre bem numero tabular, que o ticker usa. */
+  /* var(--fonte-inter) e o nome gerado pelo next/font; "Inter" sozinho so
+     funcionava se a fonte estivesse instalada no computador do leitor. */
   --fonte:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
+    var(--fonte-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial,
     sans-serif;
 }
 
