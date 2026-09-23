@@ -40,9 +40,22 @@ try {
     socket.send(JSON.stringify({ id: requestId, method, params }));
   });
 
-  const production = ['--production', '--verify-production'].includes(process.argv[2]);
-  const verifyOnly = process.argv[2] === '--verify-production';
-  const cases = production
+  const auditPublic = process.argv[2] === '--audit-public';
+  const production = ['--production', '--verify-production', '--audit-public'].includes(process.argv[2]);
+  const verifyOnly = process.argv[2] === '--verify-production' || auditPublic;
+  const cases = auditPublic
+    ? [
+        ['artigo', 'https://makucho.com.br/artigo/copom-mantem-a-selic-e-sinaliza-cautela-com-a-inflacao-de-servicos', 2000],
+        ['categoria', 'https://makucho.com.br/categoria/economia', 2000],
+        ['tag', 'https://makucho.com.br/tag/copom', 2000],
+        ['autor', 'https://makucho.com.br/autor/helena-braga', 2000],
+        ['busca', 'https://makucho.com.br/busca?q=selic', 2000],
+        ['videos', 'https://makucho.com.br/videos', 2000],
+        ['sobre', 'https://makucho.com.br/sobre', 2000],
+        ['contato', 'https://makucho.com.br/contato', 2000],
+        ['nao-encontrada', 'https://makucho.com.br/pagina-inexistente', 2000],
+      ]
+    : production
     ? [
         ['producao-home', 'https://makucho.com.br/', 5000],
         ...(!verifyOnly ? [['producao-painel-entrar', 'https://makucho.com.br/painel/entrar', 3000]] : []),
@@ -52,13 +65,18 @@ try {
         ['portal-indisponivel', 'http://localhost:3100/', 10000],
       ];
   for (const [name, url, waitMs] of cases) {
-    for (const [viewport, width, height] of [['mobile', 390, 844], ['tablet', 820, 1180], ['notebook', 1280, 800], ['desktop', 1440, 900]]) {
+    const viewports = auditPublic
+      ? [['mobile', 390, 844], ['notebook', 1280, 800]]
+      : [['mobile', 390, 844], ['tablet', 820, 1180], ['notebook', 1280, 800], ['desktop', 1440, 900]];
+    for (const [viewport, width, height] of viewports) {
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width < 600 });
       await send('Page.navigate', { url });
       await delay(waitMs);
       if (production) {
         const inspected = await send('Runtime.evaluate', {
-          expression: `JSON.stringify({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, images: [...document.images].slice(0, 8).map(image => ({alt: image.alt, src: image.currentSrc, loaded: image.complete && image.naturalWidth > 0}))})`,
+          expression: auditPublic
+            ? `JSON.stringify({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, title: document.title, h1: document.querySelector('h1')?.textContent?.trim(), body: document.body.innerText.slice(0, 120)})`
+            : `JSON.stringify({width: innerWidth, scrollWidth: document.documentElement.scrollWidth, images: [...document.images].slice(0, 8).map(image => ({alt: image.alt, src: image.currentSrc, loaded: image.complete && image.naturalWidth > 0}))})`,
           returnByValue: true,
         });
         process.stdout.write(`${name}-${viewport} ${inspected.result.value}\n`);

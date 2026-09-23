@@ -6,12 +6,12 @@ Legenda: M mapeado, D diagnosticado, R redesenhado, P planejado, I implementado,
 |---|---|---|---|
 | PUB-01 | visitante: home → conteúdo | homepage/sections, posts, market; vazio e API indisponível → descoberta | M D R P I; V — |
 | PUB-02 | visitante: menu/busca → resultados | search, sugestões, termo curto, sem resultado, paginação | M D R P I parcial (entrada e erro); V — |
-| PUB-03 | visitante: artigo → leitura/relacionados | posts, view idempotente por janela, mídia, SEO, erro 404 | M D P; R I V — |
-| PUB-04 | visitante: categoria/tag/autor → listagem | slugs, posts, paginação, 404 e vazio | M D P; R I V — |
-| PUB-05 | visitante: vídeos → plataforma/post | videos, thumbnail, link externo, paginação | M D P; R I V — |
+| PUB-03 | visitante: artigo → leitura/relacionados | posts, view idempotente por janela, mídia, SEO, erro 404 | M D P; R I V parcial (renderização publicada 390/1280) |
+| PUB-04 | visitante: categoria/tag/autor → listagem | slugs, posts, paginação, 404 e vazio | M D P; R I V parcial (uma rota de cada 390/1280) |
+| PUB-05 | visitante: vídeos → plataforma/post | videos, thumbnail, link externo, paginação | M D P; R I V parcial (grade publicada 390/1280) |
 | PUB-06 | visitante: newsletter → confirmação | e-mail, consentimento, duplicidade, unsubscribe, export restrito | M D R P I parcial (aceite explícito); V — |
 | PUB-07 | visitante: anúncio → destino | ads, posições home/artigo/lateral/rodapé, período/alvo, impressão/clique, ausência de campanha | M D R P I; V — |
-| PUB-08 | visitante: Sobre/Contato → informação institucional | settings públicos, e-mail opcional, ausência de canal | M D R P I parcial; V — |
+| PUB-08 | visitante: Sobre/Contato → informação institucional | settings públicos, e-mail opcional, ausência de canal | M D R P I; V parcial (renderização publicada 390/1280) |
 | ADM-01 | equipe: login/refresh/logout/troca/recuperação → sessão | auth, cookies, senha temporária, expiração, papel | M D P; R I V — |
 | ADM-02 | equipe: painel → prioridade | contagens posts/newsletter, falha parcial, atalho | M D R P I parcial (falha ≠ zero); V — |
 | ADM-03a | autor: criar/editar/autosave → rascunho | posts, mídia, categorias, validação, concorrência, retomada | M D P; R I V — |
