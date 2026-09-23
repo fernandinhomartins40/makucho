@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { ImagePreset, MediaDto, PaginatedResponse } from '@makucho/types';
@@ -80,59 +80,36 @@ export class MediaService {
     });
 
     // Reaproveita o registro se a mesma imagem, com o mesmo recorte, ja
-    // foi enviada: evita duplicar arquivo no bucket.
+    // foi enviada: evita duplicar arquivo no bucket. O checksum ja inclui
+    // formato e recorte. Inclui as excluidas (exclusao e logica e os
+    // arquivos continuam no storage): antes, reenviar uma imagem excluida
+    // colidia nas chaves e falhava com "Ja existe um registro".
     const existente = await this.prisma.media.findFirst({
-      where: { checksum: resultado.checksum, preset: params.preset as never, deletedAt: null },
+      where: { checksum: resultado.checksum },
       include: { variants: true },
+      orderBy: { deletedAt: { sort: 'asc', nulls: 'first' } },
     });
+    if (existente?.deletedAt) {
+      const restaurada = await this.prisma.media.update({
+        where: { id: existente.id },
+        data: {
+          deletedAt: null,
+          alt: params.alt ?? existente.alt,
+          caption: params.caption ?? existente.caption,
+          credit: params.credit ?? existente.credit,
+          title: params.title ?? existente.title,
+        },
+        include: { variants: true },
+      });
+      this.logger.log(`Imagem excluida restaurada no reenvio (${existente.id})`);
+      return this.paraDto(restaurada);
+    }
     if (existente) {
       this.logger.log(`Imagem ja existente reutilizada (${existente.id})`);
       return this.paraDto(existente);
     }
 
-    const chavePrincipal = this.processor.montarChave({
-      checksum: resultado.checksum,
-      type: 'ORIGINAL',
-      format: resultado.principal.format,
-      largura: resultado.principal.width,
-    });
-
-    await this.storage.upload({
-      key: chavePrincipal,
-      body: resultado.principal.buffer,
-      contentType: `image/${resultado.principal.format}`,
-    });
-
-    const variantesEnviadas: Array<{
-      type: string;
-      format: string;
-      width: number;
-      height: number;
-      size: number;
-      storageKey: string;
-    }> = [];
-
-    for (const variante of resultado.variantes) {
-      const chave = this.processor.montarChave({
-        checksum: resultado.checksum,
-        type: variante.type,
-        format: variante.format,
-        largura: variante.width,
-      });
-      await this.storage.upload({
-        key: chave,
-        body: variante.buffer,
-        contentType: `image/${variante.format}`,
-      });
-      variantesEnviadas.push({
-        type: variante.type,
-        format: variante.format,
-        width: variante.width,
-        height: variante.height,
-        size: variante.size,
-        storageKey: chave,
-      });
-    }
+    const { chavePrincipal, variantesEnviadas } = await this.gravarNoStorage(resultado);
 
     const midia = await this.prisma.media.create({
       data: {
@@ -179,6 +156,154 @@ export class MediaService {
     });
 
     return this.paraDto(midia);
+  }
+
+  /**
+   * Troca o arquivo de uma imagem mantendo o mesmo registro (mesmo id): tudo
+   * que aponta para ela — capas, fotos de autor, miniaturas, anúncios —
+   * passa a exibir a nova. Os arquivos antigos ficam no storage porque o
+   * editor grava a URL direto no HTML dos artigos; apagá-los quebraria
+   * imagens inseridas no texto.
+   */
+  async substituir(
+    id: string,
+    params: {
+      buffer: Buffer;
+      originalFilename: string;
+      mimeType: string;
+      preset: ImagePreset;
+      crop?: AreaRecorte | null;
+      userId: string;
+      request: Request;
+    },
+  ): Promise<MediaDto> {
+    const atual = await this.prisma.media.findFirst({ where: { id, deletedAt: null } });
+    if (!atual) {
+      throw new NotFoundException({ code: 'MEDIA_NOT_FOUND', message: 'Imagem não encontrada' });
+    }
+
+    const resultado = await this.processor.processar({
+      buffer: params.buffer,
+      mimeType: params.mimeType,
+      preset: params.preset,
+      crop: params.crop,
+    });
+
+    if (resultado.checksum === atual.checksum) {
+      const mesma = await this.prisma.media.findUniqueOrThrow({ where: { id }, include: { variants: true } });
+      return this.paraDto(mesma);
+    }
+
+    // As chaves do storage derivam do checksum: se outra imagem já tem este
+    // arquivo com este recorte, as variantes colidiriam.
+    // Inclui as excluidas: os arquivos delas continuam no storage com as
+    // mesmas chaves.
+    const duplicada = await this.prisma.media.findFirst({
+      where: { checksum: resultado.checksum, id: { not: id } },
+      select: { id: true, deletedAt: true },
+    });
+    if (duplicada) {
+      throw new BadRequestException({
+        code: 'MEDIA_DUPLICATE',
+        message: duplicada.deletedAt
+          ? 'Esta imagem, com este recorte, pertence a uma imagem excluída. Ajuste o recorte ou envie outro arquivo.'
+          : 'Esta imagem, com este recorte, já está na biblioteca. Escolha-a por lá ou ajuste o recorte.',
+      });
+    }
+
+    const { chavePrincipal, variantesEnviadas } = await this.gravarNoStorage(resultado);
+
+    const [, midia] = await this.prisma.$transaction([
+      this.prisma.mediaVariant.deleteMany({ where: { mediaId: id } }),
+      this.prisma.media.update({
+        where: { id },
+        data: {
+          filename: chavePrincipal.split('/').pop() ?? chavePrincipal,
+          originalFilename: params.originalFilename.slice(0, 255),
+          mimeType: `image/${resultado.principal.format}`,
+          size: resultado.principal.size,
+          width: resultado.largura,
+          height: resultado.altura,
+          checksum: resultado.checksum,
+          storageKey: chavePrincipal,
+          preset: params.preset as never,
+          dominantColor: resultado.corDominante,
+          blurDataUrl: resultado.blurDataUrl,
+          variants: {
+            create: variantesEnviadas.map((v) => ({
+              type: v.type as never,
+              format: v.format,
+              width: v.width,
+              height: v.height,
+              size: v.size,
+              storageKey: v.storageKey,
+            })),
+          },
+        },
+        include: { variants: true },
+      }),
+    ]);
+
+    await this.audit.registrar({
+      userId: params.userId,
+      action: 'update',
+      resource: 'media',
+      resourceId: id,
+      summary: `Imagem substituída: ${atual.originalFilename} → ${params.originalFilename}`,
+      request: params.request,
+      metadata: { preset: params.preset, variantes: variantesEnviadas.length },
+    });
+
+    return this.paraDto(midia);
+  }
+
+  /** Grava principal + variantes no storage (só WebP/AVIF processados). */
+  private async gravarNoStorage(resultado: Awaited<ReturnType<ImageProcessorService['processar']>>) {
+    const chavePrincipal = this.processor.montarChave({
+      checksum: resultado.checksum,
+      type: 'ORIGINAL',
+      format: resultado.principal.format,
+      largura: resultado.principal.width,
+    });
+
+    await this.storage.upload({
+      key: chavePrincipal,
+      body: resultado.principal.buffer,
+      contentType: `image/${resultado.principal.format}`,
+    });
+
+    const variantesEnviadas: Array<{
+      type: string;
+      format: string;
+      width: number;
+      height: number;
+      size: number;
+      storageKey: string;
+    }> = [];
+
+    for (const variante of resultado.variantes) {
+      const chave = this.processor.montarChave({
+        checksum: resultado.checksum,
+        type: variante.type,
+        format: variante.format,
+        largura: variante.width,
+      });
+      await this.storage.upload({
+        key: chave,
+        body: variante.buffer,
+        contentType: `image/${variante.format}`,
+      });
+      variantesEnviadas.push({
+        type: variante.type,
+        format: variante.format,
+        width: variante.width,
+        height: variante.height,
+        size: variante.size,
+        storageKey: chave,
+      });
+    }
+
+    return { chavePrincipal, variantesEnviadas };
   }
 
   // ============================================================

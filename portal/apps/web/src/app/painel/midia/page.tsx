@@ -6,7 +6,7 @@ import type { MediaDto } from '@makucho/types';
 import { ErroApi, painel, pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
-import { GradeMidia, SeletorMidia, miniatura } from '@/components/painel/seletor-midia';
+import { Envio, GradeMidia, SeletorMidia, miniatura } from '@/components/painel/seletor-midia';
 import {
   Aviso,
   Botao,
@@ -44,6 +44,9 @@ function Midia() {
 
   const [enviando, setEnviando] = useState(false);
   const [detalhe, setDetalhe] = useState<MediaDto | null>(null);
+  // Imagem cujo arquivo está sendo trocado (mesmo id, todos os usos atualizam).
+  const [substituindo, setSubstituindo] = useState<MediaDto | null>(null);
+  const [ocupadoSubstituindo, setOcupadoSubstituindo] = useState(false);
   const [excluir, setExcluir] = useState<MediaDto | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
@@ -188,6 +191,18 @@ function Midia() {
                 Excluir
               </Botao>
             )}
+            {pode(usuario, 'EDITOR') && detalhe && (
+              <Botao
+                variante="neutro"
+                disabled={salvando}
+                onClick={() => {
+                  setSubstituindo(detalhe);
+                  setDetalhe(null);
+                }}
+              >
+                Substituir imagem
+              </Botao>
+            )}
             <Botao variante="fantasma" disabled={salvando} onClick={() => setDetalhe(null)}>
               Fechar
             </Botao>
@@ -268,6 +283,36 @@ function Midia() {
                 maxLength={500}
               />
             </Campo>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        titulo="Substituir imagem"
+        aberto={substituindo !== null}
+        aoFechar={() => { if (!ocupadoSubstituindo) setSubstituindo(null); }}
+        largura={880}
+      >
+        {substituindo && (
+          <>
+            <Aviso tipo="info">
+              O arquivo novo entra no lugar de “{substituindo.alt || substituindo.originalFilename}” em todo o
+              site: capas, fotos, miniaturas e anúncios que usam esta imagem passam a mostrar a nova. Texto
+              alternativo, crédito e legenda continuam os mesmos. Imagens já inseridas no meio do texto dos
+              artigos mantêm a versão anterior.
+            </Aviso>
+            <Envio
+              substituirId={substituindo.id}
+              presetInicial={substituindo.preset}
+              aoOcupar={setOcupadoSubstituindo}
+              aoCancelar={() => setSubstituindo(null)}
+              aoEnviar={(m) => {
+                setSubstituindo(null);
+                recado.ok('Imagem substituída em todos os lugares onde é usada.');
+                void carregar();
+                setDetalhe(m);
+              }}
+            />
           </>
         )}
       </Modal>

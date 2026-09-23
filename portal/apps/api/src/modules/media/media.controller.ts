@@ -77,6 +77,40 @@ export class MediaController {
     });
   }
 
+  @Post(':id/replace')
+  @Roles('EDITOR')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Substituir o arquivo de uma imagem, mantendo o mesmo id' })
+  @UseInterceptors(FileInterceptor('file'))
+  async substituir(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() corpo: Record<string, string>,
+    @CurrentUser() user: RequestUser,
+    @Req() req: Request,
+  ) {
+    if (!file) {
+      throw new BadRequestException({ code: 'UPLOAD_NO_FILE', message: 'Nenhum arquivo enviado' });
+    }
+    let crop = null;
+    if (corpo.crop) {
+      try {
+        crop = JSON.parse(corpo.crop);
+      } catch {
+        throw new BadRequestException({ code: 'UPLOAD_INVALID_CROP', message: 'Área de recorte inválida' });
+      }
+    }
+    return this.media.substituir(id, {
+      buffer: file.buffer,
+      originalFilename: file.originalname,
+      mimeType: file.mimetype,
+      preset: (corpo.preset as ImagePreset) ?? 'FREEFORM',
+      crop,
+      userId: user.id,
+      request: req,
+    });
+  }
+
   @Get()
   @ApiOperation({ summary: 'Listar a biblioteca de mídia' })
   async listar(@Query() query: Record<string, string>) {

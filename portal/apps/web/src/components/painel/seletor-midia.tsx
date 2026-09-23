@@ -25,7 +25,11 @@ export function miniatura(m: MediaDto): string {
 // ENVIO COM RECORTE
 // ============================================================
 
-function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void; aoOcupar: (ocupado: boolean) => void; presetInicial?: ImagePreset }) {
+/**
+ * Envio com recorte. Com `substituirId`, troca o arquivo de uma imagem que já
+ * existe (mesmo id) em vez de criar outra na biblioteca.
+ */
+export function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD', substituirId }: { aoEnviar: (m: MediaDto) => void; aoCancelar: () => void; aoOcupar: (ocupado: boolean) => void; presetInicial?: ImagePreset; substituirId?: string }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [previa, setPrevia] = useState<string>('');
   const [preset, setPreset] = useState<ImagePreset>(presetInicial);
@@ -99,9 +103,12 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: 
       const form = new FormData();
       form.append('file', arquivo);
       form.append('preset', preset);
-      if (alt.trim()) form.append('alt', alt.trim());
-      if (credito.trim()) form.append('credit', credito.trim());
-      if (legenda.trim()) form.append('caption', legenda.trim());
+      // Na substituição, texto alternativo, crédito e legenda continuam os da imagem.
+      if (!substituirId) {
+        if (alt.trim()) form.append('alt', alt.trim());
+        if (credito.trim()) form.append('credit', credito.trim());
+        if (legenda.trim()) form.append('caption', legenda.trim());
+      }
 
       // O recorte vai em pixels da imagem original: o Sharp corta no
       // servidor, entao o arquivo final e sempre o mesmo que aparece aqui.
@@ -117,7 +124,7 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: 
         );
       }
 
-      aoEnviar(await painel.enviarMidia(form));
+      aoEnviar(await (substituirId ? painel.substituirMidia(substituirId, form) : painel.enviarMidia(form)));
     } catch (e) {
       setErro(e instanceof ErroApi ? e.message : 'Não foi possível enviar a imagem.');
     } finally {
@@ -194,21 +201,25 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: 
         vários tamanhos. O arquivo original não é guardado.
       </p>
 
-      <Campo
-        rotulo="Texto alternativo"
-        dica="Descreve a imagem para leitores de tela e para quando ela não carrega."
-      >
-        <Entrada value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={320} />
-      </Campo>
+      {!substituirId && (
+        <>
+          <Campo
+            rotulo="Texto alternativo"
+            dica="Descreve a imagem para leitores de tela e para quando ela não carrega."
+          >
+            <Entrada value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={320} />
+          </Campo>
 
-      <div className="pn-linha">
-        <Campo rotulo="Crédito">
-          <Entrada value={credito} onChange={(e) => setCredito(e.target.value)} maxLength={160} />
-        </Campo>
-        <Campo rotulo="Legenda">
-          <Entrada value={legenda} onChange={(e) => setLegenda(e.target.value)} maxLength={500} />
-        </Campo>
-      </div>
+          <div className="pn-linha">
+            <Campo rotulo="Crédito">
+              <Entrada value={credito} onChange={(e) => setCredito(e.target.value)} maxLength={160} />
+            </Campo>
+            <Campo rotulo="Legenda">
+              <Entrada value={legenda} onChange={(e) => setLegenda(e.target.value)} maxLength={500} />
+            </Campo>
+          </div>
+        </>
+      )}
 
       <div className="pn-modal-rodape" style={{ padding: 0, borderTop: 0 }}>
         <Botao variante="fantasma" onClick={aoCancelar} disabled={enviando}>
@@ -218,7 +229,7 @@ function Envio({ aoEnviar, aoCancelar, aoOcupar, presetInicial = 'POST_CARD' }: 
           Trocar imagem
         </Botao>
         <Botao variante="primario" carregando={enviando} disabled={!area} onClick={enviar}>
-          {enviando ? 'Enviando…' : 'Enviar'}
+          {enviando ? (substituirId ? 'Substituindo…' : 'Enviando…') : substituirId ? 'Substituir' : 'Enviar'}
         </Botao>
       </div>
     </>

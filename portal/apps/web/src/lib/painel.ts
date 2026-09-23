@@ -193,6 +193,10 @@ export const painel = {
 
   configuracaoUploadMidia: () => chamar<MediaUploadConfigDto>('/media/upload-config'),
 
+  /** Troca o arquivo mantendo o id: tudo que usa a imagem passa a mostrar a nova. */
+  substituirMidia: (id: string, form: FormData) =>
+    chamar<MediaDto>(`/media/${id}/replace`, { method: 'POST', body: form, bruto: true }),
+
   enviarMidia: (form: FormData) =>
     chamar<MediaDto>('/media/upload', { method: 'POST', body: form, bruto: true }),
 
