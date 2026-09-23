@@ -1503,6 +1503,14 @@
 }
 
 .pn-solta {
+  /* <label> é inline por padrão: com borda e texto quebrando em linhas,
+     cada linha desenhava um pedaço de borda tracejada. */
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 180px;
+  align-content: center;
   border: 2px dashed var(--pn-borda-forte);
   border-radius: var(--pn-raio);
   padding: 28px 20px;
@@ -3045,4 +3053,33 @@
 .pn-visualizador figcaption {
   color: var(--pn-suave, #5a6882);
   font-size: 0.8rem;
+}
+
+/* Conteúdo da área de envio: título, formatos e aviso, um por linha. */
+.pn-solta strong {
+  color: var(--pn-texto);
+  font-size: 1rem;
+}
+
+.pn-solta strong::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 10px;
+  border-radius: 10px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231f6bff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4M7 9l5-5 5 5M4 20h16'/%3E%3C/svg%3E") center / 22px no-repeat,
+    #eef4fc;
+}
+
+.pn-solta span,
+.pn-solta small {
+  display: block;
+  max-width: 52ch;
+  line-height: 1.45;
+}
+
+.pn-solta small {
+  font-size: 0.76rem;
 }
