@@ -47,10 +47,14 @@ export class UsoDeIaService {
     const porChamada: Record<string, number> = {};
     let gasto = 0;
     let chamadas = 0;
+    let economia = 0;
+    let acertos = 0;
 
     for (const linha of linhas) {
       gasto += linha.costCents;
       chamadas += linha.calls;
+      economia += linha.savedCents;
+      acertos += linha.cacheHits;
       porChamada[linha.call] = linha.costCents;
     }
 
@@ -60,6 +64,8 @@ export class UsoDeIaService {
       limiteCentavos: credencial?.monthlyLimitCents ?? LIMITE_MENSAL_PADRAO_CENTAVOS,
       chamadas,
       porChamada: porChamada as SituacaoDeUso['porChamada'],
+      economiaCentavos: economia,
+      acertosDoCache: acertos,
     };
   }
 
@@ -108,7 +114,12 @@ export class UsoDeIaService {
     /** Tokens de entrada que acertaram o cache (cobrados a uma fração). */
     tokensEmCache = 0,
   ): Promise<number> {
-    const custo = custoEmCentavos(modelo, inputTokens, outputTokens, tokensEmCache);
+    // O preco real do horario (metade fora do pico) e o do cache de
+    // contexto. A diferenca para o preco cheio, sem cache, e a economia.
+    const agora = new Date();
+    const custo = custoEmCentavos(modelo, inputTokens, outputTokens, tokensEmCache, agora);
+    const semEconomia = custoEmCentavos(modelo, inputTokens, outputTokens);
+    const economia = Math.max(0, semEconomia - custo);
     const periodo = periodoDe();
 
     try {
@@ -122,12 +133,16 @@ export class UsoDeIaService {
           calls: 1,
           inputTokens,
           outputTokens,
+          cachedTokens: tokensEmCache,
+          savedCents: economia,
         },
         update: {
           costCents: { increment: custo },
           calls: { increment: 1 },
           inputTokens: { increment: inputTokens },
           outputTokens: { increment: outputTokens },
+          cachedTokens: { increment: tokensEmCache },
+          savedCents: { increment: economia },
         },
       });
     } catch (e) {
@@ -141,6 +156,21 @@ export class UsoDeIaService {
     }
 
     return custo;
+  }
+
+  /**
+   * Uma resposta reaproveitada do cache: nenhuma chamada, nenhum custo,
+   * e a economia é o que a chamada original custou.
+   */
+  async registrarAcertoDoCache(workspaceId: string, chamada: ChamadaDeIa, economiaCentavos: number) {
+    const periodo = periodoDe();
+    await this.prisma.aiUsage
+      .upsert({
+        where: { workspaceId_period_call: { workspaceId, period: periodo, call: chamada } },
+        create: { workspaceId, period: periodo, call: chamada, cacheHits: 1, savedCents: economiaCentavos },
+        update: { cacheHits: { increment: 1 }, savedCents: { increment: economiaCentavos } },
+      })
+      .catch((e: unknown) => this.log.error('não foi possível registrar o acerto do cache', e as Error));
   }
 
   /** O aviso que a tela mostra, quando há um. */

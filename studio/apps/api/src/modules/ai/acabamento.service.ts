@@ -177,7 +177,9 @@ export class AcabamentoService {
       return { aplicadas, resposta: lido.resposta, ignoradas, plano: atual, custoCentavos: resposta.custoCentavos };
     }
 
-    const salvo = await this.planos.salvar(tenant, projectId, novo, 'ai');
+    // Origem propria: o plano da SELECAO da IA (origem 'ai') e a
+    // referencia do aproveitamento, e um comando nao pode passar por ele.
+    const salvo = await this.planos.salvar(tenant, projectId, novo, 'ai-comando');
     return { aplicadas, resposta: lido.resposta, ignoradas, plano: salvo, custoCentavos: resposta.custoCentavos };
   }
 

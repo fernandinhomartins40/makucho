@@ -73,7 +73,7 @@ export class EditPlansService {
     tenant: TenantContext,
     projectId: string,
     documento: unknown,
-    origem: 'ai' | 'user' = 'user',
+    origem: 'ai' | 'ai-comando' | 'user' = 'user',
   ) {
     await this.conferirProjeto(tenant, projectId);
 

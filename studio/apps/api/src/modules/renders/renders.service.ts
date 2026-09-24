@@ -10,6 +10,7 @@
 // estado precisa ser consultável.
 // ============================================================
 
+import { aproveitamentoDaSelecao } from '@makucho/studio-contracts';
 import {
   BadRequestException,
   Injectable,
@@ -62,6 +63,8 @@ export class RendersService {
     const render = await this.prisma.render.create({
       data: { projectId, editPlanId: plano.id },
     });
+
+    await this.medirAproveitamento(projectId, plano.document, clipsDesligados);
 
     const enfileirou = await this.filas.renderizar(
       projectId,
@@ -162,6 +165,35 @@ export class RendersService {
       // quer dez "render.mp4" na pasta de downloads.
       nome: `${sanitizar(projeto.title)}.mp4`,
     };
+  }
+
+  /**
+   * Quanto da selecao da IA ficou no video exportado.
+   *
+   * A referencia e a versao mais recente com origem 'ai' (a proposta da
+   * selecao); o final e o plano exportado, sem os trechos desligados.
+   * Falha aqui nao impede a exportacao: e metrica, nao requisito.
+   */
+  private async medirAproveitamento(projectId: string, documento: unknown, desligados: readonly string[]) {
+    try {
+      const daIa = await this.prisma.editPlan.findFirst({
+        where: { projectId, origin: 'ai' },
+        orderBy: { version: 'desc' },
+        select: { document: true },
+      });
+      if (!daIa) return;
+      const clipes = (d: unknown) =>
+        ((d as { clips?: Array<{ id: string; sourceStartMs: number; sourceEndMs: number }> })?.clips ?? []);
+      const fora = new Set(desligados);
+      const razao = aproveitamentoDaSelecao(
+        clipes(daIa.document),
+        clipes(documento).filter((c) => !fora.has(c.id)),
+      );
+      if (razao === null) return;
+      await this.prisma.project.update({ where: { id: projectId }, data: { aiKeptRatio: razao } });
+    } catch {
+      // metrica: sem ela, a exportacao segue
+    }
   }
 }
 

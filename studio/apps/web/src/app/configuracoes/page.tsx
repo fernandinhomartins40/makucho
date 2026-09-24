@@ -254,6 +254,23 @@ function SecaoDeIa() {
                 <span>{uso.aviso}</span>
               </div>
             )}
+            {(uso.economiaCentavos ?? 0) > 0 && (
+              <p className="texto-secundario" style={{ fontSize: 13 }}>
+                Economia no mês: <strong>US$ {((uso.economiaCentavos ?? 0) / 100).toFixed(2)}</strong>
+                {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''}
+                {' '}(cache e horário fora do pico).
+              </p>
+            )}
+            {uso.qualidade && uso.qualidade.videos > 0 && uso.qualidade.aproveitamentoMedio !== null && (
+              <p className="texto-secundario" style={{ fontSize: 13 }}>
+                A seleção da IA foi mantida em{' '}
+                <strong>{Math.round(uso.qualidade.aproveitamentoMedio * 100)}%</strong> nos{' '}
+                {uso.qualidade.videos} {uso.qualidade.videos === 1 ? 'vídeo exportado' : 'vídeos exportados'} dos
+                últimos 90 dias.
+                {uso.qualidade.aproveitamentoMedio < 0.6 &&
+                  ' Abaixo de 60%: você está refazendo muito do que a IA escolhe; vale ajustar o roteiro ou o perfil de comunicação.'}
+              </p>
+            )}
             {uso.detalhe.length > 0 && (
               <ul style={{ listStyle: 'none', display: 'grid', gap: 4, fontSize: 13 }}>
                 {uso.detalhe.map((d) => (

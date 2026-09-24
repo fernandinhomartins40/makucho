@@ -35,8 +35,21 @@ export class AiController {
   async consumo(@CurrentTenant() tenant: TenantContext) {
     const situacao = await this.uso.situacao(tenant.workspaceId);
 
+    // Qualidade da selecao: media do aproveitamento dos videos
+    // exportados nos ultimos 90 dias.
+    const desde = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const medidos = await this.prisma.project.aggregate({
+      where: { workspaceId: tenant.workspaceId, aiKeptRatio: { not: null }, updatedAt: { gte: desde } },
+      _avg: { aiKeptRatio: true },
+      _count: { aiKeptRatio: true },
+    });
+
     return {
       ...situacao,
+      qualidade: {
+        aproveitamentoMedio: medidos._avg.aiKeptRatio,
+        videos: medidos._count.aiKeptRatio,
+      },
       estado: estadoDoLimite(situacao),
       aviso: avisoDeUso(situacao),
       // O detalhe por chamada com o rótulo pronto: "a IA custou X"

@@ -552,6 +552,12 @@ export interface ConsumoDeIa {
   estado: 'ok' | 'aviso' | 'bloqueado';
   aviso: string | null;
   detalhe: Array<{ chamada: string; rotulo: string; centavos: number }>;
+  /** O que o cache e o horário fora do pico deixaram de custar no mês. */
+  economiaCentavos?: number;
+  /** Respostas reaproveitadas sem chamar a IA. */
+  acertosDoCache?: number;
+  /** Quanto da seleção da IA ficou nos vídeos exportados (90 dias). */
+  qualidade?: { aproveitamentoMedio: number | null; videos: number };
 }
 
 // ============================================================

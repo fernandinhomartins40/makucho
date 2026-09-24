@@ -122,13 +122,74 @@ export function custoEmCentavos(
   tokensDeSaida: number,
   /** Quantos dos tokens de entrada acertaram o cache. */
   tokensEmCache = 0,
+  /**
+   * Quando a chamada aconteceu. Sem data, preco de PICO -- e o que a
+   * estimativa ANTES da chamada usa, para o teto nunca ficar abaixo do
+   * que sera cobrado. Com data, o preco real daquele horario.
+   */
+  quando?: Date,
 ): number {
   const preco = PRECO_POR_MILHAO[modelo] ?? PRECO_POR_MILHAO['deepseek-v4-pro'];
   const emCache = Math.min(Math.max(0, tokensEmCache), tokensDeEntrada);
   const bruto =
     ((tokensDeEntrada - emCache) * preco.entrada + emCache * preco.entradaEmCache + tokensDeSaida * preco.saida) /
     1_000_000;
-  return Math.ceil(bruto);
+  return Math.ceil(bruto * (quando ? fatorDoHorario(quando) : 1));
+}
+
+/**
+ * Fator de preco do horario: 1 no pico, 0,5 fora dele.
+ *
+ * Tabela da DeepSeek (2026-09): pico de 01:00 a 04:00 e de 06:00 a
+ * 10:00 UTC, de segunda a sexta; o resto -- inclusive fins de semana --
+ * e fora do pico, pela metade. No horario de Brasilia, o pico e de 22h
+ * a 1h e de 3h a 7h: quase todo uso diurno ja e o mais barato, e por
+ * isso a analise NAO espera a janela barata (o ganho nao paga a
+ * espera). Feriados chineses, tambem fora do pico, nao entram: errar
+ * aqui cobra a mais, nunca a menos.
+ */
+export function fatorDoHorario(quando: Date): 1 | 0.5 {
+  const dia = quando.getUTCDay();
+  if (dia === 0 || dia === 6) return 0.5;
+  const h = quando.getUTCHours();
+  const pico = (h >= 1 && h < 4) || (h >= 6 && h < 10);
+  return pico ? 1 : 0.5;
+}
+
+// ---------- Aproveitamento da selecao ----------
+
+/**
+ * Quanto da selecao da IA ficou no video exportado, de 0 a 1.
+ *
+ * Mede por TEMPO do bruto: a parte de cada trecho escolhido pela IA
+ * que continua coberta por algum trecho do plano final. E o sinal de
+ * qualidade que diz se a selecao acerta -- perto de 1, a pessoa
+ * aceita o que a IA propoe; baixo, ela refaz, e vale considerar um
+ * modelo mais forte.
+ */
+export function aproveitamentoDaSelecao(
+  daIa: ReadonlyArray<{ sourceStartMs: number; sourceEndMs: number }>,
+  final: ReadonlyArray<{ sourceStartMs: number; sourceEndMs: number }>,
+): number | null {
+  const total = daIa.reduce((t, c) => t + Math.max(0, c.sourceEndMs - c.sourceStartMs), 0);
+  if (total <= 0) return null;
+
+  let mantido = 0;
+  for (const c of daIa) {
+    // Os trechos finais que cruzam este, fundidos para nao contar duas
+    // vezes um trecho duplicado.
+    const cruzam = final
+      .map((f) => [Math.max(c.sourceStartMs, f.sourceStartMs), Math.min(c.sourceEndMs, f.sourceEndMs)] as const)
+      .filter(([a, b]) => b > a)
+      .sort((x, y) => x[0] - y[0]);
+    let fimAtual = -1;
+    for (const [a, b] of cruzam) {
+      const inicio = Math.max(a, fimAtual);
+      if (b > inicio) mantido += b - inicio;
+      fimAtual = Math.max(fimAtual, b);
+    }
+  }
+  return Math.round((mantido / total) * 1000) / 1000;
 }
 
 // ---------- Limite ----------
@@ -155,6 +216,10 @@ export const situacaoDeUsoSchema = z.object({
   chamadas: z.number().int().nonnegative(),
   /** Quanto de cada chamada, para o painel. */
   porChamada: z.record(chamadaDeIaSchema, z.number().int().nonnegative()).optional(),
+  /** Quanto o cache e o horario deixaram de custar no mes. */
+  economiaCentavos: z.number().int().nonnegative().optional(),
+  /** Respostas reaproveitadas sem chamar o provedor. */
+  acertosDoCache: z.number().int().nonnegative().optional(),
 });
 
 export type SituacaoDeUso = z.infer<typeof situacaoDeUsoSchema>;

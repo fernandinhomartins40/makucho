@@ -7,6 +7,8 @@ import {
   situacaoDeUsoSchema,
   MODELO_POR_CHAMADA,
   CONFIG_POR_CHAMADA,
+  fatorDoHorario,
+  aproveitamentoDaSelecao,
   CHAMADAS_DE_IA,
   LIMITE_MENSAL_PADRAO_CENTAVOS,
 } from '../src/index';
@@ -147,6 +149,27 @@ t(
     CONFIG_POR_CHAMADA.sugerir_melhorias.raciocinio === 'desligado' &&
     CONFIG_POR_CHAMADA.comandar_edicao.raciocinio === 'desligado',
 );
+
+// ---------- Horário e aproveitamento ----------
+{
+  const pico = new Date('2026-09-23T02:30:00Z'); // quarta, 23h30 em Brasília
+  const foraDoPico = new Date('2026-09-23T15:00:00Z'); // quarta, meio-dia em Brasília
+  const sabado = new Date('2026-09-26T02:30:00Z');
+  t('pico: preço cheio', fatorDoHorario(pico) === 1);
+  t('meio-dia em Brasília é fora do pico (metade)', fatorDoHorario(foraDoPico) === 0.5);
+  t('fim de semana é fora do pico', fatorDoHorario(sabado) === 0.5);
+  t('o custo registrado fora do pico é a metade', custoEmCentavos('deepseek-flash', 0, 1_000_000, 0, foraDoPico) === 60);
+  t('sem data, a estimativa usa o pico', custoEmCentavos('deepseek-flash', 0, 1_000_000) === 120);
+
+  const ia = [
+    { sourceStartMs: 0, sourceEndMs: 10_000 },
+    { sourceStartMs: 20_000, sourceEndMs: 30_000 },
+  ];
+  t('tudo mantido = 1', aproveitamentoDaSelecao(ia, ia) === 1);
+  t('metade cortada = 0,5', aproveitamentoDaSelecao(ia, [{ sourceStartMs: 0, sourceEndMs: 10_000 }]) === 0.5);
+  t('trecho duplicado não conta duas vezes', aproveitamentoDaSelecao(ia, [...ia, { sourceStartMs: 0, sourceEndMs: 10_000 }]) === 1);
+  t('sem seleção da IA não há medida', aproveitamentoDaSelecao([], ia) === null);
+}
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

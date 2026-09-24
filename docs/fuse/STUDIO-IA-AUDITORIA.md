@@ -70,14 +70,19 @@ transições, zoom, logo, trilha e sons.
   sem raciocínio.
 - **Uma chamada em vez de duas.** Seleção + risco + acabamento sugerido numa resposta.
 
-## 5. Próximos passos recomendados
+## 5. Plano executado (24/09/2026)
 
-1. **Deploy do Studio** para levar a troca de modelo e a imagem do Whisper corrigida à
-   produção; depois, cadastrar a chave em Configurações e testar um vídeo real.
-2. **Painel de uso com cache**: mostrar quanto o cache economizou no mês (os dados já
-   chegam em `prompt_cache_hit_tokens`; falta gravar por chamada).
-3. **Cache persistente** (Redis) se a API ganhar mais de uma instância; hoje é em memória.
-4. **Horário fora de pico**: a DeepSeek cobra menos fora do pico; a análise automática
-   poderia esperar a janela barata quando o vídeo não for urgente.
-5. **Amostragem de qualidade**: guardar, por projeto, se a pessoa manteve ou refez a
-   seleção da IA — é o sinal para decidir se vale o `deepseek-v4-pro` (`DEEPSEEK_MODELO`).
+| # | Item | Situação |
+|---|---|---|
+| 1 | Deploy do Studio | O workflow "Deploy Studio" roda sozinho a cada push em `studio/**`; os commits desta auditoria já o disparam (inclusive a imagem do Whisper com `requests`). Falta cadastrar a chave em Configurações e testar um vídeo real |
+| 2 | Painel de uso com economia | Feito: `ai_usage` grava `cachedTokens`, `cacheHits` e `savedCents`; Configurações mostra a economia do mês e quantas respostas foram reaproveitadas |
+| 3 | Cache persistente | Feito: respostas no Redis por 24 h (`studio:ia:cache:*`), com o Map em memória como primeiro nível e reserva; validado reiniciando a API entre duas chamadas iguais (a segunda saiu com custo zero) |
+| 4 | Horário fora do pico | Feito do jeito que compensa: o custo registrado usa o preço real do horário (metade fora do pico, `fatorDoHorario`); o teto antes da chamada continua pelo pico. A análise **não** espera a janela barata: o pico da DeepSeek (01–04h e 06–10h UTC, dias úteis) é de 22h a 1h e de 3h a 7h em Brasília, então o uso diurno já é o mais barato e esperar só atrasaria o vídeo |
+| 5 | Amostragem de qualidade | Feito: na exportação, `projects.aiKeptRatio` guarda quanto da seleção da IA ficou no vídeo (`aproveitamentoDaSelecao`, por tempo do bruto); Configurações mostra a média dos últimos 90 dias e avisa abaixo de 60%. Os planos do "Peça à IA" gravam com origem `ai-comando` para não passar pela seleção |
+
+## 6. O que ainda vale acompanhar
+
+- **Aproveitamento baixo por várias semanas**: é o sinal para testar `DEEPSEEK_MODELO=deepseek-v4-pro`
+  na seleção (cerca de 4x o preço) ou revisar o prompt `selecao-v2`.
+- **Uso intenso de "Peça à IA"**: se virar a chamada mais cara, dá para responder pedidos comuns
+  ("legenda maior", "sem música") por regra, sem modelo.

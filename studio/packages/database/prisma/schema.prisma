@@ -423,6 +423,9 @@ model Project {
   targetDurationMs Int?
   // Mensagem segura para o usuario quando o estado e de falha.
   publicError String?
+  // Quanto da selecao da IA ficou no video exportado (0 a 1), medido na
+  // exportacao. E o sinal de qualidade da IA (aproveitamentoDaSelecao).
+  aiKeptRatio Float?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -591,6 +594,12 @@ model AiUsage {
   calls       Int    @default(0)
   inputTokens  Int   @default(0)
   outputTokens Int   @default(0)
+  // Economia: tokens de entrada que acertaram o cache de contexto do
+  // provedor, respostas reaproveitadas do nosso cache (sem chamada) e
+  // quanto isso tudo (mais o desconto fora do pico) deixou de custar.
+  cachedTokens Int   @default(0)
+  cacheHits    Int   @default(0)
+  savedCents   Int   @default(0)
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
