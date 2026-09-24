@@ -259,6 +259,7 @@ export function Timeline({
             horizontal: rolar e perder de vista qual faixa e qual
             torna a timeline confusa. */}
         <div
+          className="timeline__rotulos"
           style={{
             flexShrink: 0,
             width: LARGURA_ROTULO,
@@ -278,7 +279,7 @@ export function Timeline({
             return (
               <div key={id} className="timeline__faixa" style={{ height: ALTURA_TRACK }}>
                 <Icone size={16} />
-                <span className="crescer">{rotulo}</span>
+                <span className="crescer timeline__nome">{rotulo}</span>
 
                 <button
                   type="button"

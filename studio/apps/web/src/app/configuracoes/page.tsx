@@ -1,7 +1,8 @@
 'use client';
 
 // ============================================================
-// Configurações — chave de IA, teto de gasto e armazenamento.
+// Configurações — chave de IA, teto de gasto, armazenamento e o
+// aplicativo instalável (PWA).
 //
 // A API tinha as rotas desde a Fase 5a, mas nenhuma tela as usava: a
 // chave de IA só entrava por linha de comando, e sem ela a análise
@@ -11,6 +12,7 @@
 import { dolares } from '../../lib/dinheiro';
 import { useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
+import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
 import { useDados } from '../../lib/useDados';
 import {
   armazenamento as apiArmazenamento,
@@ -32,6 +34,7 @@ export default function ConfiguracoesPage() {
           <h1>Configurações</h1>
           <SecaoDeIa />
           <SecaoDeArmazenamento />
+          <SecaoDoApp />
         </div>
       </div>
     </>

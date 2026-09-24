@@ -14,18 +14,24 @@
 //
 // Sem essa distinção, o editor teria duas colunas de ícones lado a
 // lado disputando a mesma função.
+//
+// Abaixo de 900px a sidebar dá lugar à barra inferior (o CSS decide
+// qual aparece), e o banner de instalação do app entra nas telas de
+// navegação -- nunca no editor, onde atrapalharia o trabalho.
 // ============================================================
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
+import { BarraInferior } from './BarraInferior';
+import { BannerDeInstalacao } from '../pwa/GuiaDeInstalacao';
 import { aoExpirarSessao } from '../../lib/api';
 
 /** Telas de foco: ocupam a largura toda, sem sidebar. */
 const TELAS_DE_FOCO = ['/editor'];
 
 /** Telas que nao exigem sessao -- e nao podem ganhar sidebar. */
-const TELAS_ABERTAS = ['/entrar'];
+const TELAS_ABERTAS = ['/entrar', '/offline'];
 
 export function Moldura({ children }: { children: React.ReactNode }) {
   const caminho = usePathname();
@@ -68,13 +74,15 @@ export function Moldura({ children }: { children: React.ReactNode }) {
   const foco = TELAS_DE_FOCO.some((rota) => caminho.startsWith(rota));
 
   if (foco) {
-    return <div className="principal">{children}</div>;
+    return <div className="principal principal--foco">{children}</div>;
   }
 
   return (
     <div className="app">
       <Sidebar />
       <div className="principal">{children}</div>
+      <BarraInferior />
+      <BannerDeInstalacao />
     </div>
   );
 }

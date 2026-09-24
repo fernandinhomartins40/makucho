@@ -12,6 +12,14 @@ const nextConfig = {
   outputFileTracingRoot: fileURLToPath(new URL('../../../', import.meta.url)),
 
   reactStrictMode: true,
+
+  // Metadados no <head>, para todo navegador. Desde o 15.2 o Next os
+  // transmite no <body> para quem não é robô -- e o Chrome só lê o
+  // `<link rel="manifest">` do head: sem isto o app não é instalável
+  // ("no-manifest"), e o iOS perde o ícone e as telas de abertura.
+  // O custo é esperar os metadados antes do primeiro byte, que aqui
+  // são estáticos.
+  htmlLimitedBots: /.*/,
   poweredByHeader: false,
 
   transpilePackages: ['@makucho/studio-contracts'],

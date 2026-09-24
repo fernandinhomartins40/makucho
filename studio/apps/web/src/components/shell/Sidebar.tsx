@@ -119,7 +119,7 @@ export function Sidebar() {
  * vídeos em edição fica em Marca, onde há espaço para explicar que
  * uma cede lugar e a outra não.
  */
-function Armazenamento() {
+export function Armazenamento() {
   const [usadoBytes, setUsadoBytes] = useState<number | null>(null);
 
   useEffect(() => {
@@ -185,7 +185,7 @@ function Armazenamento() {
  * tela autenticada depois de sair. Ela viria do cache do navegador e
  * pareceria que a sessao continua.
  */
-function Sair() {
+export function Sair() {
   const router = useRouter();
   const [saindo, setSaindo] = useState(false);
 

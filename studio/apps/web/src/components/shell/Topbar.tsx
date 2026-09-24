@@ -11,6 +11,7 @@
 // é a diferença entre fechar a aba tranquilo e perder trabalho.
 // ============================================================
 
+import Link from 'next/link';
 import { IconeBusca, IconeSalvo, IconeSalvando, IconeAviso } from '../icones';
 
 export type EstadoDoDocumento = 'salvo' | 'salvando' | 'erro' | 'nenhum';
@@ -38,8 +39,20 @@ export function Topbar({
 }: Props) {
   return (
     <header className="topbar">
+      {/* No celular a sidebar some; a marca vem para cá quando a tela
+          não tem título próprio. */}
+      {!titulo && !trilha && (
+        <Link href="/" className="sidebar__logo so-celular topbar__marca" aria-label="MAKUCHO Studio — início">
+          <span className="sidebar__sigla" aria-hidden style={{ width: 32, height: 32, fontSize: 17 }}>
+            M
+          </span>
+          <span className="sidebar__nome" style={{ fontSize: 16 }}>
+            Studio
+          </span>
+        </Link>
+      )}
       {trilha && trilha.length > 0 && (
-        <nav aria-label="Caminho" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <nav aria-label="Caminho" className="topbar__trilha" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {trilha.map((parte, i) => (
             <span key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               {i > 0 && (
@@ -74,7 +87,7 @@ export function Topbar({
       )}
 
       {busca && (
-        <div className="crescer" style={{ maxWidth: 440, marginLeft: 'var(--e5)' }}>
+        <div className="crescer topbar__busca">
           <label style={{ position: 'relative', display: 'block' }}>
             <span
               aria-hidden
@@ -102,7 +115,7 @@ export function Topbar({
         </div>
       )}
 
-      <div className="linha auto" style={{ gap: 'var(--e2)' }}>
+      <div className="linha auto topbar__acoes" style={{ gap: 'var(--e2)' }}>
         {children}
       </div>
     </header>

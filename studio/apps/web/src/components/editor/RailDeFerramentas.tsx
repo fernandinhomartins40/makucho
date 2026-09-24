@@ -9,6 +9,11 @@
 //
 // Rótulo sob o ícone: o guia pede que ícone sozinho só apareça onde
 // o significado é universal. "Elementos" e "Marca" não são.
+//
+// No celular o rail vira a barra de abas do rodapé: cada ferramenta
+// abre o painel numa folha que sobe de baixo, e "Ajustes" abre as
+// propriedades do trecho (o inspector, que no computador fica à
+// direita).
 // ============================================================
 
 import type { Icon } from '@phosphor-icons/react';
@@ -17,6 +22,7 @@ import {
   IconeMidia,
   IconeLegenda,
   IconeMarca,
+  IconeParametros,
 } from '../icones';
 
 export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
@@ -31,9 +37,12 @@ const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
 interface Props {
   aba: AbaDoEditor;
   onTrocar: (aba: AbaDoEditor) => void;
+  /** Só no celular: abre as propriedades do trecho. */
+  onAjustes?: () => void;
+  ajustesAbertos?: boolean;
 }
 
-export function RailDeFerramentas({ aba, onTrocar }: Props) {
+export function RailDeFerramentas({ aba, onTrocar, onAjustes, ajustesAbertos }: Props) {
   return (
     <nav className="editor__rail" aria-label="Ferramentas do editor">
       {ABAS.map(({ id, rotulo, Icone }) => (
@@ -48,6 +57,17 @@ export function RailDeFerramentas({ aba, onTrocar }: Props) {
           <span className="ferramenta__rotulo">{rotulo}</span>
         </button>
       ))}
+      {onAjustes && (
+        <button
+          type="button"
+          className="ferramenta ferramenta--ajustes so-celular"
+          aria-pressed={Boolean(ajustesAbertos)}
+          onClick={onAjustes}
+        >
+          <IconeParametros size={22} weight={ajustesAbertos ? 'fill' : 'regular'} />
+          <span className="ferramenta__rotulo">Ajustes</span>
+        </button>
+      )}
     </nav>
   );
 }

@@ -708,3 +708,64 @@ export const credencialDeIa = {
       metodo: 'POST',
     }),
 };
+
+// ============================================================
+// Aplicativo (PWA): nome, cores, ícones e capturas da instalação
+// ============================================================
+
+export interface ConfigDoApp {
+  name: string;
+  shortName: string;
+  description: string;
+  themeColor: string;
+  backgroundColor: string;
+  iconePersonalizado: boolean;
+  mascaravelPersonalizado: boolean;
+  capturas: Array<{ indice: number; formFactor: 'narrow' | 'wide'; largura: number; altura: number; rotulo: string }>;
+  versao: number;
+}
+
+/** Envia a imagem crua no corpo, como os assets. */
+async function enviarImagem<T>(caminho: string, arquivo: File, cabecalhos: Record<string, string> = {}): Promise<T> {
+  const enviar = () =>
+    fetch(`/api${caminho}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': arquivo.type || 'application/octet-stream', ...cabecalhos },
+      body: arquivo,
+    });
+  let resposta = await enviar();
+  if (resposta.status === 401 && (await renovarSessao())) resposta = await enviar();
+  if (resposta.status === 401) {
+    aoExpirar?.();
+    throw new SessaoExpirada();
+  }
+  if (!resposta.ok) {
+    let mensagem = mensagemPorStatus(resposta.status);
+    try {
+      const dados = await resposta.json();
+      if (typeof dados?.message === 'string') mensagem = dados.message;
+    } catch {
+      // Fica a mensagem por status.
+    }
+    throw new ErroDaApi(resposta.status, mensagem);
+  }
+  return resposta.json() as Promise<T>;
+}
+
+export const app = {
+  obter: () => api<ConfigDoApp>('/settings/pwa'),
+  salvar: (dados: Partial<Pick<ConfigDoApp, 'name' | 'shortName' | 'description' | 'themeColor' | 'backgroundColor'>>) =>
+    api<ConfigDoApp>('/settings/pwa', { metodo: 'PUT', corpo: dados }),
+  enviarIcone: (tipo: 'icone' | 'maskable', arquivo: File) => enviarImagem<ConfigDoApp>(`/settings/pwa/icone/${tipo}`, arquivo),
+  removerIcone: (tipo: 'icone' | 'maskable') => api<ConfigDoApp>(`/settings/pwa/icone/${tipo}`, { metodo: 'DELETE' }),
+  enviarCaptura: (arquivo: File, formFactor: 'narrow' | 'wide', rotulo: string) =>
+    enviarImagem<ConfigDoApp>('/settings/pwa/capturas', arquivo, {
+      'x-form-factor': formFactor,
+      'x-rotulo': encodeURIComponent(rotulo),
+    }),
+  removerCaptura: (indice: number) => api<ConfigDoApp>(`/settings/pwa/capturas/${indice}`, { metodo: 'DELETE' }),
+  /** Imagens públicas; `v` fura o cache quando a configuração muda. */
+  urlDoIcone: (nome: string, versao: number) => `/api/pwa/icone/${nome}.png?v=${versao}`,
+  urlDaCaptura: (indice: number, versao: number) => `/api/pwa/captura/${indice}?v=${versao}`,
+};

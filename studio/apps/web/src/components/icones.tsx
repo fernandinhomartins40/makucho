@@ -73,6 +73,9 @@ import {
   PencilSimple,
   Sliders,
   ArrowsOut,
+  DotsThreeOutline,
+  DownloadSimple,
+  X,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -158,3 +161,6 @@ export const IconeCelular = DeviceMobile;
 export const IconeZonaSegura = Crop;
 export const IconeRenomear = PencilSimple;
 export const IconeParametros = Sliders;
+export const IconeMaisOpcoes = DotsThreeOutline;
+export const IconeInstalar = DownloadSimple;
+export const IconeFechar = X;

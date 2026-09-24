@@ -731,3 +731,31 @@ model AuditEvent {
   @@index([entityType, entityId])
   @@map("audit_events")
 }
+
+// ============================================================
+// PWA (aplicativo instalavel)
+// ============================================================
+
+// Configuracao do aplicativo instalavel: uma so, do dominio do Studio.
+// Os arquivos gerados (icones em todos os tamanhos, icone mascaravel
+// do Android, icone do iPhone, telas de abertura do iOS) ficam no
+// storage sob `pwa/v{version}/`; `version` muda a cada alteracao, o
+// que tambem invalida o cache dos navegadores.
+model PwaConfig {
+  id              String   @id @default("padrao")
+  name            String   @default("MAKUCHO Studio")
+  shortName       String   @default("Studio")
+  description     String   @default("Seus vídeos, editados por IA")
+  themeColor      String   @default("#06132d")
+  backgroundColor String   @default("#06132d")
+  // Imagem original enviada (quadrada, >= 512 px) e a mascaravel
+  // opcional (Android adaptativo). Nulo = icone padrao da marca.
+  iconKey         String?
+  maskableKey     String?
+  // [{ key, formFactor: 'narrow' | 'wide', width, height, label }]
+  screenshots     Json     @default("[]")
+  version         Int      @default(1)
+  updatedAt       DateTime @updatedAt
+
+  @@map("pwa_config")
+}

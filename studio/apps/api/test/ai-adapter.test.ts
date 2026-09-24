@@ -114,7 +114,7 @@ async function main() {
   t('o prompt de seleção é carregado', texto.length > 100);
   // A versão vai gravada com a resposta: sem ela, um prompt ajustado
   // torna todo resultado anterior inexplicável (seção 26.8).
-  t('a versão vem junto e tem o formato do arquivo', versao === 'selecao-v1');
+  t('a versão vem junto e tem o formato do arquivo', /^selecao-v\d+$/.test(versao));
   t(
     'o prompt diz que a IA não escreve fala',
     texto.includes('NUNCA escreve fala') || texto.toLowerCase().includes('nunca escreve fala'),

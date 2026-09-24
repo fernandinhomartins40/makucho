@@ -104,6 +104,9 @@ function Editor({ projectId }: { projectId: string }) {
   const [posicaoMs, setPosicaoMs] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [aba, setAba] = useState<AbaDoEditor>('ia');
+  // Celular: qual folha está aberta sobre o preview. No computador os
+  // painéis ficam sempre à vista e o CSS ignora isto.
+  const [folha, setFolha] = useState<'painel' | 'inspector' | null>(null);
   const [titulo, setTitulo] = useState('');
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [comandoTocar, setComandoTocar] = useState(0);
@@ -495,7 +498,7 @@ function Editor({ projectId }: { projectId: string }) {
   }
 
   const cabecalho = (
-    <header className="topbar">
+    <header className="topbar topbar--editor">
       <Link href="/" className="botao-icone" aria-label="Voltar para Projetos">
         <IconeVoltar size={20} />
       </Link>
@@ -552,12 +555,12 @@ function Editor({ projectId }: { projectId: string }) {
           aria-live="polite"
         >
           {salvamento === 'salvando' ? <IconeSalvando size={17} /> : salvamento === 'erro' ? <IconeAviso size={17} /> : <IconeSalvo size={17} />}
-          {salvamento === 'salvando' ? 'Salvando…' : salvamento === 'erro' ? 'Não salvo' : 'Salvo'}
+          <span className="so-largo">{salvamento === 'salvando' ? 'Salvando…' : salvamento === 'erro' ? 'Não salvo' : 'Salvo'}</span>
         </span>
       )}
 
       {plano && (
-        <span className="texto-secundario auto" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+        <span className="texto-secundario auto editor__duracao" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
           {tempo(plano.sourceDurationMs)} → {tempo(duracaoMs)}
           {reducao > 0 && ` · −${reducao}%`}
         </span>
@@ -580,15 +583,16 @@ function Editor({ projectId }: { projectId: string }) {
             title="Assistir do começo, como o vídeo vai sair"
           >
             <IconeTocar size={16} />
-            Pré-visualizar
+            <span className="so-largo">Pré-visualizar</span>
           </button>
 
           {render?.estado === 'pronto' && !exportacaoDesatualizada ? (
             <a className="botao" href={apiRenders.urlDeDownload(projectId)} download>
               <IconeExportar size={16} />
-              Baixar vídeo
+              <span className="so-largo">Baixar vídeo</span>
+              <span className="so-celular">Baixar</span>
               {render.tamanhoBytes ? (
-                <span style={{ opacity: 0.75, fontSize: 12 }}>{(render.tamanhoBytes / 1024 / 1024).toFixed(1)} MB</span>
+                <span className="so-largo" style={{ opacity: 0.75, fontSize: 12 }}>{(render.tamanhoBytes / 1024 / 1024).toFixed(1)} MB</span>
               ) : null}
             </a>
           ) : (
@@ -599,13 +603,18 @@ function Editor({ projectId }: { projectId: string }) {
               onClick={() => void exportar()}
             >
               <IconeExportar size={16} />
-              {render?.estado === 'processando'
-                ? 'Exportando…'
-                : render?.estado === 'na_fila'
-                  ? 'Na fila…'
-                  : exportacaoDesatualizada
-                    ? 'Exportar de novo'
-                    : 'Exportar vídeo'}
+              <span className="so-largo">
+                {render?.estado === 'processando'
+                  ? 'Exportando…'
+                  : render?.estado === 'na_fila'
+                    ? 'Na fila…'
+                    : exportacaoDesatualizada
+                      ? 'Exportar de novo'
+                      : 'Exportar vídeo'}
+              </span>
+              <span className="so-celular">
+                {render?.estado === 'processando' || render?.estado === 'na_fila' ? '…' : 'Exportar'}
+              </span>
             </button>
           )}
         </>
@@ -662,10 +671,22 @@ function Editor({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      <div className="editor">
-        <RailDeFerramentas aba={aba} onTrocar={setAba} />
+      <div className="editor" data-folha={folha ?? undefined}>
+        <RailDeFerramentas
+          aba={aba}
+          onTrocar={(nova) => {
+            setAba(nova);
+            // Tocar de novo na ferramenta aberta fecha a folha.
+            setFolha((f) => (f === 'painel' && nova === aba ? null : 'painel'));
+          }}
+          onAjustes={() => setFolha((f) => (f === 'inspector' ? null : 'inspector'))}
+          ajustesAbertos={folha === 'inspector'}
+        />
+
+        {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
         <section className="editor__ia" aria-label="Painel de conteúdo">
+          <CabecalhoDaFolha titulo={ROTULO_DA_ABA[aba]} aoFechar={() => setFolha(null)} />
           {aba === 'ia' && (
             <div style={{ padding: 'var(--e4)', borderBottom: '1px solid var(--border)', display: 'grid', gap: 'var(--e3)' }}>
               {semIa && (
@@ -752,6 +773,7 @@ function Editor({ projectId }: { projectId: string }) {
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
+          <CabecalhoDaFolha titulo="Ajustes" aoFechar={() => setFolha(null)} />
           <Inspector
             plan={plano}
             clipId={selecionado}
@@ -776,6 +798,30 @@ function Editor({ projectId }: { projectId: string }) {
         </section>
       </div>
     </>
+  );
+}
+
+const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
+  ia: 'Ferramentas',
+  midia: 'Mídia',
+  texto: 'Texto',
+  legendas: 'Legendas',
+  marca: 'Marca',
+  audio: 'Áudio',
+};
+
+/** Alça e título da folha -- só aparece no celular, onde o painel sobe de baixo. */
+function CabecalhoDaFolha({ titulo, aoFechar }: { titulo: string; aoFechar: () => void }) {
+  return (
+    <div className="editor__folha-cabecalho so-celular">
+      <span aria-hidden className="folha__puxador" />
+      <div className="linha entre" style={{ width: '100%' }}>
+        <h2 style={{ fontSize: 16 }}>{titulo}</h2>
+        <button type="button" className="botao-icone" aria-label="Fechar" onClick={aoFechar}>
+          ✕
+        </button>
+      </div>
+    </div>
   );
 }
 

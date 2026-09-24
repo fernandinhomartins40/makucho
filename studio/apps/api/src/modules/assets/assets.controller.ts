@@ -140,7 +140,7 @@ export class AssetsController {
  * `req.destroy()` corta a conexao em vez de continuar lendo para
  * descartar: ler para jogar fora ainda gasta a banda inteira.
  */
-function lerCorpoLimitado(req: Request, teto: number): Promise<Buffer> {
+export function lerCorpoLimitado(req: Request, teto: number): Promise<Buffer> {
   return new Promise((resolver, rejeitar) => {
     const partes: Buffer[] = [];
     let total = 0;

@@ -120,7 +120,7 @@ export default function ProjetosPage() {
       </Topbar>
 
       <div className="conteudo">
-        <h1 style={{ marginBottom: 'var(--e5)' }}>Projetos</h1>
+        <h1 className="titulo-da-pagina">Projetos</h1>
 
         {erroDeAcao && (
           <div className="aviso aviso--erro" role="alert" style={{ marginBottom: 'var(--e4)' }}>
@@ -132,7 +132,7 @@ export default function ProjetosPage() {
         {/* ---------- Hero ---------- */}
         <section className="hero" style={{ marginBottom: 'var(--e6)' }}>
           <div style={{ maxWidth: 560 }}>
-            <h2 style={{ fontSize: 40, letterSpacing: -1, marginBottom: 'var(--e3)' }}>
+            <h2 className="hero__titulo" style={{ letterSpacing: -1, marginBottom: 'var(--e3)' }}>
               Crie vídeos melhores, mais rápido
             </h2>
             <p className="texto-secundario" style={{ fontSize: 16, marginBottom: 'var(--e5)' }}>
@@ -163,14 +163,7 @@ export default function ProjetosPage() {
           </picture>
         </section>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) 320px',
-            gap: 'var(--e5)',
-            alignItems: 'start',
-          }}
-        >
+        <div className="projetos__grade">
           {/* ---------- Projetos recentes ---------- */}
           <section>
             <div className="linha entre" style={{ marginBottom: 'var(--e4)' }}>
@@ -239,13 +232,7 @@ export default function ProjetosPage() {
             )}
 
             {filtrados.length > 0 && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-                  gap: 'var(--e4)',
-                }}
-              >
+              <div className="projetos__cartoes">
                 {filtrados.map((projeto) => (
                   <CartaoDeProjeto
                     key={projeto.id}
@@ -342,14 +329,7 @@ export default function ProjetosPage() {
 /** Esqueletos com a forma do cartão: o layout não salta ao chegar. */
 function Esqueletos() {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
-        gap: 'var(--e4)',
-      }}
-      aria-hidden
-    >
+    <div className="projetos__cartoes" aria-hidden>
       {[0, 1, 2].map((i) => (
         <div key={i} className="cartao" style={{ padding: 'var(--e3)' }}>
           <div

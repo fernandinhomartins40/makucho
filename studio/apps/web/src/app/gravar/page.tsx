@@ -518,7 +518,7 @@ function Composicao({
         <span className="campo__ajuda">Opcional. Sem nome, usamos o nome do primeiro arquivo.</span>
       </label>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--e4)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--e4)' }}>
         {/* ---------- Enviar ---------- */}
         <section
           className="cartao"
@@ -907,7 +907,7 @@ function EstudioDeGravacao({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))',
           gap: 'var(--e4)',
           flex: 1,
           minHeight: 0,

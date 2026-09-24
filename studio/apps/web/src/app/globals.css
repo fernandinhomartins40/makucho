@@ -2231,3 +2231,824 @@ body {
     flex-wrap: wrap;
   }
 }
+
+/* ============================================================
+   Celular, tablet e app instalado
+
+   O Studio nasceu desktop-first. Abaixo de 900px:
+
+   - a sidebar sai e a navegação desce para a BARRA INFERIOR, ao
+     alcance do polegar, como nos apps nativos;
+   - a topbar quebra em linhas (a busca ganha a sua) e respeita o
+     entalhe e a ilha dinâmica (`safe-area-inset-*`, já que o app
+     roda em tela cheia com `viewport-fit=cover`);
+   - grades de várias colunas viram uma;
+   - no editor, o preview fica em cima e a timeline embaixo; o rail
+     vira a barra de abas e os painéis sobem numa folha.
+
+   `.so-celular` e `.so-largo` trocam rótulos curtos e longos.
+   ============================================================ */
+
+:root {
+  --barra-inferior: 64px;
+  --seguro-baixo: env(safe-area-inset-bottom, 0px);
+  --seguro-topo: env(safe-area-inset-top, 0px);
+}
+
+/* Toque sem o flash cinza do WebKit; os estados já vêm do CSS. */
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.so-celular {
+  display: none;
+}
+
+.titulo-da-pagina {
+  margin-bottom: var(--e5);
+}
+
+.hero__titulo {
+  font-size: 40px;
+}
+
+.topbar__busca {
+  max-width: 440px;
+  margin-left: var(--e5);
+}
+
+/* ---------- Projetos ---------- */
+
+.projetos__grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--e5);
+  align-items: start;
+}
+
+.projetos__cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--e4);
+}
+
+@media (max-width: 1180px) {
+  .projetos__grade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Barra inferior ---------- */
+
+.barra-inferior {
+  display: none;
+}
+
+.barra-inferior__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* Ativo: pílula atrás do ícone (como no Material 3), cor e ícone cheio. */
+.barra-inferior__icone {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 30px;
+  border-radius: 999px;
+  transition: background var(--transicao);
+}
+
+.barra-inferior__item[aria-current='page'] {
+  color: var(--text-primary);
+}
+
+.barra-inferior__item[aria-current='page'] .barra-inferior__icone {
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+  color: #fff;
+}
+
+.barra-inferior__rotulo {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.barra-inferior__item[aria-current='page'] .barra-inferior__rotulo {
+  font-weight: 700;
+}
+
+/* Gravar: a ação que começa tudo, em destaque no centro. */
+.barra-inferior__item--destaque .barra-inferior__icone {
+  width: 50px;
+  height: 50px;
+  margin-top: -20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 50%, transparent), 0 0 0 4px var(--bg-sidebar);
+}
+
+.barra-inferior__item--destaque[aria-current='page'] .barra-inferior__icone {
+  background: linear-gradient(135deg, var(--primary-hover), var(--accent));
+}
+
+/* ---------- Folha (bottom sheet) ---------- */
+
+.folha {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(1 6 18 / 60%);
+  animation: aparecer 160ms ease-out;
+}
+
+.folha__caixa {
+  width: 100%;
+  max-width: 560px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  padding: 0 var(--e4) calc(var(--e4) + var(--seguro-baixo));
+  box-shadow: var(--sombra-3);
+  animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 120ms ease-out;
+  outline: none;
+}
+
+.folha__alca {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: var(--e1);
+  padding: var(--e2) 0;
+  background: var(--bg-sidebar);
+  touch-action: none;
+}
+
+.folha__puxador {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border-forte);
+}
+
+.folha__corpo {
+  padding-bottom: var(--e2);
+}
+
+@keyframes subir {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- Instalação do app ---------- */
+
+.banner-instalacao {
+  position: fixed;
+  right: var(--e5);
+  bottom: var(--e5);
+  z-index: 60;
+  width: min(380px, calc(100vw - 32px));
+  display: grid;
+  gap: var(--e3);
+  padding: var(--e4);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-forte);
+  border-radius: var(--r-destaque);
+  box-shadow: var(--sombra-3), var(--luz-topo);
+  animation: subir-pouco 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes subir-pouco {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.banner-instalacao__topo {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+}
+
+.banner-instalacao__icone {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+
+.guia-instalacao {
+  display: grid;
+  gap: var(--e3);
+}
+
+.guia-instalacao__passos {
+  list-style: none;
+  display: grid;
+  gap: var(--e2);
+}
+
+.guia-instalacao__passos li {
+  display: grid;
+  grid-template-columns: 22px 36px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--e2);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.guia-instalacao__numero {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* O ícone desenhado como o botão aparece no aparelho: azul do iOS. */
+.guia-instalacao__icone {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: #0a84ff;
+}
+
+/* ---------- Sem conexão ---------- */
+
+.offline {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--e5) + var(--seguro-topo)) var(--e4) calc(var(--e5) + var(--seguro-baixo));
+}
+
+.offline__caixa {
+  max-width: 420px;
+  display: grid;
+  justify-items: center;
+  gap: var(--e4);
+  text-align: center;
+}
+
+.offline__caixa h1 {
+  font-size: 26px;
+}
+
+/* O editor ocupa a tela exata: sem isto a linha do preview (1fr) não
+   tem altura para dividir e o quadro some no celular. */
+.principal--foco {
+  height: 100dvh;
+}
+
+/* ---------- Editor: tablet ---------- */
+
+@media (max-width: 1180px) and (min-width: 900px) {
+  .editor {
+    grid-template-columns: 88px minmax(0, 340px) minmax(0, 1fr);
+  }
+
+  .ferramenta {
+    width: 76px;
+  }
+}
+
+/* ============================================================
+   Abaixo de 900px: celular e tablet em pé
+   ============================================================ */
+
+@media (max-width: 899px) {
+  .so-celular {
+    display: revert;
+  }
+
+  .so-largo {
+    display: none !important;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .app .principal {
+    padding-bottom: calc(var(--barra-inferior) + var(--seguro-baixo));
+  }
+
+  .barra-inferior {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    display: flex;
+    align-items: stretch;
+    height: calc(var(--barra-inferior) + var(--seguro-baixo));
+    padding: 0 var(--e1) var(--seguro-baixo);
+    background: color-mix(in srgb, var(--bg-sidebar) 94%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+  }
+
+  .banner-instalacao {
+    left: var(--e3);
+    right: var(--e3);
+    width: auto;
+    bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + var(--e3));
+  }
+
+  /* ---------- Topbar ---------- */
+
+  .topbar {
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    row-gap: var(--e2);
+    column-gap: var(--e2);
+    padding: calc(var(--e2) + var(--seguro-topo)) var(--e4) var(--e2);
+  }
+
+  .topbar__busca {
+    order: 10;
+    flex-basis: 100%;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  .topbar__marca.so-celular {
+    display: flex;
+    gap: var(--e2);
+  }
+
+  .topbar__trilha {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  /* ---------- Conteúdo ---------- */
+
+  .conteudo {
+    padding: var(--e4);
+    padding-bottom: var(--e6);
+    overscroll-behavior-y: contain;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .titulo-da-pagina {
+    margin-bottom: var(--e4);
+  }
+
+  .hero {
+    min-height: 0;
+    padding: var(--e5) var(--e4);
+  }
+
+  .hero__titulo {
+    font-size: clamp(26px, 7.4vw, 34px);
+  }
+
+  .hero .botao {
+    flex: 1 1 auto;
+  }
+
+  .cartao {
+    padding: var(--e3) var(--e4);
+  }
+
+  .roteiro,
+  .marca {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .menu {
+    max-width: calc(100vw - 32px);
+  }
+
+  /* ---------- Editor ---------- */
+
+  .topbar--editor {
+    flex-wrap: nowrap;
+    gap: var(--e1);
+    padding-left: var(--e1);
+    padding-right: var(--e2);
+  }
+
+  .topbar--editor > button.linha {
+    flex: 1;
+    font-size: 16px !important;
+  }
+
+  .topbar--editor .editor__duracao {
+    display: none;
+  }
+
+  .topbar--editor .botao-icone {
+    width: 40px;
+    height: 40px;
+  }
+
+  .topbar--editor .botao {
+    min-height: 40px;
+    padding: 0 var(--e3);
+  }
+
+  .editor {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(170px, 34dvh);
+    grid-template-areas:
+      'palco'
+      'timeline';
+    gap: var(--e2);
+    padding: 0 var(--e2) calc(var(--barra-inferior) + var(--seguro-baixo) + var(--e2));
+  }
+
+  .editor__palco {
+    padding: var(--e2) 0 0;
+    gap: var(--e2);
+  }
+
+  .palco__play {
+    width: 46px;
+    height: 46px;
+  }
+
+  .editor__carregando {
+    grid-area: palco / palco / timeline / timeline;
+  }
+
+  /* Timeline: a coluna das faixas fica só com ícone e botões -- o
+     nome continua para leitores de tela, e a largura vai para o vídeo. */
+  .timeline__rotulos {
+    width: 96px !important;
+  }
+
+  .timeline__rotulos .timeline__faixa {
+    gap: 2px;
+    padding: 0 var(--e1);
+  }
+
+  .timeline__nome {
+    font-size: 0;
+  }
+
+  .timeline__barra {
+    padding: var(--e1) var(--e2);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .palco__chips {
+    top: var(--e2);
+    left: var(--e2);
+    right: var(--e2);
+    flex-wrap: wrap;
+  }
+
+  .palco__chips .chip {
+    padding: 3px 6px;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  /* O rail vira a barra de abas do rodapé. */
+  .editor__rail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 0;
+    height: calc(var(--barra-inferior) + var(--seguro-baixo));
+    padding: var(--e1) var(--e1) calc(var(--e1) + var(--seguro-baixo));
+    overflow: visible;
+    border-top: 1px solid var(--border);
+  }
+
+  .ferramenta {
+    flex: 1;
+    width: auto;
+    max-width: 96px;
+    padding: var(--e1) 0;
+  }
+
+  .ferramenta.so-celular {
+    display: grid;
+  }
+
+  /* Com a folha fechada, nenhuma aba parece "aberta". */
+  .editor:not([data-folha='painel']) .ferramenta[aria-pressed='true']:not(.ferramenta--ajustes) {
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-primary);
+  }
+
+  /* Painel e inspector: folhas que sobem de baixo. */
+  .editor__ia,
+  .editor__inspector {
+    display: none;
+  }
+
+  .editor[data-folha='painel'] .editor__ia,
+  .editor[data-folha='inspector'] .editor__inspector {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--barra-inferior) + var(--seguro-baixo));
+    z-index: 45;
+    max-height: 70dvh;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 20px 20px 0 0;
+    border-bottom: 0;
+    background: var(--bg-sidebar);
+    animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .editor__veu {
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    display: block;
+    background: rgb(1 6 18 / 50%);
+  }
+
+  .editor__folha-cabecalho {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: grid;
+    justify-items: center;
+    gap: var(--e1);
+    padding: var(--e2) var(--e2) var(--e1) var(--e4);
+    background: var(--bg-sidebar);
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 599px) {
+  .projetos__cartoes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--e3);
+  }
+}
+
+/* Aberto como app: sem o "puxar para recarregar" do navegador nem
+   seleção de texto acidental na navegação -- é o que faz parecer
+   nativo. */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  .barra-inferior,
+  .editor__rail,
+  .sidebar {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+/* ============================================================
+   Configurações > Aplicativo
+   ============================================================ */
+
+.app-config__identidade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: var(--e5);
+  align-items: start;
+}
+
+.app-config__cores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--e3);
+}
+
+.app-config__cor {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--bg-canvas);
+  cursor: pointer;
+}
+
+.app-config__abertura {
+  display: grid;
+  justify-items: center;
+  gap: var(--e2);
+}
+
+/* Um celular em miniatura com a abertura do app. */
+.app-config__aparelho {
+  position: relative;
+  width: 132px;
+  aspect-ratio: 9 / 19.5;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--e2);
+  border: 4px solid #0b1220;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: var(--sombra-2);
+}
+
+.app-config__aparelho img {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+}
+
+.app-config__barra-sistema {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 14px;
+}
+
+.app-config__previas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: var(--e3);
+}
+
+.app-config__previa {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: var(--e2);
+  padding: var(--e4) var(--e2) var(--e3);
+  border-radius: var(--r-cartao);
+  background:
+    radial-gradient(120% 90% at 50% 0%, #26437a 0%, transparent 70%),
+    var(--bg-canvas);
+  border: 1px solid var(--border);
+}
+
+.app-config__previa figcaption {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.app-config__mascara {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 40%);
+}
+
+.app-config__mascara img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* A zona segura do maskable: círculo central de 80%. */
+.app-config__zona {
+  position: absolute;
+  inset: 10%;
+  border-radius: 50%;
+  border: 1.5px dashed rgb(255 255 255 / 85%);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.app-config__aba {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 22px 0;
+  padding: 6px 10px;
+  border-radius: 8px 8px 0 0;
+  background: #1f2937;
+  color: #e5e7eb;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.app-config__envios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: var(--e3);
+}
+
+.app-config__capturas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--e3);
+  align-items: start;
+}
+
+.app-config__captura {
+  display: grid;
+  gap: var(--e1);
+}
+
+.app-config__captura img {
+  width: 100%;
+  object-fit: cover;
+  border-radius: var(--r-controle);
+  border: 1px solid var(--border);
+  background: var(--bg-canvas);
+}
+
+@media (max-width: 599px) {
+  .app-config__identidade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-config__abertura {
+    order: -1;
+  }
+
+  .app-config__cores {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-config__previas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* As variantes voltam a valer depois do gradiente de `.botao` (seção
+   "Profundidade e luz"): sem isto, "Agora não", "Voltar ao padrão" e
+   os botões de perigo saíam azuis, iguais à ação principal. */
+.botao.botao--fantasma {
+  background: transparent;
+  box-shadow: none;
+}
+
+.botao.botao--fantasma:hover:not(:disabled) {
+  background: var(--surface-1);
+  box-shadow: none;
+}
+
+.botao.botao--perigo {
+  background: transparent;
+  box-shadow: none;
+}
+
+.botao.botao--perigo:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  box-shadow: none;
+}
+
+.botao:disabled,
+.botao:disabled:hover {
+  background: var(--surface-2);
+  box-shadow: none;
+}
