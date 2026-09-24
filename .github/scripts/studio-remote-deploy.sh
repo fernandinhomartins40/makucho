@@ -109,14 +109,44 @@ export RELEASE
 # timeout: sem ele, uma rede degradada deixa o pull pendurado ate o
 # limite do job, com o log invisivel porque so sai quando o step acaba.
 # Mesma protecao do script do portal.
-if ! timeout 900 docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" \
-       --env-file "$ENV_FILE" pull --quiet; then
-  # A causa quase sempre e uma so: o build do workflow falhou e as
-  # imagens desta release nunca foram publicadas. O "denied" do
-  # Docker nesse caso parece erro de permissao e manda quem depura
-  # para o lado errado.
-  log "ERRO: imagens da release $RELEASE indisponiveis no registro."
-  log "      Confira se as etapas de build do workflow concluiram."
+#
+# Com novas tentativas: a conexao da VPS com o ghcr.io cai de vez em
+# quando no meio de uma camada ("connection reset by peer"), e um
+# deploy inteiro nao pode morrer por isso. As camadas ja baixadas
+# ficam no cache do Docker, entao a tentativa seguinte so busca o que
+# faltou.
+PULL_LOG="$(mktemp)"
+baixou=0
+for tentativa in 1 2 3 4; do
+  if timeout 600 docker compose -p "$COMPOSE_PROJECT" -f "$COMPOSE_FILE" \
+       --env-file "$ENV_FILE" pull --quiet >"$PULL_LOG" 2>&1; then
+    cat "$PULL_LOG"
+    baixou=1
+    break
+  fi
+  cat "$PULL_LOG"
+
+  # Imagem que nao existe nao aparece numa segunda tentativa: o build
+  # do workflow falhou e esta release nunca foi publicada. O "denied"
+  # do Docker nesse caso parece permissao e manda quem depura para o
+  # lado errado -- dai a mensagem explicita.
+  if grep -qiE "manifest unknown|not found|denied" "$PULL_LOG"; then
+    log "ERRO: imagens da release $RELEASE indisponiveis no registro."
+    log "      Confira se as etapas de build do workflow concluiram."
+    fail "nao foi possivel baixar as imagens; a versao anterior segue no ar"
+  fi
+
+  if [ "$tentativa" -lt 4 ]; then
+    espera=$((tentativa * 20))
+    log "falha de rede ao baixar as imagens (tentativa $tentativa de 4); nova tentativa em ${espera}s"
+    sleep "$espera"
+  fi
+done
+rm -f "$PULL_LOG"
+
+if [ "$baixou" -ne 1 ]; then
+  log "ERRO: a rede entre a VPS e o registro (ghcr.io) falhou 4 vezes seguidas."
+  log "      As imagens existem; rode o workflow de novo em alguns minutos."
   fail "nao foi possivel baixar as imagens; a versao anterior segue no ar"
 fi
 
