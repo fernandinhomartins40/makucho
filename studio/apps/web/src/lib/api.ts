@@ -200,14 +200,38 @@ export interface Projeto {
   updatedAt: string;
 }
 
+/** O que `GET /projects/:id` devolve: o projeto com mídias e plano. */
+export interface ProjetoDetalhado {
+  id: string;
+  title: string;
+  state: string;
+  objective: string | null;
+  framework: string | null;
+  targetDurationMs: number | null;
+  publicError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  script: { id: string; title: string } | null;
+  mediaSources: Array<{
+    id: string;
+    kind: 'ORIGINAL' | 'PROXY' | 'AUDIO' | 'THUMBNAIL' | 'KEYFRAME';
+    durationMs: number | null;
+    widthPx: number | null;
+    heightPx: number | null;
+    createdAt: string;
+  }>;
+  editPlans: Array<{ id: string; version: number; createdAt: string }>;
+}
+
 export const projetos = {
   listar: () => api<Projeto[]>('/projects'),
-  obter: (id: string) => api<Projeto>(`/projects/${id}`),
+  obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
   criar: (dados: { title: string; scriptId?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),
   atualizar: (id: string, dados: Partial<{ title: string; objective: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
   arquivar: (id: string) => api<Projeto>(`/projects/${id}`, { metodo: 'DELETE' }),
+  urlDaMiniatura: (id: string) => `/api/projects/${id}/thumbnail`,
   // Recomeça o processamento do ponto mais adiantado que já tem
   // insumo pronto; quem decide isso é o servidor.
   reprocessar: (id: string) => api<Projeto>(`/projects/${id}/retry`, { metodo: 'POST' }),
@@ -610,4 +634,28 @@ export const ia = {
       metodo: 'PUT',
       corpo: { monthlyLimitCents },
     }),
+};
+
+// ============================================================
+// Credencial de IA
+//
+// A chave nunca volta do servidor, nem cifrada: a tela só sabe se há
+// uma cadastrada e os primeiros caracteres, para reconhecê-la.
+// ============================================================
+
+export interface CredencialDeIa {
+  configured: boolean;
+  provider?: string;
+  keyPrefix?: string;
+  model?: string | null;
+  isActive?: boolean;
+  lastUsedAt?: string | null;
+  updatedAt?: string;
+}
+
+export const credencialDeIa = {
+  obter: () => api<CredencialDeIa>('/settings/ai-credential'),
+  salvar: (dados: { provider: 'deepseek'; apiKey: string; model?: string }) =>
+    api<CredencialDeIa>('/settings/ai-credential', { metodo: 'PUT', corpo: dados }),
+  remover: () => api<CredencialDeIa>('/settings/ai-credential', { metodo: 'DELETE' }),
 };

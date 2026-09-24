@@ -15,10 +15,8 @@ import type { Icon } from '@phosphor-icons/react';
 import {
   IconeIA,
   IconeMidia,
-  IconeTexto,
   IconeLegenda,
   IconeMarca,
-  IconeAudio,
 } from '../icones';
 
 export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
@@ -26,10 +24,8 @@ export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'legendas' | 'marca' | 'aud
 const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
   { id: 'ia', rotulo: 'Ferramentas', Icone: IconeIA },
   { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
-  { id: 'texto', rotulo: 'Texto', Icone: IconeTexto },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
   { id: 'marca', rotulo: 'Marca', Icone: IconeMarca },
-  { id: 'audio', rotulo: 'Áudio', Icone: IconeAudio },
 ];
 
 interface Props {

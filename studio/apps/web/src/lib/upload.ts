@@ -36,6 +36,24 @@ export const TIPOS_ACEITOS = [
   'video/x-msvideo',
 ];
 
+/** Extensão → tipo. O Windows costuma entregar MKV e MOV com `type`
+    vazio, e recusar um arquivo válido por isso é defeito nosso. */
+const TIPO_POR_EXTENSAO: Record<string, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+};
+
+/** O tipo do arquivo, pelo navegador ou, na falta dele, pela extensão. */
+export function tipoDoArquivo(arquivo: File): string {
+  if (TIPOS_ACEITOS.includes(arquivo.type)) return arquivo.type;
+  const extensao = arquivo.name.split('.').pop()?.toLowerCase() ?? '';
+  return TIPO_POR_EXTENSAO[extensao] ?? arquivo.type;
+}
+
 export const TAMANHO_MAXIMO_BYTES = 2 * 1024 * 1024 * 1024;
 export const DURACAO_MAXIMA_MS = 30 * 60 * 1000;
 
@@ -46,7 +64,7 @@ export const DURACAO_MAXIMA_MS = 30 * 60 * 1000;
  * pior momento possível para avisar.
  */
 export async function validar(arquivo: File): Promise<string | null> {
-  if (!TIPOS_ACEITOS.includes(arquivo.type)) {
+  if (!TIPOS_ACEITOS.includes(tipoDoArquivo(arquivo))) {
     return 'formato não aceito. Envie MP4, MOV, WebM, MKV ou AVI.';
   }
 
@@ -125,17 +143,25 @@ export async function enviar(opcoes: OpcoesDeEnvio): Promise<{ mediaSourceId: st
 
   avisar();
 
-  for (let i = 0; i < sessao.totalDePedacos; i += 1) {
-    if (sinal?.aborted) throw new DOMException('envio cancelado', 'AbortError');
-    if (jaEnviados.has(i)) continue;
+  try {
+    for (let i = 0; i < sessao.totalDePedacos; i += 1) {
+      if (sinal?.aborted) throw new DOMException('envio cancelado', 'AbortError');
+      if (jaEnviados.has(i)) continue;
 
-    const inicio = i * sessao.tamanhoDoPedaco;
-    const pedaco = arquivo.slice(inicio, inicio + sessao.tamanhoDoPedaco);
+      const inicio = i * sessao.tamanhoDoPedaco;
+      const pedaco = arquivo.slice(inicio, inicio + sessao.tamanhoDoPedaco);
 
-    await comRetentativa(() => enviarPedaco(sessao.uploadId, i, pedaco, sinal));
+      await comRetentativa(() => enviarPedaco(sessao.uploadId, i, pedaco, sinal));
 
-    enviados += 1;
-    avisar();
+      enviados += 1;
+      avisar();
+    }
+  } catch (e) {
+    // Cancelado: os pedaços já gravados ocupam cota sem servir a nada.
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      void api(`/uploads/${sessao.uploadId}`, { metodo: 'DELETE' }).catch(() => undefined);
+    }
+    throw e;
   }
 
   return api<{ mediaSourceId: string }>(`/uploads/${sessao.uploadId}/complete`, {

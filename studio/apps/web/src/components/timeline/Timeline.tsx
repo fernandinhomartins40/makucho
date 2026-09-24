@@ -36,7 +36,6 @@ import {
   IconeAudio,
   IconeMidia,
   IconeLegenda,
-  IconeMais,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 
@@ -373,14 +372,6 @@ export function Timeline({
           />
         </div>
 
-        <button
-          type="button"
-          className="botao-icone"
-          aria-label="Adicionar faixa"
-          style={{ alignSelf: 'center', flexShrink: 0, margin: '0 var(--e2)' }}
-        >
-          <IconeMais size={18} />
-        </button>
       </div>
     </>
   );

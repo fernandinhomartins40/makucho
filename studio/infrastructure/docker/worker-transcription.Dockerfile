@@ -78,9 +78,14 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # A versao do torch para CPU vem do indice proprio do PyTorch: o pacote
 # padrao do PyPI traz as bibliotecas CUDA (varios GB) que nao servem de
 # nada nesta VPS sem GPU.
+# O faster-whisper 1.0.3 importa `requests`, que o huggingface_hub deixou
+# de trazer a partir da 1.0. Sem o pin e o `requests`, o modelo nao baixa e
+# TODA transcricao falha com "No module named 'requests'".
 RUN pip install --no-cache-dir \
       --extra-index-url https://download.pytorch.org/whl/cpu \
-      faster-whisper==1.0.3
+      faster-whisper==1.0.3 \
+      "huggingface_hub>=0.21,<1.0" \
+      requests
 
 ENV NODE_ENV=production
 # O modelo baixa uma vez para o volume; sem isto cada reinicio puxa

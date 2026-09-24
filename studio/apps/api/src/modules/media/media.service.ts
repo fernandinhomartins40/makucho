@@ -248,8 +248,11 @@ export class MediaService {
     const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
     assertOwnership(tenant, projeto, 'projeto');
 
+    // A mais recente: um projeto que recebeu um segundo vídeo tem dois
+    // registros, e o editor precisa tocar o novo.
     const midia = await this.prisma.mediaSource.findFirst({
       where: { projectId, kind },
+      orderBy: { createdAt: 'desc' },
     });
     if (!midia) throw new NotFoundException('mídia não encontrada');
 

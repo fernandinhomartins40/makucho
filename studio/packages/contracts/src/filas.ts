@@ -15,8 +15,14 @@
 export const FILA_MIDIA = 'studio-media';
 export const FILA_TRANSCRICAO = 'studio-transcription';
 export const FILA_RENDER = 'studio-render';
+/**
+ * Análise automática: a transcrição termina e a proposta de edição
+ * precisa nascer sem que ninguém aperte botão. Consumida pela API,
+ * que é onde vivem a credencial de IA e o teto de gasto.
+ */
+export const FILA_ANALISE = 'studio-analysis';
 
-export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER] as const;
+export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER] as const;
 export type NomeDeFila = (typeof FILAS)[number];
 
 /**

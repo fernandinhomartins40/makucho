@@ -15,10 +15,11 @@
 // como código de saída, e não derruba a fila.
 // ============================================================
 
-import { Worker, type Job } from 'bullmq';
+import { Queue, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import {
+  FILA_ANALISE,
   FILA_TRANSCRICAO,
   PREFIXO_DAS_FILAS,
   SILENCIO_MINIMO_MS,
@@ -58,6 +59,11 @@ interface DadosDoJob {
 
 const prisma = new PrismaClient();
 const redis = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+
+// A análise é consumida pela API (é lá que vivem a credencial de IA e
+// o teto de gasto). O jobId é o projeto e o job some ao terminar, para
+// não bloquear uma análise futura do mesmo projeto.
+const filaDeAnalise = new Queue(FILA_ANALISE, { connection: redis, prefix: PREFIXO_DAS_FILAS });
 
 function caminhoDe(chave: string): string {
   const completo = resolve(RAIZ_DO_STORAGE, chave);
@@ -248,6 +254,18 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
     });
   });
 
+  try {
+    await filaDeAnalise.add(
+      'analisar',
+      { projectId },
+      { jobId: `analise-${projectId}`, attempts: 2, removeOnComplete: true, removeOnFail: true },
+    );
+  } catch (e) {
+    // Sem Redis agora, a varredura da API encontra o projeto parado em
+    // "analisando" e enfileira de novo: não é preciso falhar aqui.
+    console.error(`[transcricao] falha ao enfileirar a análise do projeto ${projectId}:`, e);
+  }
+
   console.log(
     `[transcricao] projeto ${projectId}: ${resultado.segments.length} segmentos, ` +
       `${silencios.length} silêncios, idioma ${resultado.language}`,
@@ -339,6 +357,7 @@ for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     clearInterval(pulso);
     void worker
       .close()
+      .then(() => filaDeAnalise.close())
       .then(() => prisma.$disconnect())
       .then(() => redis.quit())
       .then(() => process.exit(0));

@@ -24,6 +24,7 @@ import {
   IconeEditor,
   IconeMarca,
   IconeAjuda,
+  IconeConfiguracoes,
   IconeNuvem,
   IconeAvancar,
   IconeSair,
@@ -86,6 +87,17 @@ export function Sidebar() {
 
       <div className="sidebar__rodape">
         <Armazenamento />
+
+        <Link
+          href="/configuracoes"
+          className="nav-item"
+          aria-current={caminho.startsWith('/configuracoes') ? 'page' : undefined}
+        >
+          <span className="nav-item__icone" aria-hidden>
+            <IconeConfiguracoes size={20} />
+          </span>
+          <span className="nav-item__rotulo">Configurações</span>
+        </Link>
 
         <Link href="/ajuda" className="nav-item">
           <span className="nav-item__icone" aria-hidden>
@@ -155,7 +167,7 @@ function Armazenamento() {
         />
       </div>
 
-      <Link href="/marca" className="sidebar__link">
+      <Link href="/configuracoes" className="sidebar__link">
         Gerenciar armazenamento
         <IconeAvancar size={13} />
       </Link>

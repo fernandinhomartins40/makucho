@@ -241,10 +241,27 @@ export class ProjectsService {
     assertOwnership(tenant, projeto, 'projeto');
     if (!projeto) throw new NotFoundException();
 
-    if (projeto.state !== 'FAILED_RETRYABLE') {
+    // "Analisando" parado também aceita: é o estado em que um projeto
+    // ficava preso antes de a análise ser automática.
+    if (projeto.state !== 'FAILED_RETRYABLE' && projeto.state !== 'ANALYZING') {
       throw new BadRequestException(
         'só dá para tentar de novo um projeto que falhou e permite retentativa',
       );
+    }
+
+    // Transcrição pronta: a falha foi na proposta, e refazer mídia e
+    // transcrição gastaria minutos de CPU para chegar ao mesmo ponto.
+    const transcrito = await this.prisma.transcriptSegment.count({
+      where: { transcription: { projectId: id } },
+    });
+
+    if (transcrito > 0) {
+      if (!(await this.filas.analisar(id))) {
+        throw new BadRequestException(
+          'não foi possível recomeçar agora; tente de novo em alguns minutos',
+        );
+      }
+      return this.transicionar(id, 'ANALYZING');
     }
 
     const audio = await this.prisma.mediaSource.findFirst({

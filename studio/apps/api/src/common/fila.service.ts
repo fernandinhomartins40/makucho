@@ -15,6 +15,7 @@ import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import {
+  FILA_ANALISE,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -85,6 +86,24 @@ export class FilaService implements OnModuleDestroy {
       return true;
     } catch (e) {
       this.log.error(`falha ao enfileirar transcrição do projeto ${projectId}`, e as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Análise automática. O jobId é o projeto e o job some ao terminar:
+   * um job antigo guardado com o mesmo id bloquearia a próxima análise.
+   */
+  async analisar(projectId: string): Promise<boolean> {
+    try {
+      await this.fila(FILA_ANALISE).add(
+        'analisar',
+        { projectId },
+        { jobId: `analise-${projectId}`, attempts: 2, removeOnComplete: true, removeOnFail: true },
+      );
+      return true;
+    } catch (e) {
+      this.log.error(`falha ao enfileirar análise do projeto ${projectId}`, e as Error);
       return false;
     }
   }

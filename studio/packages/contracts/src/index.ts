@@ -25,3 +25,4 @@ export * from './bridge';
 export * from './events';
 export * from './ai-usage';
 export * from './compilador';
+export * from './montagem-automatica';

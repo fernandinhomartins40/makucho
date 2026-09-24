@@ -12,17 +12,13 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { PrismaService } from '../../common/prisma.service';
 import { assertCanWrite, assertOwnership } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
-import { EditPlansService } from '../edit-plans/edit-plans.service';
-import { ProjectsService } from '../projects/projects.service';
-import { AnaliseService } from './analise.service';
+import { PropostaService } from './proposta.service';
 
 @ApiTags('ai')
 @Controller()
 export class AnaliseController {
   constructor(
-    private readonly analise: AnaliseService,
-    private readonly planos: EditPlansService,
-    private readonly projetos: ProjectsService,
+    private readonly proposta: PropostaService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -41,36 +37,22 @@ export class AnaliseController {
     assertOwnership(tenant, projeto, 'projeto');
     if (!projeto) throw new BadRequestException('projeto não encontrado');
 
-    const resultado = await this.analise.analisar(tenant.workspaceId, id);
+    const resultado = await this.proposta.gerar(tenant.workspaceId, id, { comReserva: false });
 
     if (!resultado.ok) {
-      // O projeto NÃO entra em erro terminal (seção 26.9): ele fica
-      // num estado de onde dá para tentar de novo, com a mensagem
-      // visível. A gravação continua válida — o que falhou foi a
-      // análise, e insistir é barato.
-      await this.prisma.project
-        .update({
-          where: { id },
-          data: {
-            state: resultado.temporario ? 'FAILED_RETRYABLE' : projeto.state,
-            publicError: resultado.erro,
-          },
-        })
-        .catch(() => undefined);
-
-      throw new BadRequestException(resultado.erro);
+      // Um projeto que ja tem proposta continua com ela: a falha de uma
+      // NOVA analise nao pode tirar do usuario o que ele ja editou.
+      if (!['PROPOSAL_READY', 'USER_EDITING', 'READY_TO_RENDER', 'COMPLETED'].includes(projeto.state)) {
+        await this.prisma.project
+          .update({ where: { id }, data: { state: 'FAILED_RETRYABLE', publicError: resultado.erro ?? null } })
+          .catch(() => undefined);
+      }
+      throw new BadRequestException(resultado.erro ?? 'a análise falhou');
     }
-
-    // Persistir ANTES de mudar o estado: um projeto em
-    // PROPOSAL_READY sem plano salvo abriria o editor vazio, e o
-    // usuário não teria como saber que foi um erro de ordem.
-    await this.planos.salvar(tenant, id, resultado.plano, 'ai');
-    await this.projetos.transicionar(id, 'PROPOSAL_READY');
 
     return {
       ok: true,
-      // Agregação dos riscos que o modelo classificou, não uma
-      // probabilidade que ele inventou (seção 26.4).
+      origem: resultado.origem,
       confianca: resultado.confianca,
       avisos: resultado.avisos,
       problemas: resultado.problemas,

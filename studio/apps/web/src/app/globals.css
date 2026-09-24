@@ -1920,3 +1920,25 @@ body {
   background: var(--bg-canvas);
   z-index: 2;
 }
+
+/* Indicador de etapa em andamento (processamento do vídeo). */
+.giro {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  animation: girar 0.9s linear infinite;
+}
+
+@keyframes girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .giro {
+    animation-duration: 2.5s;
+  }
+}

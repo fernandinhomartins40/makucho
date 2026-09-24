@@ -161,9 +161,11 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
     streams?: Array<{
       codec_type?: string;
       codec_name?: string;
+      duration?: string;
       width?: number;
       height?: number;
       r_frame_rate?: string;
+      avg_frame_rate?: string;
       tags?: { rotate?: string };
       side_data_list?: Array<{ rotation?: number }>;
     }>;
@@ -178,8 +180,15 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
 
   // O fps vem como fracao ("30000/1001" para 29,97). Dividir e o
   // unico jeito de obter o valor real.
-  const [num, den] = (video.r_frame_rate ?? '30/1').split('/').map(Number);
-  const fps = den && den !== 0 ? (num ?? 30) / den : 30;
+  //
+  // WebM gravado pelo navegador declara `r_frame_rate` = 1000/1 -- a
+  // base de tempo do container, nao a taxa de quadros. Esse 1000 era
+  // recusado pelo contrato e derrubava TODA gravacao feita em /gravar.
+  // A media real (`avg_frame_rate`) vem primeiro; fora de uma faixa
+  // plausivel, 30.
+  const fps = [video.avg_frame_rate, video.r_frame_rate]
+    .map(fracao)
+    .find((v) => v !== null && v >= 1 && v <= 120) ?? 30;
 
   // Video de celular costuma vir com rotacao nos metadados: o stream
   // e 1920x1080 com rotate=90, mas o usuario gravou em pe. Sem trocar
@@ -191,7 +200,11 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
   const deitado = Math.abs(rotacao) === 90 || Math.abs(rotacao) === 270;
 
   return mediaProbeSchema.parse({
-    durationMs: Math.round(Number(dados.format?.duration ?? 0) * 1000),
+    // WebM gravado pelo navegador (MediaRecorder) sai sem duração no
+    // cabeçalho: o ffprobe devolve "N/A" ou nada. NaN aqui derrubava o
+    // job inteiro; 0 é o sinal que o worker de mídia usa para medir a
+    // duração pelo proxy, que sai com cabeçalho completo.
+    durationMs: duracaoEmMs(dados.format?.duration, video.duration, audio?.duration),
     widthPx: deitado ? (video.height ?? 0) : (video.width ?? 0),
     heightPx: deitado ? (video.width ?? 0) : (video.height ?? 0),
     fps: Math.round(fps * 1000) / 1000,
@@ -202,6 +215,25 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
       ? { bitrateKbps: Math.round(Number(dados.format.bit_rate) / 1000) }
       : {}),
   });
+}
+
+/** "30000/1001" → 29,97. Nulo quando ilegível ("0/0", ausente). */
+function fracao(valor: string | undefined): number | null {
+  if (!valor) return null;
+  const [num, den] = valor.split('/').map(Number);
+  if (!Number.isFinite(num) || !num) return null;
+  const d = den === undefined ? 1 : den;
+  if (!Number.isFinite(d) || d === 0) return null;
+  return num / d;
+}
+
+/** A primeira duração legível entre formato e faixas, ou 0. */
+function duracaoEmMs(...candidatas: Array<string | undefined>): number {
+  for (const c of candidatas) {
+    const segundos = Number(c);
+    if (Number.isFinite(segundos) && segundos > 0) return Math.round(segundos * 1000);
+  }
+  return 0;
 }
 
 // ---------- Proxy ----------

@@ -18,6 +18,7 @@ import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
 import { PromptsService } from './prompts.service';
+import { PropostaService } from './proposta.service';
 import { RefinoController } from './refino.controller';
 import { RefinoService } from './refino.service';
 import { RoteiroController } from './roteiro.controller';
@@ -32,6 +33,7 @@ import { UsoDeIaService } from './uso.service';
   providers: [
     AiService,
     AnaliseService,
+    PropostaService,
     RoteiroService,
     RefinoService,
     UsoDeIaService,
@@ -40,6 +42,6 @@ import { UsoDeIaService } from './uso.service';
   ],
   // Exportado para as fases 5c e 5d: elas chamam o provedor por aqui,
   // e nao diretamente, para que a trava de custo nao tenha desvio.
-  exports: [AiService, UsoDeIaService, PromptsService],
+  exports: [AiService, UsoDeIaService, PromptsService, PropostaService],
 })
 export class AiModule {}

@@ -12,6 +12,7 @@
 // poder restaurar o que foi descartado.
 // ============================================================
 
+import { useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { corDaFuncao, nomeDaFuncao, tempo } from './funcoes';
 import { IconeIA, IconeAviso, IconeArrastar, IconeMenu } from '../icones';
@@ -48,7 +49,9 @@ export function PainelDaIA({
   desligados,
   onSelecionar,
   onAlternar,
+  onOperacao,
 }: Props) {
+  const [menu, setMenu] = useState<string | null>(null);
   const minutos = Math.round(plan.sourceDurationMs / 60_000);
   const pct = confianca(plan);
 
@@ -147,22 +150,46 @@ export function PainelDaIA({
                   <span className="chave__bola" aria-hidden />
                 </button>
 
-                <button
-                  type="button"
-                  className="botao-icone botao-icone--pequeno"
-                  aria-label={`Mais opções do trecho ${i + 1}`}
-                >
-                  <IconeMenu size={16} />
-                </button>
+                <span style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="botao-icone botao-icone--pequeno"
+                    aria-label={`Mais opções do trecho ${i + 1}`}
+                    aria-expanded={menu === clipe.id}
+                    onClick={() => setMenu((m) => (m === clipe.id ? null : clipe.id))}
+                  >
+                    <IconeMenu size={16} />
+                  </button>
+                  {menu === clipe.id && (
+                    <span className="menu" style={{ right: 0, left: 'auto' }}>
+                      <button
+                        type="button"
+                        className="menu__item"
+                        onClick={() => {
+                          setMenu(null);
+                          onOperacao({ op: 'duplicar_clipe', clipId: clipe.id });
+                        }}
+                      >
+                        Duplicar trecho
+                      </button>
+                      <button
+                        type="button"
+                        className="menu__item menu__item--perigo"
+                        onClick={() => {
+                          setMenu(null);
+                          onOperacao({ op: 'alternar_clipe', clipId: clipe.id, enabled: false });
+                        }}
+                      >
+                        Remover da timeline
+                      </button>
+                    </span>
+                  )}
+                </span>
               </span>
             </article>
           );
         })}
 
-        <button type="button" className="botao botao--tracejado">
-          <IconeIA size={16} weight="fill" />
-          Adicionar trecho com IA
-        </button>
       </div>
     </>
   );

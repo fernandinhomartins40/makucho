@@ -100,20 +100,74 @@ export class MediaController {
   async video(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') projectId: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     // O PROXY, nunca o original: o contexto mestre (secao 18) e
     // explicito de que o arquivo de 500 MB nao vira midia do editor.
     const arquivo = await this.media.arquivoDoProjeto(tenant, projectId, 'PROXY');
+    const intervalo = lerIntervalo(req.headers.range, arquivo.tamanho);
+
     res.set({
       'Content-Type': arquivo.mimeType,
-      'Content-Length': String(arquivo.tamanho),
-      // Sem isso o player nao consegue buscar posicao no video.
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'private, max-age=3600',
     });
+
+    // O player pede pedacos (Range) para pular de um trecho a outro.
+    // Responder 200 com o arquivo inteiro a um pedido de Range faz o
+    // Chrome desistir da busca e voltar ao zero -- era por isso que o
+    // preview nao conseguia saltar entre os cortes.
+    if (intervalo === 'invalido') {
+      res.status(416).set('Content-Range', `bytes */${arquivo.tamanho}`);
+      return undefined;
+    }
+
+    if (intervalo) {
+      res.status(206).set({
+        'Content-Range': `bytes ${intervalo.inicio}-${intervalo.fim}/${arquivo.tamanho}`,
+        'Content-Length': String(intervalo.fim - intervalo.inicio + 1),
+      });
+      return new StreamableFile(
+        createReadStream(arquivo.caminho, { start: intervalo.inicio, end: intervalo.fim }),
+      );
+    }
+
+    res.set('Content-Length', String(arquivo.tamanho));
     return new StreamableFile(createReadStream(arquivo.caminho));
   }
+}
+
+/**
+ * Le um cabecalho `Range: bytes=inicio-fim` de intervalo unico.
+ *
+ * Varios intervalos (multipart/byteranges) nenhum player de video
+ * pede; nesse caso o arquivo inteiro e uma resposta valida.
+ */
+export function lerIntervalo(
+  cabecalho: string | undefined,
+  tamanho: number,
+): { inicio: number; fim: number } | 'invalido' | null {
+  if (!cabecalho) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(cabecalho.trim());
+  if (!m) return null;
+
+  const [, a, b] = m;
+  let inicio: number;
+  let fim: number;
+
+  if (a === '' && b === '') return 'invalido';
+  if (a === '') {
+    // "bytes=-500": os ultimos 500 bytes.
+    inicio = Math.max(0, tamanho - Number(b));
+    fim = tamanho - 1;
+  } else {
+    inicio = Number(a);
+    fim = b === '' ? tamanho - 1 : Math.min(Number(b), tamanho - 1);
+  }
+
+  if (inicio >= tamanho || inicio > fim) return 'invalido';
+  return { inicio, fim };
 }
 
 /** Junta o corpo binario cru da requisicao. */

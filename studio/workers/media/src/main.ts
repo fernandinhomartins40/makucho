@@ -124,6 +124,13 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   await comLockGlobal(redis, async (renovar) => {
     await comEspacoDeTrabalho(async (espaco) => {
       // ---------- Metadados ----------
+      // Uma tentativa anterior que falhou no meio pode ter deixado
+      // proxy ou thumbnail registrados: a retentativa recomeça limpa,
+      // senão o editor tocaria o arquivo velho.
+      await prisma.mediaSource.deleteMany({
+        where: { projectId, kind: { in: ['PROXY', 'THUMBNAIL', 'AUDIO'] } },
+      });
+
       const probe = await lerMetadados(entrada);
       await job.updateProgress(5);
 
@@ -155,6 +162,22 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       });
 
       await verificarLimite(espaco);
+
+      // Gravação do navegador chega sem duração no cabeçalho. O proxy
+      // sai do FFmpeg com a duração real: é dele que ela vem, e sem
+      // ela a análise recusa o vídeo como "não encontrado".
+      if (!probe.durationMs) {
+        const medido = await lerMetadados(proxyTmp);
+        probe.durationMs = medido.durationMs;
+        await prisma.mediaSource.update({
+          where: { id: mediaSourceId },
+          data: { durationMs: probe.durationMs || null },
+        });
+      }
+      if (!probe.durationMs) {
+        throw new Error('não foi possível medir a duração do vídeo');
+      }
+
       await publicar(proxyTmp, `${prefixoNoStorage}/proxy.mp4`);
 
       await prisma.mediaSource.create({

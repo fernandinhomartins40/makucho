@@ -13,10 +13,9 @@
 // o layout saltar quando os dados chegam.
 // ============================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ROTULO_DE_ESTADO, podeEditar } from '@makucho/studio-contracts';
+import { ROTULO_DE_ESTADO, estaProcessando } from '@makucho/studio-contracts';
 import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../components/shell/Topbar';
 import { projetos as apiProjetos, type Projeto } from '../lib/api';
@@ -25,7 +24,6 @@ import {
   IconeBusca,
   IconeMais,
   IconeAjuda,
-  IconeNotificacao,
   IconeRelogio,
   IconeMenu,
   IconeCheck,
@@ -55,9 +53,7 @@ const PASSOS = [
 ];
 
 export default function ProjetosPage() {
-  const router = useRouter();
   const [busca, setBusca] = useState('');
-  const [criando, setCriando] = useState(false);
   const [erroDeAcao, setErroDeAcao] = useState<string | null>(null);
 
   const { dados, carregando, erro, recarregar, definir } = useDados<Projeto[]>(() =>
@@ -73,17 +69,19 @@ export default function ProjetosPage() {
   // passo. Um contador fixo seria decoração.
   const concluidos = lista.length > 0 ? 1 : 0;
 
-  const novoProjeto = async () => {
-    setCriando(true);
-    setErroDeAcao(null);
-    try {
-      const projeto = await apiProjetos.criar({ title: 'Vídeo sem título' });
-      router.push(`/gravar?projeto=${projeto.id}`);
-    } catch (e) {
-      setErroDeAcao(e instanceof Error ? e.message : 'não foi possível criar o projeto.');
-      setCriando(false);
-    }
-  };
+  // Enquanto algum vídeo está sendo preparado, a lista se atualiza
+  // sozinha: o selo "Transcrevendo" vira "Proposta pronta" sem F5.
+  const processando = lista.some((p) => estaProcessando(p.state as ProjectState));
+  useEffect(() => {
+    if (!processando) return;
+    const id = setInterval(() => {
+      void apiProjetos
+        .listar()
+        .then(definir)
+        .catch(() => undefined);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [processando, definir]);
 
   const arquivar = async (id: string) => {
     // Some da lista na hora; se o servidor recusar, volta.
@@ -119,31 +117,6 @@ export default function ProjetosPage() {
         <Link href="/ajuda" className="botao-icone" aria-label="Ajuda">
           <IconeAjuda size={20} />
         </Link>
-        <button
-          type="button"
-          className="botao-icone"
-          aria-label="Notificações"
-          style={{ position: 'relative' }}
-        >
-          <IconeNotificacao size={20} />
-        </button>
-        <button
-          type="button"
-          aria-label="Sua conta"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            border: '1px solid var(--border)',
-            background: 'var(--surface-2)',
-            color: 'var(--text-primary)',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          JR
-        </button>
       </Topbar>
 
       <div className="conteudo">
@@ -165,10 +138,16 @@ export default function ProjetosPage() {
             <p className="texto-secundario" style={{ fontSize: 16, marginBottom: 'var(--e5)' }}>
               Planeje, grave e edite com IA. Do seu jeito, para o seu público.
             </p>
-            <button type="button" className="botao" onClick={novoProjeto} disabled={criando}>
-              <IconeMais size={18} weight="bold" />
-              {criando ? 'Criando…' : 'Novo vídeo'}
-            </button>
+            <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
+              <Link href="/gravar" className="botao">
+                <IconeMais size={18} weight="bold" />
+                Novo vídeo
+              </Link>
+              <Link href="/gravar?modo=enviar" className="botao botao--secundario">
+                <IconeEnviar size={16} />
+                Enviar um vídeo pronto
+              </Link>
+            </div>
           </div>
 
           <picture className="hero__arte">
@@ -238,15 +217,10 @@ export default function ProjetosPage() {
                       <IconeGravar size={16} weight="fill" />
                       Gravar agora
                     </Link>
-                    <button
-                      type="button"
-                      className="botao botao--secundario"
-                      onClick={novoProjeto}
-                      disabled={criando}
-                    >
+                    <Link href="/gravar?modo=enviar" className="botao botao--secundario">
                       <IconeEnviar size={16} />
                       Enviar vídeo
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>
@@ -401,12 +375,15 @@ function CartaoDeProjeto({
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const estado = ROTULO_DE_ESTADO[projeto.state as ProjectState];
-  const editavel = podeEditar(projeto.state as ProjectState);
+  // Todo projeto com vídeo abre no editor, que mostra o andamento do
+  // processamento. Antes, só os editáveis iam para lá; o resto abria a
+  // câmera em /gravar, mesmo com o vídeo já enviado.
+  const destino = projeto.state === 'DRAFT' ? `/gravar?projeto=${projeto.id}` : `/editor?projeto=${projeto.id}`;
 
   return (
     <article className="cartao" style={{ padding: 'var(--e3)' }}>
       <Link
-        href={editavel ? `/editor?projeto=${projeto.id}` : `/gravar?projeto=${projeto.id}`}
+        href={destino}
         className="projeto__midia"
         style={{ marginBottom: 'var(--e3)', display: 'block' }}
       >
