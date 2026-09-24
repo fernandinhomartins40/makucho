@@ -36,6 +36,31 @@ export const TIPOS_ACEITOS = [
   'video/x-msvideo',
 ];
 
+/**
+ * O `accept` dos seletores de vídeo.
+ *
+ * No Android, quando o `accept` só tem tipos de vídeo, o Chrome abre o
+ * Seletor de Fotos do sistema, que mostra a galeria (basicamente o que
+ * a câmera gravou) e esconde Downloads, WhatsApp, Drive e outras
+ * pastas. Um tipo que não é de mídia na lista (`application/octet-stream`,
+ * que é também como o Android entrega vídeo de extensão desconhecida)
+ * faz ele abrir o gerenciador de arquivos, com tudo. Quem filtra o que
+ * não é vídeo é `validar()`, pelo tipo e pela extensão.
+ */
+export const ACEITAR_VIDEOS_EM_ARQUIVOS = [
+  'video/*',
+  'application/octet-stream',
+  '.mp4',
+  '.mov',
+  '.m4v',
+  '.webm',
+  '.mkv',
+  '.avi',
+].join(',');
+
+/** Só a galeria (Seletor de Fotos no Android). */
+export const ACEITAR_VIDEOS_DA_GALERIA = 'video/*';
+
 /** Extensão → tipo. O Windows costuma entregar MKV e MOV com `type`
     vazio, e recusar um arquivo válido por isso é defeito nosso. */
 const TIPO_POR_EXTENSAO: Record<string, string> = {

@@ -375,7 +375,7 @@ function SecaoDeArmazenamento() {
         <>
           <Cota
             titulo="Vídeos em edição"
-            texto="Gravações, prévias e vídeos exportados. Arquive projetos antigos para liberar espaço."
+            texto="Gravações, prévias e vídeos exportados. Exclua projetos antigos para liberar espaço."
             uso={dados.edicao}
           />
           <Cota

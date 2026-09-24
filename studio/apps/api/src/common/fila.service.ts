@@ -60,6 +60,31 @@ export class FilaService implements OnModuleDestroy {
     return fila;
   }
 
+  /**
+   * Tira das filas o que ainda não começou para um projeto excluído.
+   *
+   * Sem isto cada job esperando rodaria, falharia com "projeto não
+   * existe" e tentaria de novo três vezes. O que já está rodando segue
+   * até o fim e falha sozinho -- interromper um FFmpeg no meio não é
+   * trabalho da API.
+   */
+  async descartarDoProjeto(projectId: string): Promise<number> {
+    let removidos = 0;
+    for (const nome of FILAS) {
+      try {
+        const jobs = await this.fila(nome).getJobs(['waiting', 'delayed', 'paused', 'prioritized', 'waiting-children']);
+        for (const job of jobs) {
+          if (job?.data?.projectId !== projectId) continue;
+          await job.remove().catch(() => undefined);
+          removidos += 1;
+        }
+      } catch (e) {
+        this.log.warn(`não deu para limpar a fila ${nome} do projeto ${projectId}: ${(e as Error).message}`);
+      }
+    }
+    return removidos;
+  }
+
   async prepararMidia(projectId: string, mediaSourceId: string): Promise<boolean> {
     try {
       await this.fila(FILA_MIDIA).add(

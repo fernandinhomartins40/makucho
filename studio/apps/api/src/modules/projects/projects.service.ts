@@ -15,6 +15,7 @@ import { canTransition } from '@makucho/studio-contracts';
 import type { ProjectInput, ProjectPatch, ProjectState } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { FilaService } from '../../common/fila.service';
+import { StorageService } from '../../common/storage.service';
 import { assertOwnership, scopedWhere } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 
@@ -36,6 +37,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly filas: FilaService,
+    private readonly storage: StorageService,
   ) {}
 
   async listar(tenant: TenantContext, incluirArquivados = false) {
@@ -167,6 +169,52 @@ export class ProjectsService {
       data: { state: 'ARCHIVED' },
       select: RESUMO,
     });
+  }
+
+  /**
+   * Exclui o projeto e TODOS os arquivos dele, em qualquer estado.
+   *
+   * Arquivar só esconde: o vídeo continua no disco e na cota. Quem
+   * precisa de espaço, ou tem um projeto travado no meio do
+   * processamento (que não podia nem ser arquivado), precisa disto.
+   *
+   * Ordem: filas, banco, disco. Sem a linha no banco nenhum worker
+   * consegue mais gravar resultado; um que já estava no meio pode
+   * ainda deixar um arquivo na pasta, por isso ela é apagada de novo
+   * minutos depois. O roteiro de origem fica: ele não é mídia e pode
+   * virar outro vídeo.
+   */
+  async excluir(tenant: TenantContext, id: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto) throw new NotFoundException();
+
+    const pasta = this.storage.pastaDoProjeto(projeto.workspaceId, id);
+    const liberadoBytes = await this.storage.tamanhoDaPasta(pasta);
+
+    await this.filas.descartarDoProjeto(id);
+
+    await this.prisma.$transaction(async (tx) => {
+      // Render aponta para o plano com RESTRICT: sai antes, senão a
+      // cascata do projeto esbarra nele.
+      await tx.render.deleteMany({ where: { projectId: id } });
+      await tx.project.delete({ where: { id } });
+      await tx.auditEvent.create({
+        data: {
+          workspaceId: projeto.workspaceId,
+          actorId: tenant.userId,
+          action: 'project.deleted',
+          entityType: 'Project',
+          entityId: id,
+          metadata: { title: projeto.title, state: projeto.state, liberadoBytes },
+        },
+      });
+    });
+
+    await this.storage.remover(pasta);
+    setTimeout(() => void this.storage.remover(pasta).catch(() => undefined), 10 * 60_000).unref();
+
+    return { ok: true, liberadoBytes };
   }
 
   /**

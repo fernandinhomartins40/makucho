@@ -236,13 +236,16 @@ export interface ParteDoProjeto {
 }
 
 export const projetos = {
-  listar: () => api<Projeto[]>('/projects'),
+  listar: (arquivados = false) => api<Projeto[]>(`/projects${arquivados ? '?arquivados=true' : ''}`),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
   criar: (dados: { title: string; scriptId?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),
   atualizar: (id: string, dados: Partial<{ title: string; objective: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
-  arquivar: (id: string) => api<Projeto>(`/projects/${id}`, { metodo: 'DELETE' }),
+  /** Esconde da lista; os arquivos continuam no disco. */
+  arquivar: (id: string) => api<Projeto>(`/projects/${id}/archive`, { metodo: 'POST' }),
+  /** Apaga o projeto e todos os vídeos dele, em qualquer estado. */
+  excluir: (id: string) => api<{ ok: boolean; liberadoBytes: number }>(`/projects/${id}`, { metodo: 'DELETE' }),
   urlDaMiniatura: (id: string) => `/api/projects/${id}/thumbnail`,
   // Recomeça o processamento do ponto mais adiantado que já tem
   // insumo pronto; quem decide isso é o servidor.

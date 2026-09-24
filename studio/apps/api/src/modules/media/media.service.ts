@@ -109,7 +109,7 @@ export class MediaService {
       const livre = Math.max(0, QUOTA_EDICAO_BYTES - usado);
       throw new PayloadTooLargeException(
         `não há espaço: o arquivo precisa de ${gb(dados.tamanhoBytes)} GB e restam ` +
-          `${gb(livre)} GB. Arquive projetos antigos para liberar espaço.`,
+          `${gb(livre)} GB. Exclua projetos antigos para liberar espaço.`,
       );
     }
 

@@ -14,7 +14,7 @@
 // aplicações.
 // ============================================================
 
-import { Worker, type Job } from 'bullmq';
+import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import {
@@ -37,6 +37,7 @@ import {
   lerMetadados,
   renderizar,
   verificarLimite,
+  limparSeProjetoExcluido,
 } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -73,6 +74,10 @@ function caminhoDe(chave: string): string {
 
 async function processar(job: Job<DadosDoJob>): Promise<void> {
   const { projectId, editPlanId, renderId } = job.data;
+
+  if (!(await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } }))) {
+    throw new UnrecoverableError(`projeto ${projectId} foi excluído`);
+  }
 
   const registro = await prisma.render.findUnique({ where: { id: renderId } });
   if (!registro) throw new Error(`render ${renderId} não existe`);
@@ -402,23 +407,35 @@ worker.on('failed', (job, erro) => {
 
   if (!dados?.projectId) return;
 
-  void prisma.project
-    .update({
-      where: { id: dados.projectId },
-      data: {
-        state: 'FAILED_RETRYABLE',
-        publicError: 'Não foi possível exportar o vídeo. Tente de novo em alguns minutos.',
-      },
-    })
-    .catch(() => undefined);
+  void (async () => {
+    // Projeto excluído durante a exportação: o vídeo que o job chegou a
+    // publicar sai do disco, e não há registro a atualizar.
+    const excluido = await limparSeProjetoExcluido(RAIZ_DO_STORAGE, dados.projectId, async () =>
+      Boolean(await prisma.project.findUnique({ where: { id: dados.projectId }, select: { id: true } })),
+    );
+    if (excluido) {
+      console.log(`[render] projeto ${dados.projectId} excluído: arquivos do job removidos`);
+      return;
+    }
 
-  // O registro do render fica com finishedAt nulo e sem storageKey:
-  // é o que distingue "falhou" de "ainda rodando" numa consulta.
-  if (dados.renderId) {
-    void prisma.render
-      .update({ where: { id: dados.renderId }, data: { qualityCheck: { erro: erro.message } } })
+    await prisma.project
+      .update({
+        where: { id: dados.projectId },
+        data: {
+          state: 'FAILED_RETRYABLE',
+          publicError: 'Não foi possível exportar o vídeo. Tente de novo em alguns minutos.',
+        },
+      })
       .catch(() => undefined);
-  }
+
+    // O registro do render fica com finishedAt nulo e sem storageKey:
+    // é o que distingue "falhou" de "ainda rodando" numa consulta.
+    if (dados.renderId) {
+      await prisma.render
+        .update({ where: { id: dados.renderId }, data: { qualityCheck: { erro: erro.message } } })
+        .catch(() => undefined);
+    }
+  })();
 });
 
 worker.on('completed', (job) => {

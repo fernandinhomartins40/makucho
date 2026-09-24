@@ -60,6 +60,19 @@ export class StorageService {
     return `${seguro(workspaceId)}/${seguro(projectId)}/partes/${seguro(uploadId)}.${limpo || 'bin'}`;
   }
 
+  /**
+   * A pasta com TUDO de um projeto: original, partes, prévia, áudio,
+   * miniatura e vídeos exportados. Excluir o projeto é apagar ela.
+   */
+  pastaDoProjeto(workspaceId: string, projectId: string): string {
+    return `${seguro(workspaceId)}/${seguro(projectId)}`;
+  }
+
+  /** Quanto uma pasta ocupa, em bytes (zero se não existe). */
+  async tamanhoDaPasta(chave: string): Promise<number> {
+    return somaDaPasta(this.caminho(chave));
+  }
+
   /** Chave de um pedaço de upload em andamento. */
   chaveDePedaco(uploadId: string, indice: number): string {
     return `_tmp/${seguro(uploadId)}/${String(indice).padStart(6, '0')}.part`;

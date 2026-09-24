@@ -15,7 +15,7 @@
 //     50 GB de intermediários no disco de 10 GB.
 // ============================================================
 
-import { Queue, Worker, type Job } from 'bullmq';
+import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
@@ -27,6 +27,7 @@ import {
   gerarProxy,
   gerarThumbnail,
   juntarVideos,
+  limparSeProjetoExcluido,
   lerMetadados,
   listaDeConcat,
   verificarLimite,
@@ -203,6 +204,10 @@ function larguraDoProxy(
 
 async function processar(job: Job<DadosDoJob>): Promise<void> {
   const { projectId } = job.data;
+  // Projeto excluído: tentar de novo não traz ele de volta.
+  if (!(await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } }))) {
+    throw new UnrecoverableError(`projeto ${projectId} foi excluído`);
+  }
   const mediaSourceId = job.data.juntar ? await juntarPartes(job) : job.data.mediaSourceId;
   if (!mediaSourceId) throw new Error(`job ${job.id} sem mídia`);
 
@@ -433,14 +438,25 @@ worker.on('failed', (job, erro) => {
   // A mensagem que chega ao usuário não carrega stack, caminho de
   // arquivo nem nome de container: ele não tem o que fazer com isso,
   // e vazar caminho interno é risco sem contrapartida.
-  void prisma.project
-    .update({
-      where: { id: dados.projectId },
-      data: {
-        state: 'FAILED_RETRYABLE',
-        publicError:
-          erro instanceof ErroParaAPessoa ? erro.message : 'Não foi possível preparar o vídeo. Tente enviar de novo.',
-      },
+  //
+  // Antes, o caso do projeto excluído no meio do job: o que ele já
+  // publicou no disco é apagado, e não há estado a gravar.
+  void limparSeProjetoExcluido(RAIZ_DO_STORAGE, dados.projectId, async () =>
+    Boolean(await prisma.project.findUnique({ where: { id: dados.projectId }, select: { id: true } })),
+  )
+    .then((excluido) => {
+      if (excluido) {
+        console.log(`[midia] projeto ${dados.projectId} excluído: arquivos do job removidos`);
+        return;
+      }
+      return prisma.project.update({
+        where: { id: dados.projectId },
+        data: {
+          state: 'FAILED_RETRYABLE',
+          publicError:
+            erro instanceof ErroParaAPessoa ? erro.message : 'Não foi possível preparar o vídeo. Tente enviar de novo.',
+        },
+      });
     })
     .catch(() => undefined);
 });

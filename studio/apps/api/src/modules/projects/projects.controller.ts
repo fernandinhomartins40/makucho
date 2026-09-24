@@ -60,11 +60,18 @@ export class ProjectsController {
     return this.projects.reprocessar(tenant, id);
   }
 
-  // Arquiva em vez de apagar: a gravacao pode ser a unica copia que a
-  // pessoa tem, e um clique errado nao deve destrui-la.
-  @Delete(':id')
+  // Arquivar esconde da lista e mantém os arquivos (desfazível pela
+  // retenção); excluir apaga o projeto e os vídeos de vez. A tela pede
+  // confirmação antes de excluir.
+  @Post(':id/archive')
   arquivar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     assertCanWrite(tenant);
     return this.projects.arquivar(tenant, id);
+  }
+
+  @Delete(':id')
+  excluir(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertCanWrite(tenant);
+    return this.projects.excluir(tenant, id);
   }
 }

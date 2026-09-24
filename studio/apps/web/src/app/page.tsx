@@ -13,13 +13,15 @@
 // o layout saltar quando os dados chegam.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ROTULO_DE_ESTADO, estaProcessando } from '@makucho/studio-contracts';
+import { ROTULO_DE_ESTADO, canTransition, estaProcessando } from '@makucho/studio-contracts';
 import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../components/shell/Topbar';
 import { projetos as apiProjetos, type Projeto } from '../lib/api';
 import { useDados } from '../lib/useDados';
+import { formatarBytes } from '../lib/upload';
+import { Folha } from '../components/shell/Folha';
 import {
   IconeBusca,
   IconeMais,
@@ -32,6 +34,7 @@ import {
   IconeGravar,
   IconeEnviar,
   IconeLixeira,
+  IconeOlhoFechado,
 } from '../components/icones';
 
 const PASSOS = [
@@ -55,9 +58,14 @@ const PASSOS = [
 export default function ProjetosPage() {
   const [busca, setBusca] = useState('');
   const [erroDeAcao, setErroDeAcao] = useState<string | null>(null);
+  const [avisoDeAcao, setAvisoDeAcao] = useState<string | null>(null);
+  const [verArquivados, setVerArquivados] = useState(false);
+  const [aExcluir, setAExcluir] = useState<Projeto | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
-  const { dados, carregando, erro, recarregar, definir } = useDados<Projeto[]>(() =>
-    apiProjetos.listar(),
+  const { dados, carregando, erro, recarregar, definir } = useDados<Projeto[]>(
+    () => apiProjetos.listar(verArquivados),
+    [verArquivados],
   );
 
   const lista = dados ?? [];
@@ -76,12 +84,12 @@ export default function ProjetosPage() {
     if (!processando) return;
     const id = setInterval(() => {
       void apiProjetos
-        .listar()
+        .listar(verArquivados)
         .then(definir)
         .catch(() => undefined);
     }, 6000);
     return () => clearInterval(id);
-  }, [processando, definir]);
+  }, [processando, definir, verArquivados]);
 
   const arquivar = async (id: string) => {
     // Some da lista na hora; se o servidor recusar, volta.
@@ -94,6 +102,30 @@ export default function ProjetosPage() {
       setErroDeAcao(e instanceof Error ? e.message : 'não foi possível arquivar.');
     }
   };
+
+  // Sem otimismo: apagar não se desfaz, então o cartão só some quando
+  // o servidor confirmar.
+  const excluir = async () => {
+    if (!aExcluir) return;
+    setExcluindo(true);
+    setErroDeAcao(null);
+    try {
+      const { liberadoBytes } = await apiProjetos.excluir(aExcluir.id);
+      definir(lista.filter((p) => p.id !== aExcluir.id));
+      setAvisoDeAcao(
+        `"${aExcluir.title}" foi excluído${liberadoBytes > 0 ? ` e ${formatarBytes(liberadoBytes)} foram liberados` : ''}.`,
+      );
+    } catch (e) {
+      setErroDeAcao(e instanceof Error ? e.message : 'não foi possível excluir.');
+    } finally {
+      setExcluindo(false);
+      setAExcluir(null);
+    }
+  };
+
+  const fecharConfirmacao = useCallback(() => {
+    if (!excluindo) setAExcluir(null);
+  }, [excluindo]);
 
   const reprocessar = async (id: string) => {
     // Otimista como o arquivar: o estado muda na hora para que o
@@ -126,6 +158,16 @@ export default function ProjetosPage() {
           <div className="aviso aviso--erro" role="alert" style={{ marginBottom: 'var(--e4)' }}>
             <IconeAviso size={16} />
             <span>{erroDeAcao}</span>
+          </div>
+        )}
+
+        {avisoDeAcao && (
+          <div className="aviso aviso--sucesso" role="status" style={{ marginBottom: 'var(--e4)', alignItems: 'center' }}>
+            <IconeCheck size={16} />
+            <span className="crescer">{avisoDeAcao}</span>
+            <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Fechar aviso" onClick={() => setAvisoDeAcao(null)}>
+              ✕
+            </button>
           </div>
         )}
 
@@ -168,11 +210,23 @@ export default function ProjetosPage() {
           <section>
             <div className="linha entre" style={{ marginBottom: 'var(--e4)' }}>
               <h2>Meus projetos recentes</h2>
-              {lista.length > 0 && (
-                <span className="texto-secundario" style={{ fontSize: 13 }}>
-                  {lista.length} {lista.length === 1 ? 'projeto' : 'projetos'}
-                </span>
-              )}
+              <span className="linha" style={{ gap: 'var(--e2)' }}>
+                {lista.length > 0 && (
+                  <span className="texto-secundario" style={{ fontSize: 13 }}>
+                    {lista.length} {lista.length === 1 ? 'projeto' : 'projetos'}
+                  </span>
+                )}
+                {/* Arquivados somem da lista mas ocupam espaço: é aqui
+                    que se encontra para excluir de vez. */}
+                <button
+                  type="button"
+                  className="botao botao--fantasma botao--pequeno"
+                  aria-pressed={verArquivados}
+                  onClick={() => setVerArquivados((v) => !v)}
+                >
+                  {verArquivados ? 'Ocultar arquivados' : 'Ver arquivados'}
+                </button>
+              </span>
             </div>
 
             {carregando && <Esqueletos />}
@@ -238,11 +292,42 @@ export default function ProjetosPage() {
                     key={projeto.id}
                     projeto={projeto}
                     onArquivar={() => arquivar(projeto.id)}
+                    onExcluir={() => setAExcluir(projeto)}
                     onReprocessar={() => reprocessar(projeto.id)}
                   />
                 ))}
               </div>
             )}
+
+            <Folha aberta={aExcluir !== null} aoFechar={fecharConfirmacao} titulo="Excluir o projeto?">
+              {aExcluir && (
+                <div style={{ display: 'grid', gap: 'var(--e4)' }}>
+                  <p style={{ fontSize: 15, lineHeight: 1.5 }}>
+                    <strong>{aExcluir.title}</strong> será apagado de vez, com todos os vídeos enviados, a
+                    prévia, a transcrição, a edição e os vídeos exportados. Não dá para desfazer.
+                  </p>
+                  {estaProcessando(aExcluir.state as ProjectState) && (
+                    <div className="aviso aviso--atencao">
+                      <IconeAviso size={15} />
+                      <span>O vídeo ainda está sendo processado; o processamento será interrompido.</span>
+                    </div>
+                  )}
+                  <p className="texto-secundario">
+                    O roteiro usado continua salvo em Roteiro. Se ainda for precisar do vídeo exportado,
+                    baixe antes.
+                  </p>
+                  <div className="linha" style={{ gap: 'var(--e2)', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <button type="button" className="botao botao--secundario" disabled={excluindo} onClick={fecharConfirmacao}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="botao botao--excluir" disabled={excluindo} onClick={() => void excluir()}>
+                      <IconeLixeira size={16} />
+                      {excluindo ? 'Excluindo…' : 'Excluir de vez'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </Folha>
           </section>
 
           {/* ---------- Comece por aqui ---------- */}
@@ -347,12 +432,16 @@ function Esqueletos() {
 function CartaoDeProjeto({
   projeto,
   onArquivar,
+  onExcluir,
   onReprocessar,
 }: {
   projeto: Projeto;
   onArquivar: () => void;
+  onExcluir: () => void;
   onReprocessar: () => void;
 }) {
+  // Arquivar só vale fora do processamento; excluir vale sempre.
+  const podeArquivar = canTransition(projeto.state as ProjectState, 'ARCHIVED');
   const [menuAberto, setMenuAberto] = useState(false);
   const estado = ROTULO_DE_ESTADO[projeto.state as ProjectState];
   // Todo projeto com vídeo abre no editor, que mostra o andamento do
@@ -450,16 +539,29 @@ function CartaoDeProjeto({
 
           {menuAberto && (
             <span className="menu">
+              {podeArquivar && (
+                <button
+                  type="button"
+                  className="menu__item"
+                  onClick={() => {
+                    setMenuAberto(false);
+                    onArquivar();
+                  }}
+                >
+                  <IconeOlhoFechado size={15} />
+                  Arquivar
+                </button>
+              )}
               <button
                 type="button"
                 className="menu__item menu__item--perigo"
                 onClick={() => {
                   setMenuAberto(false);
-                  onArquivar();
+                  onExcluir();
                 }}
               >
                 <IconeLixeira size={15} />
-                Arquivar
+                Excluir
               </button>
             </span>
           )}

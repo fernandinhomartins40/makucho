@@ -32,7 +32,8 @@ import {
   validar,
   formatarBytes,
   tipoDoArquivo,
-  TIPOS_ACEITOS,
+  ACEITAR_VIDEOS_DA_GALERIA,
+  ACEITAR_VIDEOS_EM_ARQUIVOS,
 } from '../../lib/upload';
 import {
   projetos as apiProjetos,
@@ -56,6 +57,7 @@ import {
   IconeEnviar,
   IconeRoteiro,
   IconeNuvem,
+  IconeVideo,
   IconeIA,
   IconeSubir,
   IconeDescer,
@@ -486,6 +488,10 @@ function Composicao({
 }) {
   const [arrastando, setArrastando] = useState(false);
   const entradaRef = useRef<HTMLInputElement>(null);
+  const galeriaRef = useRef<HTMLInputElement>(null);
+  // Decidido depois de montar: no servidor não há navegador para ler.
+  const [android, setAndroid] = useState(false);
+  useEffect(() => setAndroid(/Android/i.test(navigator.userAgent)), []);
 
   useEffect(() => {
     if (focoNoEnvio) entradaRef.current?.click();
@@ -552,17 +558,45 @@ function Composicao({
             Arraste um ou vários arquivos para cá, ou escolha no computador ou celular. MP4, MOV, WebM,
             MKV ou AVI, até 2 GB cada e 30 minutos no total.
           </p>
-          <button type="button" className="botao" style={{ justifySelf: 'start' }} onClick={() => entradaRef.current?.click()}>
-            <IconeEnviar size={16} />
-            Escolher arquivos
-          </button>
+          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+            <button type="button" className="botao" onClick={() => entradaRef.current?.click()}>
+              <IconeEnviar size={16} />
+              Escolher arquivos
+            </button>
+            {/* Android: o botão principal abre o gerenciador de arquivos
+                (Downloads, WhatsApp, Drive...); a galeria fica aqui. */}
+            {android && (
+              <button type="button" className="botao botao--secundario" onClick={() => galeriaRef.current?.click()}>
+                <IconeVideo size={16} />
+                Da galeria
+              </button>
+            )}
+          </div>
+          {android && (
+            <p className="campo__ajuda">
+              Não achou o vídeo? Em &quot;Escolher arquivos&quot;, toque em ☰ e escolha Downloads, WhatsApp ou Drive.
+            </p>
+          )}
           <input
             ref={entradaRef}
             type="file"
             multiple
-            accept={[...TIPOS_ACEITOS, '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'].join(',')}
+            accept={ACEITAR_VIDEOS_EM_ARQUIVOS}
             style={{ display: 'none' }}
             aria-label="Escolher vídeos"
+            onChange={(e) => {
+              const arquivos = [...(e.target.files ?? [])];
+              e.target.value = '';
+              if (arquivos.length) onArquivos(arquivos);
+            }}
+          />
+          <input
+            ref={galeriaRef}
+            type="file"
+            multiple
+            accept={ACEITAR_VIDEOS_DA_GALERIA}
+            style={{ display: 'none' }}
+            aria-label="Escolher vídeos da galeria"
             onChange={(e) => {
               const arquivos = [...(e.target.files ?? [])];
               e.target.value = '';

@@ -15,3 +15,4 @@ export * from './ffmpeg';
 export * from './render';
 export * from './legendas';
 export * from './juntar';
+export * from './projeto-excluido';
