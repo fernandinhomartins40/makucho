@@ -2332,6 +2332,116 @@ body {
    libass carrega os arquivos direto. `font-display: swap`: a amostra
    aparece na fonte do sistema enquanto a do vídeo chega. */
 @font-face {
+  font-family: 'Oswald Bold';
+  src: url('/fonts/Oswald-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Barlow Condensed ExtraBold';
+  src: url('/fonts/BarlowCondensed-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Staatliches';
+  src: url('/fonts/Staatliches-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Raleway Black';
+  src: url('/fonts/Raleway-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito Black';
+  src: url('/fonts/Nunito-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Rubik ExtraBold';
+  src: url('/fonts/Rubik-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Space Grotesk Bold';
+  src: url('/fonts/SpaceGrotesk-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lato Black';
+  src: url('/fonts/Lato-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kanit Black';
+  src: url('/fonts/Kanit-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Righteous';
+  src: url('/fonts/Righteous-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Luckiest Guy';
+  src: url('/fonts/LuckiestGuy-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Titan One';
+  src: url('/fonts/TitanOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Russo One';
+  src: url('/fonts/RussoOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Black Ops One';
+  src: url('/fonts/BlackOpsOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bungee';
+  src: url('/fonts/Bungee-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DM Serif Display';
+  src: url('/fonts/DMSerifDisplay-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Abril Fatface';
+  src: url('/fonts/AbrilFatface-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lobster';
+  src: url('/fonts/Lobster-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pacifico';
+  src: url('/fonts/Pacifico-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Dancing Script Bold';
+  src: url('/fonts/DancingScript-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Permanent Marker';
+  src: url('/fonts/PermanentMarker-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caveat Brush';
+  src: url('/fonts/CaveatBrush-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
   font-family: 'Inter ExtraBold';
   src: url('/fonts/Inter-ExtraBold.ttf') format('truetype');
   font-display: swap;
@@ -5091,4 +5201,109 @@ button.recursos-do-trecho__item:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--text-secondary);
+}
+
+/* Amostra desenhada pelo libass: a imagem ocupa o cartão sem distorcer,
+   sobre um fundo escuro neutro (como um vídeo). */
+.estilo__amostra[data-real] {
+  padding: 3px;
+  background:
+    radial-gradient(120% 90% at 30% 20%, #3b4a63 0%, transparent 60%),
+    linear-gradient(160deg, #26324a, #111827);
+}
+
+.estilo__imagem {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Alça da legenda: mais discreta que a dos textos (fica sempre lá). */
+.palco__alca-legenda {
+  border-style: dotted;
+  border-color: rgb(255 255 255 / 28%);
+  cursor: ns-resize;
+}
+
+/* Escolha de fonte: cada nome na própria fonte. */
+.escolha-de-fonte {
+  position: relative;
+}
+
+.escolha-de-fonte__atual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+  width: 100%;
+  text-align: left;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.escolha-de-fonte__lista {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-1);
+  box-shadow: var(--sombra-2);
+}
+
+.escolha-de-fonte__grupo {
+  display: block;
+  margin: 8px 6px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.escolha-de-fonte__opcao {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 17px;
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.escolha-de-fonte__opcao:hover,
+.escolha-de-fonte__opcao[aria-selected='true'] {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+/* A pessoa recortada: entre os textos de trás e os da frente. */
+.palco__recorte {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  /* Mesmo nível das camadas de texto: a ordem no DOM decide (trás,
+     pessoa, frente). */
+  z-index: 1;
+}
+
+.palco__posicionar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--e3);
+  z-index: 6;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }

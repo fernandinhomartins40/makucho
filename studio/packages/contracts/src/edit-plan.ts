@@ -173,7 +173,12 @@ export const captionTrackSchema = z
      * valor absoluto guardado aqui deixaria de acompanhar a troca de
      * estilo -- 110px ficam bons na Anton e estouram a tela na Inter.
      */
-    sizeScale: z.number().min(0.6).max(1.6).optional(),
+    sizeScale: z.number().min(0.5).max(2.2).optional(),
+    /**
+     * Posicao livre: onde fica a BASE do bloco, de 0 (topo) a 1 (pe do
+     * quadro). Arrastada na previa; ausente, vale `position`.
+     */
+    y: z.number().min(0.08).max(0.97).optional(),
     /**
      * Correcoes manuais, por palavra.
      *
@@ -283,6 +288,12 @@ export const estiloDoTextoSchema = z
     durante: z.enum(['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer']).optional(),
     /** O estilo pronto de onde isto veio (só para marcar o cartão). */
     preset: z.string().max(40).optional(),
+    /**
+     * Atrás da pessoa: o texto é desenhado ANTES da pessoa, que é
+     * recortada do quadro (segmentação) e posta por cima -- o efeito do
+     * título "atrás" de quem fala. Sem a máscara, cai na frente.
+     */
+    atras: z.boolean().optional(),
   })
   .strict();
 

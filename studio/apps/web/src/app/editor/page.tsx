@@ -970,6 +970,7 @@ function Editor({ projectId }: { projectId: string }) {
               executar({ op: 'editar_overlay', overlayId: id, style: { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 } })
             }
             onRedimensionarTexto={(id, sizeScale) => executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } })}
+            onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');

@@ -13,6 +13,7 @@ export * from './global-lock';
 export * from './tmp-dir';
 export * from './ffmpeg';
 export * from './render';
+export * from './mascaras';
 export * from './legendas';
 export * from './juntar';
 export * from './projeto-excluido';

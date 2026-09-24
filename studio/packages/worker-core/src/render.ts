@@ -62,6 +62,18 @@ export interface OpcoesDoRender {
   musica?: string;
   /** Efeitos sonoros do workspace por assetId (os embutidos nao precisam). */
   sons?: Readonly<Record<string, string>>;
+  /**
+   * Textos ATRAS da pessoa: o .ass so com eles, e a mascara da pessoa
+   * (mascaras.ts). Os dois juntos, ou nenhum: sem mascara, esses textos
+   * vao no .ass principal, na frente.
+   */
+  legendasAtras?: string;
+  mascara?: { caminho: string; inicioMs: number; quadros: number; lado: number };
+  /**
+   * Modo da mascara: em vez do video final, os quadros montados (sem
+   * texto, sem som) do intervalo, em `lado` x `lado`, RGB cru no stdout.
+   */
+  quadrosParaMascara?: { inicioMs: number; fimMs: number; lado: number };
   aoProgredir?: (fracao: number) => void;
   sinal?: AbortSignal;
 }
@@ -201,7 +213,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // (cruzamento no corte, J/L-cut), o volume e os fades. Posicionada
   // na timeline com `adelay` e somada as outras.
   const pecas: string[] = [];
-  agenda.audio.forEach((p, k) => {
+  if (!opcoes.quadrosParaMascara) agenda.audio.forEach((p, k) => {
     const dur = (p.duracaoMs / 1000).toFixed(3);
     const entrada = novaEntrada(p.sourceInicioMs, p.duracaoMs);
     const fades = [
@@ -222,6 +234,18 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
 
   const acumulado = agenda.duracaoQuadros;
   let video = 'montado';
+
+  // Modo da mascara: so os quadros montados do intervalo, pequenos.
+  if (opcoes.quadrosParaMascara) {
+    const q = opcoes.quadrosParaMascara;
+    partes.push(
+      `${segmentos.join('')}concat=n=${segmentos.length}:v=1:a=0,` +
+        `trim=start=${(q.inicioMs / 1000).toFixed(4)}:end=${(q.fimMs / 1000).toFixed(4)},setpts=PTS-STARTPTS,` +
+        `scale=${q.lado}:${q.lado},format=rgb24[mq]`,
+    );
+    return ['-v', 'error', '-y', ...entradas, '-filter_complex', partes.join(';'), '-map', '[mq]', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'];
+  }
+
   partes.push(`${segmentos.join('')}concat=n=${segmentos.length}:v=1:a=0[montado]`);
 
   const duracaoTotalS = acumulado / FPS;
@@ -345,12 +369,36 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // para a ultima etapa -- mapear antes dela entregaria o video SEM
   // legenda, em silencio.
   partes.push(`[${video}]null[vsaida]`);
+  const fontes = opcoes.pastaDeFontes ? `:fontsdir=${escaparCaminhoDeFiltro(opcoes.pastaDeFontes)}` : '';
+  let base = 'vsaida';
+
+  // Textos ATRAS da pessoa: desenhados no video, e a pessoa recortada
+  // (video + mascara como transparencia) posta por cima deles. Fora da
+  // janela a mascara e preta: nada muda.
+  if (opcoes.legendasAtras && opcoes.mascara) {
+    const m = opcoes.mascara;
+    const indice = proximaEntrada++;
+    entradas.push('-f', 'rawvideo', '-pix_fmt', 'gray', '-video_size', `${m.lado}x${m.lado}`, '-framerate', String(FPS), '-i', m.caminho);
+    const antes = m.inicioMs / 1000;
+    const depois = Math.max(0, duracaoTotalS - antes - m.quadros / FPS);
+    partes.push(
+      `[${indice}:v]setpts=PTS-STARTPTS,tpad=start_duration=${antes.toFixed(4)}:stop_duration=${(depois + 1).toFixed(4)}:color=black,` +
+        `trim=end_frame=${acumulado},setpts=PTS-STARTPTS,scale=${W}:${H}:flags=bicubic,format=gray[mascara]`,
+    );
+    partes.push(`[vsaida]split=2[vfundo][vpessoa]`);
+    partes.push(`[vfundo]subtitles=${escaparCaminhoDeFiltro(opcoes.legendasAtras)}${fontes}[vtras]`);
+    partes.push(`[vpessoa][mascara]alphamerge[pessoa]`);
+    partes.push(
+      `[vtras][pessoa]overlay=0:0:enable='between(t,${antes.toFixed(3)},${(antes + m.quadros / FPS).toFixed(3)})'[vcomposto]`,
+    );
+    base = 'vcomposto';
+  }
+
   const legendar = Boolean(opcoes.legendas) && planoPrecisaDeAss(plano);
-  const saidaDeVideo = legendar ? '[vlegendado]' : '[vsaida]';
+  const saidaDeVideo = legendar ? '[vlegendado]' : `[${base}]`;
 
   if (legendar) {
-    const fontes = opcoes.pastaDeFontes ? `:fontsdir=${escaparCaminhoDeFiltro(opcoes.pastaDeFontes)}` : '';
-    partes.push(`[vsaida]subtitles=${escaparCaminhoDeFiltro(opcoes.legendas!)}${fontes}[vlegendado]`);
+    partes.push(`[${base}]subtitles=${escaparCaminhoDeFiltro(opcoes.legendas!)}${fontes}[vlegendado]`);
   }
 
   return [
@@ -443,11 +491,18 @@ function efeitoDoTrecho(
     return `crop=${cw}:${ch},scale=${W}:${H},`;
   }
   if (efeito === 'zoom_lento') {
-    // A escala cresce com o tempo do trecho (`eval=frame`) e o recorte
-    // volta ao quadro: aproximacao continua, sem o tremor do zoompan.
-    const dur = s(quadros);
-    const tempo = deslocamento > 0 ? `(t+${s(deslocamento)})` : deslocamento < 0 ? `max(0,t-${s(-deslocamento)})` : 't';
-    return `scale=w='trunc(${W}*(1+${ZOOM_LENTO}*${tempo}/${dur})/2)*2':h=-2:eval=frame,crop=${W}:${H},`;
+    // Aproximacao continua e CENTRADA, como na previa: o `perspective`
+    // pega, a cada quadro, um retangulo central que encolhe e o estica
+    // ao quadro todo (subpixel, sem o tremor do zoompan). Antes era
+    // `scale` com eval=frame + `crop`: o crop ficava preso no tamanho
+    // do primeiro quadro e o zoom "andava" para o canto (medido: o
+    // centro saia de 540,960 para 581,1034 em 4 s).
+    const quadro = deslocamento ? `max(0,in${deslocamento > 0 ? '+' : ''}${deslocamento})` : 'in';
+    const m = `(1-1/(1+${ZOOM_LENTO}*${quadro}/${quadros}))/2`;
+    return (
+      `perspective=x0='W*${m}':y0='H*${m}':x1='W-W*${m}':y1='H*${m}':` +
+      `x2='W*${m}':y2='H-H*${m}':x3='W-W*${m}':y3='H-H*${m}':interpolation=linear:eval=frame,`
+    );
   }
   return '';
 }

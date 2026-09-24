@@ -12,9 +12,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
-import { DURACAO_PADRAO_DA_TRANSICAO, PRESETS_DE_TEXTO, agendaDoPlano } from '@makucho/studio-contracts';
+import { DURACAO_PADRAO_DA_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
 import { assets as apiAssets, type Asset } from '../../lib/api';
-import { AmostraDeTexto } from '../editor/AmostraDeTexto';
+import { EstilosDeTexto } from '../editor/EstilosDeTexto';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
 import { EFEITOS_DE_TRECHO, ELEMENTOS, SONS, TRANSICOES } from './catalogo';
@@ -107,28 +107,24 @@ function Textos({ plan, posicaoMs, marca, onOperacao, onSelecionarItem, itemSele
       <Alvo>
         <strong>{elemento.rotulo}:</strong> {elemento.descricao} <em>{elemento.quando}</em> Entra no cursor ({tempo(noCursor)}).
       </Alvo>
-      <div className="estilos estilos--texto" role="list">
-        {PRESETS_DE_TEXTO.map((p) => (
-          <div key={p.id} role="listitem" className="biblioteca__cartao-texto">
-            <button type="button" className="estilo" title={`${p.descricao} Clique para adicionar.`} onClick={() => adicionar(p.estilo)}>
-              <span className="estilo__amostra">
-                <AmostraDeTexto estilo={p.estilo} componente={componente} marca={marca} texto={elemento.exemplo.split(/[|\s]+/).slice(0, 2).join(' ')} />
-              </span>
-              <span className="estilo__rotulo">{p.rotulo}</span>
+      <EstilosDeTexto
+        componente={componente}
+        texto={elemento.exemplo.split(/[|\s]+/).slice(0, 2).join(' ')}
+        marca={marca}
+        onEscolher={(p) => adicionar(p.estilo)}
+        extra={(p) =>
+          selecionado && (
+            <button
+              type="button"
+              className="biblioteca__aplicar"
+              title={`Aplicar "${p.rotulo}" ao texto selecionado`}
+              onClick={() => onOperacao({ op: 'editar_overlay', overlayId: selecionado.id, style: p.estilo, replaceStyle: true })}
+            >
+              <IconeCheck size={12} /> No selecionado
             </button>
-            {selecionado && (
-              <button
-                type="button"
-                className="biblioteca__aplicar"
-                title={`Aplicar "${p.rotulo}" ao texto selecionado`}
-                onClick={() => onOperacao({ op: 'editar_overlay', overlayId: selecionado.id, style: p.estilo, replaceStyle: true })}
-              >
-                <IconeCheck size={12} /> No selecionado
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
+          )
+        }
+      />
     </>
   );
 }

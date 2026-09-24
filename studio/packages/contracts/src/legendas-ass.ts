@@ -64,6 +64,39 @@ export interface OpcoesDoAss {
   clipsDesligados?: readonly string[];
   /** Cores e fontes da marca, para os textos de tela. */
   marca?: MarcaDoVideo;
+  /**
+   * Que parte desenhar:
+   *   tudo    -- legendas e todos os textos (sem máscara da pessoa);
+   *   frente  -- tudo MENOS os textos marcados "atrás da pessoa";
+   *   atras   -- SÓ os textos atrás da pessoa (sem legenda).
+   * O render e a prévia desenham "atras", recortam a pessoa por cima e
+   * depois desenham "frente".
+   */
+  camada?: 'tudo' | 'frente' | 'atras';
+}
+
+/** O texto vai atrás da pessoa? */
+export function ehTextoAtras(o: EditPlanV1['overlays'][number]): boolean {
+  return Boolean(o.style?.atras) && (OVERLAYS_DE_TEXTO as readonly string[]).includes(o.component);
+}
+
+/**
+ * Os intervalos (timeline) em que há texto atrás da pessoa, unidos e
+ * dentro do vídeo: é onde a máscara da pessoa precisa existir.
+ */
+export function janelasAtras(plano: EditPlanV1, duracaoMs: number): Array<{ inicioMs: number; fimMs: number }> {
+  const lista = plano.overlays
+    .filter(ehTextoAtras)
+    .map((o) => ({ inicioMs: Math.max(0, o.timelineStartMs), fimMs: Math.min(duracaoMs, o.timelineStartMs + o.durationMs) }))
+    .filter((j) => j.fimMs > j.inicioMs)
+    .sort((a, b) => a.inicioMs - b.inicioMs);
+  const unidas: Array<{ inicioMs: number; fimMs: number }> = [];
+  for (const j of lista) {
+    const ultima = unidas.at(-1);
+    if (ultima && j.inicioMs <= ultima.fimMs) ultima.fimMs = Math.max(ultima.fimMs, j.fimMs);
+    else unidas.push({ ...j });
+  }
+  return unidas;
 }
 
 /** Uma palavra dentro de um bloco, ja no tempo da timeline. */
@@ -140,7 +173,8 @@ function paraResolvido(e: EstiloResolvido | CaptionStyleInput, plano?: EditPlanV
   const fonte = c.fontId ? (FONTES_DE_VIDEO as Record<string, FonteDeVideo>)[c.fontId] : undefined;
   return {
     ...resolvido,
-    posicao: c.position,
+    // Arrastada na prévia: a base do bloco fica onde a pessoa soltou.
+    ...(c.y !== undefined ? { posicao: 'bottom' as const, baseY: c.y } : { posicao: c.position }),
     ...(fonte ? { fonte } : {}),
     ...(c.color ? { cor: c.color } : {}),
     ...(c.highlightColor ? { corDestaque: c.highlightColor } : {}),
@@ -377,8 +411,9 @@ export function escaparAss(texto: string): string {
 }
 
 /** Margens da legenda no quadro, por posicao. */
-function margens(plano: EditPlanV1, posicao: EstiloResolvido['posicao']) {
+function margens(plano: EditPlanV1, posicao: EstiloResolvido['posicao'], baseY?: number) {
   const { width, height } = plano.canvas;
+  if (baseY !== undefined) return { h: Math.round(width * 0.06), v: Math.round(height * (1 - baseY)) };
   return {
     h: Math.round(width * 0.06),
     // Embaixo, 24% da altura: acima da faixa onde Reels, TikTok e
@@ -457,7 +492,7 @@ function dialogo(camada: number, inicioMs: number, fimMs: number, estilo: string
 // ---------- Legendas ----------
 
 function estilosDaLegenda(plano: EditPlanV1, e: EstiloResolvido): string[] {
-  const m = margens(plano, e.posicao);
+  const m = margens(plano, e.posicao, e.baseY);
   const karaoke = e.animacao === 'karaoke';
   const sombraOpaca = e.sombra ? corAss(e.sombra.cor, e.sombra.opacidade) : '&H64000000';
 
@@ -511,7 +546,7 @@ function estilosDaLegenda(plano: EditPlanV1, e: EstiloResolvido): string[] {
 /** Posicao absoluta do bloco, para animacoes com \move. */
 function ancora(plano: EditPlanV1, e: EstiloResolvido) {
   const { width, height } = plano.canvas;
-  const m = margens(plano, e.posicao);
+  const m = margens(plano, e.posicao, e.baseY);
   const x = Math.round(width / 2);
   const y = e.posicao === 'bottom' ? height - m.v : e.posicao === 'top' ? m.v : Math.round(height / 2);
   return { x, y };
@@ -841,7 +876,16 @@ export function planoPrecisaDeAss(plano: EditPlanV1): boolean {
  * valer.
  */
 export function gerarAss(opcoes: OpcoesDoAss): string {
-  const { plano } = opcoes;
+  const camada = opcoes.camada ?? 'tudo';
+  const plano =
+    camada === 'tudo'
+      ? opcoes.plano
+      : {
+          ...opcoes.plano,
+          captions: camada === 'atras' ? { ...opcoes.plano.captions, enabled: false } : opcoes.plano.captions,
+          overlays: opcoes.plano.overlays.filter((o) => (camada === 'atras' ? ehTextoAtras(o) : !ehTextoAtras(o))),
+        };
+  opcoes = { ...opcoes, plano };
   const estilo = paraResolvido(opcoes.estilo, plano);
   const marca: MarcaDoVideo = opcoes.marca ?? { cores: CORES_PADRAO_DA_MARCA };
   const { width, height } = plano.canvas;

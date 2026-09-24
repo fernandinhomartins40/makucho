@@ -14,7 +14,8 @@
     "@makucho/studio-database": "workspace:*",
     "@makucho/studio-worker-core": "workspace:*",
     "bullmq": "^5.28.1",
-    "ioredis": "^5.4.1"
+    "ioredis": "^5.4.1",
+    "onnxruntime-web": "1.30.0"
   },
   "devDependencies": {
     "@makucho/typescript-config": "workspace:*",

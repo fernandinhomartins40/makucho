@@ -541,6 +541,12 @@ export const PRESETS_DE_TEXTO: readonly PresetDeTexto[] = [
     estilo: tudo({ preset: 'alerta', fontId: 'archivo-black', uppercase: true, bgShape: 'arredondado', bgColor: '#E11D48', bgPadding: 22, entrada: 'pop', durante: 'tremer' }),
   },
   {
+    id: 'atras',
+    rotulo: 'Atrás da pessoa',
+    descricao: 'Letras enormes atrás de quem fala: a pessoa fica na frente do texto.',
+    estilo: tudo({ preset: 'atras', fontId: 'anton', sizeScale: 2.6, uppercase: true, letterSpacing: 2, atras: true, entrada: 'zoom', saida: 'sumir' }),
+  },
+  {
     id: 'quadrinho',
     rotulo: 'Quadrinho',
     descricao: 'Letra de HQ com contorno grosso e balanço.',

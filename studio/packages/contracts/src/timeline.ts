@@ -212,7 +212,9 @@ export const configurarLegendaSchema = z.object({
   wordsPerBlock: z.number().int().min(1).max(8).optional(),
   position: z.enum(['top', 'center', 'bottom']).optional(),
   highlightActiveWord: z.boolean().optional(),
-  sizeScale: z.number().min(0.6).max(1.6).optional(),
+  sizeScale: z.number().min(0.5).max(2.2).optional(),
+  /** Posição livre da base do bloco (0-1); `null` volta à `position`. */
+  y: z.number().min(0.08).max(0.97).nullable().optional(),
   /** `null` volta ao do estilo. */
   fontId: z.string().max(40).nullable().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),

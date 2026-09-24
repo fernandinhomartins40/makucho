@@ -25,6 +25,8 @@ import {
 } from '@makucho/studio-contracts';
 import type { AbaDoElemento, ItemDaTimeline } from '../timeline/camadas';
 import { AmostraDeTexto } from './AmostraDeTexto';
+import { EscolhaDeFonte } from './EscolhaDeFonte';
+import { EstilosDeTexto } from './EstilosDeTexto';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { IconeLixeira, IconeTocar, IconeMudo } from '../icones';
 import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
@@ -453,9 +455,6 @@ const ABAS_DO_ELEMENTO: ReadonlyArray<readonly [AbaDoElemento, string]> = [
   ['animacao', 'Animação'],
 ];
 
-/** O visual de antes (sem estilo): o cartão "Original". */
-const ORIGINAL = { id: 'original', rotulo: 'Original', descricao: 'O visual padrão deste elemento, com as cores da marca.', estilo: {} };
-
 type Estilo = NonNullable<EditPlanV1['overlays'][number]['style']>;
 
 function Elemento({
@@ -546,41 +545,50 @@ function Elemento({
 
           {aba === 'estilos' && (
             <div className="campo" style={{ marginBottom: 0 }}>
-              <div className="estilos estilos--texto" role="radiogroup" aria-label="Estilos prontos">
-                {[ORIGINAL, ...PRESETS_DE_TEXTO].map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={p.id === 'original' ? !o.style || Object.keys(o.style).every((k) => k === 'x' || k === 'y') : e.preset === p.id}
-                    className="estilo"
-                    title={p.descricao}
-                    onClick={() => aplicar(p.estilo)}
-                  >
-                    <span className="estilo__amostra">
-                      <AmostraDeTexto estilo={p.estilo} componente={o.component} marca={marca} texto={amostra} />
-                    </span>
-                    <span className="estilo__rotulo">{p.rotulo}</span>
-                  </button>
-                ))}
-              </div>
+              <EstilosDeTexto
+                componente={o.component}
+                texto={amostra}
+                marca={marca}
+                comOriginal
+                escolhido={!o.style || Object.keys(o.style).every((k) => k === 'x' || k === 'y') ? 'original' : (e.preset ?? null)}
+                onEscolher={(p) => aplicar(p.estilo)}
+              />
               <p className="campo__ajuda">Aplicar um estilo mantém o texto, o tempo e a posição. Depois, ajuste o que quiser nas outras abas.</p>
             </div>
           )}
 
           {aba === 'texto' && (
             <>
-              <label className="campo" style={{ marginBottom: 0 }}>
-                <span className="campo__rotulo">Fonte</span>
-                <select className="campo__selecao" value={e.fontId ?? ''} onChange={(ev) => estilo({ fontId: ev.target.value || undefined })}>
-                  <option value="">Fonte de títulos da marca</option>
-                  {Object.entries(FONTES_DE_VIDEO).map(([id, f]) => (
-                    <option key={id} value={id}>
-                      {f.rotulo}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="campo" style={{ marginBottom: 0 }}>
+                <span className="campo__rotulo">Em relação à pessoa</span>
+                <Segmentado
+                  rotulo="Texto na frente ou atrás da pessoa"
+                  valor={e.atras ? 'atras' : 'frente'}
+                  opcoes={[
+                    ['frente', 'Na frente'],
+                    ['atras', 'Atrás da pessoa'],
+                  ]}
+                  onTrocar={(v) => estilo({ atras: v === 'atras' })}
+                />
+                {e.atras && (
+                  <p className="campo__ajuda">
+                    A pessoa é recortada do vídeo e fica na frente do texto (prévia e exportação usam o mesmo recorte). Na prévia, use
+                    “Posicionar atrás da pessoa” para achar a altura em que o texto continua legível.
+                  </p>
+                )}
+              </div>
+              <EscolhaDeFonte
+                rotulo="Fonte"
+                valor={e.fontId}
+                rotuloPadrao="Fonte de títulos da marca"
+                onTrocar={(v) => {
+                  if (v) return estilo({ fontId: v });
+                  // Voltar à fonte da marca: o estilo inteiro sem a fonte
+                  // (mesclar não apaga um campo).
+                  const { fontId: _f, ...semFonte } = e;
+                  aplicar(semFonte);
+                }}
+              />
               <Deslizante rotulo="Tamanho" valor={Math.round((e.sizeScale ?? 1) * 100)} min={40} max={300} passo={5} unidade="%" onSoltar={(v) => estilo({ sizeScale: v / 100 })} />
               <div className="linha" style={{ gap: 'var(--e3)' }}>
                 <Cor rotulo="Cor do texto" valor={r.cor} onTrocar={(v) => estilo({ color: v })} />

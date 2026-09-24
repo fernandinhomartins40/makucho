@@ -43,7 +43,7 @@ interface Jassub {
  * As fontes do vídeo, pelo nome que o .ass declara. O JASSUB baixa só
  * as que o arquivo usa, na hora em que precisa.
  */
-const FONTES = Object.fromEntries(
+export const FONTES = Object.fromEntries(
   Object.values(FONTES_DE_VIDEO).map((f) => [f.nomeAss.toLowerCase(), `/fonts/${f.arquivo}`]),
 );
 
@@ -55,7 +55,7 @@ const FONTES = Object.fromEntries(
  * achava e caía na LiberationSans -- a prévia saía com outra fonte e
  * outra quebra de linha, diferente dos exemplos e do arquivo final.
  */
-function fontesDoAss(ass: string): string[] {
+export function fontesDoAss(ass: string): string[] {
   const nomes = new Set<string>();
   for (const linha of ass.split('\n')) {
     if (linha.startsWith('Style: ')) nomes.add(linha.slice(7).split(',')[1]?.trim().toLowerCase() ?? '');

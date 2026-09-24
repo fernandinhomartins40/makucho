@@ -42,24 +42,58 @@ export interface FonteDeVideo {
    * conta propria -- o "negrito falso" que borra as letras.
    */
   negrito: boolean;
+  /** Para agrupar na escolha: sem serifa, condensada, display... */
+  categoria?: CategoriaDeFonte;
 }
 
+export const CATEGORIAS_DE_FONTE = {
+  sem_serifa: 'Sem serifa',
+  condensada: 'Condensadas',
+  display: 'Impacto e display',
+  serifa: 'Com serifa',
+  manuscrita: 'Manuscritas',
+} as const;
+
+export type CategoriaDeFonte = keyof typeof CATEGORIAS_DE_FONTE;
+
 export const FONTES_DE_VIDEO = {
-  inter: { rotulo: 'Inter', nomeAss: 'Inter ExtraBold', arquivo: 'Inter-ExtraBold.ttf', negrito: false },
-  'inter-semi': { rotulo: 'Inter (média)', nomeAss: 'Inter SemiBold', arquivo: 'Inter-SemiBold.ttf', negrito: false },
-  montserrat: { rotulo: 'Montserrat', nomeAss: 'Montserrat ExtraBold', arquivo: 'Montserrat-ExtraBold.ttf', negrito: false },
-  'montserrat-black': { rotulo: 'Montserrat Black', nomeAss: 'Montserrat Black', arquivo: 'Montserrat-Black.ttf', negrito: false },
-  poppins: { rotulo: 'Poppins', nomeAss: 'Poppins', arquivo: 'Poppins-Bold.ttf', negrito: true },
-  'poppins-extra': { rotulo: 'Poppins ExtraBold', nomeAss: 'Poppins ExtraBold', arquivo: 'Poppins-ExtraBold.ttf', negrito: false },
-  anton: { rotulo: 'Anton', nomeAss: 'Anton', arquivo: 'Anton-Regular.ttf', negrito: false },
-  bebas: { rotulo: 'Bebas Neue', nomeAss: 'Bebas Neue', arquivo: 'BebasNeue-Regular.ttf', negrito: false },
-  'archivo-black': { rotulo: 'Archivo Black', nomeAss: 'Archivo Black', arquivo: 'ArchivoBlack-Regular.ttf', negrito: false },
-  archivo: { rotulo: 'Archivo', nomeAss: 'Archivo ExtraBold', arquivo: 'Archivo-ExtraBold.ttf', negrito: false },
-  bangers: { rotulo: 'Bangers', nomeAss: 'Bangers', arquivo: 'Bangers-Regular.ttf', negrito: false },
-  playfair: { rotulo: 'Playfair Display', nomeAss: 'Playfair Display', arquivo: 'PlayfairDisplay-Bold.ttf', negrito: true },
-  roboto: { rotulo: 'Roboto', nomeAss: 'Roboto', arquivo: 'Roboto-Bold.ttf', negrito: true },
-  'open-sans': { rotulo: 'Open Sans', nomeAss: 'Open Sans', arquivo: 'OpenSans-Bold.ttf', negrito: true },
-  'source-sans': { rotulo: 'Source Sans 3', nomeAss: 'Source Sans 3', arquivo: 'SourceSans3-Bold.ttf', negrito: true },
+  inter: { rotulo: 'Inter', nomeAss: 'Inter ExtraBold', arquivo: 'Inter-ExtraBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  'inter-semi': { rotulo: 'Inter (média)', nomeAss: 'Inter SemiBold', arquivo: 'Inter-SemiBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  montserrat: { rotulo: 'Montserrat', nomeAss: 'Montserrat ExtraBold', arquivo: 'Montserrat-ExtraBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  'montserrat-black': { rotulo: 'Montserrat Black', nomeAss: 'Montserrat Black', arquivo: 'Montserrat-Black.ttf', negrito: false, categoria: 'sem_serifa' },
+  poppins: { rotulo: 'Poppins', nomeAss: 'Poppins', arquivo: 'Poppins-Bold.ttf', negrito: true, categoria: 'sem_serifa' },
+  'poppins-extra': { rotulo: 'Poppins ExtraBold', nomeAss: 'Poppins ExtraBold', arquivo: 'Poppins-ExtraBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  anton: { rotulo: 'Anton', nomeAss: 'Anton', arquivo: 'Anton-Regular.ttf', negrito: false, categoria: 'condensada' },
+  bebas: { rotulo: 'Bebas Neue', nomeAss: 'Bebas Neue', arquivo: 'BebasNeue-Regular.ttf', negrito: false, categoria: 'condensada' },
+  'archivo-black': { rotulo: 'Archivo Black', nomeAss: 'Archivo Black', arquivo: 'ArchivoBlack-Regular.ttf', negrito: false, categoria: 'display' },
+  archivo: { rotulo: 'Archivo', nomeAss: 'Archivo ExtraBold', arquivo: 'Archivo-ExtraBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  bangers: { rotulo: 'Bangers', nomeAss: 'Bangers', arquivo: 'Bangers-Regular.ttf', negrito: false, categoria: 'display' },
+  playfair: { rotulo: 'Playfair Display', nomeAss: 'Playfair Display', arquivo: 'PlayfairDisplay-Bold.ttf', negrito: true, categoria: 'serifa' },
+  roboto: { rotulo: 'Roboto', nomeAss: 'Roboto', arquivo: 'Roboto-Bold.ttf', negrito: true, categoria: 'sem_serifa' },
+  'open-sans': { rotulo: 'Open Sans', nomeAss: 'Open Sans', arquivo: 'OpenSans-Bold.ttf', negrito: true, categoria: 'sem_serifa' },
+  'source-sans': { rotulo: 'Source Sans 3', nomeAss: 'Source Sans 3', arquivo: 'SourceSans3-Bold.ttf', negrito: true, categoria: 'sem_serifa' },
+  'oswald': { rotulo: 'Oswald', nomeAss: 'Oswald Bold', arquivo: 'Oswald-Bold.ttf', negrito: false, categoria: 'condensada' },
+  'barlow-condensed': { rotulo: 'Barlow Condensed', nomeAss: 'Barlow Condensed ExtraBold', arquivo: 'BarlowCondensed-ExtraBold.ttf', negrito: false, categoria: 'condensada' },
+  'staatliches': { rotulo: 'Staatliches', nomeAss: 'Staatliches', arquivo: 'Staatliches-Regular.ttf', negrito: false, categoria: 'condensada' },
+  'raleway': { rotulo: 'Raleway Black', nomeAss: 'Raleway Black', arquivo: 'Raleway-Black.ttf', negrito: false, categoria: 'sem_serifa' },
+  'nunito': { rotulo: 'Nunito Black', nomeAss: 'Nunito Black', arquivo: 'Nunito-Black.ttf', negrito: false, categoria: 'sem_serifa' },
+  'rubik': { rotulo: 'Rubik', nomeAss: 'Rubik ExtraBold', arquivo: 'Rubik-ExtraBold.ttf', negrito: false, categoria: 'sem_serifa' },
+  'space-grotesk': { rotulo: 'Space Grotesk', nomeAss: 'Space Grotesk Bold', arquivo: 'SpaceGrotesk-Bold.ttf', negrito: false, categoria: 'sem_serifa' },
+  'lato': { rotulo: 'Lato Black', nomeAss: 'Lato Black', arquivo: 'Lato-Black.ttf', negrito: false, categoria: 'sem_serifa' },
+  'kanit': { rotulo: 'Kanit Black', nomeAss: 'Kanit Black', arquivo: 'Kanit-Black.ttf', negrito: false, categoria: 'sem_serifa' },
+  'righteous': { rotulo: 'Righteous', nomeAss: 'Righteous', arquivo: 'Righteous-Regular.ttf', negrito: false, categoria: 'display' },
+  'luckiest-guy': { rotulo: 'Luckiest Guy', nomeAss: 'Luckiest Guy', arquivo: 'LuckiestGuy-Regular.ttf', negrito: false, categoria: 'display' },
+  'titan-one': { rotulo: 'Titan One', nomeAss: 'Titan One', arquivo: 'TitanOne-Regular.ttf', negrito: false, categoria: 'display' },
+  'russo-one': { rotulo: 'Russo One', nomeAss: 'Russo One', arquivo: 'RussoOne-Regular.ttf', negrito: false, categoria: 'display' },
+  'black-ops': { rotulo: 'Black Ops One', nomeAss: 'Black Ops One', arquivo: 'BlackOpsOne-Regular.ttf', negrito: false, categoria: 'display' },
+  'bungee': { rotulo: 'Bungee', nomeAss: 'Bungee', arquivo: 'Bungee-Regular.ttf', negrito: false, categoria: 'display' },
+  'dm-serif': { rotulo: 'DM Serif Display', nomeAss: 'DM Serif Display', arquivo: 'DMSerifDisplay-Regular.ttf', negrito: false, categoria: 'serifa' },
+  'abril': { rotulo: 'Abril Fatface', nomeAss: 'Abril Fatface', arquivo: 'AbrilFatface-Regular.ttf', negrito: false, categoria: 'serifa' },
+  'lobster': { rotulo: 'Lobster', nomeAss: 'Lobster', arquivo: 'Lobster-Regular.ttf', negrito: false, categoria: 'manuscrita' },
+  'pacifico': { rotulo: 'Pacifico', nomeAss: 'Pacifico', arquivo: 'Pacifico-Regular.ttf', negrito: false, categoria: 'manuscrita' },
+  'dancing': { rotulo: 'Dancing Script', nomeAss: 'Dancing Script Bold', arquivo: 'DancingScript-Bold.ttf', negrito: false, categoria: 'manuscrita' },
+  'permanent-marker': { rotulo: 'Permanent Marker', nomeAss: 'Permanent Marker', arquivo: 'PermanentMarker-Regular.ttf', negrito: false, categoria: 'manuscrita' },
+  'caveat-brush': { rotulo: 'Caveat Brush', nomeAss: 'Caveat Brush', arquivo: 'CaveatBrush-Regular.ttf', negrito: false, categoria: 'manuscrita' },
 } as const satisfies Record<string, FonteDeVideo>;
 
 export type IdDaFonte = keyof typeof FONTES_DE_VIDEO;
@@ -83,6 +117,19 @@ const FONTE_POR_FAMILIA: Record<string, IdDaFonte> = {
   'bebas neue': 'bebas',
   bangers: 'bangers',
   'playfair display': 'playfair',
+  oswald: 'oswald',
+  raleway: 'raleway',
+  nunito: 'nunito',
+  rubik: 'rubik',
+  lato: 'lato',
+  kanit: 'kanit',
+  'space grotesk': 'space-grotesk',
+  'barlow condensed': 'barlow-condensed',
+  lobster: 'lobster',
+  pacifico: 'pacifico',
+  righteous: 'righteous',
+  'dm serif display': 'dm-serif',
+  'abril fatface': 'abril',
 };
 
 export function fonteDaFamilia(familia: string | null | undefined, reserva: IdDaFonte = 'montserrat'): FonteDeVideo {
@@ -427,6 +474,8 @@ export interface EstiloResolvido {
   escalaAtiva: number;
   palavrasPorBloco: number;
   posicao: 'top' | 'center' | 'bottom';
+  /** Posição livre da base do bloco (0-1), quando a pessoa arrastou. */
+  baseY?: number;
   maxCaracteres: number;
 }
 

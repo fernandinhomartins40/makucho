@@ -25,6 +25,7 @@ import {
   editPlanV1Schema,
   ehEfeitoSonoroEmbutido,
   gerarAss,
+  janelasAtras,
   planoPrecisaDeAss,
   presetDaLegenda,
   resolverEstiloDaLegenda,
@@ -34,11 +35,13 @@ import {
   comEspacoDeTrabalho,
   comLockGlobal,
   duracaoDoResultado,
+  gerarMascaraDaPessoa,
   lerMetadados,
   renderizar,
   verificarLimite,
   limparSeProjetoExcluido,
 } from '@makucho/studio-worker-core';
+import type { MascaraGerada, RuntimeOnnx } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
@@ -52,6 +55,12 @@ const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/m
  */
 const PASTA_DE_FONTES = resolve(process.env.STUDIO_FONTS_DIR ?? '/app/fonts');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+/**
+ * Modelo da pessoa (MediaPipe Selfie Segmentation, Apache 2.0, em
+ * ONNX): é o que põe um texto ATRÁS de quem fala.
+ */
+const MODELO_DA_PESSOA = resolve(process.env.STUDIO_MODELO_PESSOA ?? '/app/modelos/pessoa.onnx');
 
 interface DadosDoJob {
   projectId: string;
@@ -120,14 +129,39 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       // O .ass vive no espaço de trabalho: é temporário e vai embora
       // com ele. Guardá-lo no storage encheria o disco com um arquivo
       // que só serve durante o render.
-      const legendas = await prepararAss(
-        espaco,
-        plano,
-        projectId,
-        workspaceId,
-        marca,
-        job.data.clipsDesligados ?? [],
-      );
+      const desligados = job.data.clipsDesligados ?? [];
+
+      // Texto atrás da pessoa: a máscara sai antes do render. Qualquer
+      // falha aqui vira texto na frente -- o vídeo não deixa de sair.
+      let mascara: MascaraGerada | null = null;
+      const temAtras = janelasAtras(plano, duracaoDoResultado(plano, desligados)).length > 0;
+      if (temAtras && existsSync(MODELO_DA_PESSOA)) {
+        try {
+          mascara = await gerarMascaraDaPessoa({
+            entrada,
+            plano,
+            clipsDesligados: desligados,
+            saida: espaco.arquivo('mascara.raw'),
+            modelo: MODELO_DA_PESSOA,
+            ort: (await import('onnxruntime-web')) as unknown as RuntimeOnnx,
+            aoProgredir: () => {
+              void renovar();
+              bater();
+            },
+          });
+          console.log(`[render] máscara da pessoa: ${mascara?.quadros ?? 0} quadros`);
+        } catch (e) {
+          console.warn(`[render] máscara da pessoa falhou; textos vão na frente:`, e);
+          mascara = null;
+        }
+      } else if (temAtras) {
+        console.warn(`[render] modelo ${MODELO_DA_PESSOA} ausente: textos "atrás" vão na frente`);
+      }
+
+      const legendas = await prepararAss(espaco, plano, projectId, workspaceId, marca, desligados, mascara ? 'frente' : 'tudo');
+      const legendasAtras = mascara
+        ? await prepararAss(espaco, plano, projectId, workspaceId, marca, desligados, 'atras')
+        : undefined;
 
       const arquivos = await arquivosDoPlano(plano, workspaceId);
 
@@ -136,6 +170,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         saida: saidaTmp,
         plano,
         legendas,
+        ...(mascara && legendasAtras ? { legendasAtras, mascara } : {}),
         pastaDeFontes: existsSync(PASTA_DE_FONTES) ? PASTA_DE_FONTES : undefined,
         imagens: arquivos.imagens,
         musica: arquivos.musica,
@@ -221,6 +256,7 @@ async function prepararAss(
   workspaceId: string | null,
   marca: MarcaDoVideo,
   clipsDesligados: readonly string[],
+  camada: 'tudo' | 'frente' | 'atras' = 'tudo',
 ): Promise<string | undefined> {
   if (!planoPrecisaDeAss(plano)) return undefined;
 
@@ -230,9 +266,9 @@ async function prepararAss(
 
   // As palavras vêm da transcrição, com os timestamps que o whisper
   // mediu. É a única origem possível para a legenda.
-  const palavras = plano.captions.enabled ? await palavrasDo(projectId) : [];
+  const palavras = plano.captions.enabled && camada !== 'atras' ? await palavrasDo(projectId) : [];
 
-  if (plano.captions.enabled && palavras.length === 0) {
+  if (plano.captions.enabled && camada !== 'atras' && palavras.length === 0) {
     console.warn(`[render] projeto ${projectId} sem palavras transcritas: render sem legenda`);
   }
 
@@ -242,8 +278,8 @@ async function prepararAss(
     escala: plano.captions.sizeScale ?? 1,
   });
 
-  const conteudo = gerarAss({ plano, estilo, palavras, clipsDesligados, marca });
-  const caminho = espaco.arquivo('legendas.ass');
+  const conteudo = gerarAss({ plano, estilo, palavras, clipsDesligados, marca, camada });
+  const caminho = espaco.arquivo(camada === 'atras' ? 'legendas-atras.ass' : 'legendas.ass');
 
   // UTF-8 explícito: um acento na codificação errada sai QUEIMADO no
   // vídeo, sem como corrigir depois.

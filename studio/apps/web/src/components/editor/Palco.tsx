@@ -26,13 +26,17 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
+import type { EditPlanV1, FonteDeVideo, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import {
   CORES_PADRAO_DA_MARCA,
   TEXTOS_DE_TELA,
   agendaDoPlano,
+  FONTES_DE_VIDEO,
   caixaDoTexto,
   ehEfeitoSonoroEmbutido,
+  ehTextoAtras,
+  larguraDoTexto,
+  montarBlocos,
   gerarAss,
   planoPrecisaDeAss,
   resolverEstiloDaLegenda,
@@ -40,6 +44,7 @@ import {
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
+import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
 import { tempo } from './funcoes';
 import {
   IconeTocar,
@@ -82,6 +87,8 @@ interface Props {
   onRedimensionarTexto?: (overlayId: string, sizeScale: number) => void;
   /** Clique duplo no texto da prévia: abre os estilos dele. */
   onAbrirEstilos?: (overlayId: string) => void;
+  /** Soltou a legenda num ponto ou num tamanho novo. */
+  onAjustarLegenda?: (mudanca: { y?: number; sizeScale?: number }) => void;
 }
 
 export function Palco({
@@ -101,6 +108,7 @@ export function Palco({
   onMoverDestaque,
   onRedimensionarTexto,
   onAbrirEstilos,
+  onAjustarLegenda,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
   // trecho atual, o outro espera no começo do próximo.
@@ -412,30 +420,114 @@ export function Palco({
   // mostra o texto de verdade andando e crescendo -- e ao soltar vira
   // uma operação no plano, a mesma que o render lê.
   const [arrasteDoTexto, setArrasteDoTexto] = useState<{ id: string; x?: number; y?: number; sizeScale?: number } | null>(null);
-  const planoDaPrevia = useMemo(
-    () =>
-      arrasteDoTexto
-        ? {
-            ...plan,
-            overlays: plan.overlays.map((o) => {
-              if (o.id !== arrasteDoTexto.id) return o;
-              const { id: _id, ...mudanca } = arrasteDoTexto;
-              return { ...o, style: { ...(o.style ?? {}), ...mudanca } };
-            }),
-          }
-        : plan,
-    [plan, arrasteDoTexto],
-  );
+  const [arrasteDaLegenda, setArrasteDaLegenda] = useState<{ y?: number; sizeScale?: number } | null>(null);
+  const [legendaSelecionada, setLegendaSelecionada] = useState(false);
+  const planoDaPrevia = useMemo(() => {
+    let p = plan;
+    if (arrasteDoTexto) {
+      p = {
+        ...p,
+        overlays: p.overlays.map((o) => {
+          if (o.id !== arrasteDoTexto.id) return o;
+          const { id: _id, ...mudanca } = arrasteDoTexto;
+          return { ...o, style: { ...(o.style ?? {}), ...mudanca } };
+        }),
+      };
+    }
+    if (arrasteDaLegenda) p = { ...p, captions: { ...p.captions, ...arrasteDaLegenda } };
+    return p;
+  }, [plan, arrasteDoTexto, arrasteDaLegenda]);
 
-  const ass = useMemo(() => {
+  // Com texto atrás da pessoa, são dois .ass: o de trás (só esses
+  // textos) e o da frente (o resto), com a pessoa recortada no meio --
+  // a mesma ordem do render.
+  const temAtras = planoDaPrevia.overlays.some(ehTextoAtras);
+  const [ass, assAtras] = useMemo(() => {
     const plan = planoDaPrevia;
-    if (!planoPrecisaDeAss(plan)) return null;
+    if (!planoPrecisaDeAss(plan)) return [null, null];
     const estilo = resolverEstiloDaLegenda(plan.captions.styleId, {
       marca: marcaDoVideo,
       escala: plan.captions.sizeScale ?? 1,
     });
-    return gerarAss({ plano: plan, estilo, palavras, clipsDesligados: [...(desligados ?? [])], marca: marcaDoVideo });
-  }, [planoDaPrevia, palavras, desligados, marcaDoVideo]);
+    const base = { plano: plan, estilo, palavras, clipsDesligados: [...(desligados ?? [])], marca: marcaDoVideo };
+    return [
+      gerarAss({ ...base, camada: temAtras ? 'frente' : 'tudo' }),
+      temAtras ? gerarAss({ ...base, camada: 'atras' }) : null,
+    ];
+  }, [planoDaPrevia, palavras, desligados, marcaDoVideo, temAtras]);
+
+  // ---------- Recorte da pessoa ----------
+  const recorteRef = useRef<HTMLCanvasElement>(null);
+  const quadroDoRecorte = useRef<HTMLCanvasElement | null>(null);
+  const ultimaMascara = useRef<Float32Array | null>(null);
+  const [modeloPronto, setModeloPronto] = useState(false);
+  const precisaRecortar = useRef(true);
+  useEffect(() => {
+    if (!temAtras) return;
+    let vivo = true;
+    carregarModeloDaPessoa()
+      .then(() => vivo && setModeloPronto(true))
+      .catch((e) => console.warn('[prévia] modelo da pessoa indisponível:', e));
+    return () => {
+      vivo = false;
+    };
+  }, [temAtras]);
+  useEffect(() => {
+    precisaRecortar.current = true;
+  }, [posicaoMs, plan]);
+
+  useEffect(() => {
+    if (!temAtras || !modeloPronto) return;
+    let quadro = 0;
+    let ocupado = false;
+    let alternado = false;
+    const passo = () => {
+      quadro = requestAnimationFrame(passo);
+      const destino = recorteRef.current;
+      if (!destino || ocupado) return;
+      const ms = tempoAoVivo.current;
+      const visivel = planoDaPrevia.overlays.some(
+        (o) => ehTextoAtras(o) && ms >= o.timelineStartMs && ms < o.timelineStartMs + o.durationMs,
+      );
+      if (!visivel) {
+        if (destino.dataset.limpo !== '1') {
+          destino.getContext('2d')?.clearRect(0, 0, destino.width, destino.height);
+          destino.dataset.limpo = '1';
+        }
+        return;
+      }
+      // Tocando, um quadro sim, um não; parado, só quando algo mudou.
+      alternado = !alternado;
+      if (tocando ? !alternado : !precisaRecortar.current) return;
+      const video = playerVisivel();
+      if (!video) return;
+      if (!quadroDoRecorte.current) {
+        quadroDoRecorte.current = document.createElement('canvas');
+        quadroDoRecorte.current.width = 540;
+        quadroDoRecorte.current.height = 960;
+      }
+      const q = quadroDoRecorte.current;
+      if (!desenharQuadro(video, q, enquadramento === 'preencher')) return;
+      ocupado = true;
+      precisaRecortar.current = false;
+      void mascaraDoQuadro(q)
+        .then((m) => {
+          if (!m) return;
+          ultimaMascara.current = m;
+          pintarRecorte(q, m, destino);
+          destino.dataset.limpo = '0';
+          // O recorte acompanha o zoom e a transição da camada visível.
+          const camada = camadas[Math.max(0, donoRef.current.indexOf(indiceRef.current))]?.current;
+          destino.style.transform = camada?.style.transform ?? '';
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          ocupado = false;
+        });
+    };
+    quadro = requestAnimationFrame(passo);
+    return () => cancelAnimationFrame(quadro);
+  }, [temAtras, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas]);
 
   // Textos na tela agora, com a caixa que ocupam (medida pela fonte).
   const textosVisiveis = planoDaPrevia.overlays
@@ -448,6 +540,86 @@ export function Palco({
     )
     .map((o) => ({ o, caixa: caixaDoTexto(planoDaPrevia, o, marcaDoVideo) }));
 
+  // A legenda na tela agora: onde está e que tamanho tem (para a alça).
+  const caixaDaLegenda = useMemo(() => {
+    const c = planoDaPrevia.captions;
+    if (!c.enabled) return null;
+    const estilo = resolverEstiloDaLegenda(c.styleId, { marca: marcaDoVideo, escala: c.sizeScale ?? 1 });
+    const blocos = montarBlocos({ plano: planoDaPrevia, estilo, palavras, clipsDesligados: [...(desligados ?? [])] });
+    const bloco = blocos.find((b) => posicaoMs >= b.inicioMs && posicaoMs < b.fimMs);
+    if (!bloco) return null;
+    const { width, height } = planoDaPrevia.canvas;
+    const fonte = c.fontId ? (FONTES_DE_VIDEO as Record<string, FonteDeVideo>)[c.fontId] ?? estilo.fonte : estilo.fonte;
+    const texto = bloco.palavras.map((p) => p.texto).join(' ');
+    const util = width * 0.88;
+    const largura = larguraDoTexto(estilo.caixaAlta ? texto.toUpperCase() : texto, fonte, estilo.tamanhoPx) + 2 * estilo.contorno.largura;
+    const linhas = Math.max(1, Math.ceil(largura / util));
+    const altura = linhas * estilo.tamanhoPx * 1.1 + 2 * estilo.contorno.largura;
+    // A base do bloco: arrastada, ou a da posição escolhida.
+    const base =
+      c.y !== undefined
+        ? c.y * height
+        : c.position === 'top'
+          ? height * 0.14 + altura
+          : c.position === 'center'
+            ? height / 2 + altura / 2
+            : height * 0.76;
+    return {
+      cx: 0.5,
+      cy: (base - altura / 2) / height,
+      largura: Math.min(1, (Math.min(largura, util) + 24) / width),
+      altura: (altura + 16) / height,
+      escala: c.sizeScale ?? 1,
+      baseY: base / height,
+    };
+  }, [planoDaPrevia, marcaDoVideo, palavras, desligados, posicaoMs]);
+
+  const arrastarLegenda = (e: React.PointerEvent<HTMLElement>) => {
+    const ponto = noQuadro();
+    if (!ponto || !onAjustarLegenda || !caixaDaLegenda) return;
+    e.preventDefault();
+    setLegendaSelecionada(true);
+    const inicio = ponto(e);
+    const base0 = caixaDaLegenda.baseY;
+    let ultimo = base0;
+    let moveu = false;
+    acompanhar(
+      (ev) => {
+        const p = ponto(ev);
+        ultimo = Math.min(0.97, Math.max(0.08, base0 + p.y - inicio.y));
+        moveu = moveu || Math.abs(p.y - inicio.y) > 0.004;
+        if (moveu) setArrasteDaLegenda({ y: ultimo });
+      },
+      () => {
+        if (moveu) onAjustarLegenda({ y: Math.round(ultimo * 1000) / 1000 });
+      },
+      () => setArrasteDaLegenda(null),
+    );
+  };
+
+  const redimensionarLegenda = (e: React.PointerEvent<HTMLElement>) => {
+    const ponto = noQuadro();
+    const quadro = quadroRef.current;
+    if (!ponto || !quadro || !onAjustarLegenda || !caixaDaLegenda) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { width, height } = quadro.getBoundingClientRect();
+    const { cx, cy, escala } = caixaDaLegenda;
+    const distancia = (p: { x: number; y: number }) => Math.hypot((p.x - cx) * width, (p.y - cy) * height);
+    const d0 = Math.max(8, distancia(ponto(e)));
+    let ultima = escala;
+    acompanhar(
+      (ev) => {
+        ultima = Math.round(Math.min(2.2, Math.max(0.5, (escala * distancia(ponto(ev))) / d0)) * 100) / 100;
+        setArrasteDaLegenda({ sizeScale: ultima });
+      },
+      () => {
+        if (ultima !== escala) onAjustarLegenda({ sizeScale: ultima });
+      },
+      () => setArrasteDaLegenda(null),
+    );
+  };
+
   /** Pontos do ponteiro relativos ao quadro, de 0 a 1. */
   const noQuadro = () => {
     const quadro = quadroRef.current;
@@ -459,14 +631,14 @@ export function Palco({
     });
   };
 
-  const acompanhar = (mover: (ev: PointerEvent) => void, soltar: () => void) => {
+  const acompanhar = (mover: (ev: PointerEvent) => void, soltar: () => void, limpar = () => setArrasteDoTexto(null)) => {
     const fim = () => {
       window.removeEventListener('pointermove', mover);
       window.removeEventListener('pointerup', fim);
       window.removeEventListener('pointercancel', fim);
       soltar();
       // O arraste fica até o plano novo chegar: o texto não "volta".
-      setTimeout(() => setArrasteDoTexto(null), 400);
+      setTimeout(limpar, 400);
     };
     window.addEventListener('pointermove', mover);
     window.addEventListener('pointerup', fim);
@@ -617,6 +789,17 @@ export function Palco({
             ),
           )}
 
+        {assAtras && !libassFalhou && (
+          <CamadaDeLegendas
+            ass={assAtras}
+            tempoMs={posicaoMs}
+            tempoAoVivo={tempoAoVivo}
+            tocando={tocando}
+            onFalha={() => setLibassFalhou(true)}
+          />
+        )}
+        {temAtras && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
+
         {ass && !libassFalhou && (
           <CamadaDeLegendas
             ass={ass}
@@ -628,6 +811,54 @@ export function Palco({
         )}
 
         {zonasSeguras && <span className="palco__zonas" aria-hidden />}
+
+        {!tocando &&
+          (() => {
+            const o = textosVisiveis.find(({ o }) => o.id === destaqueSelecionado && ehTextoAtras(o))?.o;
+            if (!o || !onMoverDestaque) return null;
+            const caixa = caixaDoTexto(planoDaPrevia, o, marcaDoVideo);
+            return (
+              <button
+                type="button"
+                className="chip chip--acionavel palco__posicionar"
+                disabled={!modeloPronto}
+                title="Acha a altura em que o texto fica atrás da pessoa sem perder a leitura"
+                onClick={() => {
+                  const m = ultimaMascara.current;
+                  if (!m) return;
+                  const y = melhorAlturaAtras(m, caixa.largura / planoDaPrevia.canvas.width, caixa.altura / planoDaPrevia.canvas.height);
+                  if (y !== null) onMoverDestaque(o.id, 0.5, y);
+                }}
+              >
+                {modeloPronto ? 'Posicionar atrás da pessoa' : 'Carregando o recorte…'}
+              </button>
+            );
+          })()}
+
+        {/* Alça da legenda: arrastar muda a altura, o canto o tamanho. */}
+        {!tocando && caixaDaLegenda && onAjustarLegenda && (
+          <div
+            role="button"
+            tabIndex={0}
+            className="palco__alca-destaque palco__alca-legenda"
+            data-selecionado={legendaSelecionada || undefined}
+            style={{
+              left: `${caixaDaLegenda.cx * 100}%`,
+              top: `${caixaDaLegenda.cy * 100}%`,
+              width: `${caixaDaLegenda.largura * 100}%`,
+              height: `${caixaDaLegenda.altura * 100}%`,
+            }}
+            aria-label="Mover a legenda"
+            title="Legenda: arraste para subir ou descer · canto para o tamanho"
+            onPointerDown={arrastarLegenda}
+            onBlur={() => setLegendaSelecionada(false)}
+          >
+            {legendaSelecionada &&
+              (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
+                <span key={canto} className={`palco__canto palco__canto--${canto}`} aria-hidden onPointerDown={redimensionarLegenda} />
+              ))}
+          </div>
+        )}
 
         {/* Alças dos textos de tela: do tamanho do texto de verdade.
             Arrastar move (mouse ou dedo), o canto redimensiona, clique

@@ -258,7 +258,8 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('não há faixas pretas no desfoque', !f.includes('pad=1080:1920'));
 
   // Efeitos por trecho.
-  t('zoom lento cresce com o tempo (eval=frame)', f.includes('eval=frame'));
+  t('zoom lento cresce a cada quadro (perspective, eval=frame)', f.includes('perspective=') && f.includes('eval=frame'));
+  t('zoom lento centrado: os quatro cantos andam juntos para dentro', f.includes("x0='W*(1-1/(1+0.08*in/240))/2'") && f.includes("x3='W-W*(1-1/(1+0.08*in/240))/2'"));
   t('punch-in recorta 1/1.12 e volta ao quadro', f.includes('crop=964:1714,scale=1080:1920'));
 
   // Transição: centrada no corte, SEM congelar. O trecho que sai
@@ -276,7 +277,7 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('o áudio cruza pela janela inteira da transição (400 ms)', f.includes('afade=t=in:d=0.400') && f.includes('d=0.400,adelay'));
   t('nenhum xfade recebe a saída de outro xfade', !/\[t\d+\]xfade/.test(f) && (f.match(/xfade=/g) ?? []).length === 1);
   t('nenhum trecho é repartido com split (só o desfoque divide o quadro)', !/\[c\d+\]split/.test(f));
-  t('o zoom lento continua no pedaço seguinte (tempo deslocado)', !f.includes('(t+0.0000)'));
+  t('o zoom lento não recomeça no meio do trecho (sem deslocamento zero)', !f.includes('in+0)'));
 
   // Logo.
   t('o logo é uma entrada', a.includes('/storage/logo.png'));
@@ -316,4 +317,31 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('preencher não existe sem pedir: o padrão é ajustar com pad', g.includes('pad=1080:1920'));
 }
 
+// ============================================================
+// Texto atrás da pessoa
+// ============================================================
+{
+  const atras = montarArgumentos({
+    entrada: '/in.mp4',
+    saida: '/out.mp4',
+    plano,
+    legendas: '/tmp/frente.ass',
+    legendasAtras: '/tmp/atras.ass',
+    mascara: { caminho: '/tmp/m.raw', inicioMs: 2000, quadros: 90, lado: 256 },
+  });
+  const f = atras[atras.indexOf('-filter_complex') + 1]!;
+  t('a máscara entra crua (gray 256x256, 30 fps)', atras.join(' ').includes('-f rawvideo -pix_fmt gray -video_size 256x256 -framerate 30 -i /tmp/m.raw'));
+  t('a máscara começa no ponto do texto (2 s de preto antes)', f.includes('tpad=start_duration=2.0000'));
+  t('a máscara vira a transparência da pessoa', f.includes('[vpessoa][mascara]alphamerge[pessoa]'));
+  t('o texto de trás é desenhado antes da pessoa', f.includes('[vfundo]subtitles=/tmp/atras.ass[vtras]'));
+  t('a pessoa vai por cima, só na janela', f.includes("[vtras][pessoa]overlay=0:0:enable='between(t,2.000,5.000)'[vcomposto]"));
+  t('legenda e textos da frente por último', f.includes('[vcomposto]subtitles=/tmp/frente.ass[vlegendado]'));
+
+  const quadros = montarArgumentos({ entrada: '/in.mp4', saida: 'pipe:1', plano, quadrosParaMascara: { inicioMs: 1000, fimMs: 4000, lado: 256 } });
+  const fq = quadros[quadros.indexOf('-filter_complex') + 1]!;
+  t('modo máscara: só os quadros do intervalo, 256x256 RGB no stdout', fq.includes('trim=start=1.0000:end=4.0000') && fq.includes('scale=256:256,format=rgb24[mq]') && quadros.at(-1) === 'pipe:1');
+  t('modo máscara: sem som', !fq.includes('amix') && !fq.includes('[0:a]') && !/\[\d+:a\]/.test(fq));
+}
+
+console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

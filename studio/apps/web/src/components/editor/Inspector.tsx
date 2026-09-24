@@ -21,12 +21,14 @@
 
 import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
 import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
+import { EscolhaDeFonte } from './EscolhaDeFonte';
+import { assDeLegenda, useAmostrasReais } from './amostrasReais';
 import { nomeDaFuncao, corDaFuncao, tempo } from './funcoes';
 import {
   IconeIA,
@@ -255,6 +257,22 @@ function AbaDeLegendas({
 }) {
   const c = plan.captions;
   const escala = c.sizeScale ?? 1;
+  // Os cartões são desenhados pelo libass, com as escolhas da pessoa por
+  // cima de cada estilo -- exatamente o que sai ao escolher o cartão.
+  const pedidos = useMemo(
+    () =>
+      PRESETS_DE_LEGENDA.map((preset) =>
+        assDeLegenda(preset.id, marca, {
+          sizeScale: c.sizeScale,
+          fontId: c.fontId,
+          color: c.color,
+          highlightColor: c.highlightColor,
+          highlightActiveWord: c.highlightActiveWord,
+        }),
+      ),
+    [marca, c.sizeScale, c.fontId, c.color, c.highlightColor, c.highlightActiveWord],
+  );
+  const reais = useAmostrasReais(pedidos);
 
   return (
     <>
@@ -278,8 +296,13 @@ function AbaDeLegendas({
               disabled={!c.enabled}
               onClick={() => onOperacao({ op: 'trocar_estilo_legenda', styleId: preset.id })}
             >
-              <span className="estilo__amostra">
-                <AmostraDeEstilo preset={preset} marca={marca} />
+              <span className="estilo__amostra" data-real={reais?.get(preset.id) ? '' : undefined}>
+                {reais?.get(preset.id) ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={reais.get(preset.id)} alt="" className="estilo__imagem" />
+                ) : (
+                  <AmostraDeEstilo preset={preset} marca={marca} />
+                )}
               </span>
               <span className="estilo__rotulo">{preset.rotulo}</span>
             </button>
@@ -294,14 +317,16 @@ function AbaDeLegendas({
         <span className="campo__rotulo">Posição</span>
         <Segmentado
           rotulo="Posição da legenda"
-          valor={c.position}
+          valor={c.y !== undefined ? 'livre' : c.position}
           opcoes={[
             ['top', 'Topo'],
             ['center', 'Meio'],
             ['bottom', 'Embaixo'],
+            ...(c.y !== undefined ? ([['livre', 'Livre']] as const) : []),
           ]}
-          onTrocar={(v) => onOperacao({ op: 'configurar_legenda', position: v as 'top' | 'center' | 'bottom' })}
+          onTrocar={(v) => v !== 'livre' && onOperacao({ op: 'configurar_legenda', position: v as 'top' | 'center' | 'bottom', y: null })}
         />
+        <p className="campo__ajuda">Ou arraste a legenda na prévia para qualquer altura; o canto muda o tamanho.</p>
       </div>
 
       <div className="campo">
@@ -319,22 +344,7 @@ function AbaDeLegendas({
       </div>
 
       <div className="campo">
-        <label className="campo__rotulo" htmlFor="fonte-da-legenda">
-          Fonte
-        </label>
-        <select
-          id="fonte-da-legenda"
-          className="campo__selecao"
-          value={c.fontId ?? ''}
-          onChange={(e) => onOperacao({ op: 'configurar_legenda', fontId: e.target.value || null })}
-        >
-          <option value="">A do estilo</option>
-          {Object.entries(FONTES_DE_VIDEO).map(([id, f]) => (
-            <option key={id} value={id}>
-              {f.rotulo}
-            </option>
-          ))}
-        </select>
+        <EscolhaDeFonte rotulo="Fonte" valor={c.fontId} rotuloPadrao="A do estilo" onTrocar={(v) => onOperacao({ op: 'configurar_legenda', fontId: v })} />
       </div>
 
       <div className="linha" style={{ gap: 'var(--e3)', marginBottom: 'var(--e4)' }}>
