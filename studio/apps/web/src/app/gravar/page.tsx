@@ -25,6 +25,7 @@ import Link from 'next/link';
 import { podeEditar, estaProcessando } from '@makucho/studio-contracts';
 import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
+import { Folha } from '../../components/shell/Folha';
 import { useGravacao } from '../../lib/useGravacao';
 import {
   enviar,
@@ -61,6 +62,8 @@ import {
   IconeIA,
   IconeSubir,
   IconeDescer,
+  IconeFechar,
+  IconeParametros,
 } from '../../components/icones';
 
 interface BlocoDoRoteiro {
@@ -221,7 +224,13 @@ function NovoVideo() {
             });
           },
         });
-        atualizar(item.chave, { estado: 'pronto', progresso: 100, parteId: r.mediaSourceId, arquivo: undefined });
+        atualizar(item.chave, { estado: 'pronto', progresso: 100, parteId: r.mediaSourceId, arquivo: undefined, acabouAgora: true });
+        // No celular, um toque curto confirma sem precisar olhar a tela.
+        try {
+          navigator.vibrate?.(35);
+        } catch {
+          // sem vibração, sem problema
+        }
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') {
           setItens((atual) => atual.filter((i) => i.chave !== item.chave));
@@ -359,10 +368,12 @@ function NovoVideo() {
         trilha={['Projetos', projeto?.title && projeto.title !== 'Vídeo sem título' ? projeto.title : 'Novo vídeo']}
         selo={
           pendentes
-            ? { texto: 'Enviando', tom: 'info' }
+            ? { texto: `Enviando ${prontos} de ${itens.length}`, tom: 'info' }
             : etapa === 'camera'
               ? { texto: 'Gravação', tom: 'info' }
-              : undefined
+              : prontos > 0 && itens.every((i) => i.estado === 'pronto')
+                ? { texto: 'Tudo enviado', tom: 'sucesso' }
+                : undefined
         }
       >
         {etapa === 'camera' ? (
@@ -416,6 +427,7 @@ function NovoVideo() {
           <EstudioDeGravacao
             roteiro={roteiro}
             onEnviar={(blob, mime, segundos) => void adicionarGravacao(blob, mime, segundos)}
+            onSair={() => setEtapa('escolher')}
           />
         )}
       </div>
@@ -441,6 +453,8 @@ interface ItemDoVideo {
   parteId?: string;
   /** O arquivo, enquanto não foi enviado. */
   arquivo?: Blob;
+  /** Terminou de enviar nesta visita: a confirmação anima uma vez. */
+  acabouAgora?: boolean;
 }
 
 function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
@@ -646,43 +660,47 @@ function Composicao({
                   : 'Pode enviar ou gravar mais antes de ir para a edição.'}
               </p>
             </div>
+            <ResumoDoEnvio itens={itens} />
           </div>
 
           <ol className="lista-de-partes">
             {itens.map((item) => {
               const posicao = enviados.findIndex((i) => i.chave === item.chave);
               return (
-                <li key={item.chave} className="lista-de-partes__item">
-                  <span className="lista-de-partes__numero" aria-hidden>
-                    {itens.indexOf(item) + 1}
-                  </span>
+                <li
+                  key={item.chave}
+                  className={`lista-de-partes__item${item.acabouAgora ? ' lista-de-partes__item--recem' : ''}`}
+                  data-estado={item.estado}
+                >
+                  <MarcadorDaParte item={item} numero={itens.indexOf(item) + 1} />
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <strong className="lista-de-partes__nome" title={item.nome}>
                       {item.nome}
                     </strong>
-                    <span className="texto-secundario" style={{ fontSize: 12, display: 'block' }}>
-                      {formatarBytes(item.tamanhoBytes)}
-                      {item.duracaoMs ? ` · ${formatarDuracao(item.duracaoMs)}` : ''}
-                      {item.estado === 'esperando' && ' · na fila'}
-                      {item.estado === 'enviando' &&
-                        ` · enviando ${item.progresso}%${item.bytesPorSegundo ? ` · ${formatarBytes(item.bytesPorSegundo)}/s` : ''}`}
-                      {item.estado === 'pronto' && ' · enviado'}
+                    <span className="lista-de-partes__detalhes">
+                      <SituacaoDaParte item={item} />
+                      <span className="texto-secundario">
+                        {formatarBytes(item.tamanhoBytes)}
+                        {item.duracaoMs ? ` · ${formatarDuracao(item.duracaoMs)}` : ''}
+                        {item.estado === 'enviando' && item.bytesPorSegundo
+                          ? ` · ${formatarBytes(item.bytesPorSegundo)}/s${restante(item)}`
+                          : ''}
+                      </span>
                     </span>
                     {item.estado === 'enviando' && (
                       <span
-                        className="barra"
+                        className="barra lista-de-partes__barra"
                         role="progressbar"
                         aria-valuenow={item.progresso}
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-label={`Envio de ${item.nome}`}
-                        style={{ display: 'block', marginTop: 6 }}
                       >
                         <span className="barra__preenchida" style={{ width: `${item.progresso}%`, display: 'block' }} />
                       </span>
                     )}
                     {item.estado === 'erro' && (
-                      <span style={{ fontSize: 12, color: 'var(--danger)', display: 'block' }}>{item.erro}</span>
+                      <span style={{ fontSize: 12, color: 'var(--danger)', display: 'block', marginTop: 4 }}>{item.erro}</span>
                     )}
                   </span>
 
@@ -728,21 +746,142 @@ function Composicao({
             })}
           </ol>
 
-          <div className="linha entre" style={{ gap: 'var(--e3)', flexWrap: 'wrap', marginTop: 'var(--e2)' }}>
-            <span className="texto-secundario" style={{ fontSize: 13 }}>
+          {podeIr || finalizando ? (
+            <div className="aviso aviso--sucesso lista-de-partes__pronto" role="status" aria-live="polite">
+              <IconeCheck size={18} weight="bold" />
+              <span>
+                <strong>
+                  {itens.length === 1 ? 'Vídeo enviado.' : `Os ${itens.length} vídeos foram enviados.`}
+                </strong>{' '}
+                Pode enviar mais ou ir para a edição: a IA prepara, transcreve e monta a proposta, e você
+                acompanha no editor.
+              </span>
+            </div>
+          ) : (
+            <p className="texto-secundario" style={{ fontSize: 13 }} role="status" aria-live="polite">
               {pendentes
                 ? `Aguarde ${pendentes === 1 ? 'o envio' : `os ${pendentes} envios`} terminar. Mantenha esta aba aberta.`
-                : 'Depois de ir para a edição, a IA prepara, transcreve e monta a proposta. Você acompanha no editor.'}
-            </span>
-            <button type="button" className="botao" disabled={!podeIr} onClick={onIrParaEdicao}>
+                : itens.some((i) => i.estado === 'erro')
+                  ? 'Algum envio falhou: tente de novo ou remova o vídeo para continuar.'
+                  : ''}
+            </p>
+          )}
+
+          <div className="linha" style={{ justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className={`botao${podeIr ? ' botao--chamando' : ''}`}
+              disabled={!podeIr}
+              onClick={onIrParaEdicao}
+            >
               <IconeIA size={16} weight="fill" />
-              {finalizando ? 'Abrindo a edição…' : 'Ir para a edição com IA'}
+              {finalizando
+                ? 'Abrindo a edição…'
+                : pendentes
+                  ? `Enviando ${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length}…`
+                  : 'Ir para a edição com IA'}
             </button>
           </div>
         </section>
       )}
     </div>
   );
+}
+
+/**
+ * O círculo à esquerda de cada vídeo: a ORDEM continua visível (é ela
+ * que define a montagem), e a forma muda com o estado -- anel de
+ * progresso enviando, check verde enviado, "!" vermelho na falha.
+ * Estado nunca só por cor: cada um tem forma e texto próprios.
+ */
+function MarcadorDaParte({ item, numero }: { item: ItemDoVideo; numero: number }) {
+  return (
+    <span
+      className="lista-de-partes__numero"
+      aria-hidden
+      style={item.estado === 'enviando' ? ({ '--progresso': `${item.progresso}%` } as React.CSSProperties) : undefined}
+    >
+      <span className="lista-de-partes__digito">{numero}</span>
+      {item.estado === 'pronto' && (
+        <span className="lista-de-partes__selo">
+          <IconeCheck size={10} weight="bold" />
+        </span>
+      )}
+      {item.estado === 'erro' && <span className="lista-de-partes__selo">!</span>}
+    </span>
+  );
+}
+
+function SituacaoDaParte({ item }: { item: ItemDoVideo }) {
+  switch (item.estado) {
+    case 'pronto':
+      return (
+        <span className="selo selo--sucesso lista-de-partes__situacao">
+          <IconeCheck size={11} weight="bold" />
+          Enviado
+        </span>
+      );
+    case 'enviando':
+      return (
+        <span className="selo selo--info lista-de-partes__situacao">
+          <span className="giro" aria-hidden style={{ width: 9, height: 9 }} />
+          Enviando {item.progresso}%
+        </span>
+      );
+    case 'erro':
+      return (
+        <span className="selo lista-de-partes__situacao" style={{ color: 'var(--danger)', borderColor: 'color-mix(in srgb, var(--danger) 45%, transparent)' }}>
+          <IconeAviso size={11} />
+          Falhou
+        </span>
+      );
+    default:
+      return (
+        <span className="selo selo--neutro lista-de-partes__situacao">
+          <IconeRelogio size={11} />
+          Na fila
+        </span>
+      );
+  }
+}
+
+/** Contagem e barra geral: quanto falta de TUDO, não só do vídeo atual. */
+function ResumoDoEnvio({ itens }: { itens: ItemDoVideo[] }) {
+  const total = itens.reduce((s, i) => s + i.tamanhoBytes, 0);
+  const enviado = itens.reduce(
+    (s, i) => s + (i.estado === 'pronto' ? i.tamanhoBytes : i.estado === 'enviando' ? (i.tamanhoBytes * i.progresso) / 100 : 0),
+    0,
+  );
+  const prontos = itens.filter((i) => i.estado === 'pronto').length;
+  const pct = total > 0 ? Math.round((enviado / total) * 100) : 0;
+  const tudo = prontos === itens.length;
+
+  return (
+    <div className="resumo-do-envio" data-tudo={tudo || undefined}>
+      <span className="linha" style={{ gap: 6, fontSize: 13, fontWeight: 600 }}>
+        {tudo ? <IconeCheck size={15} weight="bold" /> : null}
+        {prontos} de {itens.length} {itens.length === 1 ? 'enviado' : 'enviados'}
+      </span>
+      <span
+        className="barra"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Envio de todos os vídeos"
+      >
+        <span className="barra__preenchida" style={{ width: `${pct}%`, display: 'block' }} />
+      </span>
+    </div>
+  );
+}
+
+/** " · falta ~40 s" a partir da velocidade medida. */
+function restante(item: ItemDoVideo): string {
+  if (!item.bytesPorSegundo) return '';
+  const s = Math.round((item.tamanhoBytes * (1 - item.progresso / 100)) / item.bytesPorSegundo);
+  if (s < 2) return '';
+  return s < 60 ? ` · falta ~${s} s` : ` · falta ~${Math.round(s / 60)} min`;
 }
 
 function formatarDuracao(ms: number): string {
@@ -759,10 +898,16 @@ type EstadoDosDispositivos = 'verificando' | 'prontos' | 'negado' | 'ausente';
 function EstudioDeGravacao({
   roteiro,
   onEnviar,
+  onSair,
 }: {
   roteiro: BlocoDoRoteiro[];
   onEnviar: (blob: Blob, mime: string, segundos: number) => void;
+  onSair: () => void;
 }) {
+  // Celular: ajustes (câmera, microfone, texto, contagem) numa folha,
+  // para a tela ficar com a câmera, o roteiro e o botão de gravar.
+  const [ajustesAbertos, setAjustesAbertos] = useState(false);
+  const fecharAjustes = useCallback(() => setAjustesAbertos(false), []);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fluxoRef = useRef<MediaStream | null>(null);
 
@@ -923,235 +1068,8 @@ function EstudioDeGravacao({
     .toString()
     .padStart(2, '0')}:${(gravacao.segundos % 60).toString().padStart(2, '0')}`;
 
-  return (
+  const ajustes = (
     <>
-      {erroDeAcesso && (
-        <div className="aviso aviso--atencao" role="alert">
-          <IconeAviso size={18} />
-          <span>{erroDeAcesso}</span>
-        </div>
-      )}
-      {gravacao.erro && (
-        <div className="aviso aviso--erro" role="alert">
-          <IconeAviso size={18} />
-          <span>{gravacao.erro}</span>
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))',
-          gap: 'var(--e4)',
-          flex: 1,
-          minHeight: 0,
-        }}
-      >
-        {/* ---------- Câmera ---------- */}
-        <section
-          style={{
-            position: 'relative',
-            borderRadius: 'var(--r-cartao)',
-            overflow: 'hidden',
-            background: '#000',
-            border: '1px solid var(--border)',
-            minHeight: 380,
-          }}
-        >
-          {gravacao.estado === 'revisando' && gravacao.urlDaPrevia ? (
-            <video
-              src={gravacao.urlDaPrevia}
-              controls
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
-          ) : (
-            <video
-              ref={ligarVideo}
-              autoPlay
-              playsInline
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
-            />
-          )}
-
-          {dispositivos === 'verificando' && gravacao.estado !== 'revisando' && (
-            <div
-              role="status"
-              style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}
-            >
-              Ligando a câmera…
-            </div>
-          )}
-
-          {gravacao.estado !== 'revisando' && dispositivos === 'prontos' && (
-            <>
-              {/* Área segura: o que sobrevive ao corte 9:16. */}
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  inset: '4% 34%',
-                  border: '1px dashed rgb(255 255 255 / 45%)',
-                  borderRadius: 6,
-                  pointerEvents: 'none',
-                }}
-              />
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: 'var(--e4)',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  padding: '5px 12px',
-                  borderRadius: 999,
-                  background: 'rgb(4 23 53 / 82%)',
-                  fontSize: 12,
-                  color: 'var(--text-secondary)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Fique dentro da área tracejada: é o que aparece no vídeo vertical
-              </span>
-            </>
-          )}
-
-          {gravando && (
-            <div
-              className="linha"
-              role="status"
-              aria-live="polite"
-              style={{
-                position: 'absolute',
-                top: 'var(--e4)',
-                left: 'var(--e4)',
-                gap: 8,
-                padding: '6px 12px',
-                borderRadius: 999,
-                background: 'rgb(4 23 53 / 85%)',
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: '50%',
-                  background: 'var(--danger)',
-                  animation: gravacao.estado === 'gravando' ? 'pulsar 1.4s infinite' : undefined,
-                }}
-              />
-              <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-                {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
-              </span>
-            </div>
-          )}
-
-          {gravacao.estado === 'contando' && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'grid',
-                placeItems: 'center',
-                background: 'rgb(4 23 53 / 55%)',
-                fontSize: 96,
-                fontWeight: 800,
-              }}
-              role="status"
-              aria-live="assertive"
-            >
-              {gravacao.contagem || 'Já!'}
-            </div>
-          )}
-        </section>
-
-        {/* ---------- Roteiro ---------- */}
-        <section className="cartao" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="linha entre" style={{ marginBottom: 'var(--e3)' }}>
-            <h2 className="linha" style={{ gap: 'var(--e2)' }}>
-              <IconeRoteiro size={18} />
-              Roteiro
-            </h2>
-            <span className="texto-secundario" style={{ fontSize: 13 }}>
-              {roteiro.length} blocos
-            </span>
-          </div>
-
-          <div className="linha" style={{ gap: 'var(--e2)', marginBottom: 'var(--e4)', flexWrap: 'wrap' }}>
-            {roteiro.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                className={`botao botao--pequeno ${i === bloco ? '' : 'botao--secundario'}`}
-                onClick={() => setBloco(i)}
-                aria-pressed={i === bloco}
-                style={{ flex: 1 }}
-              >
-                {b.rotulo}
-              </button>
-            ))}
-          </div>
-
-          <div
-            className="crescer"
-            style={{
-              padding: 'var(--e4)',
-              borderRadius: 'var(--r-cartao)',
-              background: 'var(--surface-2)',
-              fontSize: tamanhoDoTexto,
-              lineHeight: 1.45,
-              fontWeight: 600,
-              overflowY: 'auto',
-              minHeight: 160,
-            }}
-          >
-            {roteiro[bloco]?.texto}
-          </div>
-
-          <div className="linha entre" style={{ marginTop: 'var(--e3)' }}>
-            <span className="texto-secundario" style={{ fontSize: 13 }}>
-              {bloco + 1} / {roteiro.length}
-            </span>
-            <span className="linha texto-secundario" style={{ gap: 4, fontSize: 13 }}>
-              Setas ou espaço para avançar
-              <IconeAvancar size={14} />
-            </span>
-          </div>
-        </section>
-      </div>
-
-      {/* ---------- Controles ---------- */}
-      <section className="cartao linha" style={{ gap: 'var(--e4)', flexWrap: 'wrap' }}>
-        {gravacao.estado === 'revisando' ? (
-          <>
-            <span className="linha crescer" style={{ gap: 'var(--e2)' }}>
-              <IconeCheck size={18} color="var(--success)" />
-              <span>
-                Gravação de {tempo}
-                {gravacao.resultado && (
-                  <span className="texto-secundario"> · {formatarBytes(gravacao.resultado.size)}</span>
-                )}
-              </span>
-            </span>
-
-            {/* Regravar vem ANTES de enviar: a primeira tomada quase
-                nunca é a boa. */}
-            <button type="button" className="botao botao--secundario" onClick={gravacao.descartar}>
-              <IconeLixeira size={16} />
-              Regravar
-            </button>
-            <button
-              type="button"
-              className="botao"
-              onClick={() => gravacao.resultado && onEnviar(gravacao.resultado, gravacao.mimeType, gravacao.segundos)}
-            >
-              <IconeEnviar size={16} />
-              Usar esta gravação
-            </button>
-          </>
-        ) : (
-          <>
             <SeletorDeDispositivo
               Icone={IconeCamera}
               rotulo="Câmera"
@@ -1222,12 +1140,254 @@ function EstudioDeGravacao({
                 <span className="chave__bola" aria-hidden />
               </button>
             </span>
+    </>
+  );
 
-            <span className="auto linha" style={{ gap: 'var(--e3)' }}>
+  return (
+    <div className="estudio" data-estado={gravacao.estado}>
+      {/* Só no celular: a tela de gravação é cheia, e sair é por aqui. */}
+      <div className="estudio__topo so-celular">
+        <button type="button" className="estudio__redondo" aria-label="Fechar a câmera" onClick={onSair} disabled={gravando}>
+          <IconeFechar size={20} />
+        </button>
+        {gravando ? (
+          <span className="estudio__tempo" role="status" aria-live="polite">
+            <span aria-hidden className="estudio__ponto" data-pausado={gravacao.estado === 'pausado' || undefined} />
+            {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
+          </span>
+        ) : (
+          <span className="estudio__tempo">Teleprompter</span>
+        )}
+        <button
+          type="button"
+          className="estudio__redondo"
+          aria-label="Ajustes da gravação"
+          onClick={() => setAjustesAbertos(true)}
+          disabled={gravando}
+        >
+          <IconeParametros size={20} />
+        </button>
+      </div>
+
+      {erroDeAcesso && (
+        <div className="aviso aviso--atencao estudio__aviso" role="alert">
+          <IconeAviso size={18} />
+          <span>{erroDeAcesso}</span>
+        </div>
+      )}
+      {gravacao.erro && (
+        <div className="aviso aviso--erro estudio__aviso" role="alert">
+          <IconeAviso size={18} />
+          <span>{gravacao.erro}</span>
+        </div>
+      )}
+
+      <div className="estudio__grade">
+        {/* ---------- Câmera ---------- */}
+        <section className="estudio__camera">
+          {gravacao.estado === 'revisando' && gravacao.urlDaPrevia ? (
+            <video
+              src={gravacao.urlDaPrevia}
+              controls
+              playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <video
+              ref={ligarVideo}
+              autoPlay
+              playsInline
+              muted
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+            />
+          )}
+
+          {dispositivos === 'verificando' && gravacao.estado !== 'revisando' && (
+            <div
+              role="status"
+              style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}
+            >
+              Ligando a câmera…
+            </div>
+          )}
+
+          {gravacao.estado !== 'revisando' && dispositivos === 'prontos' && (
+            <>
+              {/* Área segura: o que sobrevive ao corte 9:16. */}
+              <div
+                aria-hidden
+                className="so-largo"
+                style={{
+                  position: 'absolute',
+                  inset: '4% 34%',
+                  border: '1px dashed rgb(255 255 255 / 45%)',
+                  borderRadius: 6,
+                  pointerEvents: 'none',
+                }}
+              />
+              <span
+                className="so-largo"
+                style={{
+                  position: 'absolute',
+                  bottom: 'var(--e4)',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  padding: '5px 12px',
+                  borderRadius: 999,
+                  background: 'rgb(4 23 53 / 82%)',
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Fique dentro da área tracejada: é o que aparece no vídeo vertical
+              </span>
+            </>
+          )}
+
+          {gravando && (
+            <div
+              className="linha so-largo"
+              role="status"
+              aria-live="polite"
+              style={{
+                position: 'absolute',
+                top: 'var(--e4)',
+                left: 'var(--e4)',
+                gap: 8,
+                padding: '6px 12px',
+                borderRadius: 999,
+                background: 'rgb(4 23 53 / 85%)',
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: '50%',
+                  background: 'var(--danger)',
+                  animation: gravacao.estado === 'gravando' ? 'pulsar 1.4s infinite' : undefined,
+                }}
+              />
+              <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+                {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
+              </span>
+            </div>
+          )}
+
+          {gravacao.estado === 'contando' && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'rgb(4 23 53 / 55%)',
+                fontSize: 96,
+                fontWeight: 800,
+              }}
+              role="status"
+              aria-live="assertive"
+            >
+              {gravacao.contagem || 'Já!'}
+            </div>
+          )}
+        </section>
+
+        {/* ---------- Roteiro ---------- */}
+        <section className="cartao estudio__roteiro" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="linha entre so-largo" style={{ marginBottom: 'var(--e3)' }}>
+            <h2 className="linha" style={{ gap: 'var(--e2)' }}>
+              <IconeRoteiro size={18} />
+              Roteiro
+            </h2>
+            <span className="texto-secundario" style={{ fontSize: 13 }}>
+              {roteiro.length} blocos
+            </span>
+          </div>
+
+          <div className="linha estudio__blocos" style={{ gap: 'var(--e2)', marginBottom: 'var(--e4)', flexWrap: 'wrap' }}>
+            {roteiro.map((b, i) => (
+              <button
+                key={i}
+                type="button"
+                className={`botao botao--pequeno ${i === bloco ? '' : 'botao--secundario'}`}
+                onClick={() => setBloco(i)}
+                aria-pressed={i === bloco}
+                style={{ flex: 1 }}
+              >
+                {b.rotulo}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="crescer estudio__texto"
+            style={{
+              padding: 'var(--e4)',
+              borderRadius: 'var(--r-cartao)',
+              background: 'var(--surface-2)',
+              fontSize: tamanhoDoTexto,
+              lineHeight: 1.45,
+              fontWeight: 600,
+              overflowY: 'auto',
+              minHeight: 160,
+            }}
+          >
+            {roteiro[bloco]?.texto}
+          </div>
+
+          <div className="linha entre estudio__rodape-roteiro" style={{ marginTop: 'var(--e3)' }}>
+            <span className="texto-secundario" style={{ fontSize: 13 }}>
+              {bloco + 1} / {roteiro.length}
+            </span>
+            <span className="linha texto-secundario" style={{ gap: 4, fontSize: 13 }}>
+              Setas ou espaço para avançar
+              <IconeAvancar size={14} />
+            </span>
+          </div>
+        </section>
+      </div>
+
+      {/* ---------- Controles ---------- */}
+      <section className="cartao linha estudio__controles" style={{ gap: 'var(--e4)', flexWrap: 'wrap' }}>
+        {gravacao.estado === 'revisando' ? (
+          <>
+            <span className="linha crescer" style={{ gap: 'var(--e2)' }}>
+              <IconeCheck size={18} color="var(--success)" />
+              <span>
+                Gravação de {tempo}
+                {gravacao.resultado && (
+                  <span className="texto-secundario"> · {formatarBytes(gravacao.resultado.size)}</span>
+                )}
+              </span>
+            </span>
+
+            {/* Regravar vem ANTES de enviar: a primeira tomada quase
+                nunca é a boa. */}
+            <button type="button" className="botao botao--secundario" onClick={gravacao.descartar}>
+              <IconeLixeira size={16} />
+              Regravar
+            </button>
+            <button
+              type="button"
+              className="botao"
+              onClick={() => gravacao.resultado && onEnviar(gravacao.resultado, gravacao.mimeType, gravacao.segundos)}
+            >
+              <IconeEnviar size={16} />
+              Usar esta gravação
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="estudio__ajustes">{ajustes}</span>
+
+            <span className="auto linha estudio__acoes" style={{ gap: 'var(--e3)' }}>
               {gravando && (
                 <button
                   type="button"
-                  className="botao botao--secundario"
+                  className="botao botao--secundario estudio__pausar"
                   onClick={gravacao.estado === 'pausado' ? gravacao.retomar : gravacao.pausar}
                 >
                   {gravacao.estado === 'pausado' ? (
@@ -1246,19 +1406,26 @@ function EstudioDeGravacao({
 
               <button
                 type="button"
-                className="botao"
+                className="botao estudio__gravar"
+                data-gravando={gravando || undefined}
+                aria-label={gravando ? 'Parar a gravação' : 'Começar a gravar'}
                 disabled={dispositivos !== 'prontos' || gravacao.estado === 'contando'}
                 onClick={() => (gravando ? gravacao.parar() : gravacao.iniciar(comContagem))}
-                style={{ background: gravando ? 'var(--danger)' : undefined, minWidth: 150 }}
+                style={{ background: gravando ? 'var(--danger)' : undefined }}
               >
-                <IconeGravar size={18} weight="fill" />
-                {gravando ? 'Parar' : 'Gravar'}
+                <IconeGravar size={18} weight="fill" className="so-largo" />
+                <span className="so-largo">{gravando ? 'Parar' : 'Gravar'}</span>
+                <span className="estudio__gravar-miolo so-celular" aria-hidden />
               </button>
             </span>
           </>
         )}
       </section>
-    </>
+
+      <Folha aberta={ajustesAbertos} aoFechar={fecharAjustes} titulo="Ajustes da gravação">
+        <div className="estudio__ajustes-folha">{ajustes}</div>
+      </Folha>
+    </div>
   );
 }
 

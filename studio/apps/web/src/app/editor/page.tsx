@@ -613,7 +613,7 @@ function Editor({ projectId }: { projectId: string }) {
                       : 'Exportar vídeo'}
               </span>
               <span className="so-celular">
-                {render?.estado === 'processando' || render?.estado === 'na_fila' ? '…' : 'Exportar'}
+                {render?.estado === 'processando' || render?.estado === 'na_fila' ? 'Gerando' : 'Exportar'}
               </span>
             </button>
           )}
@@ -657,10 +657,12 @@ function Editor({ projectId }: { projectId: string }) {
       {(render?.estado === 'na_fila' || render?.estado === 'processando') && (
         <div role="status" className="aviso aviso--info" style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}>
           <IconeSalvando size={16} />
-          <span>
+          <span className="so-largo">
             Gerando o vídeo final. Leva alguns minutos — pode continuar editando ou fechar a aba; o
             arquivo fica disponível aqui.
           </span>
+          {/* No celular, uma linha: o espaço vertical é do preview. */}
+          <span className="so-celular">Gerando o vídeo final… pode continuar editando.</span>
         </div>
       )}
 
@@ -867,23 +869,14 @@ function Processamento({
 
   return (
     <div className="conteudo">
-      <section
-        className="cartao"
-        style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: temMiniatura ? '140px 1fr' : '1fr', gap: 'var(--e5)' }}
-      >
-        {temMiniatura && (
-          <img
-            src={apiProjetos.urlDaMiniatura(projeto.id)}
-            alt=""
-            style={{ width: 140, aspectRatio: '9 / 16', objectFit: 'cover', borderRadius: 'var(--r-controle)', background: 'var(--surface-2)' }}
-          />
-        )}
+      <section className="cartao processo" data-com-miniatura={temMiniatura || undefined}>
+        {temMiniatura && <img className="processo__miniatura" src={apiProjetos.urlDaMiniatura(projeto.id)} alt="" />}
 
         <div style={{ display: 'grid', gap: 'var(--e4)', alignContent: 'start' }}>
           {semVideo && !falhou ? (
             <>
               <div>
-                <h1 style={{ fontSize: 24, marginBottom: 'var(--e2)' }}>Este projeto ainda não tem vídeo</h1>
+                <h1 className="processo__titulo">Este projeto ainda não tem vídeo</h1>
                 <p className="texto-secundario">Grave com o teleprompter ou envie um arquivo para começar.</p>
               </div>
               <Link href={`/gravar?projeto=${projeto.id}`} className="botao" style={{ justifySelf: 'start' }}>
@@ -894,7 +887,7 @@ function Processamento({
           ) : falhou ? (
             <>
               <div>
-                <h1 style={{ fontSize: 24, marginBottom: 'var(--e2)' }}>O processamento parou</h1>
+                <h1 className="processo__titulo">O processamento parou</h1>
                 <p className="texto-secundario">
                   {projeto.publicError ?? 'Algo falhou no preparo do vídeo.'}
                 </p>
@@ -927,7 +920,7 @@ function Processamento({
           ) : (
             <>
               <div>
-                <h1 style={{ fontSize: 24, marginBottom: 'var(--e2)' }}>Seu vídeo está sendo preparado</h1>
+                <h1 className="processo__titulo">Seu vídeo está sendo preparado</h1>
                 <p className="texto-secundario">
                   {original?.durationMs ? `Gravação de ${tempo(original.durationMs)}. ` : ''}
                   Esta tela abre a edição sozinha quando a proposta ficar pronta. Pode fechar a aba e

@@ -75,7 +75,11 @@ export function Topbar({
         </nav>
       )}
 
-      {titulo && <div style={{ minWidth: 0 }}>{titulo}</div>}
+      {titulo && (
+        <div className="topbar__titulo" style={{ minWidth: 0 }}>
+          {titulo}
+        </div>
+      )}
 
       {estado !== 'nenhum' && <EstadoDeSalvamento estado={estado} />}
 
