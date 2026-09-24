@@ -16,3 +16,4 @@ export * from './render';
 export * from './legendas';
 export * from './juntar';
 export * from './projeto-excluido';
+export * from './progresso';

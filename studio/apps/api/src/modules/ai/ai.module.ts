@@ -11,6 +11,7 @@
 
 import { Module } from '@nestjs/common';
 import { CryptoService } from '../../common/crypto.service';
+import { FilaService } from '../../common/fila.service';
 import { EditPlansModule } from '../edit-plans/edit-plans.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { AcabamentoController } from './acabamento.controller';
@@ -42,6 +43,8 @@ import { UsoDeIaService } from './uso.service';
     UsoDeIaService,
     PromptsService,
     CryptoService,
+    // A análise publica o progresso "montando" para a tela de espera.
+    FilaService,
   ],
   // Exportado para as fases 5c e 5d: elas chamam o provedor por aqui,
   // e nao diretamente, para que a trava de custo nao tenha desvio.

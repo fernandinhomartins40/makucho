@@ -28,6 +28,7 @@ import {
   gerarThumbnail,
   juntarVideos,
   limparSeProjetoExcluido,
+  publicarProgresso,
   lerMetadados,
   listaDeConcat,
   verificarLimite,
@@ -114,7 +115,7 @@ async function juntarPartes(job: Job<DadosDoJob>): Promise<string> {
         saida: saidaTmp,
         lista,
         aoProgredir: (fracao) => {
-          void job.updateProgress(Math.round(fracao * 30));
+          void avancar(job, Math.round(fracao * 30));
           void renovar();
         },
       });
@@ -202,6 +203,12 @@ function larguraDoProxy(
   return Math.max(2, Math.round(proporcional / 2) * 2);
 }
 
+/** Avança o job e publica o mesmo número para a tela acompanhar. */
+function avancar(job: Job<DadosDoJob>, pct: number) {
+  void publicarProgresso(redis, job.data.projectId, 'preparando', pct);
+  return job.updateProgress(pct);
+}
+
 async function processar(job: Job<DadosDoJob>): Promise<void> {
   const { projectId } = job.data;
   // Projeto excluído: tentar de novo não traz ele de volta.
@@ -234,7 +241,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       });
 
       const probe = await lerMetadados(entrada);
-      await job.updateProgress(5);
+      await avancar(job, 5);
 
       await prisma.mediaSource.update({
         where: { id: mediaSourceId },
@@ -258,7 +265,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         aoProgredir: (fracao) => {
           // O progresso do FFmpeg vira progresso do job: a tela mostra
           // uma barra que anda, não um spinner indefinido.
-          void job.updateProgress(5 + Math.round(fracao * 50));
+          void avancar(job, 5 + Math.round(fracao * 50));
           void renovar();
         },
       });
@@ -299,7 +306,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         },
       });
 
-      await job.updateProgress(60);
+      await avancar(job, 60);
 
       // ---------- Thumbnail ----------
       //
@@ -319,7 +326,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         },
       });
 
-      await job.updateProgress(70);
+      await avancar(job, 70);
 
       // ---------- Áudio para transcrição ----------
       const audioTmp = espaco.arquivo('audio.wav');
@@ -338,7 +345,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         },
       });
 
-      await job.updateProgress(85);
+      await avancar(job, 85);
 
       // ---------- Silêncios ----------
       //
@@ -357,7 +364,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       await publicar(mapa, `${prefixoNoStorage}/silencios.json`);
 
       console.log(`[midia] ${silencios.length} silêncios no projeto ${projectId}`);
-      await job.updateProgress(95);
+      await avancar(job, 95);
     }, `midia-${projectId}`);
   });
 
@@ -394,7 +401,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
     });
   }
 
-  await job.updateProgress(100);
+  await avancar(job, 100);
 }
 
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */

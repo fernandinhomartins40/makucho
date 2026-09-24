@@ -21,7 +21,10 @@ import {
   FILA_TRANSCRICAO,
   FILAS,
   PREFIXO_DAS_FILAS,
+  VALIDADE_DO_PROGRESSO_S,
+  chaveDoProgresso,
 } from '@makucho/studio-contracts';
+import type { EtapaDoPreparo, ProgressoDoPreparo } from '@makucho/studio-contracts';
 
 export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
@@ -58,6 +61,30 @@ export class FilaService implements OnModuleDestroy {
       this.filas.set(nome, fila);
     }
     return fila;
+  }
+
+  /** O progresso ao vivo do preparo, publicado pelos workers. */
+  async lerProgresso(projectId: string): Promise<ProgressoDoPreparo | null> {
+    try {
+      const bruto = await this.conexao.get(chaveDoProgresso(projectId));
+      return bruto ? (JSON.parse(bruto) as ProgressoDoPreparo) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A análise roda na API: ela mesma avisa a tela onde está. */
+  async publicarProgresso(projectId: string, etapa: EtapaDoPreparo, pct: number): Promise<void> {
+    try {
+      await this.conexao.set(
+        chaveDoProgresso(projectId),
+        JSON.stringify({ etapa, pct: Math.round(pct), em: Date.now() }),
+        'EX',
+        VALIDADE_DO_PROGRESSO_S,
+      );
+    } catch {
+      // Conforto, não trabalho: sem Redis a tela usa só as etapas.
+    }
   }
 
   /**

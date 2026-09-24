@@ -29,6 +29,7 @@ import type { SemanticIssue } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
+import { FilaService } from '../../common/fila.service';
 import { AcabamentoService } from './acabamento.service';
 import { AnaliseService } from './analise.service';
 
@@ -60,6 +61,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly analise: AnaliseService,
     private readonly planos: EditPlansService,
     private readonly acabamento: AcabamentoService,
+    private readonly filas: FilaService,
   ) {}
 
   onModuleInit() {
@@ -137,7 +139,10 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     if (!projeto || projeto.state !== 'ANALYZING') return null;
 
     try {
-      return await this.gerar(projeto.workspaceId, projectId, { comReserva: true });
+      await this.filas.publicarProgresso(projectId, 'montando', 5);
+      const r = await this.gerar(projeto.workspaceId, projectId, { comReserva: true });
+      await this.filas.publicarProgresso(projectId, 'montando', 100);
+      return r;
     } catch (e) {
       const mensagem = e instanceof Error ? e.message : String(e);
       this.log.error(`proposta do projeto ${projectId} falhou: ${mensagem}`);

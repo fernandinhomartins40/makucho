@@ -104,6 +104,13 @@ export class ProjectsService {
     return { ...projeto, entendimentoDaIa: await this.entendimentoDaIa(id) };
   }
 
+  /** Onde o preparo está agora (etapa, %, frases ouvidas). */
+  async progresso(tenant: TenantContext, id: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id }, select: { id: true, workspaceId: true } });
+    assertOwnership(tenant, projeto, 'projeto');
+    return { progresso: await this.filas.lerProgresso(id) };
+  }
+
   /**
    * O que a IA entendeu do vídeo na última seleção que deu certo:
    * assunto, promessa, estrutura. Mostrado no editor, para a pessoa

@@ -24,6 +24,12 @@ export class ProjectsController {
     return this.projects.obter(tenant, id);
   }
 
+  /** Progresso ao vivo do preparo: a tela de espera consulta a cada segundo. */
+  @Get(':id/progresso')
+  progresso(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.projects.progresso(tenant, id);
+  }
+
   /**
    * A transcrição palavra por palavra, para a correção de legenda.
    *

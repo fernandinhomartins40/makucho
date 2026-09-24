@@ -25,7 +25,7 @@ import {
   SILENCIO_MINIMO_MS,
   transcriptionResultSchema,
 } from '@makucho/studio-contracts';
-import { comLockGlobal } from '@makucho/studio-worker-core';
+import { comLockGlobal, publicarProgresso } from '@makucho/studio-worker-core';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
@@ -86,7 +86,11 @@ class ErroDoUsuario extends Error {
  * stdout é só do JSON, stderr é do log: a separação está no script, e
  * é o que permite que um aviso do faster-whisper não quebre o parse.
  */
-function rodarWhisper(audio: string, aoVivo: () => void): Promise<unknown> {
+function rodarWhisper(
+  audio: string,
+  aoVivo: () => void,
+  aoProgredir?: (fracao: number, frase: string) => void,
+): Promise<unknown> {
   return new Promise((resolver, rejeitar) => {
     const filho = spawn(PYTHON, [SCRIPT, audio], {
       env: process.env,
@@ -105,7 +109,16 @@ function rodarWhisper(audio: string, aoVivo: () => void): Promise<unknown> {
     filho.stdout.on('data', (d: Buffer) => pedacos.push(d));
 
     filho.stderr.on('data', (d: Buffer) => {
-      const texto = d.toString('utf8').trim();
+      // As linhas "@@progresso <fração> <frase>" são o progresso ao
+      // vivo (quanto do áudio foi ouvido e a frase que acabou de sair);
+      // o resto é log de diagnóstico.
+      const outras: string[] = [];
+      for (const linha of d.toString('utf8').split(/\r?\n/)) {
+        const m = /^@@progresso (\d+(?:\.\d+)?) ?(.*)$/.exec(linha.trim());
+        if (m) aoProgredir?.(Number(m[1]), m[2] ?? '');
+        else if (linha.trim()) outras.push(linha.trim());
+      }
+      const texto = outras.join('\n');
       if (texto) console.log(`[whisper] ${texto}`);
       // Cada linha de log é prova de vida: renova o lock e o
       // heartbeat, para que um áudio longo não seja confundido com um
@@ -169,13 +182,29 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   await prisma.transcription.deleteMany({ where: { projectId } });
 
   await job.updateProgress(5);
+  await publicarProgresso(redis, projectId, 'transcrevendo', 0);
 
+  // As três últimas frases ouvidas vão para a tela: é o que transforma
+  // "transcrevendo…" em "a IA está ouvindo você".
+  const ouvidas: string[] = [];
   const bruto = await comLockGlobal(redis, async (renovar) => {
-    return rodarWhisper(caminhoDe(audio.storageKey), () => {
-      void renovar();
-      bater();
-    });
+    return rodarWhisper(
+      caminhoDe(audio.storageKey),
+      () => {
+        void renovar();
+        bater();
+      },
+      (fracao, frase) => {
+        if (frase) {
+          ouvidas.push(frase);
+          if (ouvidas.length > 3) ouvidas.shift();
+        }
+        void job.updateProgress(5 + Math.round(fracao * 65));
+        void publicarProgresso(redis, projectId, 'transcrevendo', Math.min(99, fracao * 100), [...ouvidas]);
+      },
+    );
   });
+  await publicarProgresso(redis, projectId, 'transcrevendo', 100, ouvidas);
 
   await job.updateProgress(70);
 

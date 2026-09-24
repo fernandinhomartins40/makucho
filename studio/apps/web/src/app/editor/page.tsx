@@ -32,6 +32,8 @@ import {
   ROTULO_DE_ESTADO,
 } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
+import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
+import type { ProgressoDoPreparo } from '@makucho/studio-contracts';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
 import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
@@ -107,6 +109,9 @@ function Editor({ projectId }: { projectId: string }) {
   // Celular: qual folha está aberta sobre o preview. No computador os
   // painéis ficam sempre à vista e o CSS ignora isto.
   const [folha, setFolha] = useState<'painel' | 'inspector' | null>(null);
+  // Preparo: progresso ao vivo e a comemoração antes de abrir o editor.
+  const [progresso, setProgresso] = useState<ProgressoDoPreparo | null>(null);
+  const [comemorando, setComemorando] = useState(false);
   const [titulo, setTitulo] = useState('');
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [comandoTocar, setComandoTocar] = useState(0);
@@ -227,12 +232,31 @@ function Editor({ projectId }: { projectId: string }) {
     const id = setInterval(() => {
       void carregarProjeto()
         .then((p) => {
-          if (temPlano(p)) void carregarPlano();
+          if (!temPlano(p)) return;
+          // A proposta chegou com a pessoa esperando: comemora (confete,
+          // vibração, aviso se a aba está em segundo plano) e só então
+          // abre o editor. Abrir de supetão desperdiça o momento.
+          setComemorando(true);
+          avisarQueFicouPronto(p.title);
+          setTimeout(() => void carregarPlano().finally(() => setComemorando(false)), 2400);
         })
         .catch(() => undefined);
-    }, 4000);
-    return () => clearInterval(id);
-  }, [projeto, plano, estado, carregarProjeto, carregarPlano]);
+    }, 3000);
+
+    // O progresso ao vivo, mais frequente: é leve (uma chave no Redis).
+    const lerProgresso = () =>
+      void apiProjetos
+        .progresso(projectId)
+        .then((r) => setProgresso(r.progresso))
+        .catch(() => undefined);
+    lerProgresso();
+    const idProgresso = setInterval(lerProgresso, 1200);
+
+    return () => {
+      clearInterval(id);
+      clearInterval(idProgresso);
+    };
+  }, [projeto, plano, estado, projectId, carregarProjeto, carregarPlano]);
 
   // ---------- Salvar ----------
   const salvarDocumento = useCallback(
@@ -628,6 +652,8 @@ function Editor({ projectId }: { projectId: string }) {
         {cabecalho}
         <Processamento
           projeto={projeto}
+          progresso={progresso}
+          comemorando={comemorando}
           onTentarDeNovo={async () => {
             setErro(null);
             try {
@@ -892,10 +918,14 @@ const ETAPAS: Array<{ estado: ProjectState; titulo: string; texto: string }> = [
 
 function Processamento({
   projeto,
+  progresso,
+  comemorando,
   onTentarDeNovo,
   erro,
 }: {
   projeto: ProjetoDetalhado | null;
+  progresso: ProgressoDoPreparo | null;
+  comemorando: boolean;
   onTentarDeNovo: () => Promise<void>;
   erro: string | null;
 }) {
@@ -919,6 +949,22 @@ function Processamento({
   const semVideo = estado === 'DRAFT' || !projeto.mediaSources.some((m) => m.kind === 'ORIGINAL');
   const temMiniatura = projeto.mediaSources.some((m) => m.kind === 'THUMBNAIL');
   const original = projeto.mediaSources.find((m) => m.kind === 'ORIGINAL');
+
+  // O caminho feliz -- o vídeo sendo preparado, ou acabando de ficar
+  // pronto -- tem a tela própria, com progresso ao vivo.
+  if (comemorando || (!falhou && !semVideo && estaProcessando(estado))) {
+    return (
+      <div className="conteudo">
+        <PreparoDoVideo
+          estado={comemorando ? 'PRONTO' : estado}
+          progresso={progresso}
+          miniaturaUrl={temMiniatura ? apiProjetos.urlDaMiniatura(projeto.id) : undefined}
+          duracaoDaGravacaoMs={original?.durationMs}
+          comemorando={comemorando}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="conteudo">

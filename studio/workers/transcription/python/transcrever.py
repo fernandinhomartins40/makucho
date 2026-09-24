@@ -96,6 +96,14 @@ def main() -> int:
         if fim <= inicio:
             continue
 
+        # Progresso ao vivo: quanto do audio ja foi ouvido e a frase
+        # que acabou de sair. O worker le esta linha no stderr e a tela
+        # mostra "a IA esta ouvindo voce" com as frases chegando.
+        # Uma linha so: quebras no texto viram espaco.
+        if info.duration:
+            fracao = min(1.0, seg.end / info.duration)
+            log(f'@@progresso {fracao:.3f} ' + ' '.join(texto.split())[:140])
+
         palavras = []
         for p in (seg.words or []):
             termo = (p.word or '').strip()

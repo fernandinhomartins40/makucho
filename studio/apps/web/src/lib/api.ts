@@ -255,6 +255,9 @@ export const projetos = {
   /** Apaga o projeto e todos os vídeos dele, em qualquer estado. */
   excluir: (id: string) => api<{ ok: boolean; liberadoBytes: number }>(`/projects/${id}`, { metodo: 'DELETE' }),
   urlDaMiniatura: (id: string) => `/api/projects/${id}/thumbnail`,
+  /** Onde o preparo está agora: etapa, % e as frases que a IA acabou de ouvir. */
+  progresso: (id: string) =>
+    api<{ progresso: import('@makucho/studio-contracts').ProgressoDoPreparo | null }>(`/projects/${id}/progresso`),
   // Recomeça o processamento do ponto mais adiantado que já tem
   // insumo pronto; quem decide isso é o servidor.
   reprocessar: (id: string) => api<Projeto>(`/projects/${id}/retry`, { metodo: 'POST' }),
