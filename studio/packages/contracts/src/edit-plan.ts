@@ -32,6 +32,21 @@ export const canvasSchema = z.object({
   height: z.literal(1920),
 });
 
+// ---------- Efeitos de trecho ----------
+//
+// Fechados como o resto do vocabulario: a IA e o usuario escolhem
+// DENTRE eles, e o render sabe desenhar cada um com um filtro nativo
+// do FFmpeg -- nenhum depende de navegador, GPU ou servico externo.
+//
+//   punch_in   -- zoom seco de 12% no trecho inteiro. E o "corte com
+//                 zoom" dos videos falados: marca uma frase forte e
+//                 disfarca o salto entre dois cortes do mesmo plano.
+//   zoom_lento -- aproximacao continua de 1.0x a 1.08x ao longo do
+//                 trecho. Da movimento a uma abertura parada.
+export const EFEITOS_DE_TRECHO = ['punch_in', 'zoom_lento'] as const;
+export const efeitoDeTrechoSchema = z.enum(EFEITOS_DE_TRECHO);
+export type EfeitoDeTrecho = z.infer<typeof efeitoDeTrechoSchema>;
+
 // ---------- Clip ----------
 export const clipSchema = z
   .object({
@@ -48,6 +63,8 @@ export const clipSchema = z
     transcriptSegmentIds: z.array(idSchema).min(1),
     semanticRisk: semanticRiskSchema,
     reason: z.string().min(1).max(500),
+    // Opcional: planos anteriores aos efeitos continuam validos.
+    effect: efeitoDeTrechoSchema.optional(),
   })
   .refine((clip) => clip.sourceEndMs > clip.sourceStartMs, {
     message: 'sourceEndMs deve ser maior que sourceStartMs',
@@ -108,6 +125,14 @@ export const captionTrackSchema = z
     position: z.enum(['top', 'center', 'bottom']),
     highlightActiveWord: z.boolean(),
     /**
+     * Multiplicador do tamanho da fonte do estilo (P/M/G na tela).
+     *
+     * Multiplicador, e nao pixels: o tamanho base e do estilo, e um
+     * valor absoluto guardado aqui deixaria de acompanhar a troca de
+     * estilo -- 110px ficam bons na Anton e estouram a tela na Inter.
+     */
+    sizeScale: z.number().min(0.6).max(1.6).optional(),
+    /**
      * Correcoes manuais, por palavra.
      *
      * Vivem no EditPlan e nao na transcricao: a transcricao e o
@@ -136,9 +161,17 @@ export const captionTrackSchema = z
 
 // ---------- Overlays ----------
 //
-// A IA escolhe um componente Remotion existente e seus parametros;
-// nunca escreve animacao (contexto mestre, secao 21). O enum fechado
-// e o que garante isso no nivel do contrato.
+// A IA escolhe um componente existente e seus parametros; nunca
+// escreve animacao (contexto mestre, secao 21). O enum fechado e o que
+// garante isso no nivel do contrato.
+//
+// Quem desenha cada um e o render, sem navegador: os de texto viram
+// eventos do mesmo .ass das legendas (libass), e os de imagem
+// (LogoBug, ImageOverlay) viram um `overlay` do FFmpeg. `variant` guarda
+// a posicao do logo ('sd', 'se', 'id', 'ie': superior/inferior,
+// direita/esquerda). `AnimatedCaption` e `EmojiPop` continuam no enum
+// por compatibilidade, mas o render os ignora: a legenda ja e animada,
+// e o libass nao desenha emoji colorido.
 export const OVERLAY_COMPONENTS = [
   'HookTitle',
   'AnimatedCaption',
@@ -175,6 +208,20 @@ export const musicTrackSchema = z.object({
   duckUnderVoice: z.boolean(),
 });
 
+/**
+ * Efeitos sonoros que o render sintetiza sozinho, sem arquivo.
+ *
+ * Gerados pelo proprio FFmpeg (ruido filtrado, senoide com envelope):
+ * nao ha licenca a registrar, nada a baixar e nada ocupando o storage.
+ * Qualquer outro `assetId` aponta para um SOUND_EFFECT do workspace.
+ */
+export const EFEITOS_SONOROS_EMBUTIDOS = ['sfx-whoosh', 'sfx-pop', 'sfx-click'] as const;
+export type EfeitoSonoroEmbutido = (typeof EFEITOS_SONOROS_EMBUTIDOS)[number];
+
+export function ehEfeitoSonoroEmbutido(id: string): id is EfeitoSonoroEmbutido {
+  return (EFEITOS_SONOROS_EMBUTIDOS as readonly string[]).includes(id);
+}
+
 export const soundEffectSchema = z.object({
   id: idSchema,
   assetId: idSchema,
@@ -182,9 +229,49 @@ export const soundEffectSchema = z.object({
   gainDb: z.number().min(-40).max(6),
 });
 
+/**
+ * Transicoes entre trechos.
+ *
+ * Cada uma tem um equivalente nativo no filtro `xfade` do FFmpeg
+ * (tabela `XFADE_DA_TRANSICAO`), conferido na imagem de render: o
+ * FFmpeg 5.1 do Debian traz as 46 do filtro. `cut` e a ausencia de
+ * transicao -- existe no enum para a IA poder dize-lo explicitamente.
+ */
+export const TIPOS_DE_TRANSICAO = [
+  'cut',
+  'fade',
+  'dissolve',
+  'fadeblack',
+  'slide',
+  'slideup',
+  'wipe',
+  'smooth',
+  'zoom',
+  'circle',
+  'blur',
+  'pixelize',
+] as const;
+export const tipoDeTransicaoSchema = z.enum(TIPOS_DE_TRANSICAO);
+export type TipoDeTransicao = z.infer<typeof tipoDeTransicaoSchema>;
+
+/** O nome do efeito no `xfade`. `cut` nao passa pelo filtro. */
+export const XFADE_DA_TRANSICAO: Readonly<Record<Exclude<TipoDeTransicao, 'cut'>, string>> = {
+  fade: 'fade',
+  dissolve: 'dissolve',
+  fadeblack: 'fadeblack',
+  slide: 'slideleft',
+  slideup: 'slideup',
+  wipe: 'wipeleft',
+  smooth: 'smoothleft',
+  zoom: 'zoomin',
+  circle: 'circleopen',
+  blur: 'hblur',
+  pixelize: 'pixelize',
+};
+
 export const transitionSchema = z.object({
   id: idSchema,
-  type: z.enum(['cut', 'fade', 'dissolve', 'slide', 'zoom']),
+  type: tipoDeTransicaoSchema,
   // Indice do clip que a transicao antecede.
   beforeClipIndex: z.number().int().nonnegative(),
   durationMs: msSchema.max(2000),
@@ -205,6 +292,24 @@ export const renderSettingsSchema = z.object({
   audioBitrateKbps: z.number().int().min(96).max(320),
   // Normalizacao de loudness para as plataformas sociais.
   loudnessTargetLufs: z.number().min(-23).max(-9),
+  /**
+   * Como um video fora de 9:16 ocupa o quadro vertical.
+   *
+   *   ajustar   -- inteiro, com faixas pretas (o comportamento antigo);
+   *   preencher -- corta as laterais e ocupa a tela toda;
+   *   desfoque  -- inteiro, sobre uma copia ampliada e desfocada dele
+   *                mesmo no fundo. O desfoque roda em 270x480 e so
+   *                depois e ampliado: custa uma fracao do quadro cheio.
+   *
+   * Opcional: planos antigos, sem o campo, continuam em `ajustar`.
+   */
+  fit: z.enum(['ajustar', 'preencher', 'desfoque']).optional(),
+  /**
+   * Limpeza de voz: corta o grave de manuseio, reduz o ruido de fundo
+   * e comprime de leve. Filtros nativos (highpass, afftdn,
+   * acompressor), sem modelo e sem GPU.
+   */
+  voiceEnhance: z.boolean().optional(),
 });
 
 // ---------- EditPlan ----------

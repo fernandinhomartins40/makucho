@@ -12,6 +12,8 @@
 // ============================================================
 
 import { z } from 'zod';
+import { tipoDeTransicaoSchema } from './edit-plan';
+import { idDoPresetSchema } from './estilos-de-legenda';
 import { clipRoleSchema, frameworkSchema, semanticRiskSchema } from './vocabulary';
 
 const msSchema = z.number().int().nonnegative();
@@ -38,6 +40,31 @@ export const proposedSegmentSchema = z
 
 export type ProposedSegment = z.infer<typeof proposedSegmentSchema>;
 
+// ---------- Acabamento sugerido ----------
+//
+// Opcional e pequeno de proposito: cada campo e uma escolha fechada
+// (estilo, indices, tipo de transicao) ou um texto curto. Custa poucas
+// dezenas de tokens na MESMA resposta que ja escolhe os trechos -- nao
+// ha chamada extra para "estilizar". Quem aplica e o acabamento
+// deterministico (acabamento.ts); indices fora da lista sao ignorados
+// la, em vez de derrubar a proposta inteira e gastar outra chamada.
+export const estiloPropostoSchema = z
+  .object({
+    captionPreset: idDoPresetSchema.optional(),
+    // Titulo de abertura e chamada final: elementos graficos, nunca
+    // legenda -- a legenda continua saindo so da fala.
+    hookTitle: z.string().min(2).max(70).optional(),
+    cta: z.string().min(2).max(60).optional(),
+    emphasis: z.array(z.number().int().nonnegative()).max(20).optional(),
+    transitions: z
+      .array(z.object({ before: z.number().int().min(1), type: tipoDeTransicaoSchema }).strict())
+      .max(20)
+      .optional(),
+  })
+  .strict();
+
+export type EstiloProposto = z.infer<typeof estiloPropostoSchema>;
+
 // ---------- Proposta ----------
 //
 // `.strict()` e essencial: qualquer chave extra vinda do modelo faz o
@@ -55,6 +82,8 @@ export const aiProposalV1Schema = z
     // ausencia e obrigatorio; preenche-la e proibido (secao 9 do
     // contexto mestre).
     missingBlocks: z.array(clipRoleSchema).max(13),
+    // Ausente nas propostas antigas e na montagem sem IA.
+    style: estiloPropostoSchema.optional(),
   })
   .strict()
   // Indices de dependencia precisam existir na propria lista.

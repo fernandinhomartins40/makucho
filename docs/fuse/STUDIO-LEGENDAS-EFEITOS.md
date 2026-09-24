@@ -131,3 +131,23 @@ Cuidados comuns a todas as fases: toda fonte, LUT, trilha e efeito sonoro entra 
 licença registrada (o contrato já exige para `FONT` e `MUSIC`); nenhuma URL externa no
 render (só assets do workspace); testes de `montarArgumentos` e `gerarAss` para cada novo
 filtro, como os que já existem.
+
+## 6. Implementado (24/09/2026)
+
+Fases 1 a 5 entregues; a fase 6 (enquadramento por rosto e DeepFilterNet) fica para depois.
+
+| Item | Onde |
+|---|---|
+| 10 estilos de legenda como código (Clássico, Hormozi, Caixa, Karaokê, Uma palavra, Impacto, Podcast, Neon, Minimal, Cinema), cores da marca por token, 15 fontes OFL na imagem de render | `contracts/src/estilos-de-legenda.ts`, `studio/assets/fonts` |
+| Gerador `.ass` único (render e prévia): palavra ativa, pop, caixa na palavra, karaokê corrigido, uma palavra, subir; títulos, chamada, rodapé, cartões e barra de progresso | `contracts/src/legendas-ass.ts` |
+| Prévia com o mesmo libass (JASSUB), no tempo da timeline, com reserva em CSS | `web/components/editor/CamadaDeLegendas.tsx` |
+| Render: enquadramento (ajustar / preencher / desfoque em 1/4 da resolução), zoom seco e lento, 11 transições `xfade` sem mudar a duração, logo (PNG/SVG/WebP), voz limpa, trilha com ducking, sons sintetizados (whoosh, pop, click) | `worker-core/src/render.ts` |
+| Operações novas da timeline (legenda, transição, efeito, vídeo, textos, sons) — as mesmas para o editor e para a IA | `contracts/src/timeline.ts` |
+| Acabamento automático por regra (sem token) a partir do Kit de marca; a IA só sugere estilo, título, chamada, ênfase e transições na mesma resposta da seleção | `contracts/src/acabamento.ts`, prompt `selecao-v2` |
+| "Peça à IA": comando em linguagem natural → operações validadas | `contracts/src/ai-comando.ts`, `POST /projects/:id/command` |
+| Kit de marca com acabamento padrão (logo, trilha, zoom, transição, sons, barra, voz, enquadramento) | `web/app/marca`, coluna `brand_profiles.videoDefaults` |
+
+Duas armadilhas do FFmpeg 5.1 encontradas no teste real e contornadas: `xfade` encadeado em `xfade`
+descarta os quadros depois da segunda transição (timestamps não monotônicos), e `split` do trecho
+inteiro para reaproveitar o último quadro trava o grafo. Cada transição é um segmento próprio
+(último quadro congelado + começo do trecho seguinte), lido direto da entrada.

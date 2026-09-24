@@ -12,7 +12,11 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
+import type { PreferenciasDeVideo, TipoDeTransicao } from '@makucho/studio-contracts';
+import { PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, presetDaLegenda } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
+import { AmostraDeEstilo } from '../../components/editor/AmostraDeEstilo';
+import { NOME_DA_TRANSICAO } from '../../components/editor/Inspector';
 import {
   marca as apiMarca,
   armazenamento as apiArmazenamento,
@@ -60,13 +64,21 @@ const CORES_INICIAIS: Cor[] = [
   { id: 'texto', rotulo: 'Texto', valor: '#F7FAFF' },
 ];
 
-// ---------- Estilos de legenda ----------
-
-const ESTILOS = [
-  { id: 'moderno', rotulo: 'Moderno', descricao: 'Destaque com cor da marca e fundo suave.' },
-  { id: 'impacto', rotulo: 'Impacto', descricao: 'Caixa alta e forte contraste para maior destaque.' },
-  { id: 'minimalista', rotulo: 'Minimalista', descricao: 'Visual limpo e elegante com fundo translúcido.' },
-] as const;
+// ---------- Acabamento padrão ----------
+//
+// O que todo vídeo novo recebe sem ninguém pedir: é o "sem esforço" do
+// produto. Os padrões aqui são os mesmos do acabamento automático
+// (acabamento.ts) — mostrar um valor e aplicar outro seria mentir.
+const PREFERENCIAS_PADRAO: Required<Omit<PreferenciasDeVideo, 'captionPreset'>> = {
+  fit: 'desfoque',
+  voiceEnhance: true,
+  autoZoom: true,
+  transicaoPadrao: 'cut',
+  logo: { mostrar: true, posicao: 'sd' },
+  musica: { usar: true, volumeDb: -20 },
+  efeitosSonoros: true,
+  barraDeProgresso: false,
+};
 
 const FONTES_TITULO = ['Poppins', 'Inter', 'Montserrat', 'Archivo'];
 const FONTES_CORPO = ['Inter', 'Roboto', 'Open Sans', 'Source Sans 3'];
@@ -75,7 +87,8 @@ export default function MarcaPage() {
   const [uso, setUso] = useState<Armazenamento | null>(null);
   const [consumo, setConsumo] = useState<ConsumoDeIa | null>(null);
   const [cores, setCores] = useState<Cor[]>(CORES_INICIAIS);
-  const [estilo, setEstilo] = useState<string>('moderno');
+  const [estilo, setEstilo] = useState<string>('padrao');
+  const [prefs, setPrefs] = useState(PREFERENCIAS_PADRAO);
   const [fonteTitulo, setFonteTitulo] = useState('Poppins');
   const [fonteCorpo, setFonteCorpo] = useState('Inter');
   // O logo vem do servidor, nao de um estado ficticio: `temLogo` era
@@ -112,6 +125,10 @@ export default function MarcaPage() {
 
         if (perfil.fontPrimary) setFonteTitulo(perfil.fontPrimary);
         if (perfil.fontSecond) setFonteCorpo(perfil.fontSecond);
+        const salvas = perfil.videoDefaults ?? {};
+        // Ids antigos ("moderno"...) viram o preset equivalente.
+        setEstilo(presetDaLegenda(salvas.captionPreset)?.id ?? 'padrao');
+        setPrefs({ ...PREFERENCIAS_PADRAO, ...salvas } as typeof PREFERENCIAS_PADRAO);
       })
       .catch((e) => setAviso(e instanceof Error ? e.message : 'não foi possível carregar a marca.'));
 
@@ -185,6 +202,7 @@ export default function MarcaPage() {
         },
         fontPrimary: fonteTitulo,
         fontSecond: fonteCorpo,
+        videoDefaults: { ...prefs, captionPreset: estilo as PreferenciasDeVideo['captionPreset'] },
       });
 
       setSujo(false);
@@ -197,6 +215,24 @@ export default function MarcaPage() {
   };
 
   const corDe = (id: string) => cores.find((c) => c.id === id)?.valor ?? '#2F66FF';
+
+  const mudarPrefs = (mudanca: Partial<typeof PREFERENCIAS_PADRAO>) => {
+    setPrefs((atual) => ({ ...atual, ...mudanca }));
+    setSujo(true);
+  };
+
+  const presetEscolhido = presetDaLegenda(estilo) ?? PRESETS_DE_LEGENDA[0];
+  const marcaDoVideo = {
+    cores: {
+      primary: corDe('primaria'),
+      secondary: corDe('secundaria'),
+      accent: corDe('superficie'),
+      textLight: corDe('texto'),
+      textDark: corDe('fundo'),
+    },
+    fonteTitulo,
+    fonteCorpo,
+  };
 
   const mudarCor = (id: string, valor: string) => {
     setCores((atual) => atual.map((c) => (c.id === id ? { ...c, valor } : c)));
@@ -415,52 +451,20 @@ export default function MarcaPage() {
             </p>
 
             <div className="marca__preview">
-              {/* O logo aparece dentro da área segura: é onde ele
-                  sobrevive à interface do Reels. */}
-              <span className="marca__logo-no-video">
-                <span
-                  aria-hidden
-                  style={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: 6,
-                    display: 'grid',
-                    placeItems: 'center',
-                    background: `linear-gradient(135deg, ${corDe('primaria')}, ${corDe('secundaria')})`,
-                    color: '#fff',
-                    fontSize: 13,
-                    fontWeight: 800,
-                  }}
-                >
-                  M
-                </span>
-                <span style={{ fontSize: 11, fontWeight: 700 }}>MAKUCHO</span>
-              </span>
+              {/* O logo aparece onde o render o põe, se estiver ligado. */}
+              {logo && prefs.logo.mostrar && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={apiAssets.url(logo.id)}
+                  alt=""
+                  className={`palco__logo palco__logo--${prefs.logo.posicao}`}
+                />
+              )}
 
               <span className="marca__zona-logo" aria-hidden />
 
-              <p
-                className="marca__legenda"
-                style={{
-                  fontFamily: `${fonteTitulo}, Inter, sans-serif`,
-                  color: corDe('texto'),
-                }}
-              >
-                Ideias em vídeos
-                <br />
-                que geram{' '}
-                <mark
-                  style={{
-                    background:
-                      estilo === 'minimalista' ? 'rgb(255 255 255 / 20%)' : corDe('primaria'),
-                    color: estilo === 'minimalista' ? corDe('texto') : '#fff',
-                    padding: '0 6px',
-                    borderRadius: 4,
-                    textTransform: estilo === 'impacto' ? 'uppercase' : 'none',
-                  }}
-                >
-                  resultados.
-                </mark>
+              <p className="marca__legenda" style={{ transform: 'scale(1.35)' }}>
+                <AmostraDeEstilo preset={presetEscolhido} marca={marcaDoVideo} texto={['vídeos', 'que', 'engajam']} />
               </p>
 
               <p
@@ -484,56 +488,149 @@ export default function MarcaPage() {
                 Escolha o estilo que mais combina com a sua marca.
               </p>
 
-              <div className="pilha" role="radiogroup" aria-label="Estilo das legendas">
-                {ESTILOS.map((item) => (
+              <div className="estilos" role="radiogroup" aria-label="Estilo das legendas">
+                {PRESETS_DE_LEGENDA.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     role="radio"
                     aria-checked={estilo === item.id}
-                    className="opcao"
+                    className="estilo"
+                    title={item.descricao}
                     onClick={() => {
                       setEstilo(item.id);
                       setSujo(true);
                     }}
                   >
-                    <span className="opcao__marca" aria-hidden />
-
-                    <span className="opcao__amostra">
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: item.id === 'minimalista' ? 500 : 800,
-                          textTransform: item.id === 'impacto' ? 'uppercase' : 'none',
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        Texto que{' '}
-                        <mark
-                          style={{
-                            background:
-                              item.id === 'minimalista'
-                                ? 'rgb(255 255 255 / 22%)'
-                                : corDe('primaria'),
-                            color: '#fff',
-                            padding: '0 3px',
-                            borderRadius: 3,
-                          }}
-                        >
-                          engaja
-                        </mark>{' '}
-                        de verdade.
-                      </span>
+                    <span className="estilo__amostra">
+                      <AmostraDeEstilo preset={item} marca={marcaDoVideo} />
                     </span>
-
-                    <span style={{ textAlign: 'left', minWidth: 0 }}>
-                      <strong style={{ fontSize: 14, display: 'block' }}>{item.rotulo}</strong>
-                      <span className="texto-secundario" style={{ fontSize: 12 }}>
-                        {item.descricao}
-                      </span>
-                    </span>
+                    <span className="estilo__rotulo">{item.rotulo}</span>
                   </button>
                 ))}
+              </div>
+              <p className="campo__ajuda">{presetEscolhido.descricao}</p>
+            </section>
+
+            <section className="cartao">
+              <h2>Acabamento dos vídeos novos</h2>
+              <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
+                O que todo vídeo recebe automaticamente, com ou sem IA. Dá para mudar em cada vídeo no editor.
+              </p>
+
+              <Interruptor
+                rotulo="Logo no vídeo"
+                ajuda={logo ? undefined : 'Envie o logotipo acima para usar.'}
+                ligado={prefs.logo.mostrar}
+                onTrocar={(v) => mudarPrefs({ logo: { ...prefs.logo, mostrar: v } })}
+              />
+              {prefs.logo.mostrar && (
+                <div className="campo">
+                  <label className="campo__rotulo" htmlFor="posicao-logo">
+                    Posição do logo
+                  </label>
+                  <select
+                    id="posicao-logo"
+                    className="campo__selecao"
+                    value={prefs.logo.posicao}
+                    onChange={(e) =>
+                      mudarPrefs({ logo: { ...prefs.logo, posicao: e.target.value as 'sd' | 'se' | 'id' | 'ie' } })
+                    }
+                  >
+                    <option value="sd">Canto superior direito</option>
+                    <option value="se">Canto superior esquerdo</option>
+                    <option value="id">Canto inferior direito</option>
+                    <option value="ie">Canto inferior esquerdo</option>
+                  </select>
+                </div>
+              )}
+
+              <Interruptor
+                rotulo="Trilha padrão nos vídeos"
+                ajuda={trilha ? 'Abaixa sozinha enquanto você fala.' : 'Envie uma trilha abaixo para usar.'}
+                ligado={prefs.musica.usar}
+                onTrocar={(v) => mudarPrefs({ musica: { ...prefs.musica, usar: v } })}
+              />
+              {prefs.musica.usar && (
+                <div className="campo">
+                  <div className="linha entre">
+                    <label className="campo__rotulo" htmlFor="volume-padrao" style={{ marginBottom: 0 }}>
+                      Volume da trilha
+                    </label>
+                    <span className="texto-secundario" style={{ fontSize: 12 }}>
+                      {prefs.musica.volumeDb} dB
+                    </span>
+                  </div>
+                  <input
+                    id="volume-padrao"
+                    type="range"
+                    className="deslizante"
+                    min={-32}
+                    max={-8}
+                    step={2}
+                    value={prefs.musica.volumeDb}
+                    onChange={(e) => mudarPrefs({ musica: { ...prefs.musica, volumeDb: Number(e.target.value) } })}
+                  />
+                </div>
+              )}
+
+              <Interruptor
+                rotulo="Zoom automático"
+                ajuda="Aproximação lenta na abertura e zoom seco em cortes alternados."
+                ligado={prefs.autoZoom}
+                onTrocar={(v) => mudarPrefs({ autoZoom: v })}
+              />
+              <Interruptor
+                rotulo="Efeitos sonoros"
+                ajuda={'"Whoosh" nas transições e "pop" nos títulos. Gerados pelo Studio, sem licença.'}
+                ligado={prefs.efeitosSonoros}
+                onTrocar={(v) => mudarPrefs({ efeitosSonoros: v })}
+              />
+              <Interruptor
+                rotulo="Barra de progresso"
+                ajuda="Uma linha no topo que avança até o fim."
+                ligado={prefs.barraDeProgresso}
+                onTrocar={(v) => mudarPrefs({ barraDeProgresso: v })}
+              />
+              <Interruptor
+                rotulo="Voz limpa"
+                ajuda="Menos ruído de fundo, voz mais presente."
+                ligado={prefs.voiceEnhance}
+                onTrocar={(v) => mudarPrefs({ voiceEnhance: v })}
+              />
+
+              <div className="campo">
+                <label className="campo__rotulo" htmlFor="transicao-padrao">
+                  Transição entre os cortes
+                </label>
+                <select
+                  id="transicao-padrao"
+                  className="campo__selecao"
+                  value={prefs.transicaoPadrao}
+                  onChange={(e) => mudarPrefs({ transicaoPadrao: e.target.value as TipoDeTransicao })}
+                >
+                  {TIPOS_DE_TRANSICAO.map((t) => (
+                    <option key={t} value={t}>
+                      {NOME_DA_TRANSICAO[t]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="campo">
+                <label className="campo__rotulo" htmlFor="enquadramento-padrao">
+                  Gravação horizontal
+                </label>
+                <select
+                  id="enquadramento-padrao"
+                  className="campo__selecao"
+                  value={prefs.fit}
+                  onChange={(e) => mudarPrefs({ fit: e.target.value as 'ajustar' | 'preencher' | 'desfoque' })}
+                >
+                  <option value="desfoque">Inteira, com fundo desfocado</option>
+                  <option value="preencher">Preencher a tela (corta as laterais)</option>
+                  <option value="ajustar">Inteira, com faixas pretas</option>
+                </select>
               </div>
             </section>
 
@@ -716,6 +813,37 @@ export default function MarcaPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function Interruptor({
+  rotulo,
+  ajuda,
+  ligado,
+  onTrocar,
+}: {
+  rotulo: string;
+  ajuda?: string;
+  ligado: boolean;
+  onTrocar: (v: boolean) => void;
+}) {
+  return (
+    <div className="campo">
+      <div className="linha entre" style={{ gap: 'var(--e3)' }}>
+        <span style={{ fontSize: 14, fontWeight: 600 }}>{rotulo}</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={ligado}
+          aria-label={rotulo}
+          className="chave"
+          onClick={() => onTrocar(!ligado)}
+        >
+          <span className="chave__bola" aria-hidden />
+        </button>
+      </div>
+      {ajuda && <p className="campo__ajuda">{ajuda}</p>}
+    </div>
   );
 }
 

@@ -87,12 +87,19 @@ t('o segundo corta de 40s a 47s', filtro.includes('trim=40.000:47.000'));
 // que foi cortado entre eles.
 // O `` importa: `asetpts` também contém `setpts`, e sem a borda
 // o contador daria 4 e o teste passaria por engano.
-t('o vídeo tem setpts em cada trecho', (filtro.match(/,setpts=PTS-STARTPTS/g) ?? []).length === 2);
+const cadeiasDeVideo = filtro.split(';').filter((p) => p.startsWith('[0:v]trim='));
+t('há uma cadeia de vídeo por trecho', cadeiasDeVideo.length === 2);
+t('o vídeo tem setpts em cada trecho', cadeiasDeVideo.every((p) => p.includes(',setpts=PTS-STARTPTS')));
+// Número exato de quadros por trecho: 8s e 7s a 30 fps.
+t('o primeiro trecho tem 240 quadros exatos', cadeiasDeVideo[0]!.includes('trim=end_frame=240'));
+t('o segundo trecho tem 210 quadros exatos', cadeiasDeVideo[1]!.includes('trim=end_frame=210'));
 // asetpts pelo mesmo motivo: sem ele o áudio entra deslocado do
 // quadro, que é o defeito mais visível possível.
 t('o áudio tem asetpts em cada trecho', (filtro.match(/asetpts=PTS-STARTPTS/g) ?? []).length === 2);
 
-t('o áudio é cortado junto do vídeo', (filtro.match(/atrim=/g) ?? []).length === 2);
+t('o áudio é cortado junto do vídeo', (filtro.match(/\[0:a\]atrim=/g) ?? []).length === 2);
+// O áudio do trecho tem a mesma duração do vídeo dele (quadros / 30).
+t('o áudio do trecho tem a duração exata do vídeo', filtro.includes('apad=whole_dur=8.0000,atrim=0:8.0000'));
 
 // ============================================================
 // Formato vertical
@@ -109,10 +116,11 @@ t('corrige o aspecto de pixel', filtro.includes('setsar=1'));
 // Concatenação
 // ============================================================
 
-t('concatena os dois trechos', filtro.includes('concat=n=2:v=1:a=1'));
-// O áudio sai do concat em [aconcat] e só então passa pelo
-// loudnorm; o vídeo vai direto para [vsaida].
-t('o concat produz vídeo e áudio', filtro.includes('[vsaida][aconcat]'));
+t('concatena o vídeo dos dois trechos', filtro.includes('concat=n=2:v=1:a=0'));
+t('concatena o áudio dos dois trechos', filtro.includes('concat=n=2:v=0:a=1[voz]'));
+// Sem transição, nada de xfade: corte seco é concat.
+t('sem transição, não há xfade', !filtro.includes('xfade'));
+t('o vídeo montado vira [vsaida]', filtro.includes('null[vsaida]'));
 t('e o áudio normalizado vira a saída', filtro.includes('[asaida]'));
 t('a saída de vídeo é mapeada', args.includes('[vsaida]'));
 t('a saída de áudio é mapeada', args.includes('[asaida]'));
@@ -159,7 +167,7 @@ t('o clip desligado não entra', !filtroSemC1.includes('trim=10.000:18.000'));
 t('o que sobrou entra', filtroSemC1.includes('trim=40.000:47.000'));
 // Um único trecho ainda passa pelo concat: mudar o caminho para o
 // caso de um só produziria dois comportamentos para manter.
-t('um trecho só ainda concatena', filtroSemC1.includes('concat=n=1'));
+t('um trecho só ainda concatena o áudio', filtroSemC1.includes('concat=n=1:v=0:a=1'));
 
 let recusou = false;
 try {
@@ -195,4 +203,105 @@ t(
 );
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
+// ============================================================
+// Acabamento: enquadramento, efeitos, transições, logo, trilha, sons
+// ============================================================
+
+{
+  const tres: EditPlanV1 = {
+    ...plano,
+    clips: [
+      { ...plano.clips[0]!, effect: 'zoom_lento' },
+      { ...plano.clips[1]!, id: 'c2', timelineStartMs: 8000, effect: 'punch_in' },
+      { ...plano.clips[1]!, id: 'c3', sourceStartMs: 60_000, sourceEndMs: 66_000, timelineStartMs: 15_000 },
+    ],
+    targetDurationMs: 21_000,
+    transitions: [{ id: 't1', type: 'fade', beforeClipIndex: 2, durationMs: 400 }],
+    overlays: [
+      { id: 'lg', component: 'LogoBug', assetId: 'logo1', variant: 'sd', timelineStartMs: 0, durationMs: 21_000 },
+      { id: 'tt', component: 'HookTitle', text: 'Título', timelineStartMs: 0, durationMs: 3000 },
+    ],
+    music: { assetId: 'mus1', gainDb: -20, fadeInMs: 800, fadeOutMs: 1500, duckUnderVoice: true },
+    soundEffects: [
+      { id: 's1', assetId: 'sfx-whoosh', timelineStartMs: 14_800, gainDb: -12 },
+      { id: 's2', assetId: 'sfx-pop', timelineStartMs: 40, gainDb: -10 },
+      { id: 's3', assetId: 'asset-sem-arquivo', timelineStartMs: 1000, gainDb: -10 },
+    ],
+    render: { ...plano.render, fit: 'desfoque', voiceEnhance: true },
+  };
+
+  const a = montarArgumentos({
+    entrada: '/in.mp4',
+    saida: '/out.mp4',
+    plano: tres,
+    legendas: '/tmp/l.ass',
+    pastaDeFontes: '/app/fonts',
+    imagens: { logo1: '/storage/logo.png' },
+    musica: '/storage/trilha.mp3',
+  });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+
+  // Enquadramento com desfoque: o fundo é desfocado em 1/4 do tamanho.
+  t('desfoque divide o trecho em frente e fundo', f.includes('split=2[frentec0][fundoc0]'));
+  t('o desfoque roda em 270x480, não no quadro cheio', f.includes('scale=270:480') && f.includes('boxblur='));
+  t('não há faixas pretas no desfoque', !f.includes('pad=1080:1920'));
+
+  // Efeitos por trecho.
+  t('zoom lento cresce com o tempo (eval=frame)', f.includes('eval=frame'));
+  t('punch-in recorta 1/1.12 e volta ao quadro', f.includes('crop=964:1714,scale=1080:1920'));
+
+  // Transição: cada uma é um segmento próprio (último quadro congelado
+  // do trecho que sai + começo do que entra), e tudo entra num concat
+  // só. Nenhum xfade recebe a saída de outro (no FFmpeg 5.1, o
+  // encadeado descarta o que vem depois da segunda transição), e nenhum
+  // trecho é repartido com split (o ramo lido mais tarde travava o
+  // FFmpeg): cada pedaço é uma leitura própria da entrada.
+  t('o último quadro do trecho que sai é um pedaço próprio', f.includes('trim=8.967:9.000') || /\[0:v\]trim=[0-9.]+:[0-9.]+,[^;]*trim=end_frame=1,/.test(f));
+  t('o último quadro sai congelado pela duração da transição', f.includes('[z1]tpad=stop_mode=clone:stop=12[u1]'));
+  t('o começo do trecho que entra é um pedaço de 12 quadros', /trim=end_frame=12,setpts=PTS-STARTPTS[^;]*\[qe2\]/.test(f) || f.includes('[e2]'));
+  t('o xfade é um segmento curto, começando em zero', f.includes('[u1][e2]xfade=transition=fade:duration=0.4000:offset=0[t2]'));
+  t('o resto do trecho vem depois (168 quadros)', /trim=end_frame=168,setpts=PTS-STARTPTS/.test(f) && f.includes('[r2]'));
+  t('tudo num concat só, na ordem da timeline', f.includes('[c0][c1][t2][r2]concat=n=4:v=1:a=0[montado]'));
+  t('nenhum xfade recebe a saída de outro xfade', !/\[t\d+\]xfade/.test(f) && (f.match(/xfade=/g) ?? []).length === 1);
+  t('nenhum trecho é repartido com split (só o desfoque divide o quadro)', !/\[c\d+\]split/.test(f));
+  t('o zoom lento continua no pedaço seguinte (tempo deslocado)', !f.includes('(t+0.0000)'));
+
+  // Logo.
+  t('o logo é uma entrada', a.includes('/storage/logo.png'));
+  t('o logo é escalado numa caixa sem distorcer', f.includes('scale=184:154:force_original_aspect_ratio=decrease'));
+  t('o logo fica no canto superior direito', f.includes('overlay=x=1080-w-54:y=144'));
+
+  // Voz, trilha com ducking e sons.
+  t('a voz é limpa (afftdn)', f.includes('afftdn='));
+  t('a trilha entra em loop', a.includes('-stream_loop') && a.includes('/storage/trilha.mp3'));
+  t('a trilha abaixa sob a voz', f.includes('sidechaincompress='));
+  t('o whoosh é sintetizado, sem arquivo', f.includes('anoisesrc='));
+  t('o pop é sintetizado, sem arquivo', f.includes('aevalsrc='));
+  t('o som no ponto certo (adelay 14800ms)', f.includes('adelay=delays=14800:all=1'));
+  t('som de asset sem arquivo é ignorado, não quebra', !f.includes('asset-sem-arquivo'));
+  t('voz + trilha + 2 sons misturados', f.includes('amix=inputs=3'));
+
+  // Legendas por último, com as fontes da imagem.
+  t('as legendas usam a pasta de fontes', f.includes('fontsdir=/app/fonts'));
+  const ultimaParte = f.split(';').pop()!;
+  t('as legendas são a última etapa do vídeo', ultimaParte.startsWith('[vsaida]subtitles='));
+  t('a duração com transição não muda (21s)', duracaoDoResultado(tres) === 21_000);
+}
+
+{
+  // Uma transição num trecho desligado não entra.
+  const comTransicao: EditPlanV1 = {
+    ...plano,
+    transitions: [{ id: 't1', type: 'slide', beforeClipIndex: 1, durationMs: 350 }],
+  };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comTransicao, clipsDesligados: ['c2'] });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('transição de trecho desligado não entra', !f.includes('xfade'));
+
+  const b = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comTransicao });
+  const g = b[b.indexOf('-filter_complex') + 1]!;
+  t('slide vira slideleft no xfade', g.includes('xfade=transition=slideleft'));
+  t('preencher não existe sem pedir: o padrão é ajustar com pad', g.includes('pad=1080:1920'));
+}
+
 if (fail > 0) process.exit(1);

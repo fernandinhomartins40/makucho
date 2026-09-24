@@ -1,12 +1,14 @@
 # ============================================================
 # MAKUCHO STUDIO - Worker de render
 #
-# Remotion (Chromium headless) + FFmpeg. E a imagem mais pesada do
-# stack e a que mais consome recursos em execucao — ver ADR 0003.
+# FFmpeg + libass, e nada mais: legendas, textos, transicoes, efeitos,
+# logo, trilha e sons sao filtros nativos do FFmpeg (ver
+# packages/worker-core/src/render.ts). Sem navegador headless: o
+# Remotion previsto no plano nunca foi instalado, e as bibliotecas do
+# Chromium que esta imagem carregava so ocupavam espaco.
 #
-# Debian slim, nao Alpine: o Remotion baixa um Chromium compilado
-# contra glibc. No Alpine ele nao roda, e o chromium do apk diverge da
-# versao que o Remotion espera.
+# Debian slim: o FFmpeg 5.1 do bookworm ja traz libass, librsvg (logo
+# em SVG), xfade com as 46 transicoes e sidechaincompress.
 #
 # O contexto de build e a RAIZ do repositorio.
 # ============================================================
@@ -56,21 +58,20 @@ RUN pnpm install --frozen-lockfile --prod
 
 # ---------- Imagem final ----------
 FROM node:22-bookworm-slim AS runner
-# Bibliotecas que o Chromium do Remotion exige. Faltando qualquer uma,
-# o erro e um "Failed to launch browser" sem indicacao de qual.
+# `fonts-liberation` fica como reserva do sistema: um estilo
+# personalizado antigo com "Liberation Sans" continua encontrando a
+# fonte.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ffmpeg ca-certificates fonts-liberation \
-       libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-       libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-       libgbm1 libasound2 libpango-1.0-0 libcairo2 \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-# Chromium do Remotion no volume de cache, fora da camada da imagem.
-ENV REMOTION_BROWSER_CACHE=/app/.cache/remotion
+# As fontes do video (OFL). O libass as recebe por `fontsdir` e as
+# encontra pelo nome gravado no arquivo (estilos-de-legenda.ts).
+ENV STUDIO_FONTS_DIR=/app/fonts
 
 RUN groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m worker
 
@@ -87,11 +88,10 @@ COPY --from=builder --chown=worker:nodejs /app/studio/packages/worker-core/dist 
 # consegue nomear os tipos em quem o consome.
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 
-# Composicoes Remotion: a IA escolhe entre estes componentes, nunca
-# escreve animacao (contexto mestre, secao 21).
+COPY --chown=worker:nodejs studio/assets/fonts /app/fonts
 
-RUN mkdir -p /app/storage/media /tmp/studio /app/.cache/remotion \
-  && chown -R worker:nodejs /app/storage /tmp/studio /app/.cache
+RUN mkdir -p /app/storage/media /tmp/studio \
+  && chown -R worker:nodejs /app/storage /tmp/studio
 
 USER worker
 

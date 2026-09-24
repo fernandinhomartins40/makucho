@@ -7,6 +7,7 @@
 // ============================================================
 
 import { z } from 'zod';
+import { preferenciasDeVideoSchema } from './acabamento';
 import { clipRoleSchema, frameworkSchema } from './vocabulary';
 
 // ---------- Cor ----------
@@ -33,6 +34,12 @@ export const brandProfileInputSchema = z.object({
   // Nome de familia tipografica; a licenca fica no asset da fonte.
   fontPrimary: z.string().max(80).optional(),
   fontSecond: z.string().max(80).optional(),
+  /**
+   * Como os videos novos saem por padrao: estilo de legenda, logo,
+   * trilha, zoom, transicao, efeitos sonoros. Versionado junto com o
+   * resto do perfil -- um video antigo continua explicavel.
+   */
+  videoDefaults: preferenciasDeVideoSchema.optional(),
 });
 
 export type BrandProfileInput = z.infer<typeof brandProfileInputSchema>;

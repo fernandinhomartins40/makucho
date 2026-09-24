@@ -13,6 +13,8 @@ import { Module } from '@nestjs/common';
 import { CryptoService } from '../../common/crypto.service';
 import { EditPlansModule } from '../edit-plans/edit-plans.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { AcabamentoController } from './acabamento.controller';
+import { AcabamentoService } from './acabamento.service';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
@@ -29,8 +31,9 @@ import { UsoDeIaService } from './uso.service';
   // A analise persiste o plano e muda o estado do projeto; reusar os
   // servicos que ja fazem isso evita duas maquinas de estado.
   imports: [EditPlansModule, ProjectsModule],
-  controllers: [AiController, AnaliseController, RoteiroController, RefinoController],
+  controllers: [AiController, AnaliseController, RoteiroController, RefinoController, AcabamentoController],
   providers: [
+    AcabamentoService,
     AiService,
     AnaliseService,
     PropostaService,
@@ -42,6 +45,6 @@ import { UsoDeIaService } from './uso.service';
   ],
   // Exportado para as fases 5c e 5d: elas chamam o provedor por aqui,
   // e nao diretamente, para que a trava de custo nao tenha desvio.
-  exports: [AiService, UsoDeIaService, PromptsService, PropostaService],
+  exports: [AiService, UsoDeIaService, PromptsService, PropostaService, AcabamentoService],
 })
 export class AiModule {}

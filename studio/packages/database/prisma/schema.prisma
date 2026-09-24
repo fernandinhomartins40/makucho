@@ -279,6 +279,10 @@ model BrandProfile {
   colors      Json
   fontPrimary String?
   fontSecond  String?
+  // Como os videos novos saem por padrao (acabamento.ts,
+  // `preferenciasDeVideoSchema`): estilo de legenda, logo, trilha,
+  // zoom, transicao, efeitos sonoros.
+  videoDefaults Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

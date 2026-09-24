@@ -22,6 +22,8 @@
 // ============================================================
 
 import type { AiProposalV1, ProposedSegment } from './ai-proposal';
+import { aplicarAcabamento } from './acabamento';
+import type { ContextoDoAcabamento } from './acabamento';
 import type { EditPlanV1 } from './edit-plan';
 import { editPlanV1Schema } from './edit-plan';
 
@@ -43,6 +45,11 @@ export interface EntradaDaCompilacao {
   segmentos: readonly SegmentoDaTranscricao[];
   /** Estilo de legenda do Brand Profile; ha um padrao se faltar. */
   captionStyleId?: string;
+  /**
+   * Preferencias da marca, logo e trilha. Sem ele o plano sai com o
+   * acabamento padrao (legenda Clássica, zoom e desfoque) -- nunca cru.
+   */
+  acabamento?: ContextoDoAcabamento;
 }
 
 export type ResultadoDaCompilacao =
@@ -148,7 +155,7 @@ export function compilarProposta(entrada: EntradaDaCompilacao): ResultadoDaCompi
     clips,
     captions: {
       enabled: true,
-      styleId: entrada.captionStyleId ?? 'default',
+      styleId: entrada.captionStyleId ?? 'padrao',
       // Tres palavras por bloco: o suficiente para acompanhar a fala
       // sem que o olho precise ler mais do que o ouvido escuta.
       wordsPerBlock: 3,
@@ -189,7 +196,11 @@ export function compilarProposta(entrada: EntradaDaCompilacao): ResultadoDaCompi
     };
   }
 
-  return { ok: true, plano: conferido.data, avisos };
+  // O acabamento vem depois da validacao dos cortes, e tem a propria
+  // rede: se algo dele nao passar, o plano sai sem acabamento, mas sai.
+  const acabado = aplicarAcabamento(conferido.data, entrada.acabamento, proposta.style ?? {});
+
+  return { ok: true, plano: acabado, avisos };
 }
 
 /** O trecho cabe dentro do vídeo? */

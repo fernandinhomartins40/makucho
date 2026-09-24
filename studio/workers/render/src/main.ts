@@ -17,22 +17,39 @@
 import { Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
-import { FILA_RENDER, PREFIXO_DAS_FILAS, editPlanV1Schema } from '@makucho/studio-contracts';
-import type { CaptionStyleInput, EditPlanV1 } from '@makucho/studio-contracts';
+import {
+  CORES_PADRAO_DA_MARCA,
+  FILA_RENDER,
+  PREFIXO_DAS_FILAS,
+  brandColorsSchema,
+  editPlanV1Schema,
+  ehEfeitoSonoroEmbutido,
+  gerarAss,
+  planoPrecisaDeAss,
+  presetDaLegenda,
+  resolverEstiloDaLegenda,
+} from '@makucho/studio-contracts';
+import type { CaptionStyleInput, EditPlanV1, MarcaDoVideo } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
   duracaoDoResultado,
-  gerarAss,
   lerMetadados,
   renderizar,
   verificarLimite,
 } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
+
+/**
+ * Fontes do video (OFL), copiadas para a imagem de render. Sem a
+ * pasta, o libass cai nas fontes do sistema e a legenda sai com uma
+ * tipografia que ninguem escolheu -- por isso o aviso no log.
+ */
+const PASTA_DE_FONTES = resolve(process.env.STUDIO_FONTS_DIR ?? '/app/fonts');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
 interface DadosDoJob {
@@ -92,21 +109,32 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
     await comEspacoDeTrabalho(async (espaco) => {
       const saidaTmp = espaco.arquivo('render.mp4');
 
+      const workspaceId = await workspaceDo(projectId);
+      const marca = await marcaDo(workspaceId);
+
       // O .ass vive no espaço de trabalho: é temporário e vai embora
       // com ele. Guardá-lo no storage encheria o disco com um arquivo
       // que só serve durante o render.
-      const legendas = await prepararLegendas(
+      const legendas = await prepararAss(
         espaco,
         plano,
         projectId,
+        workspaceId,
+        marca,
         job.data.clipsDesligados ?? [],
       );
+
+      const arquivos = await arquivosDoPlano(plano, workspaceId);
 
       await renderizar({
         entrada,
         saida: saidaTmp,
         plano,
         legendas,
+        pastaDeFontes: existsSync(PASTA_DE_FONTES) ? PASTA_DE_FONTES : undefined,
+        imagens: arquivos.imagens,
+        musica: arquivos.musica,
+        sons: arquivos.sons,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
           // Renova o lock a cada avanço: um render de dez minutos não
@@ -172,25 +200,55 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 }
 
 /**
- * Gera o .ass, quando o plano pede legenda e há transcrição.
+ * Gera o .ass: legendas e textos de tela.
  *
  * Devolve `undefined` em vez de lançar quando algo falta. A legenda é
  * acabamento: um render sem ela é um vídeo publicável, e derrubar o
  * job por causa dela trocaria um resultado bom por nenhum resultado.
  * O que NÃO acontece é gerar legenda inventada — sem as palavras da
- * transcrição, não há legenda, ponto.
+ * transcrição, não há legenda, ponto. Os textos de tela (título,
+ * chamada) continuam, porque não dependem da fala.
  */
-async function prepararLegendas(
+async function prepararAss(
   espaco: { arquivo(nome: string): string },
   plano: EditPlanV1,
   projectId: string,
+  workspaceId: string | null,
+  marca: MarcaDoVideo,
   clipsDesligados: readonly string[],
 ): Promise<string | undefined> {
-  if (!plano.captions.enabled) return undefined;
+  if (!planoPrecisaDeAss(plano)) return undefined;
+
+  if (!existsSync(PASTA_DE_FONTES)) {
+    console.warn(`[render] pasta de fontes ${PASTA_DE_FONTES} ausente: o libass usará as do sistema`);
+  }
 
   // As palavras vêm da transcrição, com os timestamps que o whisper
-  // mediu. É a única origem possível: legenda é fala transcrita, e
-  // qualquer outra fonte seria texto que ninguém disse.
+  // mediu. É a única origem possível para a legenda.
+  const palavras = plano.captions.enabled ? await palavrasDo(projectId) : [];
+
+  if (plano.captions.enabled && palavras.length === 0) {
+    console.warn(`[render] projeto ${projectId} sem palavras transcritas: render sem legenda`);
+  }
+
+  const estilo = resolverEstiloDaLegenda(plano.captions.styleId, {
+    marca,
+    personalizado: await estiloPersonalizado(workspaceId, plano.captions.styleId),
+    escala: plano.captions.sizeScale ?? 1,
+  });
+
+  const conteudo = gerarAss({ plano, estilo, palavras, clipsDesligados, marca });
+  const caminho = espaco.arquivo('legendas.ass');
+
+  // UTF-8 explícito: um acento na codificação errada sai QUEIMADO no
+  // vídeo, sem como corrigir depois.
+  await writeFile(caminho, conteudo, 'utf8');
+
+  console.log(`[render] .ass: ${palavras.length} palavras, estilo ${estilo.nome}, ${plano.overlays.length} elementos`);
+  return caminho;
+}
+
+async function palavrasDo(projectId: string) {
   const transcricao = await prisma.transcription.findFirst({
     where: { projectId },
     orderBy: { createdAt: 'desc' },
@@ -202,76 +260,60 @@ async function prepararLegendas(
     },
   });
 
-  // O `id` vai junto porque é a âncora das correções manuais: sem
-  // ele, uma palavra corrigida pelo usuário sairia como o whisper
-  // ouviu, e a correção seria silenciosamente descartada.
-  const palavras = (transcricao?.segments ?? []).flatMap((s) =>
+  // O `id` vai junto: é a âncora das correções manuais. Sem ele, a
+  // palavra corrigida sairia como o whisper ouviu.
+  return (transcricao?.segments ?? []).flatMap((s) =>
     s.words.map((w) => ({ id: w.id, startMs: w.startMs, endMs: w.endMs, word: w.word })),
   );
-
-  if (palavras.length === 0) {
-    console.warn(`[render] projeto ${projectId} sem palavras transcritas: render sem legenda`);
-    return undefined;
-  }
-
-  // O estilo vem do perfil de marca ATIVO, pela versão mais recente:
-  // é o que permite dizer com que identidade um vídeo antigo foi
-  // gerado. Sem estilo cadastrado, cai no padrão — legenda branca com
-  // contorno preto funciona sobre qualquer fundo.
-  const estilo = await buscarEstilo(projectId, plano.captions.styleId);
-
-  const conteudo = gerarAss({ plano, estilo, palavras, clipsDesligados });
-  const caminho = espaco.arquivo('legendas.ass');
-
-  // UTF-8 explícito: a legenda é em português, e um acento gravado na
-  // codificação errada aparece como caractere quebrado QUEIMADO no
-  // vídeo — sem como corrigir depois.
-  await writeFile(caminho, conteudo, 'utf8');
-
-  console.log(`[render] legendas: ${palavras.length} palavras, estilo ${estilo.name}`);
-  return caminho;
 }
 
-/**
- * Estilo de legenda do workspace, ou o padrão.
- *
- * O `styleId` do plano é consultado dentro do perfil de marca do
- * projeto, nunca isolado: um id de outro workspace aplicaria a marca
- * de um cliente no vídeo de outro.
- */
-async function buscarEstilo(projectId: string, styleId: string): Promise<CaptionStyleInput> {
+async function workspaceDo(projectId: string): Promise<string | null> {
   const projeto = await prisma.project.findUnique({
     where: { id: projectId },
     select: { workspaceId: true },
   });
+  return projeto?.workspaceId ?? null;
+}
 
-  const salvo = projeto
-    ? await prisma.captionStyle.findFirst({
-        where: {
-          id: styleId,
-          brandProfile: { workspaceId: projeto.workspaceId },
-        },
-      })
-    : null;
+/**
+ * Cores e fontes do Kit de marca ativo.
+ *
+ * Sem kit salvo, as cores padrão — a legenda sai com a identidade
+ * MAKUCHO em vez de falhar.
+ */
+async function marcaDo(workspaceId: string | null): Promise<MarcaDoVideo> {
+  if (!workspaceId) return { cores: CORES_PADRAO_DA_MARCA };
 
-  if (!salvo) {
-    return {
-      name: 'padrao',
-      // `Liberation Sans` porque é a fonte que EXISTE na imagem
-      // (`fonts-liberation` no Dockerfile). Uma fonte ausente não
-      // falha: o libass cai num substituto em silêncio, e a legenda
-      // sai com uma tipografia que ninguém escolheu.
-      fontFamily: 'Liberation Sans',
-      fontSizePx: 64,
-      color: '#FFFFFF',
-      strokeColor: '#000000',
-      strokeWidthPx: 3,
-      // Três palavras por bloco: cabe na largura de 1080 e dá tempo
-      // de ler sem que a legenda vire um parágrafo parado na tela.
-      wordsPerBlock: 3,
-      position: 'bottom',
-    };
-  }
+  const perfil = await prisma.brandProfile.findFirst({
+    where: { workspaceId, isActive: true },
+    orderBy: { version: 'desc' },
+    select: { colors: true, fontPrimary: true, fontSecond: true },
+  });
+
+  const cores = brandColorsSchema.safeParse(perfil?.colors);
+  return {
+    cores: cores.success ? cores.data : CORES_PADRAO_DA_MARCA,
+    fonteTitulo: perfil?.fontPrimary ?? null,
+    fonteCorpo: perfil?.fontSecond ?? null,
+  };
+}
+
+/**
+ * Um estilo personalizado do banco, quando o `styleId` não é preset.
+ *
+ * Consultado dentro do workspace do projeto, nunca isolado: um id de
+ * outro workspace aplicaria a marca de um cliente no vídeo de outro.
+ */
+async function estiloPersonalizado(
+  workspaceId: string | null,
+  styleId: string,
+): Promise<CaptionStyleInput | null> {
+  if (!workspaceId || presetDaLegenda(styleId)) return null;
+
+  const salvo = await prisma.captionStyle.findFirst({
+    where: { id: styleId, brandProfile: { workspaceId } },
+  });
+  if (!salvo) return null;
 
   return {
     name: salvo.name,
@@ -284,6 +326,51 @@ async function buscarEstilo(projectId: string, styleId: string): Promise<Caption
     wordsPerBlock: salvo.wordsPerBlock,
     position: salvo.position as CaptionStyleInput['position'],
   };
+}
+
+/**
+ * Os arquivos que o plano referencia: logo, imagens, trilha, sons.
+ *
+ * Sempre dentro do workspace do projeto — um assetId de outro cliente
+ * não vira arquivo aqui. Um asset desativado (logo substituído) ainda
+ * vale: o plano antigo o escolheu, e o arquivo continua guardado. Um
+ * que sumiu do disco é pulado com aviso: o vídeo sai sem ele, mas sai.
+ */
+async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
+  const imagens: Record<string, string> = {};
+  const sons: Record<string, string> = {};
+  let musica: string | undefined;
+
+  if (!workspaceId) return { imagens, sons, musica };
+
+  const ids = new Set<string>();
+  for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
+  for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
+  if (plano.music) ids.add(plano.music.assetId);
+  if (ids.size === 0) return { imagens, sons, musica };
+
+  const assets = await prisma.asset.findMany({
+    where: { id: { in: [...ids] }, workspaceId },
+    select: { id: true, storageKey: true, kind: true },
+  });
+
+  for (const a of assets) {
+    let caminho: string;
+    try {
+      caminho = caminhoDe(a.storageKey);
+    } catch {
+      continue;
+    }
+    if (!existsSync(caminho)) {
+      console.warn(`[render] asset ${a.id} sem arquivo no storage: fica de fora`);
+      continue;
+    }
+    if (a.kind === 'MUSIC' && plano.music?.assetId === a.id) musica = caminho;
+    else if (a.kind === 'SOUND_EFFECT') sons[a.id] = caminho;
+    else imagens[a.id] = caminho;
+  }
+
+  return { imagens, sons, musica };
 }
 
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */

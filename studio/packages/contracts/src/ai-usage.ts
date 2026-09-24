@@ -28,6 +28,8 @@ export const CHAMADAS_DE_IA = [
   'propor_candidatos',
   'avaliar_risco',
   'refinar_cortes',
+  // #7: edicao por comando em linguagem natural (ai-comando.ts).
+  'comandar_edicao',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -41,6 +43,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   propor_candidatos: 'Trechos adicionais',
   avaliar_risco: 'Risco semântico',
   refinar_cortes: 'Aprimoramento de cortes',
+  comandar_edicao: 'Edição por comando',
 };
 
 // ---------- Modelos ----------
@@ -55,6 +58,9 @@ export const MODELO_POR_CHAMADA: Record<ChamadaDeIa, 'deepseek-chat' | 'deepseek
   propor_candidatos: 'deepseek-chat',
   avaliar_risco: 'deepseek-reasoner',
   refinar_cortes: 'deepseek-chat',
+  // Traduzir um pedido curto em operacoes fechadas nao exige raciocinio
+  // longo: o chat responde em segundos e custa metade.
+  comandar_edicao: 'deepseek-chat',
 };
 
 /**

@@ -104,6 +104,9 @@ export class FalsoProvedor implements ProvedorDeIa {
         if (pedido.chamada === 'refinar_cortes') {
           return JSON.stringify(this.refinoValido());
         }
+        if (pedido.chamada === 'comandar_edicao') {
+          return JSON.stringify(this.comandoValido());
+        }
         return JSON.stringify({ ok: true, chamada: pedido.chamada });
     }
   }
@@ -251,6 +254,30 @@ export class FalsoProvedor implements ProvedorDeIa {
       ],
       warnings: [] as string[],
       missingBlocks: [] as string[],
+      // O acabamento sugerido: estilo, título e ênfase. É o que prova,
+      // sem chave de IA, que a proposta chega ao editor já acabada.
+      style: {
+        captionPreset: 'destaque' as const,
+        hookTitle: 'O erro que custa cliente',
+        emphasis: [1],
+      },
+    };
+  }
+
+  /**
+   * Um comando interpretado: troca a legenda e põe transição nos
+   * cortes. Não lê o pedido — o duble existe para exercitar o caminho
+   * inteiro (parse, validação, aplicação, versão), não a linguagem.
+   */
+  private comandoValido() {
+    return {
+      schemaVersion: '1.0' as const,
+      operations: [
+        { op: 'trocar_estilo_legenda', styleId: 'impacto' },
+        { op: 'transicao_em_todos', type: 'fade' },
+        { op: 'configurar_video', fit: 'desfoque', voiceEnhance: true },
+      ],
+      reply: 'Troquei a legenda para Impacto e pus fade em todos os cortes.',
     };
   }
 }

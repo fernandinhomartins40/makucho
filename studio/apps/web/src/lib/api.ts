@@ -11,6 +11,8 @@
 //   - 401 tratado uma vez só.
 // ============================================================
 
+import type { PreferenciasDeVideo } from '@makucho/studio-contracts';
+
 export class ErroDaApi extends Error {
   constructor(
     readonly status: number,
@@ -296,6 +298,8 @@ export interface PerfilDeMarca {
   colors: CoresDaMarca;
   fontPrimary?: string;
   fontSecond?: string;
+  /** Como os vídeos novos saem: estilo de legenda, logo, trilha... */
+  videoDefaults?: PreferenciasDeVideo | null;
   version: number;
 }
 
@@ -304,6 +308,7 @@ export interface MarcaParaSalvar {
   colors: CoresDaMarca;
   fontPrimary?: string;
   fontSecond?: string;
+  videoDefaults?: PreferenciasDeVideo;
 }
 
 export const marca = {
@@ -332,7 +337,21 @@ export interface VersaoDoPlano {
   document: unknown;
 }
 
+export interface ResultadoDoComando {
+  aplicadas: number;
+  resposta: string;
+  ignoradas: string[];
+  plano: VersaoDoPlano;
+  custoCentavos: number;
+}
+
 export const planos = {
+  /** Refaz o acabamento com o Kit de marca atual. Sem IA, sem custo. */
+  refazerAcabamento: (projectId: string) =>
+    api<VersaoDoPlano>(`/projects/${projectId}/finishing`, { metodo: 'POST' }),
+  /** Pedido em linguagem natural: a IA devolve operações da timeline. */
+  comando: (projectId: string, texto: string) =>
+    api<ResultadoDoComando>(`/projects/${projectId}/command`, { metodo: 'POST', corpo: { texto } }),
   atual: (projectId: string) =>
     api<VersaoDoPlano>(`/projects/${projectId}/edit-plans`),
   historico: (projectId: string) =>

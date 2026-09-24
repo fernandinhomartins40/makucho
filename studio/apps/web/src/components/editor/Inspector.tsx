@@ -3,17 +3,26 @@
 // ============================================================
 // Inspector — "Propriedades", à direita do editor.
 //
-// Duas abas: Vídeo (formato, fps, aprimoramento) e Legendas
-// (estilo, cor, intensidade). Com um trecho selecionado, ele assume
-// o lugar e mostra as propriedades dele — é aqui que o usuário
-// discorda da IA.
+// Três abas, e cada controle é uma OPERAÇÃO da timeline — a mesma que
+// a IA devolve no comando em linguagem natural. Nada aqui mexe no
+// plano por fora: o servidor aplica a mesma função, valida e cria uma
+// versão, que o Ctrl+Z desfaz.
+//
+//   - Vídeo: enquadramento, voz limpa, refazer o acabamento da marca;
+//   - Legendas: estilo (com amostra real), posição, tamanho, destaque;
+//   - Efeitos: transições, título, chamada, logo, trilha, sons.
+//
+// Com um trecho selecionado, ele assume o lugar e mostra as
+// propriedades do trecho — incluindo o efeito e a transição dele.
 //
 // "Remover" desativa em vez de apagar: a seção 13 do contexto mestre
 // exige poder restaurar um trecho descartado.
 // ============================================================
 
-import { useState } from 'react';
-import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
+import { useEffect, useState } from 'react';
+import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
+import { PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO } from '@makucho/studio-contracts';
+import { AmostraDeEstilo } from './AmostraDeEstilo';
 import { nomeDaFuncao, corDaFuncao, tempo } from './funcoes';
 import {
   IconeIA,
@@ -24,29 +33,7 @@ import {
   IconeConfiguracoes,
 } from '../icones';
 
-type AbaDoInspector = 'video' | 'legendas';
-
-/**
- * Estilos de legenda.
- *
- * A amostra mostra a aparência real de cada um, não o nome: quem
- * escolhe legenda escolhe pelo olho.
- */
-const ESTILOS = [
-  { id: 'padrao', rotulo: 'Padrão', amostra: { color: '#ff4d8f', fontWeight: 800 } },
-  { id: 'minimal', rotulo: 'Minimal', amostra: { color: '#f7faff', fontWeight: 400 } },
-  {
-    id: 'destaque',
-    rotulo: 'Destaque',
-    amostra: { color: '#06132d', fontWeight: 800, background: '#ffd43b', padding: '1px 7px' },
-  },
-  {
-    id: 'caixa',
-    rotulo: 'Caixa',
-    amostra: { color: '#06132d', fontWeight: 600, background: '#f7faff', padding: '1px 7px' },
-  },
-  { id: 'karaoke', rotulo: 'Karaokê', amostra: { color: '#ff4d8f', fontWeight: 700, fontSize: 13 } },
-] as const;
+type AbaDoInspector = 'video' | 'legendas' | 'efeitos';
 
 const NOME_DO_FRAMEWORK: Record<string, string> = {
   authority_education: 'Autoridade educacional',
@@ -56,17 +43,51 @@ const NOME_DO_FRAMEWORK: Record<string, string> = {
   sales: 'Venda',
 };
 
+/** O nome de cada transição na tela. */
+export const NOME_DA_TRANSICAO: Record<TipoDeTransicao, string> = {
+  cut: 'Corte seco',
+  fade: 'Esmaecer',
+  dissolve: 'Dissolver',
+  fadeblack: 'Passar pelo preto',
+  slide: 'Deslizar',
+  slideup: 'Subir',
+  wipe: 'Varrer',
+  smooth: 'Varrer suave',
+  zoom: 'Zoom',
+  circle: 'Círculo',
+  blur: 'Desfoque',
+  pixelize: 'Pixelizar',
+};
+
+/** Recursos do Kit de marca que os controles oferecem. */
+export interface RecursosDaMarca {
+  logoAssetId?: string | null;
+  musicaAssetId?: string | null;
+}
+
 interface Props {
   plan: EditPlanV1;
   clipId: string | null;
   onOperacao: (op: TimelineOperation) => void;
+  /** Várias operações de uma vez, numa versão só (zoom em todos, sons). */
+  onOperacoes: (ops: TimelineOperation[]) => void;
+  marca?: MarcaDoVideo;
+  recursos?: RecursosDaMarca;
+  onRefazerAcabamento?: () => void;
+  refazendoAcabamento?: boolean;
 }
 
-export function Inspector({ plan, clipId, onOperacao }: Props) {
-  const [aba, setAba] = useState<AbaDoInspector>('video');
-  const [aprimoramento, setAprimoramento] = useState(true);
-  const [intensidade, setIntensidade] = useState(100);
-
+export function Inspector({
+  plan,
+  clipId,
+  onOperacao,
+  onOperacoes,
+  marca,
+  recursos,
+  onRefazerAcabamento,
+  refazendoAcabamento,
+}: Props) {
+  const [aba, setAba] = useState<AbaDoInspector>('legendas');
   const clipe = plan.clips.find((c) => c.id === clipId);
 
   return (
@@ -84,39 +105,37 @@ export function Inspector({ plan, clipId, onOperacao }: Props) {
         ) : (
           <>
             <div className="abas" role="tablist">
-              <button
-                role="tab"
-                type="button"
-                className="abas__item"
-                aria-selected={aba === 'video'}
-                onClick={() => setAba('video')}
-              >
-                Vídeo
-              </button>
-              <button
-                role="tab"
-                type="button"
-                className="abas__item"
-                aria-selected={aba === 'legendas'}
-                onClick={() => setAba('legendas')}
-              >
-                Legendas
-              </button>
+              {(
+                [
+                  ['legendas', 'Legendas'],
+                  ['efeitos', 'Efeitos'],
+                  ['video', 'Vídeo'],
+                ] as const
+              ).map(([id, rotulo]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  type="button"
+                  className="abas__item"
+                  aria-selected={aba === id}
+                  onClick={() => setAba(id)}
+                >
+                  {rotulo}
+                </button>
+              ))}
             </div>
 
-            {aba === 'video' ? (
+            {aba === 'video' && (
               <AbaDeVideo
                 plan={plan}
-                aprimoramento={aprimoramento}
-                onAprimoramento={setAprimoramento}
-              />
-            ) : (
-              <AbaDeLegendas
-                plan={plan}
-                intensidade={intensidade}
-                onIntensidade={setIntensidade}
                 onOperacao={onOperacao}
+                onRefazerAcabamento={onRefazerAcabamento}
+                refazendo={refazendoAcabamento}
               />
+            )}
+            {aba === 'legendas' && <AbaDeLegendas plan={plan} marca={marca} onOperacao={onOperacao} />}
+            {aba === 'efeitos' && (
+              <AbaDeEfeitos plan={plan} recursos={recursos} onOperacao={onOperacao} onOperacoes={onOperacoes} />
             )}
           </>
         )}
@@ -131,73 +150,71 @@ export function Inspector({ plan, clipId, onOperacao }: Props) {
 
 function AbaDeVideo({
   plan,
-  aprimoramento,
-  onAprimoramento,
+  onOperacao,
+  onRefazerAcabamento,
+  refazendo,
 }: {
   plan: EditPlanV1;
-  aprimoramento: boolean;
-  onAprimoramento: (v: boolean) => void;
+  onOperacao: (op: TimelineOperation) => void;
+  onRefazerAcabamento?: () => void;
+  refazendo?: boolean;
 }) {
   const duracao = plan.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
   const reducao = Math.round((1 - duracao / plan.sourceDurationMs) * 100);
+  const fit = plan.render.fit ?? 'ajustar';
 
   return (
     <>
       <div className="campo">
-        <span className="campo__rotulo">Formato</span>
-        <select className="campo__selecao" defaultValue="9:16">
-          <option value="9:16">1080 × 1920 (9:16)</option>
-        </select>
-        <p className="campo__ajuda">Ideal para Reels, TikTok e Shorts.</p>
+        <span className="campo__rotulo">Enquadramento</span>
+        <Segmentado
+          rotulo="Enquadramento"
+          valor={fit}
+          opcoes={[
+            ['desfoque', 'Fundo desfocado'],
+            ['preencher', 'Preencher'],
+            ['ajustar', 'Faixas pretas'],
+          ]}
+          onTrocar={(v) => onOperacao({ op: 'configurar_video', fit: v as 'ajustar' | 'preencher' | 'desfoque' })}
+        />
+        <p className="campo__ajuda">
+          Como uma gravação horizontal ocupa o vídeo vertical. &quot;Preencher&quot; corta as laterais.
+        </p>
       </div>
 
-      <div className="campo">
-        <span className="campo__rotulo">Taxa de quadros</span>
-        <select className="campo__selecao" defaultValue="30">
-          <option value="24">24 fps</option>
-          <option value="30">30 fps</option>
-          <option value="60">60 fps</option>
-        </select>
-      </div>
+      <Chave
+        rotulo="Voz limpa"
+        ajuda="Reduz ruído de fundo e o grave de manuseio, e deixa a voz mais presente."
+        ligada={Boolean(plan.render.voiceEnhance)}
+        onTrocar={(v) => onOperacao({ op: 'configurar_video', voiceEnhance: v })}
+      />
 
       <div className="separador" />
 
+      <Propriedade rotulo="Formato" valor="1080 × 1920 (9:16), 30 fps" />
       <Propriedade rotulo="Duração" valor={`${(duracao / 1000).toFixed(1)}s`} />
-      <Propriedade
-        rotulo="Gravação original"
-        valor={`${Math.round(plan.sourceDurationMs / 60_000)} min`}
-      />
+      <Propriedade rotulo="Gravação original" valor={`${Math.round(plan.sourceDurationMs / 60_000)} min`} />
       <Propriedade rotulo="Redução" valor={`${reducao}%`} />
       <Propriedade rotulo="Trechos" valor={String(plan.clips.length)} />
-      <Propriedade
-        rotulo="Estrutura"
-        valor={NOME_DO_FRAMEWORK[plan.framework] ?? plan.framework}
-      />
+      <Propriedade rotulo="Estrutura" valor={NOME_DO_FRAMEWORK[plan.framework] ?? plan.framework} />
 
-      <div className="separador" />
-
-      {/* O aprimoramento diz exatamente o que faz. "Melhorar com IA"
-          sem dizer o quê deixa a pessoa sem saber o que mudou no
-          vídeo dela. */}
-      <div className="linha entre" style={{ gap: 'var(--e3)' }}>
-        <span className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeIA size={17} weight="fill" color="var(--accent)" />
-          <strong style={{ fontSize: 14 }}>Aprimoramento com IA</strong>
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={aprimoramento}
-          aria-label="Aprimoramento com IA"
-          className="chave"
-          onClick={() => onAprimoramento(!aprimoramento)}
-        >
-          <span className="chave__bola" aria-hidden />
-        </button>
-      </div>
-      <p className="campo__ajuda">
-        Melhora cortes, remove silêncios e gera legendas automaticamente.
-      </p>
+      {onRefazerAcabamento && (
+        <>
+          <div className="separador" />
+          <button
+            type="button"
+            className="botao botao--secundario botao--largo"
+            disabled={refazendo}
+            onClick={onRefazerAcabamento}
+          >
+            <IconeIA size={16} weight="fill" />
+            {refazendo ? 'Aplicando…' : 'Refazer acabamento da marca'}
+          </button>
+          <p className="campo__ajuda">
+            Legenda, zoom, logo e trilha de novo, como definidos no Kit de marca. Não usa IA; dá para desfazer.
+          </p>
+        </>
+      )}
     </>
   );
 }
@@ -208,89 +225,399 @@ function AbaDeVideo({
 
 function AbaDeLegendas({
   plan,
-  intensidade,
-  onIntensidade,
+  marca,
   onOperacao,
 }: {
   plan: EditPlanV1;
-  intensidade: number;
-  onIntensidade: (v: number) => void;
+  marca?: MarcaDoVideo;
   onOperacao: (op: TimelineOperation) => void;
 }) {
+  const c = plan.captions;
+  const escala = c.sizeScale ?? 1;
+
   return (
     <>
-      <div className="campo">
-        <span className="campo__rotulo">Estilo das legendas</span>
+      <Chave
+        rotulo="Legendas no vídeo"
+        ligada={c.enabled}
+        onTrocar={(v) => onOperacao({ op: 'configurar_legenda', enabled: v })}
+      />
+
+      <div className="campo" style={{ opacity: c.enabled ? 1 : 0.5 }}>
+        <span className="campo__rotulo">Estilo</span>
         <div className="estilos" role="radiogroup" aria-label="Estilo das legendas">
-          {ESTILOS.map((estilo) => (
+          {PRESETS_DE_LEGENDA.map((preset) => (
             <button
-              key={estilo.id}
+              key={preset.id}
               type="button"
               role="radio"
-              aria-checked={plan.captions.styleId === estilo.id}
+              aria-checked={c.styleId === preset.id}
               className="estilo"
-              onClick={() => onOperacao({ op: 'trocar_estilo_legenda', styleId: estilo.id })}
+              title={preset.descricao}
+              disabled={!c.enabled}
+              onClick={() => onOperacao({ op: 'trocar_estilo_legenda', styleId: preset.id })}
             >
               <span className="estilo__amostra">
-                <span style={{ borderRadius: 3, ...estilo.amostra }}>
-                  {estilo.id === 'karaoke' ? 'Karaokê' : 'Aa'}
-                </span>
+                <AmostraDeEstilo preset={preset} marca={marca} />
               </span>
-              <span className="estilo__rotulo">{estilo.rotulo}</span>
+              <span className="estilo__rotulo">{preset.rotulo}</span>
             </button>
           ))}
         </div>
+        <p className="campo__ajuda">
+          {PRESETS_DE_LEGENDA.find((p) => p.id === c.styleId)?.descricao ?? 'As cores vêm do Kit de marca.'}
+        </p>
       </div>
 
       <div className="campo">
-        <span className="campo__rotulo">Cor da marca</span>
-        <div className="campo__cor">
-          <span aria-hidden className="campo__amostra" style={{ background: '#3dd6d0' }} />
-          <input
-            type="text"
-            className="campo__entrada"
-            defaultValue="#3DD6D0"
-            aria-label="Cor da marca em hexadecimal"
-          />
-        </div>
-        <p className="campo__ajuda">Usada na palavra em destaque de cada bloco.</p>
-      </div>
-
-      <div className="campo">
-        <div className="linha entre">
-          <span className="campo__rotulo" style={{ marginBottom: 0 }}>
-            Intensidade das legendas
-          </span>
-          <span className="texto-secundario" style={{ fontVariantNumeric: 'tabular-nums' }}>
-            {intensidade}%
-          </span>
-        </div>
-        <input
-          type="range"
-          className="deslizante"
-          min={0}
-          max={100}
-          value={intensidade}
-          aria-label="Intensidade das legendas"
-          onChange={(e) => onIntensidade(Number(e.target.value))}
+        <span className="campo__rotulo">Posição</span>
+        <Segmentado
+          rotulo="Posição da legenda"
+          valor={c.position}
+          opcoes={[
+            ['top', 'Topo'],
+            ['center', 'Meio'],
+            ['bottom', 'Embaixo'],
+          ]}
+          onTrocar={(v) => onOperacao({ op: 'configurar_legenda', position: v as 'top' | 'center' | 'bottom' })}
         />
       </div>
 
       <div className="campo">
-        <span className="campo__rotulo">Palavras por bloco</span>
+        <span className="campo__rotulo">Tamanho</span>
+        <Segmentado
+          rotulo="Tamanho da legenda"
+          valor={escala <= 0.9 ? 'p' : escala >= 1.1 ? 'g' : 'm'}
+          opcoes={[
+            ['p', 'Pequeno'],
+            ['m', 'Médio'],
+            ['g', 'Grande'],
+          ]}
+          onTrocar={(v) => onOperacao({ op: 'configurar_legenda', sizeScale: v === 'p' ? 0.85 : v === 'g' ? 1.2 : 1 })}
+        />
+      </div>
+
+      <div className="campo">
+        <label className="campo__rotulo" htmlFor="palavras-por-bloco">
+          Palavras por vez
+        </label>
         <select
+          id="palavras-por-bloco"
           className="campo__selecao"
-          defaultValue={String(plan.captions.wordsPerBlock)}
+          value={String(c.wordsPerBlock)}
+          onChange={(e) => onOperacao({ op: 'configurar_legenda', wordsPerBlock: Number(e.target.value) })}
         >
-          {[2, 3, 4, 5].map((n) => (
+          {[1, 2, 3, 4, 5, 6].map((n) => (
             <option key={n} value={n}>
-              {n} palavras
+              {n} {n === 1 ? 'palavra' : 'palavras'}
             </option>
           ))}
         </select>
-        <p className="campo__ajuda">Cada palavra acende no instante em que é falada.</p>
       </div>
+
+      <Chave
+        rotulo="Destacar a palavra falada"
+        ajuda="A palavra acende no instante em que é dita."
+        ligada={c.highlightActiveWord}
+        onTrocar={(v) => onOperacao({ op: 'configurar_legenda', highlightActiveWord: v })}
+      />
+
+      <p className="campo__ajuda" style={{ marginTop: 'var(--e3)' }}>
+        Para corrigir uma palavra, use a aba Legendas à esquerda. A legenda sempre sai da fala gravada.
+      </p>
     </>
+  );
+}
+
+// ============================================================
+// Aba Efeitos
+// ============================================================
+
+const DURACAO_DO_TITULO = 3200;
+const DURACAO_DA_CHAMADA = 3500;
+
+function AbaDeEfeitos({
+  plan,
+  recursos,
+  onOperacao,
+  onOperacoes,
+}: {
+  plan: EditPlanV1;
+  recursos?: RecursosDaMarca;
+  onOperacao: (op: TimelineOperation) => void;
+  onOperacoes: (ops: TimelineOperation[]) => void;
+}) {
+  const duracao = plan.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const titulo = plan.overlays.find((o) => o.component === 'HookTitle');
+  const chamada = plan.overlays.find((o) => o.component === 'CTA');
+  const logo = plan.overlays.find((o) => o.component === 'LogoBug');
+  const barra = plan.overlays.find((o) => o.component === 'ProgressBar');
+  const tiposUsados = new Set(plan.transitions.map((t) => t.type));
+  const transicaoAtual = plan.transitions.length === 0 ? 'cut' : tiposUsados.size === 1 ? [...tiposUsados][0]! : 'misto';
+  const comZoom = plan.clips.some((c) => c.effect);
+  const sons = plan.soundEffects.length;
+
+  return (
+    <>
+      <div className="campo">
+        <label className="campo__rotulo" htmlFor="transicao-todos">
+          Transição nos cortes
+        </label>
+        <select
+          id="transicao-todos"
+          className="campo__selecao"
+          value={transicaoAtual}
+          disabled={plan.clips.length < 2}
+          onChange={(e) => onOperacao({ op: 'transicao_em_todos', type: e.target.value as TipoDeTransicao })}
+        >
+          {transicaoAtual === 'misto' && <option value="misto">Cada corte com a sua</option>}
+          {TIPOS_DE_TRANSICAO.map((t) => (
+            <option key={t} value={t}>
+              {NOME_DA_TRANSICAO[t]}
+            </option>
+          ))}
+        </select>
+        <p className="campo__ajuda">Vídeo falado costuma funcionar melhor com corte seco. Para um corte só, selecione o trecho.</p>
+      </div>
+
+      <Chave
+        rotulo="Zoom nos cortes"
+        ajuda="Aproximação lenta na abertura e zoom seco em cortes alternados — o ritmo dos vídeos curtos."
+        ligada={comZoom}
+        onTrocar={(v) =>
+          onOperacoes(
+            plan.clips.flatMap((c, i): TimelineOperation[] => {
+              const efeito = !v ? 'nenhum' : i === 0 ? 'zoom_lento' : i % 2 === 1 ? 'punch_in' : 'nenhum';
+              return (c.effect ?? 'nenhum') !== efeito ? [{ op: 'definir_efeito', clipId: c.id, effect: efeito }] : [];
+            }),
+          )
+        }
+      />
+
+      <div className="separador" />
+
+      <TextoDeTela
+        rotulo="Título de abertura"
+        ajuda="Aparece nos primeiros segundos, no topo."
+        exemplo="O erro que custa clientes"
+        atual={titulo}
+        onSalvar={(texto) =>
+          titulo
+            ? onOperacao({ op: 'editar_overlay', overlayId: titulo.id, text: texto })
+            : onOperacao({
+                op: 'adicionar_overlay',
+                component: 'HookTitle',
+                text: texto,
+                timelineStartMs: 0,
+                durationMs: Math.min(DURACAO_DO_TITULO, duracao),
+              })
+        }
+        onRemover={() => titulo && onOperacao({ op: 'remover_overlay', overlayId: titulo.id })}
+      />
+
+      <TextoDeTela
+        rotulo="Chamada final"
+        ajuda="Aparece nos últimos segundos."
+        exemplo="Siga para a parte 2"
+        atual={chamada}
+        onSalvar={(texto) =>
+          chamada
+            ? onOperacao({ op: 'editar_overlay', overlayId: chamada.id, text: texto })
+            : onOperacao({
+                op: 'adicionar_overlay',
+                component: 'CTA',
+                text: texto,
+                timelineStartMs: Math.max(0, duracao - DURACAO_DA_CHAMADA),
+                durationMs: Math.min(DURACAO_DA_CHAMADA, duracao),
+              })
+        }
+        onRemover={() => chamada && onOperacao({ op: 'remover_overlay', overlayId: chamada.id })}
+      />
+
+      <div className="separador" />
+
+      <Chave
+        rotulo="Logo no vídeo"
+        ajuda={recursos?.logoAssetId ? undefined : 'Envie o logo no Kit de marca para usar aqui.'}
+        ligada={Boolean(logo)}
+        desabilitada={!recursos?.logoAssetId && !logo}
+        onTrocar={(v) =>
+          v && recursos?.logoAssetId
+            ? onOperacao({
+                op: 'adicionar_overlay',
+                component: 'LogoBug',
+                assetId: recursos.logoAssetId,
+                variant: 'sd',
+                timelineStartMs: 0,
+                durationMs: duracao,
+              })
+            : logo && onOperacao({ op: 'remover_overlay', overlayId: logo.id })
+        }
+      />
+      {logo && (
+        <div className="campo">
+          <Segmentado
+            rotulo="Posição do logo"
+            valor={logo.variant ?? 'sd'}
+            opcoes={[
+              ['se', '↖'],
+              ['sd', '↗'],
+              ['ie', '↙'],
+              ['id', '↘'],
+            ]}
+            onTrocar={(v) => onOperacao({ op: 'editar_overlay', overlayId: logo.id, variant: v })}
+          />
+        </div>
+      )}
+
+      <Chave
+        rotulo="Trilha sonora"
+        ajuda={recursos?.musicaAssetId ? undefined : 'Envie uma trilha no Kit de marca para usar aqui.'}
+        ligada={Boolean(plan.music)}
+        desabilitada={!recursos?.musicaAssetId && !plan.music}
+        onTrocar={(v) =>
+          onOperacao({ op: 'trocar_musica', assetId: v ? (recursos?.musicaAssetId ?? null) : null, duckUnderVoice: true })
+        }
+      />
+      {plan.music && (
+        <div className="campo">
+          <div className="linha entre">
+            <label className="campo__rotulo" htmlFor="volume-trilha" style={{ marginBottom: 0 }}>
+              Volume da trilha
+            </label>
+            <span className="texto-secundario" style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}>
+              {plan.music.gainDb} dB
+            </span>
+          </div>
+          <input
+            id="volume-trilha"
+            type="range"
+            className="deslizante"
+            min={-32}
+            max={-8}
+            step={2}
+            defaultValue={plan.music.gainDb}
+            key={plan.music.gainDb}
+            onChange={() => undefined}
+            onPointerUp={(e) =>
+              onOperacao({ op: 'trocar_musica', assetId: plan.music!.assetId, gainDb: Number((e.target as HTMLInputElement).value) })
+            }
+            onKeyUp={(e) =>
+              onOperacao({ op: 'trocar_musica', assetId: plan.music!.assetId, gainDb: Number((e.target as HTMLInputElement).value) })
+            }
+          />
+          <p className="campo__ajuda">A trilha abaixa sozinha enquanto você fala.</p>
+        </div>
+      )}
+
+      <Chave
+        rotulo="Barra de progresso"
+        ajuda="Uma linha no topo que avança até o fim do vídeo."
+        ligada={Boolean(barra)}
+        onTrocar={(v) =>
+          v
+            ? onOperacao({ op: 'adicionar_overlay', component: 'ProgressBar', timelineStartMs: 0, durationMs: duracao })
+            : barra && onOperacao({ op: 'remover_overlay', overlayId: barra.id })
+        }
+      />
+
+      <Chave
+        rotulo="Efeitos sonoros"
+        ajuda={sons ? `${sons} no vídeo: "whoosh" nas transições e "pop" nos textos.` : 'Nas transições e nos textos de tela.'}
+        ligada={sons > 0}
+        onTrocar={(v) => {
+          if (!v) {
+            onOperacao({ op: 'remover_efeito_sonoro', soundEffectId: 'todos' });
+            return;
+          }
+          let inicio = 0;
+          const inicios = plan.clips.map((c) => {
+            const i = inicio;
+            inicio += c.sourceEndMs - c.sourceStartMs;
+            return i;
+          });
+          onOperacoes([
+            ...plan.transitions.map(
+              (t): TimelineOperation => ({
+                op: 'adicionar_efeito_sonoro',
+                assetId: 'sfx-whoosh',
+                timelineStartMs: Math.max(0, (inicios[t.beforeClipIndex] ?? 0) - 180),
+                gainDb: -12,
+              }),
+            ),
+            ...plan.overlays
+              .filter((o) => o.component === 'HookTitle' || o.component === 'CTA')
+              .map(
+                (o): TimelineOperation => ({
+                  op: 'adicionar_efeito_sonoro',
+                  assetId: 'sfx-pop',
+                  timelineStartMs: o.timelineStartMs + 40,
+                  gainDb: -10,
+                }),
+              ),
+          ]);
+        }}
+        desabilitada={sons === 0 && plan.transitions.length === 0 && !titulo && !chamada}
+      />
+    </>
+  );
+}
+
+/** Um texto de tela (título, chamada): digita e salva ao sair do campo. */
+function TextoDeTela({
+  rotulo,
+  ajuda,
+  exemplo,
+  atual,
+  onSalvar,
+  onRemover,
+}: {
+  rotulo: string;
+  ajuda: string;
+  exemplo: string;
+  atual?: EditPlanV1['overlays'][number];
+  onSalvar: (texto: string) => void;
+  onRemover: () => void;
+}) {
+  const [texto, setTexto] = useState(atual?.text ?? '');
+  useEffect(() => setTexto(atual?.text ?? ''), [atual?.text]);
+  const id = `texto-${rotulo.toLowerCase().replace(/\W+/g, '-')}`;
+
+  const salvar = () => {
+    const limpo = texto.trim();
+    if (!limpo) {
+      if (atual) onRemover();
+      return;
+    }
+    if (limpo !== atual?.text) onSalvar(limpo);
+  };
+
+  return (
+    <div className="campo">
+      <div className="linha entre">
+        <label className="campo__rotulo" htmlFor={id} style={{ marginBottom: 0 }}>
+          {rotulo}
+        </label>
+        {atual && (
+          <button type="button" className="botao-icone botao-icone--pequeno" aria-label={`Remover ${rotulo.toLowerCase()}`} onClick={onRemover}>
+            <IconeLixeira size={14} />
+          </button>
+        )}
+      </div>
+      <input
+        id={id}
+        className="campo__entrada"
+        value={texto}
+        maxLength={70}
+        placeholder={exemplo}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={salvar}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+      />
+      <p className="campo__ajuda">{ajuda}</p>
+    </div>
   );
 }
 
@@ -310,6 +637,7 @@ function PropriedadesDoTrecho({
   const duracaoMs = clipe.sourceEndMs - clipe.sourceStartMs;
   const posicao = plan.clips.findIndex((c) => c.id === clipe.id);
   const ultimo = plan.clips.length === 1;
+  const transicao = plan.transitions.find((t) => t.beforeClipIndex === posicao);
 
   const trocarCom = (outro: number) => {
     const ordem = plan.clips.map((c) => c.id);
@@ -361,10 +689,7 @@ function PropriedadesDoTrecho({
 
       {/* Por que a IA escolheu. Sem o motivo, não há como discordar. */}
       <div className="cartao" style={{ padding: 'var(--e3)', marginBottom: 'var(--e4)' }}>
-        <span
-          className="rotulo-secao linha"
-          style={{ gap: 'var(--e1)', marginBottom: 'var(--e2)' }}
-        >
+        <span className="rotulo-secao linha" style={{ gap: 'var(--e1)', marginBottom: 'var(--e2)' }}>
           <IconeIA size={12} weight="fill" color="var(--accent)" />
           Por que este trecho
         </span>
@@ -379,12 +704,47 @@ function PropriedadesDoTrecho({
       )}
 
       <Propriedade rotulo="Duração" valor={`${(duracaoMs / 1000).toFixed(1)}s`} />
-      <Propriedade
-        rotulo="No original"
-        valor={`${tempo(clipe.sourceStartMs)} – ${tempo(clipe.sourceEndMs)}`}
-      />
+      <Propriedade rotulo="No original" valor={`${tempo(clipe.sourceStartMs)} – ${tempo(clipe.sourceEndMs)}`} />
 
       <div className="campo" style={{ marginTop: 'var(--e4)' }}>
+        <span className="campo__rotulo">Efeito</span>
+        <Segmentado
+          rotulo="Efeito do trecho"
+          valor={clipe.effect ?? 'nenhum'}
+          opcoes={[
+            ['nenhum', 'Nenhum'],
+            ['punch_in', 'Zoom seco'],
+            ['zoom_lento', 'Zoom lento'],
+          ]}
+          onTrocar={(v) =>
+            onOperacao({ op: 'definir_efeito', clipId: clipe.id, effect: v as 'nenhum' | 'punch_in' | 'zoom_lento' })
+          }
+        />
+      </div>
+
+      {posicao > 0 && (
+        <div className="campo">
+          <label className="campo__rotulo" htmlFor="transicao-trecho">
+            Transição de entrada
+          </label>
+          <select
+            id="transicao-trecho"
+            className="campo__selecao"
+            value={transicao?.type ?? 'cut'}
+            onChange={(e) =>
+              onOperacao({ op: 'definir_transicao', clipId: clipe.id, type: e.target.value as TipoDeTransicao })
+            }
+          >
+            {TIPOS_DE_TRANSICAO.map((t) => (
+              <option key={t} value={t}>
+                {NOME_DA_TRANSICAO[t]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="campo">
         <span className="campo__rotulo">Início</span>
         <div className="linha" style={{ gap: 'var(--e2)' }}>
           <Ajuste onClick={() => ajustar(true, -500)}>−0,5s</Ajuste>
@@ -407,10 +767,7 @@ function PropriedadesDoTrecho({
             <IconeVoltar size={13} />
             Antes
           </Ajuste>
-          <Ajuste
-            disabled={posicao === plan.clips.length - 1}
-            onClick={() => trocarCom(posicao + 1)}
-          >
+          <Ajuste disabled={posicao === plan.clips.length - 1} onClick={() => trocarCom(posicao + 1)}>
             Depois
             <IconeAvancar size={13} />
           </Ajuste>
@@ -431,6 +788,10 @@ function PropriedadesDoTrecho({
     </>
   );
 }
+
+// ============================================================
+// Controles
+// ============================================================
 
 function Propriedade({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
@@ -460,5 +821,70 @@ function Ajuste({
     >
       {children}
     </button>
+  );
+}
+
+/** Um interruptor com rótulo e ajuda. */
+function Chave({
+  rotulo,
+  ajuda,
+  ligada,
+  desabilitada,
+  onTrocar,
+}: {
+  rotulo: string;
+  ajuda?: string;
+  ligada: boolean;
+  desabilitada?: boolean;
+  onTrocar: (v: boolean) => void;
+}) {
+  return (
+    <div className="campo">
+      <div className="linha entre" style={{ gap: 'var(--e3)' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, opacity: desabilitada ? 0.55 : 1 }}>{rotulo}</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={ligada}
+          aria-label={rotulo}
+          className="chave"
+          disabled={desabilitada}
+          onClick={() => onTrocar(!ligada)}
+        >
+          <span className="chave__bola" aria-hidden />
+        </button>
+      </div>
+      {ajuda && <p className="campo__ajuda">{ajuda}</p>}
+    </div>
+  );
+}
+
+/** Botões lado a lado, um escolhido (radiogroup). */
+function Segmentado({
+  rotulo,
+  valor,
+  opcoes,
+  onTrocar,
+}: {
+  rotulo: string;
+  valor: string;
+  opcoes: ReadonlyArray<readonly [string, string]>;
+  onTrocar: (v: string) => void;
+}) {
+  return (
+    <div className="segmentado" role="radiogroup" aria-label={rotulo}>
+      {opcoes.map(([id, texto]) => (
+        <button
+          key={id}
+          type="button"
+          role="radio"
+          aria-checked={valor === id}
+          className="segmentado__item"
+          onClick={() => valor !== id && onTrocar(id)}
+        >
+          {texto}
+        </button>
+      ))}
+    </div>
   );
 }

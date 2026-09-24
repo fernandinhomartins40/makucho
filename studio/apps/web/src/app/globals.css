@@ -1063,11 +1063,81 @@ h3 {
   pointer-events: none;
 }
 
+/* O vídeo e o fundo desfocado ficam num invólucro próprio: é nele que
+   o zoom e a transição da prévia agem, como no render, onde o efeito
+   vale para o quadro já enquadrado (fundo incluído). A legenda e o
+   logo ficam fora — não sofrem zoom no arquivo final. */
+.palco__imagem {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.palco__video {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.palco__fundo-desfocado {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: blur(14px) brightness(0.9);
+  transform: scale(1.12);
+}
+
+/* A camada do libass cobre o quadro 9:16 inteiro: o PlayRes do .ass é
+   1080x1920, e o canvas tem a mesma proporção do quadro. */
+.palco__camada {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.palco__camada-legenda {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Logo: caixa de 17% x 8% do quadro, a 5% da borda e 7,5% do topo —
+   os números do overlay do render. */
+.palco__logo {
+  position: absolute;
+  max-width: 17%;
+  max-height: 8%;
+  object-fit: contain;
+  opacity: 0.92;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.palco__logo--sd { top: 7.5%; right: 5%; }
+.palco__logo--se { top: 7.5%; left: 5%; }
+.palco__logo--id { bottom: 30%; right: 5%; }
+.palco__logo--ie { bottom: 30%; left: 5%; }
+
+.palco__imagem-sobreposta {
+  position: absolute;
+  left: 10%;
+  width: 80%;
+  top: 44%;
+  transform: translateY(-50%);
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .palco__legenda {
   position: absolute;
   left: var(--e4);
   right: var(--e4);
-  bottom: 14%;
+  bottom: 24%;
+  z-index: 1;
   text-align: center;
   font-size: 19px;
   font-weight: 800;
@@ -1149,8 +1219,48 @@ h3 {
 
 .estilos {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   gap: var(--e2);
+}
+
+/* ---------- Botões segmentados (um escolhido) ---------- */
+
+.segmentado {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.segmentado__item {
+  flex: 1;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: calc(var(--r-controle) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+.segmentado__item:hover {
+  color: var(--text-primary);
+}
+
+.segmentado__item[aria-checked='true'] {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+.segmentado__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .estilo {
@@ -1165,7 +1275,10 @@ h3 {
 .estilo__amostra {
   display: grid;
   place-items: center;
-  height: 52px;
+  height: 58px;
+  padding: 4px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #3a4a63, #1c2536);
   border: 2px solid var(--border);
   border-radius: var(--r-controle);
   background: var(--surface-2);
@@ -1941,4 +2054,127 @@ body {
   .giro {
     animation-duration: 2.5s;
   }
+}
+
+
+/* ---------- Fontes do vídeo ----------
+   As mesmas do render (studio/assets/fonts, copiadas para /fonts).
+   Usadas nas amostras de estilo e na legenda de reserva; a prévia com
+   libass carrega os arquivos direto. `font-display: swap`: a amostra
+   aparece na fonte do sistema enquanto a do vídeo chega. */
+@font-face {
+  font-family: 'Inter ExtraBold';
+  src: url('/fonts/Inter-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter SemiBold';
+  src: url('/fonts/Inter-SemiBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Montserrat ExtraBold';
+  src: url('/fonts/Montserrat-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Montserrat Black';
+  src: url('/fonts/Montserrat-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('/fonts/Poppins-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins ExtraBold';
+  src: url('/fonts/Poppins-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Anton';
+  src: url('/fonts/Anton-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('/fonts/BebasNeue-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Archivo Black';
+  src: url('/fonts/ArchivoBlack-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Archivo ExtraBold';
+  src: url('/fonts/Archivo-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bangers';
+  src: url('/fonts/Bangers-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Playfair Display';
+  src: url('/fonts/PlayfairDisplay-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Open Sans';
+  src: url('/fonts/OpenSans-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('/fonts/SourceSans3-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* ---------- Peça à IA ---------- */
+
+.pedir-ia {
+  display: grid;
+  gap: var(--e2);
+  padding-top: var(--e2);
+  border-top: 1px solid var(--border);
+}
+
+.pedir-ia__linha {
+  display: flex;
+  gap: var(--e2);
+}
+
+.pedir-ia__linha .campo__entrada {
+  flex: 1;
+  min-width: 0;
+}
+
+.pedir-ia__exemplos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pedir-ia__exemplo {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pedir-ia__exemplo:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
 }

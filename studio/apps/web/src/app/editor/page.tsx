@@ -21,9 +21,11 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import type { EditPlanV1, ProjectState, TimelineOperation } from '@makucho/studio-contracts';
+import type { EditPlanV1, MarcaDoVideo, ProjectState, TimelineOperation } from '@makucho/studio-contracts';
 import {
   aplicarOperacao,
+  aplicarOperacoes,
+  CORES_PADRAO_DA_MARCA,
   estaProcessando,
   podeEditar,
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
@@ -33,7 +35,8 @@ import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/Rai
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
 import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
-import { Inspector } from '../../components/editor/Inspector';
+import { Inspector, type RecursosDaMarca } from '../../components/editor/Inspector';
+import { PedirAIa, type RespostaDaIa } from '../../components/editor/PedirAIa';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
 import { tempo } from '../../components/editor/funcoes';
@@ -44,6 +47,7 @@ import {
   renders as apiRenders,
   transcricao as apiTranscricao,
   marca as apiMarca,
+  assets as apiAssets,
   urlDoVideo,
   type PerfilDeMarca,
   type Projeto,
@@ -136,6 +140,24 @@ function Editor({ projectId }: { projectId: string }) {
 
   const [passado, setPassado] = useState<EditPlanV1[]>([]);
   const [futuro, setFuturo] = useState<EditPlanV1[]>([]);
+
+  // Kit de marca: cores e fontes da legenda na prévia, e o logo e a
+  // trilha que os controles de efeito oferecem.
+  const [marcaDoVideo, setMarcaDoVideo] = useState<MarcaDoVideo>({ cores: CORES_PADRAO_DA_MARCA });
+  const [recursos, setRecursos] = useState<RecursosDaMarca>({});
+  const [refazendoAcabamento, setRefazendoAcabamento] = useState(false);
+
+  useEffect(() => {
+    void apiMarca
+      .obter()
+      .then((perfil) => {
+        if (perfil) setMarcaDoVideo({ cores: perfil.colors, fonteTitulo: perfil.fontPrimary, fonteCorpo: perfil.fontSecond });
+      })
+      .catch(() => undefined);
+    void Promise.all([apiAssets.listar('LOGO').catch(() => []), apiAssets.listar('MUSIC').catch(() => [])]).then(
+      ([logos, trilhas]) => setRecursos({ logoAssetId: logos[0]?.id ?? null, musicaAssetId: trilhas[0]?.id ?? null }),
+    );
+  }, []);
 
   // ---------- Carga ----------
   const carregarPlano = useCallback(async () => {
@@ -248,6 +270,69 @@ function Editor({ projectId }: { projectId: string }) {
       if (operacao.op === 'alternar_clipe' && !operacao.enabled) setSelecionado(null);
     },
     [plano, projectId],
+  );
+
+  /**
+   * Várias operações numa versão só (zoom em todos os trechos, sons).
+   *
+   * Aplicadas em sequência sobre o plano local e salvas como UM
+   * documento: disparar uma operação por vez faria cada uma partir do
+   * plano de antes das outras, e só a última valeria na tela.
+   */
+  const executarVarias = useCallback(
+    (operacoes: TimelineOperation[]) => {
+      if (!plano || operacoes.length === 0) return;
+      const resultado = aplicarOperacoes(plano, operacoes);
+      if (!resultado.ok || !resultado.plan) {
+        setErro(resultado.erro ?? 'não foi possível aplicar o ajuste');
+        return;
+      }
+      setPassado((h) => [...h, plano]);
+      setFuturo([]);
+      setPlano(resultado.plan);
+      setErro(null);
+      void salvarDocumento(resultado.plan);
+    },
+    [plano, salvarDocumento],
+  );
+
+  /** Um plano novo vindo do servidor (acabamento, comando da IA). */
+  const receberPlano = useCallback(
+    (documento: EditPlanV1) => {
+      if (plano) setPassado((h) => [...h, plano]);
+      setFuturo([]);
+      setPlano(documento);
+      setSalvamento('salvo');
+    },
+    [plano],
+  );
+
+  const refazerAcabamento = useCallback(async () => {
+    setRefazendoAcabamento(true);
+    setErro(null);
+    try {
+      const versao = await apiPlanos.refazerAcabamento(projectId);
+      receberPlano(versao.document as EditPlanV1);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'não foi possível refazer o acabamento.');
+    } finally {
+      setRefazendoAcabamento(false);
+    }
+  }, [projectId, receberPlano]);
+
+  const pedirAIa = useCallback(
+    async (texto: string): Promise<RespostaDaIa | null> => {
+      setErro(null);
+      try {
+        const r = await apiPlanos.comando(projectId, texto);
+        if (r.aplicadas > 0) receberPlano(r.plano.document as EditPlanV1);
+        return { texto: r.resposta, ignoradas: r.ignoradas, aplicadas: r.aplicadas };
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : 'a IA não conseguiu aplicar o pedido.');
+        return null;
+      }
+    },
+    [projectId, receberPlano],
   );
 
   // Desfazer e refazer SALVAM a versão: antes só mudavam a tela, e a
@@ -599,6 +684,7 @@ function Editor({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12 }}>{a}</span>
                 </div>
               ))}
+              {!semIa && <PedirAIa onEnviar={pedirAIa} />}
             </div>
           )}
 
@@ -641,11 +727,22 @@ function Editor({ projectId }: { projectId: string }) {
             desligados={desligados}
             transcricao={transcricao}
             comandoTocar={comandoTocar}
+            marca={marcaDoVideo}
+            urlDoAsset={apiAssets.url}
           />
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
-          <Inspector plan={plano} clipId={selecionado} onOperacao={executar} />
+          <Inspector
+            plan={plano}
+            clipId={selecionado}
+            onOperacao={executar}
+            onOperacoes={executarVarias}
+            marca={marcaDoVideo}
+            recursos={recursos}
+            onRefazerAcabamento={() => void refazerAcabamento()}
+            refazendoAcabamento={refazendoAcabamento}
+          />
         </aside>
 
         <section className="editor__timeline" aria-label="Linha do tempo">
@@ -923,8 +1020,8 @@ function PainelDeMarca() {
           <p className="texto-secundario">Nenhum kit de marca cadastrado ainda.</p>
         )}
         <p className="texto-secundario" style={{ fontSize: 12 }}>
-          As legendas do vídeo final usam o estilo da sua marca. Logo e trilha sonora ainda não entram
-          na exportação.
+          Cores, fontes, logo e trilha do kit entram no vídeo exportado. O estilo de legenda e o
+          acabamento padrão dos vídeos novos também são definidos no kit.
         </p>
         <Link href="/marca" className="botao botao--secundario">
           Editar kit de marca

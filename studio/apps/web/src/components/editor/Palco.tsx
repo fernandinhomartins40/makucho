@@ -7,19 +7,28 @@
 // nunca vira mídia do editor. O render final é que usa o original.
 //
 // O player pula entre os trechos conforme o EditPlan: a pessoa vê o
-// vídeo montado, não o bruto inteiro.
+// vídeo montado, não o bruto inteiro. O relógio é o do PRÓPRIO vídeo:
+// a posição na timeline é derivada do `currentTime`, e o único salto é
+// o que o plano pede — o fim de um trecho para o início do próximo.
 //
-// O relógio é o do PRÓPRIO vídeo. A versão anterior somava 100 ms num
-// setInterval e corrigia o player sempre que os dois divergiam: como
-// os dois relógios nunca andam juntos, o preview vivia dando saltos.
-// Aqui a posição na timeline é derivada do `currentTime`, e o único
-// salto é o que o plano pede — o fim de um trecho para o início do
-// próximo.
+// O QUE A PRÉVIA MOSTRA DO ACABAMENTO
+//
+//   - legendas e textos de tela: o MESMO .ass do render, desenhado pelo
+//     mesmo libass (CamadaDeLegendas) — igual ao arquivo final;
+//   - enquadramento (ajustar, preencher, desfoque) e zoom por trecho:
+//     CSS sobre o vídeo, com as mesmas proporções do FFmpeg;
+//   - logo e imagem: na posição e no tamanho do render;
+//   - trilha: tocando junto, no volume do plano;
+//   - transições: uma indicação visual no início do trecho. A prévia
+//     tem um `<video>` só e não mistura dois quadros como o `xfade` —
+//     o arquivo exportado é que tem a transição completa.
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1 } from '@makucho/studio-contracts';
+import type { EditPlanV1, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
+import { CORES_PADRAO_DA_MARCA, gerarAss, planoPrecisaDeAss, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
 import type { Transcricao } from '../../lib/api';
+import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { tempo } from './funcoes';
 import {
   IconeTocar,
@@ -41,24 +50,27 @@ interface Props {
   onPosicao: (ms: number) => void;
   /** Trechos desligados: continuam no plano, mas não tocam. */
   desligados?: ReadonlySet<string>;
-  /** Transcrição com as palavras: é de onde a legenda do preview vem. */
+  /** Transcrição com as palavras: é de onde a legenda vem. */
   transcricao?: Transcricao | null;
   /** Muda para tocar do começo (o botão "Pré-visualizar"). */
   comandoTocar?: number;
+  /** Cores e fontes do Kit de marca, para legenda e textos. */
+  marca?: MarcaDoVideo;
+  /** URL de um asset do workspace (logo, imagem, trilha). */
+  urlDoAsset?: (assetId: string) => string;
 }
 
 interface TrechoAtivo {
   clipe: EditPlanV1['clips'][number];
+  /** Índice no plano: é o que `beforeClipIndex` referencia. */
+  indiceNoPlano: number;
   inicioNaTimeline: number;
   duracao: number;
 }
 
-interface Palavra {
-  id: string;
-  startMs: number;
-  endMs: number;
-  texto: string;
-}
+/** Os mesmos números do render (worker-core/render.ts). */
+const ZOOM_DO_PUNCH_IN = 1.12;
+const ZOOM_LENTO = 0.08;
 
 export function Palco({
   plan,
@@ -68,32 +80,47 @@ export function Palco({
   desligados,
   transcricao,
   comandoTocar,
+  marca,
+  urlDoAsset,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const quadroRef = useRef<HTMLDivElement>(null);
+  const imagemRef = useRef<HTMLDivElement>(null);
+  const fundoRef = useRef<HTMLCanvasElement>(null);
+  const trilhaRef = useRef<HTMLAudioElement>(null);
   const [tocando, setTocando] = useState(false);
   const [mudo, setMudo] = useState(false);
   const [zonasSeguras, setZonasSeguras] = useState(true);
   const [erroDoVideo, setErroDoVideo] = useState(false);
-  // Posição no ORIGINAL do quadro na tela: é o que decide a legenda.
+  const [libassFalhou, setLibassFalhou] = useState(false);
+  // Posição no ORIGINAL do quadro na tela (legenda de reserva, em CSS).
   const [sourceMs, setSourceMs] = useState<number | null>(null);
 
   const indiceRef = useRef(0);
   const ultimaPosicaoRef = useRef(-1);
+  // Posição na timeline a cada quadro: o relógio da camada de legendas.
+  const tempoAoVivo = useRef(posicaoMs);
+
+  const enquadramento = plan.render.fit ?? 'ajustar';
 
   const trechos = useMemo<TrechoAtivo[]>(() => {
     let acumulado = 0;
     return plan.clips
-      .filter((c) => !desligados?.has(c.id))
-      .map((clipe) => {
+      .map((clipe, indiceNoPlano) => ({ clipe, indiceNoPlano }))
+      .filter(({ clipe }) => !desligados?.has(clipe.id))
+      .map(({ clipe, indiceNoPlano }) => {
         const duracao = clipe.sourceEndMs - clipe.sourceStartMs;
-        const t = { clipe, inicioNaTimeline: acumulado, duracao };
+        const t = { clipe, indiceNoPlano, inicioNaTimeline: acumulado, duracao };
         acumulado += duracao;
         return t;
       });
   }, [plan.clips, desligados]);
 
   const duracaoMs = trechos.reduce((t, c) => t + c.duracao, 0);
+  const transicaoAntes = useMemo(
+    () => new Map(plan.transitions.map((t) => [t.beforeClipIndex, t])),
+    [plan.transitions],
+  );
 
   /** Posição na timeline → trecho e ponto no original. */
   const localizar = useCallback(
@@ -109,9 +136,57 @@ export function Palco({
     [trechos],
   );
 
+  // ---------- Acabamento visual (zoom, transição, fundo) ----------
+  //
+  // Aplicado direto no estilo dos elementos, a cada quadro: passar por
+  // estado do React re-renderizaria o editor inteiro 60 vezes por
+  // segundo.
+  const aplicarEfeitos = useCallback(
+    (msNaTimeline: number) => {
+      const alvo = imagemRef.current;
+      if (!alvo) return;
+      const t = trechos[indiceRef.current];
+      if (!t) return;
+
+      const noTrecho = Math.max(0, msNaTimeline - t.inicioNaTimeline);
+      let escala = 1;
+      if (t.clipe.effect === 'punch_in') escala = ZOOM_DO_PUNCH_IN;
+      if (t.clipe.effect === 'zoom_lento') escala = 1 + ZOOM_LENTO * Math.min(1, noTrecho / Math.max(1, t.duracao));
+
+      let opacidade = 1;
+      let deslocamento = '';
+      const tr = indiceRef.current > 0 ? transicaoAntes.get(t.indiceNoPlano) : undefined;
+      if (tr && tr.type !== 'cut' && noTrecho < tr.durationMs) {
+        const p = noTrecho / tr.durationMs;
+        if (tr.type === 'slide' || tr.type === 'wipe' || tr.type === 'smooth') deslocamento = `translateX(${(1 - p) * 100}%)`;
+        else if (tr.type === 'slideup') deslocamento = `translateY(${(1 - p) * 100}%)`;
+        else opacidade = 0.25 + 0.75 * p;
+      }
+
+      alvo.style.transform = `${deslocamento} scale(${escala})`.trim();
+      alvo.style.opacity = String(opacidade);
+    },
+    [trechos, transicaoAntes],
+  );
+
+  /** O fundo desfocado: o próprio quadro, pequeno, ampliado com blur. */
+  const desenharFundo = useCallback(() => {
+    if (enquadramento !== 'desfoque') return;
+    const video = videoRef.current;
+    const fundo = fundoRef.current;
+    if (!video || !fundo || video.readyState < 2) return;
+    const ctx = fundo.getContext('2d');
+    if (!ctx) return;
+    const { videoWidth: vw, videoHeight: vh } = video;
+    if (!vw || !vh) return;
+    // Cobrir 9:16 com o quadro: recorte central, como o `crop` do render.
+    const escala = Math.max(fundo.width / vw, fundo.height / vh);
+    const w = vw * escala;
+    const h = vh * escala;
+    ctx.drawImage(video, (fundo.width - w) / 2, (fundo.height - h) / 2, w, h);
+  }, [enquadramento]);
+
   // ---------- Posição vinda de fora (timeline, trechos) ----------
-  // Parado, a busca move o quadro — antes, clicar na timeline não
-  // mudava a imagem até dar play.
   useEffect(() => {
     if (tocando) return;
     if (Math.abs(posicaoMs - ultimaPosicaoRef.current) < 5) return;
@@ -119,9 +194,16 @@ export function Palco({
     const destino = localizar(Math.min(posicaoMs, Math.max(0, duracaoMs - 1)));
     if (!destino) return;
     indiceRef.current = destino.indice;
+    tempoAoVivo.current = posicaoMs;
     setSourceMs(destino.sourceMs);
+    aplicarEfeitos(posicaoMs);
     if (video && video.readyState >= 1) video.currentTime = destino.sourceMs / 1000;
-  }, [posicaoMs, tocando, localizar, duracaoMs]);
+  }, [posicaoMs, tocando, localizar, duracaoMs, aplicarEfeitos]);
+
+  // Um efeito trocado no Inspector aparece sem precisar mexer no vídeo.
+  useEffect(() => {
+    aplicarEfeitos(tempoAoVivo.current);
+  }, [aplicarEfeitos]);
 
   // ---------- Reprodução ----------
   useEffect(() => {
@@ -143,7 +225,6 @@ export function Palco({
       const agoraMs = video.currentTime * 1000;
 
       if (agoraMs >= trecho.clipe.sourceEndMs - 20) {
-        // Fim do trecho: o próximo, ou o fim do vídeo montado.
         const proximo = trechos[indiceRef.current + 1];
         if (!proximo) {
           video.pause();
@@ -158,12 +239,15 @@ export function Palco({
         // Ainda antes do trecho (a busca não terminou): espera.
       } else {
         const naTimeline = trecho.inicioNaTimeline + Math.max(0, agoraMs - trecho.clipe.sourceStartMs);
-        setSourceMs(agoraMs);
-        // A timeline não precisa de 60 atualizações por segundo, e cada
-        // uma re-renderiza o editor inteiro.
+        tempoAoVivo.current = naTimeline;
+        aplicarEfeitos(naTimeline);
+        desenharFundo();
+        // A timeline e a legenda de reserva não precisam de 60
+        // atualizações por segundo: cada uma re-renderiza o editor.
         const agora = performance.now();
         if (agora - ultimoAviso > 90) {
           ultimoAviso = agora;
+          setSourceMs(agoraMs);
           ultimaPosicaoRef.current = naTimeline;
           onPosicao(naTimeline);
         }
@@ -174,7 +258,24 @@ export function Palco({
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, trechos, duracaoMs, onPosicao]);
+  }, [tocando, trechos, duracaoMs, onPosicao, aplicarEfeitos, desenharFundo]);
+
+  // ---------- Trilha ----------
+  const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;
+  useEffect(() => {
+    const audio = trilhaRef.current;
+    if (!audio || !plan.music) return;
+    // O ganho em dB do plano; com ducking, a voz está quase sempre
+    // presente, então a prévia usa o volume "abaixado".
+    const db = plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0);
+    audio.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * 4));
+    if (tocando) {
+      if (audio.duration) audio.currentTime = (tempoAoVivo.current / 1000) % audio.duration;
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+    }
+  }, [tocando, plan.music]);
 
   const tocarDe = useCallback(
     (msNaTimeline: number) => {
@@ -184,6 +285,7 @@ export function Palco({
       const destino = localizar(inicio);
       if (!destino) return;
       indiceRef.current = destino.indice;
+      tempoAoVivo.current = inicio;
       video.currentTime = destino.sourceMs / 1000;
       ultimaPosicaoRef.current = inicio;
       onPosicao(inicio);
@@ -225,20 +327,44 @@ export function Palco({
     else onPosicao(alvo);
   };
 
-  // ---------- Legenda ----------
-  const palavras = useMemo<Palavra[]>(() => {
-    const correcoes = new Map(plan.captions.corrections.map((c) => [c.wordId, c.text]));
-    return (transcricao?.segmentos ?? [])
-      .flatMap((s) => s.palavras)
-      .map((p) => ({ id: p.id, startMs: p.startMs, endMs: p.endMs, texto: correcoes.get(p.id) ?? p.texto }))
-      .sort((a, b) => a.startMs - b.startMs);
-  }, [transcricao, plan.captions.corrections]);
+  // ---------- Legendas e textos (.ass) ----------
+  const palavras = useMemo<PalavraDaTranscricao[]>(
+    () =>
+      (transcricao?.segmentos ?? [])
+        .flatMap((s) => s.palavras)
+        .map((p) => ({ id: p.id, startMs: p.startMs, endMs: p.endMs, word: p.texto })),
+    [transcricao],
+  );
+
+  const marcaDoVideo = useMemo<MarcaDoVideo>(() => marca ?? { cores: CORES_PADRAO_DA_MARCA }, [marca]);
+
+  const ass = useMemo(() => {
+    if (!planoPrecisaDeAss(plan)) return null;
+    const estilo = resolverEstiloDaLegenda(plan.captions.styleId, {
+      marca: marcaDoVideo,
+      escala: plan.captions.sizeScale ?? 1,
+    });
+    return gerarAss({ plano: plan, estilo, palavras, clipsDesligados: [...(desligados ?? [])], marca: marcaDoVideo });
+  }, [plan, palavras, desligados, marcaDoVideo]);
 
   const trechoAtual = trechos[indiceRef.current];
-  const legenda =
-    plan.captions.enabled && sourceMs !== null && trechoAtual
+  const legendaCss =
+    libassFalhou && plan.captions.enabled && sourceMs !== null && trechoAtual
       ? legendaNoPonto(palavras, trechoAtual.clipe, sourceMs, plan.captions.wordsPerBlock)
       : null;
+  const estiloCss = useMemo(
+    () => resolverEstiloDaLegenda(plan.captions.styleId, { marca: marcaDoVideo }),
+    [plan.captions.styleId, marcaDoVideo],
+  );
+
+  // ---------- Logo e imagens ----------
+  const imagensVisiveis = plan.overlays.filter(
+    (o) =>
+      (o.component === 'LogoBug' || o.component === 'ImageOverlay') &&
+      o.assetId &&
+      posicaoMs >= o.timelineStartMs &&
+      posicaoMs < o.timelineStartMs + o.durationMs,
+  );
 
   return (
     <>
@@ -260,21 +386,29 @@ export function Palco({
         </div>
 
         {proxyUrl && !erroDoVideo ? (
-          <video
-            ref={videoRef}
-            src={proxyUrl}
-            playsInline
-            preload="auto"
-            muted={mudo}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            onLoadedMetadata={(e) => {
-              // Primeiro quadro no ponto certo, antes de qualquer play.
-              const destino = localizar(posicaoMs);
-              if (destino) e.currentTarget.currentTime = destino.sourceMs / 1000;
-            }}
-            onError={() => setErroDoVideo(true)}
-            onPause={() => setTocando(false)}
-          />
+          <div ref={imagemRef} className="palco__imagem">
+            {enquadramento === 'desfoque' && (
+              <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
+            )}
+            <video
+              ref={videoRef}
+              src={proxyUrl}
+              playsInline
+              preload="auto"
+              muted={mudo}
+              className="palco__video"
+              style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
+              onLoadedMetadata={(e) => {
+                // Primeiro quadro no ponto certo, antes de qualquer play.
+                const destino = localizar(posicaoMs);
+                if (destino) e.currentTarget.currentTime = destino.sourceMs / 1000;
+              }}
+              onSeeked={desenharFundo}
+              onLoadedData={desenharFundo}
+              onError={() => setErroDoVideo(true)}
+              onPause={() => setTocando(false)}
+            />
+          </div>
         ) : (
           <div className="palco__vazio">
             <IconeVideo size={40} />
@@ -298,31 +432,58 @@ export function Palco({
           </div>
         )}
 
+        {/* Logo e imagem: mesmas posições e tamanhos do render. */}
+        {urlDoAsset &&
+          imagensVisiveis.map((o) =>
+            o.component === 'LogoBug' ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className={`palco__logo palco__logo--${o.variant ?? 'sd'}`} />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className="palco__imagem-sobreposta" />
+            ),
+          )}
+
+        {ass && !libassFalhou && (
+          <CamadaDeLegendas
+            ass={ass}
+            tempoMs={posicaoMs}
+            tempoAoVivo={tempoAoVivo}
+            tocando={tocando}
+            onFalha={() => setLibassFalhou(true)}
+          />
+        )}
+
         {zonasSeguras && <span className="palco__zonas" aria-hidden />}
 
-        {/* A mesma quebra do render: blocos de N palavras, palavra ativa
-            realçada. O preview não mostra texto que o vídeo não terá. */}
-        {legenda && (
+        {/* Reserva: navegador sem WebAssembly/OffscreenCanvas. Aproxima o
+            estilo (fonte e cores), sem as animações. */}
+        {legendaCss && (
           <div
             className="palco__legenda"
-            style={
-              plan.captions.position === 'top'
+            style={{
+              fontFamily: `'${estiloCss.fonte.nomeAss}', ${estiloCss.fonte.rotulo}, sans-serif`,
+              color: estiloCss.cor,
+              textTransform: estiloCss.caixaAlta ? 'uppercase' : 'none',
+              ...(plan.captions.position === 'top'
                 ? { top: '12%', bottom: 'auto' }
                 : plan.captions.position === 'center'
-                  ? { top: '50%', bottom: 'auto' }
-                  : undefined
-            }
+                  ? { top: '46%', bottom: 'auto' }
+                  : { bottom: '24%' }),
+            }}
           >
-            {legenda.map((p, i) => (
+            {legendaCss.map((p, i) => (
               <span key={p.id}>
                 {i > 0 && ' '}
-                <span className={p.ativa && plan.captions.highlightActiveWord ? 'palco__destaque' : undefined}>
+                <span style={p.ativa && plan.captions.highlightActiveWord ? { color: estiloCss.corDestaque } : undefined}>
                   {p.texto}
                 </span>
               </span>
             ))}
           </div>
         )}
+
+        {trilhaUrl && <audio ref={trilhaRef} src={trilhaUrl} loop preload="auto" muted={mudo} />}
       </div>
 
       <div className="palco__controles">
@@ -370,24 +531,19 @@ export function Palco({
 }
 
 /**
- * As palavras da legenda no ponto `sourceMs` do original.
+ * As palavras da legenda no ponto `sourceMs` do original (reserva CSS).
  *
- * Só palavras DENTRO do trecho: a fala cortada não aparece. Os blocos
- * contam a partir do início do trecho, como o render faz.
+ * Só palavras DENTRO do trecho: a fala cortada não aparece.
  */
 function legendaNoPonto(
-  palavras: readonly Palavra[],
+  palavras: readonly PalavraDaTranscricao[],
   clipe: EditPlanV1['clips'][number],
   sourceMs: number,
   porBloco: number,
 ): Array<{ id: string; texto: string; ativa: boolean }> | null {
-  const doTrecho = palavras.filter(
-    (p) => p.endMs > clipe.sourceStartMs && p.startMs < clipe.sourceEndMs,
-  );
+  const doTrecho = palavras.filter((p) => p.endMs > clipe.sourceStartMs && p.startMs < clipe.sourceEndMs);
   if (doTrecho.length === 0) return null;
 
-  // A palavra dita agora, ou a última já dita (a legenda não pisca
-  // entre uma palavra e outra).
   let atual = -1;
   for (let i = 0; i < doTrecho.length; i += 1) {
     if (doTrecho[i]!.startMs <= sourceMs) atual = i;
@@ -395,15 +551,14 @@ function legendaNoPonto(
   }
   if (atual < 0) return null;
 
-  // Depois de uma pausa longa a legenda some, como no render.
   const ultima = doTrecho[atual]!;
   if (sourceMs - ultima.endMs > 1200) return null;
 
   const tamanho = Math.max(1, porBloco);
   const inicio = Math.floor(atual / tamanho) * tamanho;
   return doTrecho.slice(inicio, inicio + tamanho).map((p, i) => ({
-    id: p.id,
-    texto: p.texto,
+    id: p.id ?? `${p.startMs}`,
+    texto: p.word,
     ativa: inicio + i === atual && sourceMs <= p.endMs + 150,
   }));
 }

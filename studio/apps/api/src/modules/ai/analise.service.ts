@@ -19,14 +19,16 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  catalogoDeEstilosParaIa,
   compilarProposta,
   confiancaDoPlano,
   hasBlockingIssues,
   parseAiProposal,
   validateSemanticSafety,
 } from '@makucho/studio-contracts';
-import type { SegmentoDaTranscricao, SemanticIssue } from '@makucho/studio-contracts';
+import type { ContextoDoAcabamento, SegmentoDaTranscricao, SemanticIssue } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
+import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
 import { PromptsService } from './prompts.service';
 
@@ -48,6 +50,7 @@ export class AnaliseService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
+    private readonly acabamento: AcabamentoService,
   ) {}
 
   /**
@@ -108,7 +111,12 @@ export class AnaliseService {
         : (s.confidence ?? 1),
     }));
 
-    const { texto: sistema, versao } = this.prompts.obter('selecionar_trechos');
+    const { texto: instrucoes, versao } = this.prompts.obter('selecionar_trechos');
+    // O catalogo de estilos vem do codigo: um estilo novo aparece para
+    // a IA sem ninguem editar o prompt, e o prefixo continua identico
+    // entre chamadas -- elegivel ao cache do provedor.
+    const sistema = `${instrucoes}\n\n## Estilos de legenda (captionPreset: descrição)\n${catalogoDeEstilosParaIa()}`;
+    const acabamento = await this.acabamento.contexto(workspaceId);
 
     let resposta;
     try {
@@ -117,7 +125,7 @@ export class AnaliseService {
         projectId,
         chamada: 'selecionar_trechos',
         sistema,
-        usuario: this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs),
+        usuario: this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs, acabamento),
         maxTokens: MAX_TOKENS,
         promptVersion: versao,
       });
@@ -175,6 +183,7 @@ export class AnaliseService {
       sourceMediaId: original.id,
       sourceDurationMs: original.durationMs,
       segmentos,
+      acabamento,
     });
 
     if (!compilado.ok) {
@@ -223,14 +232,22 @@ export class AnaliseService {
     segmentos: readonly SegmentoDaTranscricao[],
     framework?: string | null,
     duracaoAlvoMs?: number | null,
+    acabamento?: ContextoDoAcabamento,
   ): string {
     const linhas = segmentos.map(
       (s) => `[${s.startMs}–${s.endMs}] ${s.text}`,
     );
 
+    // Com o estilo fixado pela marca, a IA nem o escolhe: sao tokens de
+    // saida que seriam descartados pelo acabamento de qualquer forma.
+    const estiloDaMarca = acabamento?.preferencias?.captionPreset;
+
     return [
       `Framework: ${framework ?? 'authority_education'}`,
       `Duração alvo: ${Math.round((duracaoAlvoMs ?? 60_000) / 1000)} segundos`,
+      estiloDaMarca
+        ? `Estilo de legenda: definido pela marca (${estiloDaMarca}); omita captionPreset.`
+        : 'Estilo de legenda: escolha em style.captionPreset.',
       '',
       'Transcrição (tempos em milissegundos):',
       ...linhas,

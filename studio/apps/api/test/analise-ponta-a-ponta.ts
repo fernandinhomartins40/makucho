@@ -13,6 +13,8 @@
 // ============================================================
 
 import { PrismaClient } from '@makucho/studio-database';
+import { AcabamentoService } from '../src/modules/ai/acabamento.service';
+import { EditPlansService } from '../src/modules/edit-plans/edit-plans.service';
 import { AnaliseService } from '../src/modules/ai/analise.service';
 import { AiService } from '../src/modules/ai/ai.service';
 import { PromptsService } from '../src/modules/ai/prompts.service';
@@ -92,7 +94,9 @@ async function main() {
   const p = prisma as unknown as PrismaService;
   const uso = new UsoDeIaService(p);
   const ai = new AiService(p, new CryptoService(), uso);
-  const analise = new AnaliseService(p, ai, new PromptsService());
+  const prompts = new PromptsService();
+  const acabamento = new AcabamentoService(p, new EditPlansService(p), ai, prompts);
+  const analise = new AnaliseService(p, ai, prompts, acabamento);
 
   // ---------- A análise ----------
   const resultado = await analise.analisar(workspace.id, projeto.id);

@@ -20,8 +20,14 @@
 // ============================================================
 
 import { z } from 'zod';
-import { editPlanV1Schema } from './edit-plan';
-import type { EditPlanV1 } from './edit-plan';
+import {
+  OVERLAY_COMPONENTS,
+  editPlanV1Schema,
+  efeitoDeTrechoSchema,
+  tipoDeTransicaoSchema,
+} from './edit-plan';
+import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
+import { presetDaLegenda } from './estilos-de-legenda';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
 
 // ---------- Tracks ----------
@@ -180,6 +186,105 @@ export const trocarMusicaSchema = z.object({
   op: z.literal('trocar_musica'),
   assetId: idSchema.nullable(),
   gainDb: z.number().min(-40).max(0).optional(),
+  /** Abaixar a trilha enquanto alguem fala. */
+  duckUnderVoice: z.boolean().optional(),
+});
+
+// ---------- Acabamento: legenda, video, efeitos e textos ----------
+//
+// Estas operacoes sao o vocabulario COMPLETO de acabamento do Studio.
+// O editor as dispara por clique, e a IA as devolve no comando em
+// linguagem natural (ai-comando.ts): as duas passam pela mesma porta,
+// validadas pelo mesmo schema -- a IA nao tem um caminho mais
+// permissivo que o da pessoa.
+
+/** Liga, desliga ou ajusta a legenda sem trocar o estilo. */
+export const configurarLegendaSchema = z.object({
+  op: z.literal('configurar_legenda'),
+  enabled: z.boolean().optional(),
+  wordsPerBlock: z.number().int().min(1).max(8).optional(),
+  position: z.enum(['top', 'center', 'bottom']).optional(),
+  highlightActiveWord: z.boolean().optional(),
+  sizeScale: z.number().min(0.6).max(1.6).optional(),
+});
+
+/**
+ * A transicao que ENTRA num trecho (entre ele e o anterior).
+ *
+ * Por `clipId` e nao por indice: o indice muda quando algo e
+ * reordenado. `cut` remove a transicao.
+ */
+export const definirTransicaoSchema = z.object({
+  op: z.literal('definir_transicao'),
+  clipId: idSchema,
+  type: tipoDeTransicaoSchema,
+  durationMs: z.number().int().min(150).max(1500).optional(),
+});
+
+/** A mesma transicao em todos os cortes (ou nenhuma, com `cut`). */
+export const transicaoEmTodosSchema = z.object({
+  op: z.literal('transicao_em_todos'),
+  type: tipoDeTransicaoSchema,
+  durationMs: z.number().int().min(150).max(1500).optional(),
+});
+
+/** Efeito de um trecho; `nenhum` remove. */
+export const definirEfeitoSchema = z.object({
+  op: z.literal('definir_efeito'),
+  clipId: idSchema,
+  effect: z.union([efeitoDeTrechoSchema, z.literal('nenhum')]),
+});
+
+/** Enquadramento e limpeza de voz. */
+export const configurarVideoSchema = z.object({
+  op: z.literal('configurar_video'),
+  fit: z.enum(['ajustar', 'preencher', 'desfoque']).optional(),
+  voiceEnhance: z.boolean().optional(),
+});
+
+/**
+ * Um texto ou imagem sobre o video.
+ *
+ * `text` e elemento grafico (titulo, chamada), nao legenda: a regra de
+ * que legenda so sai da fala continua intacta, porque a legenda nao
+ * passa por aqui.
+ */
+export const adicionarOverlaySchema = z.object({
+  op: z.literal('adicionar_overlay'),
+  component: z.enum(OVERLAY_COMPONENTS),
+  text: z.string().min(1).max(200).optional(),
+  assetId: idSchema.optional(),
+  variant: z.string().max(40).optional(),
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(300).max(600_000),
+});
+
+export const editarOverlaySchema = z.object({
+  op: z.literal('editar_overlay'),
+  overlayId: idSchema,
+  text: z.string().min(1).max(200).optional(),
+  variant: z.string().max(40).optional(),
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(300).max(600_000).optional(),
+});
+
+export const removerOverlaySchema = z.object({
+  op: z.literal('remover_overlay'),
+  overlayId: idSchema,
+});
+
+/** Efeito sonoro num ponto da timeline (embutido ou do workspace). */
+export const adicionarEfeitoSonoroSchema = z.object({
+  op: z.literal('adicionar_efeito_sonoro'),
+  assetId: idSchema,
+  timelineStartMs: msSchema,
+  gainDb: z.number().min(-40).max(6).optional(),
+});
+
+export const removerEfeitoSonoroSchema = z.object({
+  op: z.literal('remover_efeito_sonoro'),
+  /** Um id, ou `todos` para limpar a faixa de efeitos. */
+  soundEffectId: idSchema,
 });
 
 export const timelineOperationSchema = z
@@ -195,6 +300,16 @@ export const timelineOperationSchema = z
     desfazerCorrecaoSchema,
     trocarEstiloLegendaSchema,
     trocarMusicaSchema,
+    configurarLegendaSchema,
+    definirTransicaoSchema,
+    transicaoEmTodosSchema,
+    definirEfeitoSchema,
+    configurarVideoSchema,
+    adicionarOverlaySchema,
+    editarOverlaySchema,
+    removerOverlaySchema,
+    adicionarEfeitoSonoroSchema,
+    removerEfeitoSonoroSchema,
   ])
   // As regras que cruzam campos ficam aqui, depois da discriminacao:
   // um .refine() dentro do membro impediria o Zod de ler o campo "op".
@@ -244,6 +359,17 @@ export function aplicarOperacao(
   // chamador perder a versao anterior, e com ela o "desfazer".
   const clips = plan.clips.map((c) => ({ ...c }));
   let novo: EditPlanV1 = { ...plan, clips };
+
+  // As transicoes guardam o INDICE do trecho que antecedem. Antes de
+  // qualquer operacao elas sao ancoradas no id do trecho, e no fim
+  // voltam a indice: dividir, duplicar, inserir, reordenar ou
+  // desativar mudam indices, e uma transicao presa ao numero passaria
+  // a entrar no trecho errado.
+  const transicoesPorClipe = new Map<string, EditPlanV1['transitions'][number]>();
+  for (const t of plan.transitions) {
+    const alvo = plan.clips[t.beforeClipIndex];
+    if (alvo) transicoesPorClipe.set(alvo.id, t);
+  }
 
   switch (operacao.op) {
     case 'mover_clipe': {
@@ -456,9 +582,22 @@ export function aplicarOperacao(
       break;
     }
 
-    case 'trocar_estilo_legenda':
-      novo = { ...novo, captions: { ...novo.captions, styleId: operacao.styleId } };
+    case 'trocar_estilo_legenda': {
+      // Um estilo do catalogo traz o agrupamento e a posicao para os
+      // quais foi desenhado: "Uma palavra" com tres palavras por bloco,
+      // embaixo, nao e o estilo que a pessoa viu na amostra. Depois
+      // disso, `configurar_legenda` ajusta o que ela quiser.
+      const preset = presetDaLegenda(operacao.styleId);
+      novo = {
+        ...novo,
+        captions: {
+          ...novo.captions,
+          styleId: preset?.id ?? operacao.styleId,
+          ...(preset ? { wordsPerBlock: preset.palavrasPorBloco, position: preset.posicao } : {}),
+        },
+      };
       break;
+    }
 
     case 'trocar_musica': {
       if (operacao.assetId === null) {
@@ -472,13 +611,154 @@ export function aplicarOperacao(
             gainDb: operacao.gainDb ?? -18,
             fadeInMs: novo.music?.fadeInMs ?? 800,
             fadeOutMs: novo.music?.fadeOutMs ?? 1200,
-            duckUnderVoice: novo.music?.duckUnderVoice ?? true,
+            duckUnderVoice: operacao.duckUnderVoice ?? novo.music?.duckUnderVoice ?? true,
           },
         };
       }
       break;
     }
+
+    case 'configurar_legenda': {
+      const { op: _op, ...mudancas } = operacao;
+      const definidas = Object.fromEntries(
+        Object.entries(mudancas).filter(([, v]) => v !== undefined),
+      ) as Partial<EditPlanV1['captions']>;
+      novo = { ...novo, captions: { ...novo.captions, ...definidas } };
+      break;
+    }
+
+    case 'definir_transicao': {
+      const indice = clips.findIndex((c) => c.id === operacao.clipId);
+      if (indice === -1) return { ok: false, erro: 'clipe nao encontrado' };
+      if (indice === 0) {
+        return { ok: false, erro: 'o primeiro trecho nao tem corte antes dele' };
+      }
+      definirTransicao(transicoesPorClipe, operacao.clipId, operacao.type, operacao.durationMs);
+      break;
+    }
+
+    case 'transicao_em_todos':
+      transicoesPorClipe.clear();
+      clips.slice(1).forEach((c) => {
+        definirTransicao(transicoesPorClipe, c.id, operacao.type, operacao.durationMs);
+      });
+      break;
+
+    case 'definir_efeito': {
+      const clip = clips.find((c) => c.id === operacao.clipId);
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+      if (operacao.effect === 'nenhum') delete clip.effect;
+      else clip.effect = operacao.effect;
+      break;
+    }
+
+    case 'configurar_video':
+      novo = {
+        ...novo,
+        render: {
+          ...novo.render,
+          ...(operacao.fit !== undefined ? { fit: operacao.fit } : {}),
+          ...(operacao.voiceEnhance !== undefined ? { voiceEnhance: operacao.voiceEnhance } : {}),
+        },
+      };
+      break;
+
+    case 'adicionar_overlay': {
+      if (novo.overlays.length >= 40) {
+        return { ok: false, erro: 'o video ja tem o maximo de elementos sobre a imagem' };
+      }
+      const precisaDeTexto = ['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard'];
+      if (precisaDeTexto.includes(operacao.component) && !operacao.text) {
+        return { ok: false, erro: `${operacao.component} precisa de texto` };
+      }
+      if (['LogoBug', 'ImageOverlay'].includes(operacao.component) && !operacao.assetId) {
+        return { ok: false, erro: `${operacao.component} precisa de uma imagem` };
+      }
+      // Um de cada: dois logos, dois titulos de abertura ou duas
+      // barras de progresso no mesmo video sao sempre engano.
+      const unicos = ['LogoBug', 'HookTitle', 'ProgressBar'];
+      const restantes = unicos.includes(operacao.component)
+        ? novo.overlays.filter((o) => o.component !== operacao.component)
+        : novo.overlays;
+      novo = {
+        ...novo,
+        overlays: [
+          ...restantes,
+          {
+            id: novoId('ov'),
+            component: operacao.component,
+            ...(operacao.text ? { text: operacao.text } : {}),
+            ...(operacao.assetId ? { assetId: operacao.assetId } : {}),
+            ...(operacao.variant ? { variant: operacao.variant } : {}),
+            timelineStartMs: operacao.timelineStartMs,
+            durationMs: operacao.durationMs,
+          },
+        ],
+      };
+      break;
+    }
+
+    case 'editar_overlay': {
+      if (!novo.overlays.some((o) => o.id === operacao.overlayId)) {
+        return { ok: false, erro: 'elemento nao encontrado' };
+      }
+      const { op: _op, overlayId, ...mudancas } = operacao;
+      const definidas = Object.fromEntries(
+        Object.entries(mudancas).filter(([, v]) => v !== undefined),
+      );
+      novo = {
+        ...novo,
+        overlays: novo.overlays.map((o) => (o.id === overlayId ? { ...o, ...definidas } : o)),
+      };
+      break;
+    }
+
+    case 'remover_overlay':
+      if (!novo.overlays.some((o) => o.id === operacao.overlayId)) {
+        return { ok: false, erro: 'elemento nao encontrado' };
+      }
+      novo = { ...novo, overlays: novo.overlays.filter((o) => o.id !== operacao.overlayId) };
+      break;
+
+    case 'adicionar_efeito_sonoro':
+      if (novo.soundEffects.length >= 40) {
+        return { ok: false, erro: 'o video ja tem o maximo de efeitos sonoros' };
+      }
+      novo = {
+        ...novo,
+        soundEffects: [
+          ...novo.soundEffects,
+          {
+            id: novoId('sf'),
+            assetId: operacao.assetId,
+            timelineStartMs: operacao.timelineStartMs,
+            gainDb: operacao.gainDb ?? -8,
+          },
+        ],
+      };
+      break;
+
+    case 'remover_efeito_sonoro':
+      novo = {
+        ...novo,
+        soundEffects:
+          operacao.soundEffectId === 'todos'
+            ? []
+            : novo.soundEffects.filter((e) => e.id !== operacao.soundEffectId),
+      };
+      break;
   }
+
+  // As transicoes voltam a indice, agora sobre a ordem nova. Uma que
+  // apontava para um trecho que saiu da timeline sai junto; uma que
+  // caiu no primeiro trecho perde o sentido (nao ha corte antes dele).
+  novo = {
+    ...novo,
+    transitions: novo.clips.flatMap((c, i) => {
+      const t = transicoesPorClipe.get(c.id);
+      return t && i > 0 ? [{ ...t, beforeClipIndex: i }] : [];
+    }),
+  };
 
   // targetDurationMs acompanha os clipes.
   //
@@ -492,6 +772,21 @@ export function aplicarOperacao(
     0,
   );
   novo = { ...novo, targetDurationMs: duracaoAtual };
+
+  // Textos, imagens e efeitos sonoros que ficaram alem do fim (o video
+  // encolheu) sao cortados ou saem: no render, um elemento depois do
+  // ultimo quadro nao aparece, e na tela ele confundiria.
+  novo = {
+    ...novo,
+    overlays: novo.overlays
+      .filter((o) => o.timelineStartMs < duracaoAtual - 100)
+      .map((o) =>
+        o.timelineStartMs + o.durationMs > duracaoAtual
+          ? { ...o, durationMs: duracaoAtual - o.timelineStartMs }
+          : o,
+      ),
+    soundEffects: novo.soundEffects.filter((e) => e.timelineStartMs < duracaoAtual),
+  };
 
   // A mesma porta por onde a proposta da IA passa. Se a edicao do
   // usuario produziu um plano invalido, ela e recusada -- com o
@@ -525,6 +820,45 @@ function recomporTimeline<T extends { timelineStartMs: number; sourceStartMs: nu
     posicao += clip.sourceEndMs - clip.sourceStartMs;
     return recomposto;
   });
+}
+
+/** Duracao padrao de cada transicao: rapida o bastante para video falado. */
+export const DURACAO_PADRAO_DA_TRANSICAO: Readonly<Record<TipoDeTransicao, number>> = {
+  cut: 0,
+  fade: 400,
+  dissolve: 450,
+  fadeblack: 500,
+  slide: 350,
+  slideup: 350,
+  wipe: 350,
+  smooth: 400,
+  zoom: 350,
+  circle: 450,
+  blur: 350,
+  pixelize: 400,
+};
+
+function definirTransicao(
+  mapa: Map<string, EditPlanV1['transitions'][number]>,
+  clipId: string,
+  tipo: TipoDeTransicao,
+  durationMs?: number,
+) {
+  if (tipo === 'cut') {
+    mapa.delete(clipId);
+    return;
+  }
+  mapa.set(clipId, {
+    id: `tr-${clipId}`.slice(0, 64),
+    type: tipo,
+    beforeClipIndex: 0, // recalculado no fim de aplicarOperacao
+    durationMs: durationMs ?? DURACAO_PADRAO_DA_TRANSICAO[tipo],
+  });
+}
+
+/** Id curto e unico o bastante para elementos do plano. */
+function novoId(prefixo: string): string {
+  return `${prefixo}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** Duracao total do plano, somando os clipes ativos. */

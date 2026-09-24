@@ -51,8 +51,13 @@ export class BrandService {
       const ultima = await tx.brandProfile.findFirst({
         where: { workspaceId: tenant.workspaceId },
         orderBy: { version: 'desc' },
-        select: { version: true },
+        select: { version: true, videoDefaults: true },
       });
+
+      // Uma tela que salva so cores e fontes nao pode apagar as
+      // preferencias de video: sem o campo no pedido, a versao nova
+      // herda as da anterior.
+      const videoDefaults = dados.videoDefaults ?? ultima?.videoDefaults ?? undefined;
 
       const proximaVersao = (ultima?.version ?? 0) + 1;
 
@@ -73,6 +78,7 @@ export class BrandService {
           colors: dados.colors,
           fontPrimary: dados.fontPrimary,
           fontSecond: dados.fontSecond,
+          ...(videoDefaults ? { videoDefaults: videoDefaults as object } : {}),
         },
         include: { captionStyles: true },
       });

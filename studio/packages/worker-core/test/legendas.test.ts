@@ -458,10 +458,10 @@ const comCorrecao = (corrections: Array<{ wordId: string; text: string; original
 
 {
   // `top` e `center` mudam o alinhamento: 8 e 5.
-  const topo = gerarAss({ plano, estilo: { ...estilo, position: 'top' }, palavras });
+  const topo = gerarAss({ plano: { ...plano, captions: { ...plano.captions, position: 'top' } }, estilo, palavras });
   t('a posição "top" vira alinhamento 8', /,8,\d+,\d+,\d+,1$/m.test(topo));
 
-  const meio = gerarAss({ plano, estilo: { ...estilo, position: 'center' }, palavras });
+  const meio = gerarAss({ plano: { ...plano, captions: { ...plano.captions, position: 'center' } }, estilo, palavras });
   t('a posição "center" vira alinhamento 5', /,5,\d+,\d+,\d+,1$/m.test(meio));
 }
 
@@ -473,9 +473,12 @@ const comCorrecao = (corrections: Array<{ wordId: string; text: string; original
     estilo: { ...estilo, highlightColor: undefined },
     palavras,
   });
+  // Só a linha do estilo da legenda: os textos de tela usam a cor da
+  // marca de propósito, e contaminariam a busca no arquivo inteiro.
+  const linhaDaLegenda = semDestaque.split('\n').find((l) => l.startsWith('Style: Makucho,')) ?? '';
   t(
     'sem highlightColor, o destaque usa a cor primária',
-    !semDestaque.includes('&H00FF662F'),
+    linhaDaLegenda !== '' && !linhaDaLegenda.includes('&H00FF662F'),
   );
 }
 

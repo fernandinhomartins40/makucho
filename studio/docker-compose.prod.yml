@@ -345,9 +345,8 @@ services:
       REDIS_URL: redis://studio-redis:6379
       STORAGE_DISK_PATH: /app/storage/media
       NODE_OPTIONS: --max-old-space-size=512
-      # O Remotion abre um Chromium headless por worker de render.
-      # Mais de um esgota a memoria antes de acelerar qualquer coisa.
-      REMOTION_CONCURRENCY: '1'
+      # Fontes do video (OFL), copiadas na imagem.
+      STUDIO_FONTS_DIR: /app/fonts
       GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
       TMP_DIR: /tmp/studio
     depends_on:

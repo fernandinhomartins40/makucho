@@ -29,6 +29,7 @@ import type { SemanticIssue } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
+import { AcabamentoService } from './acabamento.service';
 import { AnaliseService } from './analise.service';
 
 export interface ResultadoDaProposta {
@@ -58,6 +59,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly analise: AnaliseService,
     private readonly planos: EditPlansService,
+    private readonly acabamento: AcabamentoService,
   ) {}
 
   onModuleInit() {
@@ -176,7 +178,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
         problemas: resultado.problemas,
       };
     } else if (opcoes.comReserva) {
-      const reserva = await this.montarSemIa(projectId, resultado.erro);
+      const reserva = await this.montarSemIa(workspaceId, projectId, resultado.erro);
       if (!reserva) {
         throw new Error(`sem proposta da IA (${resultado.erro}) e sem fala para montar`);
       }
@@ -194,7 +196,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Monta a proposta sem IA a partir da transcrição salva. */
-  private async montarSemIa(projectId: string, motivo: string) {
+  private async montarSemIa(workspaceId: string, projectId: string, motivo: string) {
     const transcricao = await this.prisma.transcription.findUnique({
       where: { projectId },
       include: { segments: { orderBy: { position: 'asc' } } },
@@ -221,12 +223,15 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     const proposta = montarPropostaSemIa(segmentos, original.durationMs, aviso);
     if (!proposta) return null;
 
+    // Sem IA, o video sai acabado do mesmo jeito: legenda, zoom, logo e
+    // trilha vem do Kit de marca, por regra -- nenhum token gasto.
     const compilado = compilarProposta({
       proposta,
       projectId,
       sourceMediaId: original.id,
       sourceDurationMs: original.durationMs,
       segmentos,
+      acabamento: await this.acabamento.contexto(workspaceId),
     });
     if (!compilado.ok) return null;
 

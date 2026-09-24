@@ -26,11 +26,13 @@ import { join } from 'node:path';
  * a v1, e reescrevê-la faria o registro mentir sobre o que foi pedido.
  */
 export const VERSAO_DO_PROMPT = {
-  selecionar_trechos: 'selecao-v1',
+  // v2: a mesma selecao, mais o acabamento sugerido (`style`).
+  selecionar_trechos: 'selecao-v2',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',
   refinar_cortes: 'refino-v1',
+  comandar_edicao: 'comando-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;
