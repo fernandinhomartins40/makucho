@@ -112,6 +112,8 @@ interface OpcoesDeEnvio {
   duracaoMs?: number;
   onProgresso?: (p: ProgressoDoUpload) => void;
   sinal?: AbortSignal;
+  /** Uma das várias partes do projeto: não dispara o processamento. */
+  parte?: boolean;
 }
 
 /**
@@ -122,7 +124,7 @@ interface OpcoesDeEnvio {
  * tudo por causa de um pedaço desperdiçaria o que já subiu.
  */
 export async function enviar(opcoes: OpcoesDeEnvio): Promise<{ mediaSourceId: string }> {
-  const { projectId, arquivo, nome, mimeType, duracaoMs, onProgresso, sinal } = opcoes;
+  const { projectId, arquivo, nome, mimeType, duracaoMs, onProgresso, sinal, parte } = opcoes;
 
   const sessao = await api<SessaoDeUpload>(`/projects/${projectId}/uploads`, {
     metodo: 'POST',
@@ -164,8 +166,11 @@ export async function enviar(opcoes: OpcoesDeEnvio): Promise<{ mediaSourceId: st
     throw e;
   }
 
+  // `parte`: o vídeo entra na lista do projeto e espera o "Ir para a
+  // edição"; sem ela, é processado na hora (um vídeo só).
   return api<{ mediaSourceId: string }>(`/uploads/${sessao.uploadId}/complete`, {
     metodo: 'POST',
+    corpo: parte ? { parte: true } : {},
   });
 }
 

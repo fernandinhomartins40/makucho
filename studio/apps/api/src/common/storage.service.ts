@@ -48,6 +48,18 @@ export class StorageService {
     return `${seguro(workspaceId)}/${seguro(projectId)}/${tipo}.${limpo || 'bin'}`;
   }
 
+  /**
+   * Chave de uma PARTE (um dos vários vídeos de um projeto).
+   *
+   * Única por envio: a chave do original é fixa por projeto
+   * (`original.mp4`), e era por isso que o segundo vídeo colidia com o
+   * primeiro.
+   */
+  chaveDeParte(workspaceId: string, projectId: string, uploadId: string, extensao: string): string {
+    const limpo = extensao.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 8);
+    return `${seguro(workspaceId)}/${seguro(projectId)}/partes/${seguro(uploadId)}.${limpo || 'bin'}`;
+  }
+
   /** Chave de um pedaço de upload em andamento. */
   chaveDePedaco(uploadId: string, indice: number): string {
     return `_tmp/${seguro(uploadId)}/${String(indice).padStart(6, '0')}.part`;

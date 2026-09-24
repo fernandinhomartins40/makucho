@@ -69,9 +69,45 @@ export class MediaController {
   }
 
   @Post('uploads/:uploadId/complete')
-  concluir(@CurrentTenant() tenant: TenantContext, @Param('uploadId') uploadId: string) {
+  concluir(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('uploadId') uploadId: string,
+    @Body() body: unknown,
+  ) {
     assertCanWrite(tenant);
-    return this.media.concluir(tenant, uploadId);
+    const { parte } = z.object({ parte: z.boolean().optional() }).parse(body ?? {});
+    return this.media.concluir(tenant, uploadId, { parte });
+  }
+
+  // ---------- Várias partes ----------
+
+  @Get('projects/:id/parts')
+  partes(@CurrentTenant() tenant: TenantContext, @Param('id') projectId: string) {
+    return this.media.listarPartes(tenant, projectId);
+  }
+
+  @Delete('projects/:id/parts/:parteId')
+  removerParte(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') projectId: string,
+    @Param('parteId') parteId: string,
+  ) {
+    assertCanWrite(tenant);
+    return this.media.removerParte(tenant, projectId, parteId);
+  }
+
+  @Put('projects/:id/parts/order')
+  ordenarPartes(@CurrentTenant() tenant: TenantContext, @Param('id') projectId: string, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    const { ids } = z.object({ ids: z.array(z.string().min(1).max(64)).min(1).max(50) }).parse(body);
+    return this.media.ordenarPartes(tenant, projectId, ids);
+  }
+
+  /** "Ir para a edição": junta as partes e começa o preparo. */
+  @Post('projects/:id/parts/finish')
+  finalizarPartes(@CurrentTenant() tenant: TenantContext, @Param('id') projectId: string) {
+    assertCanWrite(tenant);
+    return this.media.finalizarPartes(tenant, projectId);
   }
 
   @Delete('uploads/:uploadId')

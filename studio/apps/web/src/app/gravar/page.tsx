@@ -1,20 +1,22 @@
 'use client';
 
 // ============================================================
-// Novo vídeo — gravar com teleprompter ou enviar um arquivo.
+// Novo vídeo — enviar e gravar um ou vários vídeos, e só então editar.
 //
 // A tela começa pela ESCOLHA, não pela câmera. Abrir a webcam de cara
 // assustava quem só queria enviar um vídeo pronto, disparava o pedido
 // de permissão sem contexto e acendia a luz da câmera sem motivo.
 //
-//   escolher   título do vídeo + dois caminhos lado a lado;
-//   câmera     só aqui o navegador pede câmera e microfone. Verificar
-//              antes de gravar, gravar com o roteiro à vista, revisar
-//              antes de enviar;
-//   enviando   progresso real, velocidade, tempo restante e cancelar.
+//   escolher   título, os dois caminhos (enviar vários arquivos,
+//              gravar tomadas) e a LISTA dos vídeos do projeto: cada um
+//              com o seu envio, na ordem em que vão entrar, com setas
+//              para trocar e lixeira para tirar;
+//   câmera     só aqui o navegador pede câmera e microfone. Cada
+//              gravação volta para a lista, e dá para gravar outra.
 //
-// Terminado o envio, o destino é o editor do projeto, que acompanha o
-// processamento — e não a lista, onde o vídeo "sumia".
+// Nada é processado enquanto a pessoa monta a lista: só "Ir para a
+// edição com IA" junta os vídeos num só, na ordem da lista, e começa o
+// preparo. O destino é o editor, que acompanha tudo.
 // ============================================================
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -31,9 +33,13 @@ import {
   formatarBytes,
   tipoDoArquivo,
   TIPOS_ACEITOS,
-  type ProgressoDoUpload,
 } from '../../lib/upload';
-import { projetos as apiProjetos, roteiros as apiRoteiros, type ProjetoDetalhado } from '../../lib/api';
+import {
+  projetos as apiProjetos,
+  roteiros as apiRoteiros,
+  type ParteDoProjeto,
+  type ProjetoDetalhado,
+} from '../../lib/api';
 import {
   IconeCamera,
   IconeMicrofone,
@@ -50,6 +56,9 @@ import {
   IconeEnviar,
   IconeRoteiro,
   IconeNuvem,
+  IconeIA,
+  IconeSubir,
+  IconeDescer,
 } from '../../components/icones';
 
 interface BlocoDoRoteiro {
@@ -94,11 +103,6 @@ const ROTEIRO_PADRAO: BlocoDoRoteiro[] = [
 
 type Etapa = 'escolher' | 'camera';
 
-interface EstadoDoEnvio {
-  progresso: ProgressoDoUpload | null;
-  bytesPorSegundo: number | null;
-}
-
 export default function GravarPage() {
   return (
     <Suspense fallback={<div className="conteudo" />}>
@@ -121,13 +125,13 @@ function NovoVideo() {
   const [temRoteiroProprio, setTemRoteiroProprio] = useState(false);
   const [scriptId, setScriptId] = useState<string | null>(roteiroDaUrl);
 
-  const [enviando, setEnviando] = useState(false);
-  const [envio, setEnvio] = useState<EstadoDoEnvio>({ progresso: null, bytesPorSegundo: null });
-  const [erroDeEnvio, setErroDeEnvio] = useState<string | null>(null);
-  const cancelarRef = useRef<AbortController | null>(null);
-  // Um envio que falhou deixa o projeto criado: a nova tentativa usa o
-  // mesmo, em vez de acumular rascunhos vazios na lista.
-  const criadoRef = useRef<string | null>(null);
+  const [itens, setItens] = useState<ItemDoVideo[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const [finalizando, setFinalizando] = useState(false);
+  const cancelarRef = useRef<Map<string, AbortController>>(new Map());
+  // O projeto é criado no primeiro envio, e todos os vídeos seguintes
+  // entram nele. Um envio que falha não cria rascunho novo.
+  const projetoRef = useRef<string | null>(projetoDaUrl);
 
   const carregarRoteiro = useCallback(async (id: string) => {
     const doProjeto = await apiRoteiros.obter(id);
@@ -147,7 +151,7 @@ function NovoVideo() {
     if (roteiroDaUrl) void carregarRoteiro(roteiroDaUrl).catch(() => undefined);
   }, [roteiroDaUrl, carregarRoteiro]);
 
-  // ---------- Projeto e roteiro, quando vierem na URL ----------
+  // ---------- Projeto que já existe (voltou para acrescentar vídeos) ----------
   useEffect(() => {
     if (!projetoDaUrl) return;
 
@@ -156,126 +160,211 @@ function NovoVideo() {
       .then(async (p) => {
         setProjeto(p);
         if (p.title && p.title !== 'Vídeo sem título') setTitulo(p.title);
-
         const doProjeto = p.script?.id;
         if (doProjeto && !roteiroDaUrl) await carregarRoteiro(doProjeto);
+        const partes = await apiProjetos.partes(projetoDaUrl);
+        setItens(partes.map(itemDaParte));
       })
       // O roteiro é um apoio: sem ele, grava-se com o padrão.
       .catch(() => undefined);
   }, [projetoDaUrl, roteiroDaUrl, carregarRoteiro]);
 
-  /**
-   * O envio, igual para gravação e arquivo.
-   *
-   * O projeto só é criado aqui, na hora de enviar: criar ao clicar em
-   * "Novo vídeo" deixava rascunhos vazios na lista toda vez que alguém
-   * desistia.
-   */
-  const enviarVideo = useCallback(
-    async (dados: { arquivo: Blob; nome: string; mimeType: string; duracaoMs?: number }) => {
-      setEnviando(true);
-      setErroDeEnvio(null);
-      setEnvio({ progresso: null, bytesPorSegundo: null });
+  const garantirProjeto = useCallback(
+    async (nomeDoArquivo: string) => {
+      if (projetoRef.current) return projetoRef.current;
+      const nome = titulo.trim() || nomeDoArquivo.replace(/\.[^.]+$/, '') || 'Vídeo sem título';
+      const criado = await apiProjetos.criar({ title: nome.slice(0, 120), scriptId });
+      projetoRef.current = criado.id;
+      return criado.id;
+    },
+    [titulo, scriptId],
+  );
 
-      const controle = new AbortController();
-      cancelarRef.current = controle;
-      const inicio = Date.now();
+  const atualizar = (chave: string, mudanca: Partial<ItemDoVideo>) =>
+    setItens((atual) => atual.map((i) => (i.chave === chave ? { ...i, ...mudanca } : i)));
 
+  // ---------- Fila de envio: um vídeo por vez ----------
+  //
+  // Um por vez, e não todos juntos: a banda é a mesma, e em paralelo
+  // nenhum termina antes — quem enviou três vídeos esperaria o último
+  // para ver o primeiro pronto. A ordem de chegada é a ordem da lista.
+  const enviandoAgora = itens.some((i) => i.estado === 'enviando');
+  const proximo = itens.find((i) => i.estado === 'esperando');
+
+  useEffect(() => {
+    if (enviandoAgora || !proximo?.arquivo) return;
+    const item = proximo;
+    const arquivo = item.arquivo!;
+    const controle = new AbortController();
+    cancelarRef.current.set(item.chave, controle);
+    const inicio = Date.now();
+    atualizar(item.chave, { estado: 'enviando', progresso: 0 });
+
+    void (async () => {
       try {
-        const nomeDoProjeto = titulo.trim() || dados.nome.replace(/\.[^.]+$/, '') || 'Vídeo sem título';
-
-        let projectId = projetoDaUrl ?? criadoRef.current;
-        if (projectId) {
-          // O título digitado aqui vale para o projeto que já existia.
-          if (titulo.trim() && titulo.trim() !== projeto?.title) {
-            await apiProjetos.atualizar(projectId, { title: titulo.trim() }).catch(() => undefined);
-          }
-        } else {
-          projectId = (await apiProjetos.criar({ title: nomeDoProjeto.slice(0, 120), scriptId })).id;
-          criadoRef.current = projectId;
-        }
-
-        await enviar({
+        const projectId = await garantirProjeto(item.nome);
+        const r = await enviar({
           projectId,
-          arquivo: dados.arquivo,
-          nome: dados.nome,
-          mimeType: dados.mimeType,
-          duracaoMs: dados.duracaoMs,
+          arquivo,
+          nome: item.nome,
+          mimeType: item.mimeType,
+          duracaoMs: item.duracaoMs,
+          parte: true,
           sinal: controle.signal,
           onProgresso: (p) => {
             const segundos = (Date.now() - inicio) / 1000;
-            setEnvio({
-              progresso: p,
-              bytesPorSegundo: segundos > 1 ? p.bytesEnviados / segundos : null,
+            atualizar(item.chave, {
+              progresso: p.percentual,
+              bytesPorSegundo: segundos > 1 ? p.bytesEnviados / segundos : undefined,
             });
           },
         });
-
-        router.push(`/editor?projeto=${projectId}`);
+        atualizar(item.chave, { estado: 'pronto', progresso: 100, parteId: r.mediaSourceId, arquivo: undefined });
       } catch (e) {
-        setEnviando(false);
         if (e instanceof DOMException && e.name === 'AbortError') {
-          setErroDeEnvio('Envio cancelado. Nada foi perdido: você pode enviar de novo.');
+          setItens((atual) => atual.filter((i) => i.chave !== item.chave));
           return;
         }
-        setErroDeEnvio(e instanceof Error ? e.message : 'não foi possível enviar o vídeo.');
+        atualizar(item.chave, { estado: 'erro', erro: e instanceof Error ? e.message : 'não foi possível enviar.' });
       } finally {
-        cancelarRef.current = null;
+        cancelarRef.current.delete(item.chave);
       }
-    },
-    [projetoDaUrl, projeto?.title, router, titulo, scriptId],
-  );
+    })();
+    // A fila anda quando um termina; o item em si é lido acima.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enviandoAgora, proximo?.chave]);
 
-  const enviarArquivo = useCallback(
-    async (arquivo: File) => {
-      setErroDeEnvio(null);
+  /** Arquivos escolhidos ou arrastados: validados e postos na fila. */
+  const adicionarArquivos = useCallback(async (arquivos: File[]) => {
+    setErro(null);
+    const novos: ItemDoVideo[] = [];
+    const recusados: string[] = [];
+    for (const arquivo of arquivos) {
       const problema = await validar(arquivo);
       if (problema) {
-        setErroDeEnvio(problema);
-        return;
+        recusados.push(`${arquivo.name}: ${problema}`);
+        continue;
       }
-      await enviarVideo({
-        arquivo,
+      novos.push({
+        chave: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         nome: arquivo.name,
+        tamanhoBytes: arquivo.size,
         mimeType: tipoDoArquivo(arquivo),
         duracaoMs: (await duracaoDe(arquivo)) ?? undefined,
+        estado: 'esperando',
+        progresso: 0,
+        arquivo,
       });
+    }
+    if (recusados.length) setErro(recusados.join(' · '));
+    setItens((atual) => [...atual, ...novos]);
+  }, []);
+
+  const adicionarGravacao = useCallback(async (blob: Blob, mime: string, segundos: number) => {
+    const tipo = mime.split(';')[0] ?? 'video/webm';
+    setItens((atual) => {
+      const tomada = atual.filter((i) => i.nome.startsWith('Gravação')).length + 1;
+      return [
+        ...atual,
+        {
+          chave: `${Date.now()}-g`,
+          nome: `Gravação ${tomada}.${tipo.includes('mp4') ? 'mp4' : 'webm'}`,
+          tamanhoBytes: blob.size,
+          mimeType: tipo,
+          duracaoMs: segundos > 0 ? segundos * 1000 : undefined,
+          estado: 'esperando',
+          progresso: 0,
+          arquivo: blob,
+        },
+      ];
+    });
+    setEtapa('escolher');
+  }, []);
+
+  const remover = useCallback(async (item: ItemDoVideo) => {
+    setErro(null);
+    if (item.estado === 'enviando') {
+      cancelarRef.current.get(item.chave)?.abort();
+      return;
+    }
+    if (item.parteId && projetoRef.current) {
+      try {
+        const partes = await apiProjetos.removerParte(projetoRef.current, item.parteId);
+        setItens((atual) => [...partes.map(itemDaParte), ...atual.filter((i) => !i.parteId && i.chave !== item.chave)]);
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : 'não foi possível remover.');
+      }
+      return;
+    }
+    setItens((atual) => atual.filter((i) => i.chave !== item.chave));
+  }, []);
+
+  /** Sobe ou desce um vídeo já enviado. A ordem é a do vídeo final. */
+  const mover = useCallback(
+    async (item: ItemDoVideo, direcao: -1 | 1) => {
+      const prontos = itens.filter((i) => i.parteId);
+      const de = prontos.findIndex((i) => i.chave === item.chave);
+      const para = de + direcao;
+      if (de < 0 || para < 0 || para >= prontos.length || !projetoRef.current) return;
+      const ordem = [...prontos];
+      [ordem[de], ordem[para]] = [ordem[para]!, ordem[de]!];
+      // Mostra na hora; o servidor confirma.
+      setItens((atual) => [...ordem, ...atual.filter((i) => !i.parteId)]);
+      try {
+        await apiProjetos.ordenarPartes(projetoRef.current, ordem.map((i) => i.parteId!));
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : 'não foi possível mudar a ordem.');
+      }
     },
-    [enviarVideo],
+    [itens],
   );
 
+  const irParaEdicao = useCallback(async () => {
+    if (!projetoRef.current) return;
+    setFinalizando(true);
+    setErro(null);
+    try {
+      if (titulo.trim() && titulo.trim() !== projeto?.title) {
+        await apiProjetos.atualizar(projetoRef.current, { title: titulo.trim() }).catch(() => undefined);
+      }
+      await apiProjetos.finalizarPartes(projetoRef.current);
+      router.push(`/editor?projeto=${projetoRef.current}`);
+    } catch (e) {
+      setFinalizando(false);
+      setErro(e instanceof Error ? e.message : 'não foi possível ir para a edição.');
+    }
+  }, [router, titulo, projeto?.title]);
+
   // Aviso ao sair no meio do envio: fechar a aba perde o que falta.
+  const pendentes = itens.filter((i) => i.estado === 'enviando' || i.estado === 'esperando').length;
   useEffect(() => {
-    if (!enviando) return;
+    if (!pendentes) return;
     const avisar = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener('beforeunload', avisar);
     return () => window.removeEventListener('beforeunload', avisar);
-  }, [enviando]);
+  }, [pendentes]);
 
   const estadoDoProjeto = projeto?.state as ProjectState | undefined;
-  const jaTemVideo =
+  const jaFoiParaEdicao =
     !!estadoDoProjeto && (podeEditar(estadoDoProjeto) || estaProcessando(estadoDoProjeto));
+  const prontos = itens.filter((i) => i.estado === 'pronto').length;
 
   return (
     <>
       <Topbar
         trilha={['Projetos', projeto?.title && projeto.title !== 'Vídeo sem título' ? projeto.title : 'Novo vídeo']}
         selo={
-          enviando
+          pendentes
             ? { texto: 'Enviando', tom: 'info' }
             : etapa === 'camera'
               ? { texto: 'Gravação', tom: 'info' }
               : undefined
         }
       >
-        {etapa === 'camera' && !enviando ? (
-          <button
-            type="button"
-            className="botao botao--fantasma botao--pequeno"
-            onClick={() => setEtapa('escolher')}
-          >
+        {etapa === 'camera' ? (
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setEtapa('escolher')}>
             <IconeVoltar size={18} />
             Voltar
           </button>
@@ -288,52 +377,43 @@ function NovoVideo() {
       </Topbar>
 
       <div className="conteudo" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--e4)' }}>
-        {erroDeEnvio && (
+        {erro && (
           <div className="aviso aviso--erro" role="alert">
             <IconeAviso size={18} />
-            <span>{erroDeEnvio}</span>
+            <span>{erro}</span>
           </div>
         )}
 
-        {jaTemVideo && !enviando && projetoDaUrl && (
+        {jaFoiParaEdicao && projetoDaUrl ? (
           <div className="aviso aviso--info" role="status">
             <IconeAviso size={18} />
             <span>
-              Este projeto já tem um vídeo. Enviar outro <strong>substitui</strong> o atual e refaz a
-              proposta de edição.{' '}
-              <Link href={`/editor?projeto=${projetoDaUrl}`}>Abrir no editor</Link>
+              Os vídeos deste projeto já foram para a edição.{' '}
+              <Link href={`/editor?projeto=${projetoDaUrl}`}>Abrir no editor</Link> ou{' '}
+              <Link href="/gravar">começar um vídeo novo</Link>.
             </span>
           </div>
-        )}
-
-        {enviando ? (
-          <PainelDeEnvio
-            envio={envio}
-            onCancelar={() => cancelarRef.current?.abort()}
-          />
         ) : etapa === 'escolher' ? (
-          <Escolha
+          <Composicao
             titulo={titulo}
             onTitulo={setTitulo}
             onGravar={() => setEtapa('camera')}
-            onArquivo={(a) => void enviarArquivo(a)}
+            onArquivos={(a) => void adicionarArquivos(a)}
             temRoteiroProprio={temRoteiroProprio}
             focoNoEnvio={parametros.get('modo') === 'enviar'}
+            itens={itens}
+            onRemover={(i) => void remover(i)}
+            onMover={(i, d) => void mover(i, d)}
+            onTentarDeNovo={(i) => atualizar(i.chave, { estado: 'esperando', erro: undefined, progresso: 0 })}
+            podeIr={prontos > 0 && pendentes === 0 && !finalizando}
+            finalizando={finalizando}
+            pendentes={pendentes}
+            onIrParaEdicao={() => void irParaEdicao()}
           />
         ) : (
           <EstudioDeGravacao
             roteiro={roteiro}
-            onEnviar={(blob, mime, segundos) =>
-              void (async () => {
-                const tipo = mime.split(';')[0] ?? 'video/webm';
-                await enviarVideo({
-                  arquivo: blob,
-                  nome: `gravacao.${tipo.includes('mp4') ? 'mp4' : 'webm'}`,
-                  mimeType: tipo,
-                  duracaoMs: (await duracaoDe(blob)) ?? (segundos > 0 ? segundos * 1000 : undefined),
-                });
-              })()
-            }
+            onEnviar={(blob, mime, segundos) => void adicionarGravacao(blob, mime, segundos)}
           />
         )}
       </div>
@@ -342,23 +422,67 @@ function NovoVideo() {
 }
 
 // ============================================================
-// Escolha
+// Composição — os vídeos que vão virar um só
 // ============================================================
 
-function Escolha({
+interface ItemDoVideo {
+  chave: string;
+  nome: string;
+  tamanhoBytes: number;
+  mimeType: string;
+  duracaoMs?: number;
+  estado: 'esperando' | 'enviando' | 'pronto' | 'erro';
+  progresso: number;
+  bytesPorSegundo?: number;
+  erro?: string;
+  /** Id da parte no servidor, depois de enviada. */
+  parteId?: string;
+  /** O arquivo, enquanto não foi enviado. */
+  arquivo?: Blob;
+}
+
+function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
+  return {
+    chave: p.id,
+    nome: p.nome,
+    tamanhoBytes: p.tamanhoBytes,
+    mimeType: p.mimeType,
+    estado: 'pronto',
+    progresso: 100,
+    parteId: p.id,
+  };
+}
+
+function Composicao({
   titulo,
   onTitulo,
   onGravar,
-  onArquivo,
+  onArquivos,
   temRoteiroProprio,
   focoNoEnvio,
+  itens,
+  onRemover,
+  onMover,
+  onTentarDeNovo,
+  podeIr,
+  finalizando,
+  pendentes,
+  onIrParaEdicao,
 }: {
   titulo: string;
   onTitulo: (v: string) => void;
   onGravar: () => void;
-  onArquivo: (arquivo: File) => void;
+  onArquivos: (arquivos: File[]) => void;
   temRoteiroProprio: boolean;
   focoNoEnvio: boolean;
+  itens: ItemDoVideo[];
+  onRemover: (i: ItemDoVideo) => void;
+  onMover: (i: ItemDoVideo, direcao: -1 | 1) => void;
+  onTentarDeNovo: (i: ItemDoVideo) => void;
+  podeIr: boolean;
+  finalizando: boolean;
+  pendentes: number;
+  onIrParaEdicao: () => void;
 }) {
   const [arrastando, setArrastando] = useState(false);
   const entradaRef = useRef<HTMLInputElement>(null);
@@ -369,13 +493,16 @@ function Escolha({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const enviados = itens.filter((i) => i.parteId);
+  const temItens = itens.length > 0;
+
   return (
     <div style={{ maxWidth: 980, width: '100%', margin: '0 auto', display: 'grid', gap: 'var(--e5)' }}>
       <div>
         <h1 style={{ marginBottom: 'var(--e2)' }}>Novo vídeo</h1>
         <p className="texto-secundario">
-          Grave agora com o teleprompter ou envie um vídeo que você já tem. A IA monta a proposta de
-          edição sozinha assim que o vídeo chegar.
+          Envie um ou vários vídeos, grave tomadas com o teleprompter e ponha na ordem. Quando estiver
+          tudo aqui, a IA junta, transcreve e monta a edição.
         </p>
       </div>
 
@@ -388,16 +515,10 @@ function Escolha({
           placeholder="Ex.: 3 erros no atendimento pelo WhatsApp"
           onChange={(e) => onTitulo(e.target.value)}
         />
-        <span className="campo__ajuda">Opcional. Sem nome, usamos o nome do arquivo ou a data.</span>
+        <span className="campo__ajuda">Opcional. Sem nome, usamos o nome do primeiro arquivo.</span>
       </label>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 'var(--e4)',
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--e4)' }}>
         {/* ---------- Enviar ---------- */}
         <section
           className="cartao"
@@ -409,8 +530,8 @@ function Escolha({
           onDrop={(e) => {
             e.preventDefault();
             setArrastando(false);
-            const arquivo = e.dataTransfer.files?.[0];
-            if (arquivo) onArquivo(arquivo);
+            const arquivos = [...(e.dataTransfer.files ?? [])];
+            if (arquivos.length) onArquivos(arquivos);
           }}
           style={{
             display: 'grid',
@@ -426,29 +547,26 @@ function Escolha({
           <span className="vazio__icone" aria-hidden>
             <IconeNuvem size={26} />
           </span>
-          <h2>Enviar um vídeo</h2>
+          <h2>{temItens ? 'Enviar mais vídeos' : 'Enviar vídeos'}</h2>
           <p className="texto-secundario" style={{ fontSize: 14 }}>
-            Arraste o arquivo para cá ou escolha no computador ou celular. MP4, MOV, WebM, MKV ou
-            AVI, até 2 GB e 30 minutos.
+            Arraste um ou vários arquivos para cá, ou escolha no computador ou celular. MP4, MOV, WebM,
+            MKV ou AVI, até 2 GB cada e 30 minutos no total.
           </p>
-          <button
-            type="button"
-            className="botao"
-            style={{ justifySelf: 'start' }}
-            onClick={() => entradaRef.current?.click()}
-          >
+          <button type="button" className="botao" style={{ justifySelf: 'start' }} onClick={() => entradaRef.current?.click()}>
             <IconeEnviar size={16} />
-            Escolher arquivo
+            Escolher arquivos
           </button>
           <input
             ref={entradaRef}
             type="file"
+            multiple
             accept={[...TIPOS_ACEITOS, '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'].join(',')}
             style={{ display: 'none' }}
+            aria-label="Escolher vídeos"
             onChange={(e) => {
-              const arquivo = e.target.files?.[0];
+              const arquivos = [...(e.target.files ?? [])];
               e.target.value = '';
-              if (arquivo) onArquivo(arquivo);
+              if (arquivos.length) onArquivos(arquivos);
             }}
           />
         </section>
@@ -458,19 +576,19 @@ function Escolha({
           <span className="vazio__icone" aria-hidden>
             <IconeGravar size={26} weight="fill" />
           </span>
-          <h2>Gravar com teleprompter</h2>
+          <h2>{temItens ? 'Gravar outra tomada' : 'Gravar com teleprompter'}</h2>
           <p className="texto-secundario" style={{ fontSize: 14 }}>
             {temRoteiroProprio
               ? 'O roteiro deste projeto aparece ao lado da câmera, bloco a bloco.'
               : 'O roteiro aparece ao lado da câmera, bloco a bloco. Sem roteiro salvo, usamos um guia de estrutura.'}{' '}
-            O navegador pede acesso à câmera só quando você entrar.
+            Cada gravação entra na lista abaixo. O navegador pede a câmera só quando você entrar.
           </p>
           <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
             <button type="button" className="botao botao--secundario" onClick={onGravar}>
               <IconeCamera size={16} />
               Abrir a câmera
             </button>
-            {!temRoteiroProprio && (
+            {!temRoteiroProprio && !temItens && (
               <Link href="/roteiros" className="botao botao--fantasma">
                 <IconeRoteiro size={16} />
                 Escrever um roteiro antes
@@ -479,77 +597,123 @@ function Escolha({
           </div>
         </section>
       </div>
+
+      {/* ---------- Os vídeos deste projeto ---------- */}
+      {temItens && (
+        <section className="cartao" aria-labelledby="titulo-dos-videos" style={{ display: 'grid', gap: 'var(--e3)' }}>
+          <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
+            <div>
+              <h2 id="titulo-dos-videos">
+                {itens.length} {itens.length === 1 ? 'vídeo' : 'vídeos'} neste projeto
+              </h2>
+              <p className="texto-secundario" style={{ fontSize: 13 }}>
+                {itens.length > 1
+                  ? 'Eles viram um vídeo só, nesta ordem. Use as setas para trocar.'
+                  : 'Pode enviar ou gravar mais antes de ir para a edição.'}
+              </p>
+            </div>
+          </div>
+
+          <ol className="lista-de-partes">
+            {itens.map((item) => {
+              const posicao = enviados.findIndex((i) => i.chave === item.chave);
+              return (
+                <li key={item.chave} className="lista-de-partes__item">
+                  <span className="lista-de-partes__numero" aria-hidden>
+                    {itens.indexOf(item) + 1}
+                  </span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <strong className="lista-de-partes__nome" title={item.nome}>
+                      {item.nome}
+                    </strong>
+                    <span className="texto-secundario" style={{ fontSize: 12, display: 'block' }}>
+                      {formatarBytes(item.tamanhoBytes)}
+                      {item.duracaoMs ? ` · ${formatarDuracao(item.duracaoMs)}` : ''}
+                      {item.estado === 'esperando' && ' · na fila'}
+                      {item.estado === 'enviando' &&
+                        ` · enviando ${item.progresso}%${item.bytesPorSegundo ? ` · ${formatarBytes(item.bytesPorSegundo)}/s` : ''}`}
+                      {item.estado === 'pronto' && ' · enviado'}
+                    </span>
+                    {item.estado === 'enviando' && (
+                      <span
+                        className="barra"
+                        role="progressbar"
+                        aria-valuenow={item.progresso}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`Envio de ${item.nome}`}
+                        style={{ display: 'block', marginTop: 6 }}
+                      >
+                        <span className="barra__preenchida" style={{ width: `${item.progresso}%`, display: 'block' }} />
+                      </span>
+                    )}
+                    {item.estado === 'erro' && (
+                      <span style={{ fontSize: 12, color: 'var(--danger)', display: 'block' }}>{item.erro}</span>
+                    )}
+                  </span>
+
+                  <span className="linha" style={{ gap: 4, flexShrink: 0 }}>
+                    {item.estado === 'pronto' && enviados.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          className="botao-icone botao-icone--pequeno"
+                          aria-label={`Mover ${item.nome} para cima`}
+                          disabled={posicao <= 0}
+                          onClick={() => onMover(item, -1)}
+                        >
+                          <IconeSubir size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="botao-icone botao-icone--pequeno"
+                          aria-label={`Mover ${item.nome} para baixo`}
+                          disabled={posicao >= enviados.length - 1}
+                          onClick={() => onMover(item, 1)}
+                        >
+                          <IconeDescer size={15} />
+                        </button>
+                      </>
+                    )}
+                    {item.estado === 'erro' && (
+                      <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => onTentarDeNovo(item)}>
+                        Tentar de novo
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="botao-icone botao-icone--pequeno"
+                      aria-label={item.estado === 'enviando' ? `Cancelar envio de ${item.nome}` : `Remover ${item.nome}`}
+                      onClick={() => onRemover(item)}
+                    >
+                      <IconeLixeira size={15} />
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+
+          <div className="linha entre" style={{ gap: 'var(--e3)', flexWrap: 'wrap', marginTop: 'var(--e2)' }}>
+            <span className="texto-secundario" style={{ fontSize: 13 }}>
+              {pendentes
+                ? `Aguarde ${pendentes === 1 ? 'o envio' : `os ${pendentes} envios`} terminar. Mantenha esta aba aberta.`
+                : 'Depois de ir para a edição, a IA prepara, transcreve e monta a proposta. Você acompanha no editor.'}
+            </span>
+            <button type="button" className="botao" disabled={!podeIr} onClick={onIrParaEdicao}>
+              <IconeIA size={16} weight="fill" />
+              {finalizando ? 'Abrindo a edição…' : 'Ir para a edição com IA'}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-// ============================================================
-// Envio
-// ============================================================
-
-function PainelDeEnvio({ envio, onCancelar }: { envio: EstadoDoEnvio; onCancelar: () => void }) {
-  const p = envio.progresso;
-  const percentual = p?.percentual ?? 0;
-  const restante =
-    p && envio.bytesPorSegundo && envio.bytesPorSegundo > 0
-      ? (p.bytesTotais - p.bytesEnviados) / envio.bytesPorSegundo
-      : null;
-
-  return (
-    <section
-      className="cartao"
-      style={{ maxWidth: 640, width: '100%', margin: 'var(--e6) auto 0', display: 'grid', gap: 'var(--e4)' }}
-      aria-live="polite"
-    >
-      <div className="linha" style={{ gap: 'var(--e3)' }}>
-        <span className="vazio__icone" aria-hidden>
-          <IconeNuvem size={24} />
-        </span>
-        <div>
-          <h2>Enviando o vídeo</h2>
-          <p className="texto-secundario" style={{ fontSize: 13 }}>
-            Mantenha esta aba aberta. Se a conexão cair, o envio continua de onde parou.
-          </p>
-        </div>
-      </div>
-
-      <div
-        className="barra"
-        role="progressbar"
-        aria-valuenow={percentual}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Progresso do envio"
-      >
-        <div className="barra__preenchida" style={{ width: `${percentual}%` }} />
-      </div>
-
-      <div className="linha entre texto-secundario" style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-        <span>
-          {percentual}%{p ? ` · ${formatarBytes(p.bytesEnviados)} de ${formatarBytes(p.bytesTotais)}` : ' · preparando…'}
-        </span>
-        <span>
-          {envio.bytesPorSegundo ? `${formatarBytes(envio.bytesPorSegundo)}/s` : ''}
-          {restante !== null ? ` · falta ${formatarRestante(restante)}` : ''}
-        </span>
-      </div>
-
-      <p className="texto-secundario" style={{ fontSize: 13 }}>
-        Depois do envio, o vídeo é preparado, transcrito e a proposta de edição é montada
-        automaticamente. Você acompanha tudo no editor.
-      </p>
-
-      <button type="button" className="botao botao--secundario" style={{ justifySelf: 'start' }} onClick={onCancelar}>
-        Cancelar envio
-      </button>
-    </section>
-  );
-}
-
-function formatarRestante(segundos: number): string {
-  if (segundos < 60) return `${Math.max(1, Math.round(segundos))} s`;
-  const minutos = Math.round(segundos / 60);
-  return `${minutos} min`;
+function formatarDuracao(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 // ============================================================
@@ -949,7 +1113,7 @@ function EstudioDeGravacao({
               onClick={() => gravacao.resultado && onEnviar(gravacao.resultado, gravacao.mimeType, gravacao.segundos)}
             >
               <IconeEnviar size={16} />
-              Enviar para edição
+              Usar esta gravação
             </button>
           </>
         ) : (

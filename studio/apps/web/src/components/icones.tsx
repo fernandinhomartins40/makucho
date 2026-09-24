@@ -21,6 +21,7 @@
 // ============================================================
 
 import {
+  CaretUp,
   FolderOpen,
   Article,
   Record,
@@ -97,6 +98,8 @@ export const IconeAudio = MusicNotes;
 /** Faísca marca onde a IA age, distinguindo do que é manual. */
 export const IconeFerramentas = Sparkle;
 export const IconeIA = Sparkle;
+export const IconeSubir = CaretUp;
+export const IconeDescer = CaretDown;
 export const IconeVideo = VideoCamera;
 
 // ---------- Ações ----------

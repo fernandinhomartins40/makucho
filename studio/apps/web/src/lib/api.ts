@@ -225,6 +225,14 @@ export interface ProjetoDetalhado {
   editPlans: Array<{ id: string; version: number; createdAt: string }>;
 }
 
+export interface ParteDoProjeto {
+  id: string;
+  nome: string;
+  tamanhoBytes: number;
+  mimeType: string;
+  posicao: number;
+}
+
 export const projetos = {
   listar: () => api<Projeto[]>('/projects'),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
@@ -237,6 +245,15 @@ export const projetos = {
   // Recomeça o processamento do ponto mais adiantado que já tem
   // insumo pronto; quem decide isso é o servidor.
   reprocessar: (id: string) => api<Projeto>(`/projects/${id}/retry`, { metodo: 'POST' }),
+  /** Os vídeos enviados que ainda vão ser juntados, na ordem. */
+  partes: (id: string) => api<ParteDoProjeto[]>(`/projects/${id}/parts`),
+  removerParte: (id: string, parteId: string) =>
+    api<ParteDoProjeto[]>(`/projects/${id}/parts/${parteId}`, { metodo: 'DELETE' }),
+  ordenarPartes: (id: string, ids: string[]) =>
+    api<ParteDoProjeto[]>(`/projects/${id}/parts/order`, { metodo: 'PUT', corpo: { ids } }),
+  /** "Ir para a edição": junta as partes e começa o preparo. */
+  finalizarPartes: (id: string) =>
+    api<{ partes: number; state: string }>(`/projects/${id}/parts/finish`, { metodo: 'POST' }),
 };
 
 // ============================================================

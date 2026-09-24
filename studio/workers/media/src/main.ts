@@ -26,10 +26,12 @@ import {
   extrairAudio,
   gerarProxy,
   gerarThumbnail,
+  juntarVideos,
   lerMetadados,
+  listaDeConcat,
   verificarLimite,
 } from '@makucho/studio-worker-core';
-import { copyFile, mkdir, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
@@ -49,8 +51,101 @@ const PROXY_ALTURA = 720;
 
 interface DadosDoJob {
   projectId: string;
-  mediaSourceId: string;
+  /** Ausente quando o job é de junção: o original ainda não existe. */
+  mediaSourceId?: string;
+  /** Juntar as partes (PART) do projeto num original antes do preparo. */
+  juntar?: boolean;
 }
+
+/** O mesmo teto do envio: o vídeo final vem de até 30 min de gravação. */
+const DURACAO_MAXIMA_MS = 30 * 60 * 1000;
+
+/**
+ * Junta as partes do projeto num ORIGINAL e devolve o id dele.
+ *
+ * Depois de publicado o original, as partes saem do banco e do disco:
+ * guardar os dois dobraria o espaço de um projeto na VPS. Numa
+ * retentativa em que as partes já foram juntadas, devolve o original
+ * que ficou.
+ */
+async function juntarPartes(job: Job<DadosDoJob>): Promise<string> {
+  const { projectId } = job.data;
+  const partes = await prisma.mediaSource.findMany({
+    where: { projectId, kind: 'PART' },
+    orderBy: { position: 'asc' },
+  });
+
+  if (partes.length === 0) {
+    const original = await prisma.mediaSource.findFirst({
+      where: { projectId, kind: 'ORIGINAL' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!original) throw new Error(`projeto ${projectId} não tem partes nem original`);
+    return original.id;
+  }
+
+  const prefixo = dirname(dirname(partes[0]!.storageKey));
+  const chave = `${prefixo}/original-${Date.now().toString(36)}.mp4`;
+  let original: { id: string } | null = null;
+
+  await comLockGlobal(redis, async (renovar) => {
+    await comEspacoDeTrabalho(async (espaco) => {
+      const lidas = [];
+      for (const parte of partes) {
+        const caminho = caminhoDe(parte.storageKey);
+        lidas.push({ caminho, probe: await lerMetadados(caminho) });
+      }
+
+      const total = lidas.reduce((t, l) => t + (l.probe.durationMs || 0), 0);
+      if (total > DURACAO_MAXIMA_MS) {
+        throw new ErroParaAPessoa(
+          `Os vídeos somam ${Math.round(total / 60_000)} min, e o limite é 30 min. Remova alguma parte.`,
+        );
+      }
+
+      const lista = espaco.arquivo('partes.txt');
+      await writeFile(lista, listaDeConcat(lidas), 'utf8');
+      const saidaTmp = espaco.arquivo('original.mp4');
+
+      console.log(`[midia] juntando ${partes.length} partes do projeto ${projectId}`);
+      await juntarVideos({
+        partes: lidas,
+        saida: saidaTmp,
+        lista,
+        aoProgredir: (fracao) => {
+          void job.updateProgress(Math.round(fracao * 30));
+          void renovar();
+        },
+      });
+
+      await verificarLimite(espaco);
+      await publicar(saidaTmp, chave);
+    }, `juntar-${projectId}`);
+  });
+
+  original = await prisma.$transaction(async (tx) => {
+    const criado = await tx.mediaSource.create({
+      data: {
+        projectId,
+        kind: 'ORIGINAL',
+        storageKey: chave,
+        mimeType: 'video/mp4',
+        sizeBytes: BigInt(await tamanhoDe(chave)),
+      },
+    });
+    await tx.mediaSource.deleteMany({ where: { projectId, kind: 'PART' } });
+    return criado;
+  });
+
+  for (const parte of partes) {
+    await rm(caminhoDe(parte.storageKey), { force: true }).catch(() => undefined);
+  }
+
+  return original.id;
+}
+
+/** Erro cuja mensagem pode ir para a tela, sem caminho nem stack. */
+class ErroParaAPessoa extends Error {}
 
 const prisma = new PrismaClient();
 
@@ -107,7 +202,9 @@ function larguraDoProxy(
 }
 
 async function processar(job: Job<DadosDoJob>): Promise<void> {
-  const { projectId, mediaSourceId } = job.data;
+  const { projectId } = job.data;
+  const mediaSourceId = job.data.juntar ? await juntarPartes(job) : job.data.mediaSourceId;
+  if (!mediaSourceId) throw new Error(`job ${job.id} sem mídia`);
 
   const original = await prisma.mediaSource.findUnique({ where: { id: mediaSourceId } });
   if (!original) throw new Error(`mídia ${mediaSourceId} não existe`);
@@ -341,7 +438,8 @@ worker.on('failed', (job, erro) => {
       where: { id: dados.projectId },
       data: {
         state: 'FAILED_RETRYABLE',
-        publicError: 'Não foi possível preparar o vídeo. Tente enviar de novo.',
+        publicError:
+          erro instanceof ErroParaAPessoa ? erro.message : 'Não foi possível preparar o vídeo. Tente enviar de novo.',
       },
     })
     .catch(() => undefined);

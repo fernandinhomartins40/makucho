@@ -20,7 +20,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { EditPlanV1, MarcaDoVideo, ProjectState, TimelineOperation } from '@makucho/studio-contracts';
 import {
   aplicarOperacao,
@@ -208,6 +208,15 @@ function Editor({ projectId }: { projectId: string }) {
   // Enquanto não há plano, a tela pergunta de tempos em tempos e abre
   // a edição sozinha quando a proposta fica pronta.
   const estado = projeto?.state as ProjectState | undefined;
+
+  // Vídeos ainda na lista (ou rascunho): a edição não começou. O lugar
+  // certo é a tela de vídeos, onde dá para acrescentar e ir para a
+  // edição -- aqui ficaria uma espera por um processamento que nem
+  // foi pedido.
+  const router = useRouter();
+  useEffect(() => {
+    if (estado === 'UPLOADING' || estado === 'DRAFT') router.replace(`/gravar?projeto=${projectId}`);
+  }, [estado, projectId, router]);
   useEffect(() => {
     if (!projeto || plano) return;
     if (!estado || !estaProcessando(estado)) return;

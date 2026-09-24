@@ -171,16 +171,164 @@ export class MediaService {
 
   // ---------- Concluir ----------
 
-  async concluir(tenant: TenantContext, uploadId: string) {
-    const sessao = this.sessaoDe(tenant, uploadId);
-    const esperados = Math.ceil(sessao.tamanhoTotal / TAMANHO_DO_PEDACO);
+  /**
+   * Conclui um envio.
+   *
+   * Com `parte`, o vídeo entra na lista de partes do projeto e NADA é
+   * processado ainda: a pessoa pode enviar ou gravar outros e reordenar,
+   * e só "Ir para a edição" dispara o preparo (`finalizarPartes`). Sem
+   * `parte`, o comportamento antigo: um vídeo só, processado na hora.
+   */
+  async concluir(tenant: TenantContext, uploadId: string, opcoes: { parte?: boolean } = {}) {
+    if (opcoes.parte) return this.concluirParte(tenant, uploadId);
+    return this.concluirUnico(tenant, uploadId);
+  }
 
+  private async concluirParte(tenant: TenantContext, uploadId: string) {
+    const sessao = this.sessaoDe(tenant, uploadId);
+    this.conferirCompleto(sessao);
+
+    const extensao = TIPOS_ACEITOS[sessao.mimeType] ?? 'bin';
+    const chave = this.storage.chaveDeParte(sessao.workspaceId, sessao.projectId, uploadId, extensao);
+    const tamanho = await this.storage.juntarPedacos(uploadId, chave);
+
+    const ultima = await this.prisma.mediaSource.findFirst({
+      where: { projectId: sessao.projectId, kind: 'PART' },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+
+    const parte = await this.prisma.mediaSource.create({
+      data: {
+        projectId: sessao.projectId,
+        kind: 'PART',
+        storageKey: chave,
+        mimeType: sessao.mimeType,
+        sizeBytes: BigInt(tamanho),
+        position: (ultima?.position ?? -1) + 1,
+        originalName: sessao.nome.slice(0, 255),
+      },
+    });
+
+    // O projeto sai de rascunho: tem vídeo, mas ainda não foi mandado
+    // para a edição.
+    await this.prisma.project.updateMany({
+      where: { id: sessao.projectId, state: 'DRAFT' },
+      data: { state: 'UPLOADING' },
+    });
+
+    this.sessoes.delete(uploadId);
+    this.log.log(`parte recebida: projeto ${sessao.projectId}, ${tamanho} bytes`);
+    return { mediaSourceId: parte.id, tamanhoBytes: tamanho, state: 'UPLOADING', parte: true };
+  }
+
+  private conferirCompleto(sessao: Sessao) {
+    const esperados = Math.ceil(sessao.tamanhoTotal / TAMANHO_DO_PEDACO);
     if (sessao.recebidos.size !== esperados) {
       const faltam = esperados - sessao.recebidos.size;
       throw new BadRequestException(
         `faltam ${faltam} ${faltam === 1 ? 'pedaço' : 'pedaços'} para concluir o envio.`,
       );
     }
+  }
+
+  // ---------- Partes ----------
+
+  async listarPartes(tenant: TenantContext, projectId: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
+    assertOwnership(tenant, projeto, 'projeto');
+
+    const partes = await this.prisma.mediaSource.findMany({
+      where: { projectId, kind: 'PART' },
+      orderBy: { position: 'asc' },
+    });
+
+    return partes.map((p) => ({
+      id: p.id,
+      nome: p.originalName ?? 'vídeo',
+      tamanhoBytes: Number(p.sizeBytes),
+      mimeType: p.mimeType,
+      posicao: p.position ?? 0,
+    }));
+  }
+
+  async removerParte(tenant: TenantContext, projectId: string, parteId: string) {
+    await this.conferirEditavel(tenant, projectId);
+    const parte = await this.prisma.mediaSource.findFirst({ where: { id: parteId, projectId, kind: 'PART' } });
+    if (!parte) throw new NotFoundException('parte não encontrada');
+
+    await this.prisma.mediaSource.delete({ where: { id: parte.id } });
+    await this.storage.remover(parte.storageKey).catch(() => undefined);
+    return this.listarPartes(tenant, projectId);
+  }
+
+  /** Nova ordem: a lista de ids, todos, na ordem em que entram no vídeo. */
+  async ordenarPartes(tenant: TenantContext, projectId: string, ids: readonly string[]) {
+    await this.conferirEditavel(tenant, projectId);
+    const partes = await this.prisma.mediaSource.findMany({
+      where: { projectId, kind: 'PART' },
+      select: { id: true },
+    });
+
+    const existentes = new Set(partes.map((p) => p.id));
+    if (ids.length !== existentes.size || !ids.every((id) => existentes.has(id)) || new Set(ids).size !== ids.length) {
+      throw new BadRequestException('a nova ordem precisa ter todas as partes, uma vez cada');
+    }
+
+    await this.prisma.$transaction(
+      ids.map((id, posicao) => this.prisma.mediaSource.update({ where: { id }, data: { position: posicao } })),
+    );
+    return this.listarPartes(tenant, projectId);
+  }
+
+  /**
+   * "Ir para a edição": as partes viram o original e o preparo começa.
+   *
+   * Uma parte só vira o original direto, sem recodificar. Várias vão
+   * para o worker de mídia, que as junta na ordem escolhida e segue o
+   * mesmo caminho de sempre (proxy, transcrição, IA).
+   */
+  async finalizarPartes(tenant: TenantContext, projectId: string) {
+    await this.conferirEditavel(tenant, projectId);
+    const partes = await this.prisma.mediaSource.findMany({
+      where: { projectId, kind: 'PART' },
+      orderBy: { position: 'asc' },
+    });
+    if (partes.length === 0) {
+      throw new BadRequestException('envie ou grave ao menos um vídeo antes de ir para a edição');
+    }
+
+    let enfileirado: boolean;
+    if (partes.length === 1) {
+      const unica = partes[0]!;
+      await this.prisma.mediaSource.update({ where: { id: unica.id }, data: { kind: 'ORIGINAL' } });
+      enfileirado = await this.fila.prepararMidia(projectId, unica.id);
+    } else {
+      enfileirado = await this.fila.juntarPartes(projectId);
+    }
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: enfileirado
+        ? { state: 'INGESTING', publicError: null }
+        : { state: 'FAILED_RETRYABLE', publicError: 'Os vídeos foram recebidos, mas o preparo não começou. Tente de novo.' },
+    });
+
+    return { partes: partes.length, state: enfileirado ? 'INGESTING' : 'FAILED_RETRYABLE' };
+  }
+
+  /** Partes só mudam antes de o projeto ir para a edição. */
+  private async conferirEditavel(tenant: TenantContext, projectId: string) {
+    const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto || !['DRAFT', 'UPLOADING'].includes(projeto.state)) {
+      throw new BadRequestException('os vídeos deste projeto já foram para a edição');
+    }
+  }
+
+  private async concluirUnico(tenant: TenantContext, uploadId: string) {
+    const sessao = this.sessaoDe(tenant, uploadId);
+    this.conferirCompleto(sessao);
 
     const extensao = TIPOS_ACEITOS[sessao.mimeType] ?? 'bin';
     const chave = this.storage.chaveDeMidia(

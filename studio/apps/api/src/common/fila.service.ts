@@ -76,6 +76,22 @@ export class FilaService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Junta as partes do projeto num original e segue o preparo.
+   *
+   * O jobId leva o instante: juntar de novo depois de trocar as partes
+   * é outro trabalho, não uma duplicata do anterior.
+   */
+  async juntarPartes(projectId: string): Promise<boolean> {
+    try {
+      await this.fila(FILA_MIDIA).add('juntar', { projectId, juntar: true }, { jobId: `juntar-${projectId}-${Date.now()}` });
+      return true;
+    } catch (e) {
+      this.log.error(`falha ao enfileirar a junção do projeto ${projectId}`, e as Error);
+      return false;
+    }
+  }
+
   async transcrever(projectId: string, mediaSourceId: string): Promise<boolean> {
     try {
       await this.fila(FILA_TRANSCRICAO).add(

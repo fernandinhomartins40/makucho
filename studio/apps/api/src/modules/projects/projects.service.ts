@@ -285,6 +285,12 @@ export class ProjectsService {
     });
 
     if (!original) {
+      // A junção das partes falhou antes de gerar o original: tenta
+      // juntar de novo.
+      const partes = await this.prisma.mediaSource.count({ where: { projectId: id, kind: 'PART' } });
+      if (partes > 1 && (await this.filas.juntarPartes(id))) {
+        return this.transicionar(id, 'INGESTING');
+      }
       throw new BadRequestException(
         'este projeto não tem vídeo enviado; envie a gravação antes de tentar de novo',
       );

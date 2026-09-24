@@ -73,6 +73,9 @@ enum ProjectState {
 
 enum MediaKind {
   ORIGINAL
+  // Uma das varias partes enviadas antes de "ir para a edicao". O
+  // worker de midia as junta, na ordem de `position`, num ORIGINAL so.
+  PART
   PROXY
   AUDIO
   THUMBNAIL
@@ -448,6 +451,10 @@ model MediaSource {
   widthPx   Int?
   heightPx  Int?
   fps       Float?
+  // So nas partes (PART): a ordem em que entram no video e o nome do
+  // arquivo enviado, para a pessoa reconhecer cada uma na lista.
+  position     Int?
+  originalName String?
   videoCodec String?
   audioCodec String?
   // Confirma que o arquivo no storage e o que foi enviado.

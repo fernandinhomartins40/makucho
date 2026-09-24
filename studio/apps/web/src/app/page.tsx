@@ -378,7 +378,11 @@ function CartaoDeProjeto({
   // Todo projeto com vídeo abre no editor, que mostra o andamento do
   // processamento. Antes, só os editáveis iam para lá; o resto abria a
   // câmera em /gravar, mesmo com o vídeo já enviado.
-  const destino = projeto.state === 'DRAFT' ? `/gravar?projeto=${projeto.id}` : `/editor?projeto=${projeto.id}`;
+  // Rascunho e vídeos esperando a edição voltam para a lista de vídeos.
+  const destino =
+    projeto.state === 'DRAFT' || projeto.state === 'UPLOADING'
+      ? `/gravar?projeto=${projeto.id}`
+      : `/editor?projeto=${projeto.id}`;
 
   return (
     <article className="cartao" style={{ padding: 'var(--e3)' }}>

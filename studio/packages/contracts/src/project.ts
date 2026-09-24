@@ -79,7 +79,8 @@ export const ROTULO_DE_ESTADO: Readonly<
   Record<z.infer<typeof projectStateSchema>, { texto: string; tom: 'neutro' | 'info' | 'sucesso' | 'aviso' }>
 > = {
   DRAFT: { texto: 'Rascunho', tom: 'neutro' },
-  UPLOADING: { texto: 'Enviando', tom: 'info' },
+  // Vídeos na lista, esperando a pessoa decidir ir para a edição.
+  UPLOADING: { texto: 'Aguardando edição', tom: 'neutro' },
   INGESTING: { texto: 'Preparando vídeo', tom: 'info' },
   TRANSCRIBING: { texto: 'Transcrevendo', tom: 'info' },
   ANALYZING: { texto: 'A IA está analisando', tom: 'info' },
@@ -97,8 +98,11 @@ export const ROTULO_DE_ESTADO: Readonly<
 };
 
 /** Estados em que o projeto está sendo processado e nada pode ser editado. */
+//
+// UPLOADING não entra: com vários vídeos, ele é o projeto com a lista
+// montada esperando "Ir para a edição" -- é a pessoa que decide, e
+// tratar como processamento prenderia o editor numa espera sem fim.
 export const ESTADOS_EM_PROCESSAMENTO = [
-  'UPLOADING',
   'INGESTING',
   'TRANSCRIBING',
   'ANALYZING',
