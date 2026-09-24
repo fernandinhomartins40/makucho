@@ -386,6 +386,35 @@ export class MediaService {
     return { cancelado: true, projectId: sessao.projectId };
   }
 
+  // ---------- Forma de onda ----------
+
+  /**
+   * Os picos do áudio do projeto: 100 por segundo, de 0 a 255, no tempo
+   * do ORIGINAL -- a timeline recorta o pedaço de cada trecho.
+   *
+   * Sai do WAV de 16 kHz que a transcrição já usa (sem FFmpeg na API) e
+   * fica em cache ao lado dele: a conta roda uma vez por gravação.
+   */
+  async ondaDoProjeto(tenant: TenantContext, projectId: string): Promise<Buffer> {
+    const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
+    assertOwnership(tenant, projeto, 'projeto');
+    const audio = await this.prisma.mediaSource.findFirst({
+      where: { projectId, kind: 'AUDIO' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!audio) throw new NotFoundException('o áudio do projeto não existe');
+
+    const chaveDoCache = `${audio.storageKey}.onda`;
+    const emCache = await this.storage.ler(chaveDoCache).catch(() => null);
+    if (emCache) return emCache;
+
+    const wav = await this.storage.ler(audio.storageKey).catch(() => null);
+    if (!wav) throw new NotFoundException('o áudio do projeto não está mais no disco');
+    const picos = picosDoWav(wav, 100);
+    await this.storage.gravar(chaveDoCache, picos).catch(() => undefined);
+    return picos;
+  }
+
   // ---------- Servir ----------
 
   async arquivoDoProjeto(
@@ -446,4 +475,48 @@ export class MediaService {
 
 function gb(bytes: number): string {
   return (bytes / 1024 ** 3).toFixed(1).replace('.', ',');
+}
+
+/**
+ * Picos de um WAV PCM de 16 bits (o que o worker de mídia grava): o
+ * maior valor absoluto de cada janela, em raiz quadrada -- a fala baixa
+ * continua visível ao lado da alta.
+ */
+export function picosDoWav(wav: Buffer, porSegundo: number): Buffer {
+  if (wav.length < 44 || wav.toString('ascii', 0, 4) !== 'RIFF') return Buffer.alloc(0);
+  let canais = 1;
+  let taxa = 16_000;
+  let bits = 16;
+  let inicio = -1;
+  let tamanho = 0;
+  for (let p = 12; p + 8 <= wav.length; ) {
+    const id = wav.toString('ascii', p, p + 4);
+    const n = wav.readUInt32LE(p + 4);
+    if (id === 'fmt ') {
+      canais = wav.readUInt16LE(p + 10);
+      taxa = wav.readUInt32LE(p + 12);
+      bits = wav.readUInt16LE(p + 22);
+    } else if (id === 'data') {
+      inicio = p + 8;
+      tamanho = Math.min(n, wav.length - inicio);
+      break;
+    }
+    p += 8 + n + (n % 2);
+  }
+  if (inicio < 0 || bits !== 16) return Buffer.alloc(0);
+
+  const quadro = 2 * canais;
+  const amostras = Math.floor(tamanho / quadro);
+  const janela = Math.max(1, Math.round(taxa / porSegundo));
+  const saida = Buffer.alloc(Math.ceil(amostras / janela));
+  for (let j = 0; j < saida.length; j += 1) {
+    let pico = 0;
+    const fim = Math.min(amostras, (j + 1) * janela);
+    for (let a = j * janela; a < fim; a += 1) {
+      const v = Math.abs(wav.readInt16LE(inicio + a * quadro));
+      if (v > pico) pico = v;
+    }
+    saida[j] = Math.min(255, Math.round(Math.sqrt(pico / 32768) * 255));
+  }
+  return saida;
 }

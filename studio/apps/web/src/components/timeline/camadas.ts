@@ -12,7 +12,8 @@
 // ============================================================
 
 import { montarBlocos, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
-import type { EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
+import type { Agenda, EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
+import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 
 export type AbaDoElemento = 'estilos' | 'texto' | 'fundo' | 'animacao';
 
@@ -21,7 +22,10 @@ export type ItemDaTimeline =
   | { tipo: 'corte'; id: string; clipId: string; ms: number }
   /** `aba`: a aba do painel que abre junto (clique duplo = Estilos). */
   | { tipo: 'elemento'; id: string; aba?: AbaDoElemento }
-  | { tipo: 'som'; id: string };
+  | { tipo: 'som'; id: string }
+  /** O som de um trecho (id = id do trecho), separado da imagem. */
+  | { tipo: 'audio'; id: string }
+  | { tipo: 'trilha'; id: 'trilha' };
 
 export interface BlocoNaFaixa {
   id: string;
@@ -67,17 +71,6 @@ export const COR_DO_ELEMENTO: Record<string, string> = {
   LogoBug: '#475569',
   ProgressBar: '#475569',
   ImageOverlay: '#0891b2',
-};
-
-const NOME_DO_EFEITO: Record<string, string> = {
-  punch_in: 'Zoom rápido',
-  zoom_lento: 'Zoom lento',
-};
-
-const NOME_DO_SOM: Record<string, string> = {
-  'sfx-whoosh': 'Whoosh',
-  'sfx-pop': 'Pop',
-  'sfx-click': 'Clique',
 };
 
 export function blocosDeLegenda(plan: EditPlanV1, palavras: readonly PalavraDaTranscricao[]): BlocoNaFaixa[] {
@@ -130,4 +123,58 @@ export function efeitos(plan: EditPlanV1): EfeitoNaFaixa[] {
     });
   }
   return lista;
+}
+
+/** Os textos de tela (título, destaque...) e os elementos gráficos. */
+export const COMPONENTES_DE_TEXTO = new Set(['HookTitle', 'CTA', 'Destaque', 'LowerThird', 'QuoteCard', 'StatCard']);
+
+export interface RecursosDoTrecho {
+  efeito: string | null;
+  transicao: string | null;
+  legendas: number;
+  textos: number;
+  elementos: number;
+  sons: number;
+  audio: string | null;
+}
+
+/**
+ * Tudo o que está aplicado em cada trecho, pelo tempo: é o que o card
+ * do trecho mostra, para a pessoa ver de relance o que a IA fez ali.
+ */
+export function recursosPorTrecho(
+  plan: EditPlanV1,
+  agenda: Agenda,
+  blocos: readonly BlocoNaFaixa[],
+): Map<string, RecursosDoTrecho> {
+  const mapa = new Map<string, RecursosDoTrecho>();
+  const transicaoAntes = new Map(plan.transitions.map((t) => [t.beforeClipIndex, t]));
+  const cruza = (a0: number, a1: number, b0: number, b1: number) => Math.min(a1, b1) - Math.max(a0, b0) > 0;
+
+  for (const t of agenda.trechos) {
+    const ini = t.inicioMs;
+    const fim = t.inicioMs + t.duracaoMs;
+    const tr = transicaoAntes.get(t.indiceNoPlano);
+    const a = t.clip.audio;
+    const audio = a?.muted
+      ? 'Mudo'
+      : [
+          a?.gainDb ? `${a.gainDb > 0 ? '+' : ''}${a.gainDb} dB` : '',
+          a?.leadMs ? 'J' : '',
+          a?.tailMs ? 'L' : '',
+          a?.fadeInMs || a?.fadeOutMs ? 'fade' : '',
+        ]
+          .filter(Boolean)
+          .join(' ') || null;
+    mapa.set(t.clip.id, {
+      efeito: t.clip.effect ? (NOME_DO_EFEITO[t.clip.effect] ?? t.clip.effect) : null,
+      transicao: tr && tr.type !== 'cut' ? (NOME_DA_TRANSICAO[tr.type] ?? tr.type) : null,
+      legendas: blocos.filter((b) => cruza(ini, fim, b.inicioMs, b.fimMs)).length,
+      textos: plan.overlays.filter((o) => COMPONENTES_DE_TEXTO.has(o.component) && cruza(ini, fim, o.timelineStartMs, o.timelineStartMs + o.durationMs)).length,
+      elementos: plan.overlays.filter((o) => !COMPONENTES_DE_TEXTO.has(o.component) && cruza(ini, fim, o.timelineStartMs, o.timelineStartMs + o.durationMs)).length,
+      sons: plan.soundEffects.filter((e) => e.timelineStartMs >= ini && e.timelineStartMs < fim).length,
+      audio,
+    });
+  }
+  return mapa;
 }

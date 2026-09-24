@@ -339,6 +339,38 @@ export const adicionarEfeitoSonoroSchema = z.object({
   gainDb: z.number().min(-40).max(6).optional(),
 });
 
+/** Move ou muda o volume de um efeito sonoro. */
+export const editarEfeitoSonoroSchema = z.object({
+  op: z.literal('editar_efeito_sonoro'),
+  soundEffectId: idSchema,
+  timelineStartMs: msSchema.optional(),
+  gainDb: z.number().min(-40).max(6).optional(),
+});
+
+/**
+ * O som de um trecho, independente da imagem: volume, mudo, fades e
+ * J/L-cut (ver `audioDoTrechoSchema`). `null` volta ao padrão.
+ */
+export const ajustarAudioDoClipeSchema = z.object({
+  op: z.literal('ajustar_audio_do_clipe'),
+  clipId: idSchema,
+  gainDb: z.number().min(-30).max(12).nullable().optional(),
+  muted: z.boolean().nullable().optional(),
+  fadeInMs: z.number().int().min(0).max(3000).nullable().optional(),
+  fadeOutMs: z.number().int().min(0).max(3000).nullable().optional(),
+  leadMs: z.number().int().min(0).max(3000).nullable().optional(),
+  tailMs: z.number().int().min(0).max(3000).nullable().optional(),
+});
+
+/** Volume, fades e ducking da trilha de fundo. */
+export const configurarMusicaSchema = z.object({
+  op: z.literal('configurar_musica'),
+  gainDb: z.number().min(-40).max(0).optional(),
+  fadeInMs: z.number().int().min(0).max(5000).optional(),
+  fadeOutMs: z.number().int().min(0).max(5000).optional(),
+  duckUnderVoice: z.boolean().optional(),
+});
+
 export const removerEfeitoSonoroSchema = z.object({
   op: z.literal('remover_efeito_sonoro'),
   /** Um id, ou `todos` para limpar a faixa de efeitos. */
@@ -363,6 +395,9 @@ export const timelineOperationSchema = z
     removerLegendaManualSchema,
     trocarEstiloLegendaSchema,
     trocarMusicaSchema,
+    configurarMusicaSchema,
+    ajustarAudioDoClipeSchema,
+    editarEfeitoSonoroSchema,
     configurarLegendaSchema,
     definirTransicaoSchema,
     transicaoEmTodosSchema,
@@ -678,6 +713,48 @@ export function aplicarOperacao(
           },
         };
       }
+      break;
+    }
+
+    case 'configurar_musica': {
+      if (!novo.music) return { ok: false, erro: 'o video nao tem trilha de fundo' };
+      const { op: _op, ...mudancas } = operacao;
+      const definidas = Object.fromEntries(Object.entries(mudancas).filter(([, v]) => v !== undefined));
+      novo = { ...novo, music: { ...novo.music, ...definidas } };
+      break;
+    }
+
+    case 'ajustar_audio_do_clipe': {
+      const clip = clips.find((c) => c.id === operacao.clipId);
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+      const { op: _op, clipId: _id, ...mudancas } = operacao;
+      const audio: Record<string, unknown> = { ...(clip.audio ?? {}) };
+      for (const [chave, valor] of Object.entries(mudancas)) {
+        if (valor === undefined) continue;
+        if (valor === null) delete audio[chave];
+        else audio[chave] = valor;
+      }
+      if (Object.keys(audio).length) clip.audio = audio as NonNullable<typeof clip.audio>;
+      else delete clip.audio;
+      novo = { ...novo, clips };
+      break;
+    }
+
+    case 'editar_efeito_sonoro': {
+      const efeito = novo.soundEffects.find((e) => e.id === operacao.soundEffectId);
+      if (!efeito) return { ok: false, erro: 'efeito sonoro nao encontrado' };
+      novo = {
+        ...novo,
+        soundEffects: novo.soundEffects.map((e) =>
+          e.id === operacao.soundEffectId
+            ? {
+                ...e,
+                ...(operacao.timelineStartMs !== undefined ? { timelineStartMs: operacao.timelineStartMs } : {}),
+                ...(operacao.gainDb !== undefined ? { gainDb: operacao.gainDb } : {}),
+              }
+            : e,
+        ),
+      };
       break;
     }
 

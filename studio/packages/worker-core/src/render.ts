@@ -21,12 +21,11 @@
 //    sintetizados (`anoisesrc`, `aevalsrc`) e legendas (libass). Nada
 //    de navegador headless, GPU ou API externa.
 //
-// 4. A DURACAO NAO MUDA com transicao. O `xfade` sobrepoe os dois
-//    trechos e encurtaria o video -- e as legendas, os textos e o
-//    audio, todos no tempo da timeline, ficariam adiantados. Aqui o
-//    trecho de saida ganha quadros congelados (`tpad`) do tamanho da
-//    transicao, e o seguinte entra no instante exato em que entraria
-//    sem ela.
+// 4. A DURACAO NAO MUDA com transicao, e nada congela. A janela da
+//    transicao fica centrada no corte e usa as sobras do original: o
+//    trecho que sai continua andando depois do fim dele, e o que entra
+//    comeca antes do comeco (agenda.ts, a mesma conta da previa). O
+//    audio e uma soma de pecas que se cruzam em cada corte.
 //
 // 5. Cada trecho tem um numero EXATO de quadros (a 30 fps) e o audio
 //    dele a mesma duracao. Sem isso, o arredondamento de cada corte
@@ -38,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { XFADE_DA_TRANSICAO, ehEfeitoSonoroEmbutido, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { XFADE_DA_TRANSICAO, agendaDoPlano, ehEfeitoSonoroEmbutido, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
 export interface OpcoesDoRender {
@@ -81,28 +80,6 @@ const ZOOM_DO_PUNCH_IN = 1.12;
 /** Quanto o `zoom_lento` aproxima ao longo do trecho. */
 const ZOOM_LENTO = 0.08;
 
-interface Trecho {
-  clip: EditPlanV1['clips'][number];
-  /** Indice no plano: e o que `beforeClipIndex` referencia. */
-  indiceNoPlano: number;
-  quadros: number;
-}
-
-/** Os trechos que entram no video, na ordem da timeline. */
-function trechosLigados(plano: EditPlanV1, desligados: readonly string[] = []): Trecho[] {
-  const fora = new Set(desligados);
-  return plano.clips
-    .map((clip, indiceNoPlano) => ({
-      clip,
-      indiceNoPlano,
-      // Numero exato de quadros: e a unidade em que o video realmente
-      // anda. O audio do trecho e cortado na mesma duracao.
-      quadros: Math.max(1, Math.round(((clip.sourceEndMs - clip.sourceStartMs) * FPS) / 1000)),
-    }))
-    .filter((t) => !fora.has(t.clip.id))
-    .sort((a, b) => a.clip.timelineStartMs - b.clip.timelineStartMs);
-}
-
 const s = (quadros: number) => (quadros / FPS).toFixed(4);
 
 /**
@@ -114,7 +91,8 @@ const s = (quadros: number) => (quadros / FPS).toFixed(4);
  */
 export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   const { plano } = opcoes;
-  const trechos = trechosLigados(plano, opcoes.clipsDesligados);
+  const agenda = agendaDoPlano(plano, opcoes.clipsDesligados);
+  const trechos = agenda.trechos;
 
   if (trechos.length === 0) {
     throw new Error('não há trechos ligados para exportar');
@@ -149,32 +127,19 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     return indice;
   };
 
-  // ---------- Transicoes: quantos quadros cada uma ocupa ----------
-  const transicaoAntes = new Map(plano.transitions.map((tr) => [tr.beforeClipIndex, tr]));
-
-  const quadrosDaTransicao: number[] = trechos.map((t, i) => {
-    const tr = i > 0 ? transicaoAntes.get(t.indiceNoPlano) : undefined;
-    if (!tr || tr.type === 'cut') return 0;
-    // No maximo 80% do trecho que entra (e do que sai): uma transicao
-    // mais longa que o trecho engoliria a fala dele.
-    const limite = Math.floor(Math.min(t.quadros, trechos[i - 1]!.quadros) * 0.8);
-    const pedido = Math.round((tr.durationMs * FPS) / 1000);
-    return pedido >= 2 && limite >= 2 ? Math.min(pedido, limite) : 0;
-  });
-
   /**
    * Um pedaco de um trecho, do quadro `de` ao `ate` (exclusivo), ja no
-   * quadro vertical e com o efeito do trecho.
+   * quadro vertical e com o efeito do trecho. `de` pode ser negativo e
+   * `ate` passar do fim: sao as sobras do original que a transicao usa.
    *
-   * Cada pedaco e uma leitura PROPRIA da entrada do trecho (`trim`), e
-   * nao um `split` do trecho inteiro: com `split`, o ramo que so seria
-   * lido mais tarde (o fim do trecho, para a transicao) segurava quadros
-   * e o FFmpeg parava esperando -- medido: CPU a zero e 1,4 GB retidos.
+   * Cada pedaco e uma leitura PROPRIA do original (`-ss`/`-t`), e nao
+   * um `split` do trecho inteiro: com `split`, o ramo que so seria lido
+   * mais tarde segurava quadros e o FFmpeg parava esperando -- medido:
+   * CPU a zero e 1,4 GB retidos.
    */
   const pedaco = (i: number, de: number, ate: number, rotulo: string): void => {
     const { clip, quadros } = trechos[i]!;
     const n = ate - de;
-    // A entrada do pedaco ja comeca nele: sem `trim` de inicio.
     const entrada = novaEntrada(clip.sourceStartMs + (de * 1000) / FPS, (n * 1000) / FPS);
 
     // `setpts=PTS-STARTPTS` zera o relogio do pedaco; o `tpad` +
@@ -185,73 +150,77 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
 
     const quadroVertical = `q${rotulo}`;
     partes.push(...enquadrar(base, quadroVertical, rotulo, enquadramento, W, H));
-    // O zoom lento continua de onde o pedaco anterior parou: o
-    // deslocamento entra no tempo da expressao.
+    // O zoom lento continua de onde o pedaco anterior parou.
     const efeito = efeitoDoTrecho(clip.effect, W, H, quadros, de);
     partes.push(`[${quadroVertical}]${efeito}format=yuv420p,setsar=1[${rotulo}]`);
   };
 
-  // ---------- Video de cada trecho, e as transicoes ----------
+  // ---------- Video: trechos e janelas de transicao ----------
   //
-  // Cada transicao vira um SEGMENTO proprio: um `xfade` entre o ultimo
-  // quadro do trecho que sai (congelado) e o comeco do trecho que
-  // entra. O resto do trecho vem logo depois, e todos os segmentos
-  // entram num concat so. A duracao total nao muda.
+  // Cada janela e um segmento proprio: um `xfade` entre o fim REAL do
+  // trecho que sai (andando, com as sobras depois do corte) e o comeco
+  // do que entra (com as sobras antes dele). Os segmentos entram num
+  // concat so.
   //
   // Por que nao encadear um `xfade` no outro: no FFmpeg 5.1 da imagem,
   // a segunda transicao encadeada devolve timestamps que voltam no
   // tempo, e o muxer descarta tudo o que vem depois -- medido: um video
   // de 18s saiu com 14s de imagem. Aqui cada `xfade` recebe duas
   // entradas curtas que comecam em zero, e nunca a saida de outro.
+  const janelaAntes = new Map(agenda.transicoes.map((j) => [j.indice, j]));
   const segmentos: string[] = [];
 
   trechos.forEach((t, i) => {
-    const entrada = quadrosDaTransicao[i]!;
-    const saida = quadrosDaTransicao[i + 1] ?? 0;
-
-    if (entrada) {
-      const tipo = transicaoAntes.get(t.indiceNoPlano)!.type as keyof typeof XFADE_DA_TRANSICAO;
-      pedaco(i, 0, entrada, `e${i}`);
-      pedaco(i, entrada, t.quadros, `r${i}`);
-      partes.push(
-        // O segmento da transicao sai com o numero EXATO de quadros: o
-        // `tpad` completa se o `xfade` entregar um a menos, e o `trim`
-        // corta o que passar. Video e audio continuam do mesmo tamanho.
-        `[u${i - 1}][e${i}]xfade=transition=${XFADE_DA_TRANSICAO[tipo] ?? 'fade'}:duration=${s(entrada)}:offset=0,` +
-          `tpad=stop_mode=clone:stop=2,trim=end_frame=${entrada},setpts=PTS-STARTPTS[t${i}]`,
-      );
-      segmentos.push(`[t${i}]`, `[r${i}]`);
-    } else {
-      pedaco(i, 0, t.quadros, `c${i}`);
+    const miolo = t.quadros - t.consumidoNoInicio - t.consumidoNoFim;
+    if (miolo > 0) {
+      pedaco(i, t.consumidoNoInicio, t.quadros - t.consumidoNoFim, `c${i}`);
       segmentos.push(`[c${i}]`);
     }
 
-    if (saida) {
-      // O ultimo quadro, congelado pelo tempo EXATO da transicao
-      // (`offset + duration`, o que o `xfade` exige da primeira
-      // entrada). Um quadro a mais -- como era, `tpad stop=N` sozinho
-      // da N+1 -- ficava sem consumir, o `xfade` nunca terminava e o
-      // render travava no quadro seguinte a cada transicao (medido: CPU
-      // a zero por 15 min, sem erro).
-      pedaco(i, t.quadros - 1, t.quadros, `z${i}`);
-      partes.push(`[z${i}]tpad=stop_mode=clone:stop=${saida},trim=end_frame=${saida},setpts=PTS-STARTPTS[u${i}]`);
+    const janela = janelaAntes.get(i + 1);
+    if (janela) {
+      const n = janela.antes + janela.depois;
+      // A: do fim dele ate `depois` quadros alem. B: `antes` quadros
+      // antes do comeco ate o ponto em que o miolo dele comeca.
+      pedaco(i, t.quadros - janela.antes, t.quadros + janela.depois, `sa${i}`);
+      pedaco(i + 1, -janela.antes, janela.depois, `en${i}`);
+      partes.push(
+        // O segmento sai com o numero EXATO de quadros: o `tpad`
+        // completa se o `xfade` entregar um a menos, e o `trim` corta o
+        // que passar.
+        `[sa${i}][en${i}]xfade=transition=${XFADE_DA_TRANSICAO[janela.tipo] ?? 'fade'}:duration=${s(n)}:offset=0,` +
+          `tpad=stop_mode=clone:stop=2,trim=end_frame=${n},setpts=PTS-STARTPTS[t${i}]`,
+      );
+      segmentos.push(`[t${i}]`);
     }
-
-    // Audio com a MESMA duracao do video do trecho. `apad` + `atrim`
-    // garantem o tamanho exato mesmo no fim do arquivo; os fades de
-    // 12ms tiram o estalo que um corte seco no meio da onda produz.
-    const { clip, quadros } = t;
-    const durS = s(quadros);
-    const fimDoFade = Math.max(0, quadros / FPS - 0.012).toFixed(3);
-    const entradaDoAudio = novaEntrada(clip.sourceStartMs, (quadros * 1000) / FPS);
-    partes.push(
-      `[${entradaDoAudio}:a]atrim=0:${(quadros / FPS).toFixed(3)},asetpts=PTS-STARTPTS,` +
-        `aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_dur=${durS},atrim=0:${durS},` +
-        `afade=t=in:d=0.012,afade=t=out:st=${fimDoFade}:d=0.012[a${i}]`,
-    );
   });
 
-  const acumulado = trechos.reduce((t, c) => t + c.quadros, 0);
+  // ---------- Audio: pecas que se cruzam ----------
+  //
+  // Cada peca e o som de um trecho, com as bordas que a agenda decidiu
+  // (cruzamento no corte, J/L-cut), o volume e os fades. Posicionada
+  // na timeline com `adelay` e somada as outras.
+  const pecas: string[] = [];
+  agenda.audio.forEach((p, k) => {
+    const dur = (p.duracaoMs / 1000).toFixed(3);
+    const entrada = novaEntrada(p.sourceInicioMs, p.duracaoMs);
+    const fades = [
+      p.fadeInMs > 0 ? `afade=t=in:d=${(p.fadeInMs / 1000).toFixed(3)}` : '',
+      p.fadeOutMs > 0
+        ? `afade=t=out:st=${Math.max(0, (p.duracaoMs - p.fadeOutMs) / 1000).toFixed(3)}:d=${(p.fadeOutMs / 1000).toFixed(3)}`
+        : '',
+    ].filter(Boolean);
+    partes.push(
+      `[${entrada}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,` +
+        `aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_dur=${dur},atrim=0:${dur},` +
+        (p.ganhoDb ? `volume=${p.ganhoDb}dB,` : '') +
+        (fades.length ? `${fades.join(',')},` : '') +
+        `adelay=delays=${Math.max(0, Math.round(p.inicioMs))}:all=1[p${k}]`,
+    );
+    pecas.push(`[p${k}]`);
+  });
+
+  const acumulado = agenda.duracaoQuadros;
   let video = 'montado';
   partes.push(`${segmentos.join('')}concat=n=${segmentos.length}:v=1:a=0[montado]`);
 
@@ -291,7 +260,16 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   }
 
   // ---------- Audio ----------
-  partes.push(`${trechos.map((_, i) => `[a${i}]`).join('')}concat=n=${trechos.length}:v=0:a=1[voz]`);
+  // Sem peca (todos os trechos mudos): silencio do tamanho do video.
+  const durTotal = duracaoTotalS.toFixed(3);
+  if (pecas.length === 0) {
+    partes.push(`anullsrc=r=48000:cl=stereo,atrim=0:${durTotal}[voz]`);
+  } else {
+    partes.push(
+      `${pecas.join('')}amix=inputs=${pecas.length}:duration=longest:dropout_transition=0:normalize=0,` +
+        `apad=whole_dur=${durTotal},atrim=0:${durTotal},asetpts=PTS-STARTPTS[voz]`,
+    );
+  }
   let audio = 'voz';
 
   if (plano.render.voiceEnhance) {
@@ -468,7 +446,7 @@ function efeitoDoTrecho(
     // A escala cresce com o tempo do trecho (`eval=frame`) e o recorte
     // volta ao quadro: aproximacao continua, sem o tremor do zoompan.
     const dur = s(quadros);
-    const tempo = deslocamento ? `(t+${s(deslocamento)})` : 't';
+    const tempo = deslocamento > 0 ? `(t+${s(deslocamento)})` : deslocamento < 0 ? `max(0,t-${s(-deslocamento)})` : 't';
     return `scale=w='trunc(${W}*(1+${ZOOM_LENTO}*${tempo}/${dur})/2)*2':h=-2:eval=frame,crop=${W}:${H},`;
   }
   return '';
@@ -500,12 +478,36 @@ function posicaoDoLogo(variante: string | undefined, W: number, H: number, marge
  * vira o "whoosh" de transicao, e uma senoide com envelope rapido vira
  * o "pop" dos textos.
  */
-function somEmbutido(id: string): string {
+export function somEmbutido(id: string): string {
   switch (id) {
     case 'sfx-pop':
       return `aevalsrc=exprs=0.8*sin(2*PI*(420+2600*t)*t)*exp(-26*t):s=48000:d=0.2`;
     case 'sfx-click':
       return `aevalsrc=exprs=0.7*sin(2*PI*1800*t)*exp(-90*t):s=48000:d=0.07`;
+    case 'sfx-swipe':
+      // Varrida curta e aguda: troca de assunto, lista que passa.
+      return (
+        `anoisesrc=d=0.32:c=white:r=48000:a=0.5,highpass=f=2500,` +
+        `afade=t=in:d=0.08,afade=t=out:st=0.1:d=0.22`
+      );
+    case 'sfx-riser':
+      // Subida que prepara a revelação.
+      return `aevalsrc=exprs=0.35*sin(2*PI*(180*t+700*t*t)*1)*(t/1.2):s=48000:d=1.2,afade=t=out:st=1.1:d=0.1`;
+    case 'sfx-impacto':
+      // Grave seco com corpo: a frase forte, o número que importa.
+      return `aevalsrc=exprs=0.95*sin(2*PI*(58+140*exp(-18*t))*t)*exp(-7*t):s=48000:d=0.6`;
+    case 'sfx-ding':
+      return `aevalsrc=exprs=0.45*(sin(2*PI*1320*t)+0.5*sin(2*PI*2640*t))*exp(-6*t):s=48000:d=0.8`;
+    case 'sfx-digitar':
+      // Teclas: cliques curtos em sequência.
+      return `aevalsrc=exprs=0.5*sin(2*PI*2400*t)*exp(-140*mod(t\\,0.09)):s=48000:d=0.54`;
+    case 'sfx-camera':
+      return (
+        `anoisesrc=d=0.18:c=white:r=48000:a=0.7,bandpass=f=3200:width_type=q:w=1.2,` +
+        `afade=t=in:d=0.005,afade=t=out:st=0.04:d=0.14`
+      );
+    case 'sfx-glitch':
+      return `aevalsrc=exprs=0.5*sgn(sin(2*PI*(90+800*floor(mod(t*30\\,4)))*t)):s=48000:d=0.3,afade=t=out:st=0.2:d=0.1`;
     default:
       return (
         `anoisesrc=d=0.7:c=pink:r=48000:a=0.6,bandpass=f=1300:width_type=q:w=0.9,` +
@@ -529,8 +531,7 @@ export function escaparCaminhoDeFiltro(caminho: string): string {
 
 /** Duracao esperada do resultado, em ms (em quadros inteiros). */
 export function duracaoDoResultado(plano: EditPlanV1, clipsDesligados: readonly string[] = []): number {
-  const quadros = trechosLigados(plano, clipsDesligados).reduce((t, c) => t + c.quadros, 0);
-  return Math.round((quadros * 1000) / FPS);
+  return Math.round(agendaDoPlano(plano, clipsDesligados).duracaoMs);
 }
 
 /** Executa o render. */

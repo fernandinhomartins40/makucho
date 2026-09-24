@@ -76,6 +76,15 @@ import {
   DotsThreeOutline,
   DownloadSimple,
   X,
+  SpeakerSlash,
+  Waveform,
+  Lightning,
+  Keyboard,
+  Books,
+  Shapes,
+  ArrowsLeftRight,
+  MusicNote,
+  SpeakerSimpleHigh,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -164,3 +173,14 @@ export const IconeParametros = Sliders;
 export const IconeMaisOpcoes = DotsThreeOutline;
 export const IconeInstalar = DownloadSimple;
 export const IconeFechar = X;
+
+// Áudio, biblioteca e atalhos.
+export const IconeMudo = SpeakerSlash;
+export const IconeOnda = Waveform;
+export const IconeEfeito = Lightning;
+export const IconeTeclado = Keyboard;
+export const IconeBiblioteca = Books;
+export const IconeElementos = Shapes;
+export const IconeTransicao = ArrowsLeftRight;
+export const IconeTrilha = MusicNote;
+export const IconeSom = SpeakerSimpleHigh;

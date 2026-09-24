@@ -28,6 +28,8 @@ import {
   hasBlockingIssues,
   parseAiProposal,
   removerRetomadasEscolhidas,
+  editPlanV1Schema,
+  tirarPausas,
   validateSemanticSafety,
 } from '@makucho/studio-contracts';
 import type {
@@ -103,7 +105,7 @@ export class AnaliseService {
       include: {
         segments: {
           orderBy: { position: 'asc' },
-          include: { words: { select: { confidence: true } } },
+          include: { words: { select: { id: true, startMs: true, endMs: true, word: true, confidence: true } } },
         },
       },
     });
@@ -304,6 +306,22 @@ export class AnaliseService {
         avisos.push('O último trecho foi estendido até o fim da frase, para o vídeo não terminar no meio da ideia.');
       }
     }
+    // ---------- Cortes na fala, sem silêncio nas pontas ----------
+    //
+    // Os trechos vêm dos segmentos do Whisper, que trazem o respiro antes
+    // e a pausa depois da frase. Emendados, esses silêncios viravam uma
+    // pausa perceptível em cada corte. Aqui cada trecho encosta na fala
+    // (com folga para a sílaba não sair cortada); o que está no tempo da
+    // timeline acompanha.
+    const palavras = transcricao.segments.flatMap((sg) =>
+      sg.words.map((w) => ({ id: w.id, startMs: w.startMs, endMs: w.endMs, word: w.word })),
+    );
+    const apertado = tirarPausas(plano, palavras);
+    if (apertado.removidoMs >= 150 && editPlanV1Schema.safeParse(apertado.plano).success) {
+      plano = apertado.plano;
+      this.log.log(`projeto ${projectId}: ${apertado.removidoMs} ms de silêncio tirados das pontas dos trechos`);
+    }
+
     const depois = analisarFechamento(
       plano,
       segmentos.map((sg) => ({ id: sg.id, startMs: sg.startMs, endMs: sg.endMs, text: sg.text })),

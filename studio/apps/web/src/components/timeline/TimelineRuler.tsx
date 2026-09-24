@@ -54,18 +54,32 @@ export function TimelineRuler({ duracaoMs, zoom, fps = 30, onSeek }: Props) {
       aria-valuemax={Math.round(duracaoMs / 1000)}
       aria-valuenow={0}
       tabIndex={0}
-      onClick={(e) => {
+      // Clicar pula; arrastar percorre o vídeo (scrub), com mouse ou dedo.
+      onPointerDown={(e) => {
         if (!onSeek) return;
-        const caixa = e.currentTarget.getBoundingClientRect();
-        const px = e.clientX - caixa.left;
-        onSeek(Math.max(0, Math.round((px / (larguraPx || 1)) * duracaoMs)));
+        const alvo = e.currentTarget;
+        const caixa = alvo.getBoundingClientRect();
+        const ir = (x: number) =>
+          onSeek(Math.min(duracaoMs, Math.max(0, Math.round(((x - caixa.left) / (larguraPx || 1)) * duracaoMs))));
+        ir(e.clientX);
+        alvo.setPointerCapture(e.pointerId);
+        const mover = (ev: PointerEvent) => ir(ev.clientX);
+        const soltar = () => {
+          alvo.removeEventListener('pointermove', mover);
+          alvo.removeEventListener('pointerup', soltar);
+          alvo.removeEventListener('pointercancel', soltar);
+        };
+        alvo.addEventListener('pointermove', mover);
+        alvo.addEventListener('pointerup', soltar);
+        alvo.addEventListener('pointercancel', soltar);
       }}
       style={{
         position: 'relative',
         height: 28,
         minWidth: larguraPx,
         borderBottom: '1px solid var(--border)',
-        cursor: onSeek ? 'pointer' : 'default',
+        cursor: onSeek ? 'ew-resize' : 'default',
+        touchAction: 'none',
         userSelect: 'none',
       }}
     >

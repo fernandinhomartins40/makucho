@@ -20,13 +20,14 @@ import {
   PRESETS_DE_TEXTO,
   SAIDAS_DE_TEXTO,
   TEXTOS_DE_TELA,
-  TIPOS_DE_TRANSICAO,
+  agendaDoPlano,
   resolverEstiloDoTexto,
 } from '@makucho/studio-contracts';
 import type { AbaDoElemento, ItemDaTimeline } from '../timeline/camadas';
 import { AmostraDeTexto } from './AmostraDeTexto';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
-import { IconeLixeira } from '../icones';
+import { IconeLixeira, IconeTocar, IconeMudo } from '../icones';
+import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
 import { Segmentado } from './Inspector';
 
 interface Props {
@@ -38,20 +39,7 @@ interface Props {
   marca?: MarcaDoVideo;
 }
 
-export const NOME_DA_TRANSICAO: Record<string, string> = {
-  cut: 'Corte seco',
-  fade: 'Esmaecer',
-  dissolve: 'Dissolver',
-  fadeblack: 'Pelo preto',
-  slide: 'Deslizar',
-  slideup: 'Subir',
-  wipe: 'Cortina',
-  smooth: 'Suave',
-  zoom: 'Zoom',
-  circle: 'Círculo',
-  blur: 'Desfoque',
-  pixelize: 'Pixels',
-};
+export { NOME_DA_TRANSICAO };
 
 const segundos = (ms: number) => (ms / 1000).toFixed(1).replace('.', ',');
 const paraMs = (texto: string) => Math.round(Number(texto.replace(',', '.')) * 1000);
@@ -70,18 +58,9 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'elemento' && (
         <Elemento plan={plan} overlayId={item.id} abaPedida={item.aba} marca={marca} onOperacao={onOperacao} onFechar={onFechar} />
       )}
-      {item.tipo === 'som' && (
-        <button
-          type="button"
-          className="botao botao--perigo botao--pequeno"
-          onClick={() => {
-            onOperacao({ op: 'remover_efeito_sonoro', soundEffectId: item.id });
-            onFechar();
-          }}
-        >
-          <IconeLixeira size={15} /> Remover efeito sonoro
-        </button>
-      )}
+      {item.tipo === 'som' && <EfeitoSonoro plan={plan} id={item.id} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
+      {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
+      {item.tipo === 'trilha' && <TrilhaDeFundo plan={plan} onOperacao={onOperacao} onFechar={onFechar} />}
     </div>
   );
 }
@@ -90,6 +69,8 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'legenda') return item.manualId ? 'Legenda escrita à mão' : 'Legenda';
   if (item.tipo === 'corte') return 'Corte entre trechos';
   if (item.tipo === 'som') return 'Efeito sonoro';
+  if (item.tipo === 'audio') return 'Som do trecho';
+  if (item.tipo === 'trilha') return 'Trilha de fundo';
   const o = plan.overlays.find((x) => x.id === item.id);
   return o ? (NOME_DO_ELEMENTO[o.component] ?? o.component) : 'Elemento';
 }
@@ -198,38 +179,227 @@ function Corte({ plan, clipId, onOperacao }: { plan: EditPlanV1; clipId: string;
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       <p className="campo__ajuda" style={{ marginTop: 0 }}>
-        Em vídeo falado o corte seco costuma ser a melhor escolha. Transição funciona na virada de assunto.
+        Em vídeo falado o corte seco costuma ser a melhor escolha. Transição funciona na virada de assunto. Ela usa o movimento real dos
+        dois trechos (nada congela) e o som cruza junto.
       </p>
-      <div className="transicoes" role="radiogroup" aria-label="Tipo de transição">
-        {TIPOS_DE_TRANSICAO.map((t) => (
+      <div className="demos demos--compacto" role="radiogroup" aria-label="Tipo de transição">
+        {TRANSICOES.map((t) => (
           <button
-            key={t}
+            key={t.id}
             type="button"
             role="radio"
-            aria-checked={tipo === t}
-            className="transicoes__item"
-            onClick={() => onOperacao({ op: 'definir_transicao', clipId, type: t, ...(t !== 'cut' ? { durationMs: atual?.durationMs ?? DURACAO_PADRAO_DA_TRANSICAO[t] } : {}) })}
+            aria-checked={tipo === t.id}
+            className="demo-cartao"
+            title={`${t.descricao} ${t.quando}`}
+            onClick={() =>
+              onOperacao({ op: 'definir_transicao', clipId, type: t.id, ...(t.id !== 'cut' ? { durationMs: atual?.durationMs ?? DURACAO_PADRAO_DA_TRANSICAO[t.id] } : {}) })
+            }
           >
-            {NOME_DA_TRANSICAO[t] ?? t}
+            <span className={`demo demo--transicao demo--${t.id}`} aria-hidden>
+              <span className="demo__a">A</span>
+              <span className="demo__b">B</span>
+            </span>
+            <span className="demo-cartao__nome">{t.rotulo}</span>
           </button>
         ))}
       </div>
       {tipo !== 'cut' && (
-        <label className="campo" style={{ marginBottom: 0 }}>
-          <span className="campo__rotulo">
-            Duração: {(duracao / 1000).toFixed(2).replace('.', ',')} s
-          </span>
-          <input
-            type="range"
-            className="deslizante"
-            min={150}
-            max={1500}
-            step={50}
-            value={duracao}
-            onChange={(e) => onOperacao({ op: 'definir_transicao', clipId, type: tipo, durationMs: Number(e.target.value) })}
-          />
-        </label>
+        <Deslizante
+          rotulo="Duração"
+          valor={duracao}
+          min={150}
+          max={1500}
+          passo={50}
+          unidade=" ms"
+          onSoltar={(v) => onOperacao({ op: 'definir_transicao', clipId, type: tipo, durationMs: v })}
+        />
       )}
+    </div>
+  );
+}
+
+// ---------- Som do trecho ----------
+
+/**
+ * O som de um trecho, independente da imagem: volume, mudo, fades e o
+ * J/L-cut. A timeline mostra a mesma coisa na faixa Áudio (a forma de
+ * onda muda com o volume e os fades).
+ */
+function SomDoTrecho({ plan, clipId, onOperacao }: { plan: EditPlanV1; clipId: string; onOperacao: (op: TimelineOperation) => void }) {
+  const clip = plan.clips.find((c) => c.id === clipId);
+  if (!clip) return <p className="texto-secundario">Este trecho não existe mais.</p>;
+  const a = clip.audio ?? {};
+  const ajustar = (m: Omit<Extract<TimelineOperation, { op: 'ajustar_audio_do_clipe' }>, 'op' | 'clipId'>) =>
+    onOperacao({ op: 'ajustar_audio_do_clipe', clipId, ...m });
+  const peca = agendaDoPlano(plan).audio.find((p) => p.clipId === clipId);
+
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        O som deste trecho, separado da imagem. Nos cortes ele já cruza sozinho com o vizinho (sem estalo nem respiração cortada).
+      </p>
+      <Segmentado
+        rotulo="Som do trecho"
+        valor={a.muted ? 'mudo' : 'ligado'}
+        opcoes={[
+          ['ligado', 'Som ligado'],
+          ['mudo', 'Mudo'],
+        ]}
+        onTrocar={(v) => ajustar({ muted: v === 'mudo' ? true : null })}
+      />
+      {!a.muted && (
+        <>
+          <Deslizante rotulo="Volume" valor={a.gainDb ?? 0} min={-30} max={12} passo={1} unidade=" dB" onSoltar={(v) => ajustar({ gainDb: v === 0 ? null : v })} />
+          <div className="linha" style={{ gap: 'var(--e3)' }}>
+            <div className="crescer">
+              <Deslizante rotulo="Entrada suave" valor={a.fadeInMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => ajustar({ fadeInMs: v || null })} />
+            </div>
+            <div className="crescer">
+              <Deslizante rotulo="Saída suave" valor={a.fadeOutMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => ajustar({ fadeOutMs: v || null })} />
+            </div>
+          </div>
+          <div className="campo" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">Som além da imagem (J/L-cut)</span>
+            <p className="campo__ajuda" style={{ marginTop: 0 }}>
+              “Antes” faz a fala deste trecho começar sobre o fim do anterior; “depois”, continuar sobre o começo do próximo. Também dá para
+              puxar as bordas do bloco na faixa Áudio.
+            </p>
+          </div>
+          <div className="linha" style={{ gap: 'var(--e3)' }}>
+            <div className="crescer">
+              <Deslizante rotulo="Antes" valor={a.leadMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => ajustar({ leadMs: v || null })} />
+            </div>
+            <div className="crescer">
+              <Deslizante rotulo="Depois" valor={a.tailMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => ajustar({ tailMs: v || null })} />
+            </div>
+          </div>
+          {peca && (
+            <p className="campo__ajuda">
+              Toca de {segundos(peca.inicioMs)} s a {segundos(peca.inicioMs + peca.duracaoMs)} s da timeline.
+            </p>
+          )}
+        </>
+      )}
+      <button
+        type="button"
+        className="botao botao--fantasma botao--pequeno"
+        style={{ justifySelf: 'start' }}
+        onClick={() => onOperacao({ op: 'ajustar_audio_do_clipe', clipId, gainDb: null, muted: null, fadeInMs: null, fadeOutMs: null, leadMs: null, tailMs: null })}
+      >
+        Voltar ao som original
+      </button>
+    </div>
+  );
+}
+
+// ---------- Efeito sonoro ----------
+
+function EfeitoSonoro({
+  plan,
+  id,
+  onOperacao,
+  onOperacoes,
+  onFechar,
+}: {
+  plan: EditPlanV1;
+  id: string;
+  onOperacao: (op: TimelineOperation) => void;
+  onOperacoes: (ops: TimelineOperation[]) => void;
+  onFechar: () => void;
+}) {
+  const e = plan.soundEffects.find((x) => x.id === id);
+  if (!e) return <p className="texto-secundario">Este efeito sonoro não existe mais.</p>;
+  const catalogo = SONS.find((s) => s.id === e.assetId);
+  const ouvir = () => {
+    const a = new Audio(catalogo ? `/sons/${e.assetId}.wav` : `/api/assets/${e.assetId}/file`);
+    a.volume = Math.min(1, 10 ** (e.gainDb / 20));
+    void a.play().catch(() => undefined);
+  };
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <div className="linha" style={{ gap: 'var(--e2)' }}>
+        <button type="button" className="botao botao--secundario botao--pequeno" onClick={ouvir}>
+          <IconeTocar size={14} weight="fill" /> Ouvir
+        </button>
+        <span className="texto-secundario" style={{ fontSize: 12 }}>
+          {NOME_DO_SOM[e.assetId] ?? 'Som do workspace'} em {segundos(e.timelineStartMs)} s — arraste na faixa Sons para mover.
+        </span>
+      </div>
+      {catalogo && <p className="campo__ajuda" style={{ marginTop: 0 }}>{catalogo.descricao} {catalogo.quando}</p>}
+      <label className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Trocar o som</span>
+        <select
+          className="campo__selecao"
+          value={catalogo ? e.assetId : ''}
+          onChange={(ev) =>
+            ev.target.value &&
+            // Trocar = tirar este e pôr o outro no mesmo ponto e volume.
+            onOperacoes([
+              { op: 'remover_efeito_sonoro', soundEffectId: id },
+              { op: 'adicionar_efeito_sonoro', assetId: ev.target.value, timelineStartMs: e.timelineStartMs, gainDb: e.gainDb },
+            ])
+          }
+        >
+          {!catalogo && <option value="">Som do workspace</option>}
+          {SONS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.rotulo}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Deslizante rotulo="Volume" valor={e.gainDb} min={-40} max={6} passo={1} unidade=" dB" onSoltar={(v) => onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: id, gainDb: v })} />
+      <button
+        type="button"
+        className="botao botao--perigo botao--pequeno"
+        style={{ justifySelf: 'start' }}
+        onClick={() => {
+          onOperacao({ op: 'remover_efeito_sonoro', soundEffectId: id });
+          onFechar();
+        }}
+      >
+        <IconeLixeira size={15} /> Remover efeito sonoro
+      </button>
+    </div>
+  );
+}
+
+// ---------- Trilha ----------
+
+function TrilhaDeFundo({ plan, onOperacao, onFechar }: { plan: EditPlanV1; onOperacao: (op: TimelineOperation) => void; onFechar: () => void }) {
+  const m = plan.music;
+  if (!m) return <p className="texto-secundario">O vídeo não tem trilha. Escolha uma na Biblioteca → Trilha.</p>;
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <Deslizante rotulo="Volume" valor={m.gainDb} min={-40} max={0} passo={1} unidade=" dB" onSoltar={(v) => onOperacao({ op: 'configurar_musica', gainDb: v })} />
+      <Segmentado
+        rotulo="Abaixar na fala"
+        valor={m.duckUnderVoice ? 'sim' : 'nao'}
+        opcoes={[
+          ['sim', 'Abaixa quando alguém fala'],
+          ['nao', 'Volume fixo'],
+        ]}
+        onTrocar={(v) => onOperacao({ op: 'configurar_musica', duckUnderVoice: v === 'sim' })}
+      />
+      <div className="linha" style={{ gap: 'var(--e3)' }}>
+        <div className="crescer">
+          <Deslizante rotulo="Entrada suave" valor={m.fadeInMs} min={0} max={5000} passo={100} unidade=" ms" onSoltar={(v) => onOperacao({ op: 'configurar_musica', fadeInMs: v })} />
+        </div>
+        <div className="crescer">
+          <Deslizante rotulo="Saída suave" valor={m.fadeOutMs} min={0} max={5000} passo={100} unidade=" ms" onSoltar={(v) => onOperacao({ op: 'configurar_musica', fadeOutMs: v })} />
+        </div>
+      </div>
+      <button
+        type="button"
+        className="botao botao--perigo botao--pequeno"
+        style={{ justifySelf: 'start' }}
+        onClick={() => {
+          onOperacao({ op: 'trocar_musica', assetId: null });
+          onFechar();
+        }}
+      >
+        <IconeMudo size={15} /> Tirar a trilha
+      </button>
     </div>
   );
 }

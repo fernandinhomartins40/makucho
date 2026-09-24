@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================
-// Timeline multi-track (ADR 0008).
+// Timeline multi-faixa (ADR 0008).
 //
 // Estrutura visual baseada em OpenCut (MIT) -- aviso de copyright em
 // ruler-utils.ts. A diferenca de fundo: la cada clipe e decodificado
@@ -9,22 +9,40 @@
 // que o servidor ja preparou, e a timeline so descreve qual pedaco
 // entra e quando.
 //
-// Ela ajusta a proposta da IA -- nao edita do zero. Toda mudanca vira
-// uma operacao validada pelo mesmo schema do EditPlan
-// (@makucho/studio-contracts).
+// Uma faixa por tipo de recurso, cada uma editavel:
+//
+//   Video      os trechos, com o que esta aplicado em cada um (efeito,
+//              transicao, legendas, textos, sons, som do trecho)
+//   Audio      o som REAL de cada trecho (forma de onda do original),
+//              com o cruzamento nos cortes; as bordas estendem o som
+//              antes ou depois da imagem (J/L-cut)
+//   Legendas   os blocos que vao aparecer, no tempo certo
+//   Textos     titulo, destaque, chamada, rodape, cartoes
+//   Elementos  logo, imagem, barra de progresso
+//   Efeitos    o zoom de cada trecho
+//   Sons       efeitos sonoros (arrastar move)
+//   Trilha     a musica de fundo
+//
+// Uma rolagem so para tudo: os nomes das faixas ficam presos a
+// esquerda e a regua no topo, e as faixas nunca se desalinham.
+// Toda mudanca vira uma operacao validada pelo mesmo schema do
+// EditPlan (@makucho/studio-contracts).
 // ============================================================
 
-import { useCallback, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1, ItemDeTrack, PalavraDaTranscricao, Track, TimelineOperation } from '@makucho/studio-contracts';
-import { montarVisao, duracaoDoPlano, PRESETS_DE_TEXTO, TEXTOS_DE_TELA } from '@makucho/studio-contracts';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
+import { PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano } from '@makucho/studio-contracts';
 import {
+  COMPONENTES_DE_TEXTO,
   COR_DO_ELEMENTO,
   NOME_DO_ELEMENTO,
   blocosDeLegenda,
   cortes as calcularCortes,
-  efeitos as calcularEfeitos,
+  recursosPorTrecho,
   type ItemDaTimeline,
+  type RecursosDoTrecho,
 } from './camadas';
+import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 import { TimelineRuler } from './TimelineRuler';
 import { msParaPx, pxParaMs, alinharAoFrame } from './ruler-utils';
 import { corDaFuncao, nomeDaFuncao } from '../editor/funcoes';
@@ -36,29 +54,36 @@ import {
   IconeDividir,
   IconeCopiar,
   IconeLixeira,
-  IconeOlho,
-  IconeOlhoFechado,
-  IconeVolume,
   IconeVideo,
   IconeTexto,
-  IconeAudio,
   IconeMidia,
   IconeLegenda,
   IconeMais,
+  IconeOnda,
+  IconeEfeito,
+  IconeSom,
+  IconeTrilha,
+  IconeTransicao,
+  IconeMudo,
+  IconeTeclado,
+  IconeIA,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 
-const ALTURA_TRACK = 56;
-const TEXTOS_DE_TELA_SET = new Set<string>(TEXTOS_DE_TELA);
-const LARGURA_ROTULO = 128;
+type Faixa = 'video' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
 
-const FAIXAS: Array<{ id: Track; rotulo: string; Icone: Icon; som?: boolean }> = [
-  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo },
-  { id: 'text', rotulo: 'Legendas', Icone: IconeTexto },
-  { id: 'music', rotulo: 'Áudio', Icone: IconeAudio, som: true },
-  { id: 'assets', rotulo: 'Elementos', Icone: IconeMidia },
-  { id: 'effects', rotulo: 'Efeitos', Icone: IconeLegenda },
+const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number }> = [
+  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64 },
+  { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52 },
+  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40 },
+  { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40 },
+  { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36 },
+  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 36 },
+  { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36 },
+  { id: 'trilha', rotulo: 'Trilha', Icone: IconeTrilha, altura: 40 },
 ];
+
+const ALTURA_REGUA = 28;
 
 interface Props {
   plan: EditPlanV1;
@@ -69,10 +94,32 @@ interface Props {
   onSelecionar?: (clipId: string | null) => void;
   /** Palavras da transcrição: é delas que a faixa de legendas sai. */
   palavras?: readonly PalavraDaTranscricao[];
-  /** Legenda, corte, elemento ou som selecionado. */
+  /** Legenda, corte, elemento, som, áudio ou trilha selecionado. */
   itemSelecionado?: ItemDaTimeline | null;
   onSelecionarItem?: (item: ItemDaTimeline | null) => void;
+  /** Picos do áudio do original (100 por segundo), para a forma de onda. */
+  onda?: Uint8Array | null;
+  /** Aperta os cortes na fala (ver contracts/pausas.ts). */
+  onTirarPausas?: () => void;
+  /** Abre a biblioteca numa categoria (som, trilha, texto...). */
+  onAbrirBiblioteca?: (categoria: 'sons' | 'trilha' | 'textos' | 'transicoes' | 'efeitos') => void;
+  onMostrarAtalhos?: () => void;
 }
+
+type Arraste = {
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio';
+  id: string;
+  /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
+  modo: 'mover' | 'inicio' | 'fim';
+  xInicial: number;
+  startMsInicial: number;
+  duracaoInicial: number;
+  /** Onde o item está AGORA, durante o arraste. */
+  atualMs: number;
+  atualDuracao: number;
+  /** Áudio: quanto o som já passava da imagem antes do arraste. */
+  extraInicial?: number;
+};
 
 export function Timeline({
   plan,
@@ -84,34 +131,26 @@ export function Timeline({
   palavras = [],
   itemSelecionado = null,
   onSelecionarItem,
+  onda = null,
+  onTirarPausas,
+  onAbrirBiblioteca,
+  onMostrarAtalhos,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const [arrastando, setArrastando] = useState<string | null>(null);
-  const [ocultas, setOcultas] = useState<Set<Track>>(new Set());
-  const [mudas, setMudas] = useState<Set<Track>>(new Set());
-  const areaRef = useRef<HTMLDivElement>(null);
-  const arrasteRef = useRef<{
-    tipo: 'clipe' | 'elemento' | 'legenda';
-    id: string;
-    /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
-    modo: 'mover' | 'inicio' | 'fim';
-    xInicial: number;
-    startMsInicial: number;
-    duracaoInicial: number;
-    /** Onde o item está AGORA, durante o arraste. */
-    atualMs: number;
-    atualDuracao: number;
-  } | null>(null);
+  const rolagemRef = useRef<HTMLDivElement>(null);
+  const arrasteRef = useRef<Arraste | null>(null);
   /** Último toque/clique num elemento: dois seguidos abrem os estilos. */
   const ultimoToqueRef = useRef<{ id: string; em: number } | null>(null);
 
-  const visao = useMemo(() => montarVisao(plan), [plan]);
-  const duracaoMs = useMemo(() => duracaoDoPlano(plan), [plan]);
+  const agenda = useMemo(() => agendaDoPlano(plan), [plan]);
+  const duracaoMs = agenda.duracaoMs;
   const larguraPx = msParaPx(duracaoMs, zoom);
   const blocos = useMemo(() => blocosDeLegenda(plan, palavras), [plan, palavras]);
   const listaDeCortes = useMemo(() => calcularCortes(plan), [plan]);
-  const listaDeEfeitos = useMemo(() => calcularEfeitos(plan), [plan]);
+  const recursos = useMemo(() => recursosPorTrecho(plan, agenda, blocos), [plan, agenda, blocos]);
 
+  // ---------- Arrastar: mover e puxar bordas ----------
   const aoSoltar = useCallback(() => {
     const arraste = arrasteRef.current;
     arrasteRef.current = null;
@@ -121,7 +160,18 @@ export function Timeline({
     // Um clique sem arraste não vira versão nova do plano.
     if (Math.abs(arraste.atualMs - arraste.startMsInicial) < 20 && Math.abs(arraste.atualDuracao - arraste.duracaoInicial) < 20) return;
 
-    // Borda puxada: começo e duração juntos, numa operação só.
+    // A operacao so e emitida AO SOLTAR, nao a cada pixel: uma versao
+    // do EditPlan por movimento do mouse encheria o historico e o banco.
+    if (arraste.tipo === 'audio') {
+      // A borda do som passou da imagem: é o J/L-cut do trecho.
+      const extra = Math.max(0, Math.min(3000, Math.round(arraste.atualDuracao)));
+      onOperacao({
+        op: 'ajustar_audio_do_clipe',
+        clipId: arraste.id,
+        ...(arraste.modo === 'inicio' ? { leadMs: extra || null } : { tailMs: extra || null }),
+      });
+      return;
+    }
     if (arraste.modo !== 'mover') {
       const inicio = Math.max(0, alinharAoFrame(arraste.atualMs));
       const duracao = Math.max(300, alinharAoFrame(arraste.atualDuracao));
@@ -133,18 +183,11 @@ export function Timeline({
       return;
     }
 
-    // A operacao so e emitida AO SOLTAR, nao a cada pixel: uma
-    // versao do EditPlan por movimento do mouse encheria o historico
-    // e o banco. E com a posicao NOVA -- antes ia a original, e
-    // arrastar um trecho nao o movia.
     const destino = Math.max(0, alinharAoFrame(arraste.atualMs));
-    if (arraste.tipo === 'clipe') {
-      onOperacao({ op: 'mover_clipe', clipId: arraste.id, timelineStartMs: destino });
-    } else if (arraste.tipo === 'elemento') {
-      onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
-    } else {
-      onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
-    }
+    if (arraste.tipo === 'clipe') onOperacao({ op: 'mover_clipe', clipId: arraste.id, timelineStartMs: destino });
+    else if (arraste.tipo === 'elemento') onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
+    else if (arraste.tipo === 'som') onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: destino });
+    else onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
   }, [onOperacao]);
 
   const aoArrastar = useCallback(
@@ -153,6 +196,28 @@ export function Timeline({
       if (!arraste) return;
 
       const deslocamentoMs = pxParaMs(e.clientX - arraste.xInicial, zoom);
+      const elemento = rolagemRef.current?.querySelector<HTMLElement>(`[data-arrastavel="${arraste.tipo}-${arraste.id}"]`);
+
+      if (arraste.tipo === 'audio') {
+        // `atualDuracao` guarda o quanto o som passa da imagem.
+        const inicial = arraste.extraInicial ?? 0;
+        const extra = arraste.modo === 'inicio' ? inicial - deslocamentoMs : inicial + deslocamentoMs;
+        arraste.atualDuracao = Math.max(0, Math.min(3000, extra));
+        arraste.atualMs = arraste.startMsInicial + 1;
+        if (elemento) {
+          const dif = arraste.atualDuracao - inicial;
+          const base = { left: Number(elemento.dataset.left), width: Number(elemento.dataset.width) };
+          const px = msParaPx(dif, zoom);
+          if (arraste.modo === 'inicio') {
+            elemento.style.left = `${base.left - px}px`;
+            elemento.style.width = `${base.width + px}px`;
+          } else {
+            elemento.style.width = `${base.width + px}px`;
+          }
+        }
+        return;
+      }
+
       const fimInicial = arraste.startMsInicial + arraste.duracaoInicial;
       if (arraste.modo === 'mover') {
         arraste.atualMs = Math.max(0, arraste.startMsInicial + deslocamentoMs);
@@ -165,7 +230,6 @@ export function Timeline({
       }
 
       // Feedback visual imediato; o estado real so muda ao soltar.
-      const elemento = areaRef.current?.querySelector<HTMLElement>(`[data-arrastavel="${arraste.id}"]`);
       if (elemento) {
         elemento.style.left = `${msParaPx(alinharAoFrame(arraste.atualMs), zoom)}px`;
         if (arraste.modo !== 'mover') elemento.style.width = `${Math.max(6, msParaPx(arraste.atualDuracao, zoom))}px`;
@@ -175,8 +239,9 @@ export function Timeline({
   );
 
   const iniciarArraste =
-    (tipo: 'clipe' | 'elemento' | 'legenda', id: string, startMs: number, duracaoMs = 0, modo: 'mover' | 'inicio' | 'fim' = 'mover') =>
+    (tipo: Arraste['tipo'], id: string, startMs: number, duracaoMs = 0, modo: Arraste['modo'] = 'mover', extraInicial = 0) =>
     (e: React.PointerEvent) => {
+      if (!onOperacao) return;
       if (modo !== 'mover') e.stopPropagation();
       arrasteRef.current = {
         tipo,
@@ -184,14 +249,15 @@ export function Timeline({
         modo,
         xInicial: e.clientX,
         startMsInicial: startMs,
-        duracaoInicial: duracaoMs,
+        duracaoInicial: tipo === 'audio' ? extraInicial : duracaoMs,
         atualMs: startMs,
-        atualDuracao: duracaoMs,
+        atualDuracao: tipo === 'audio' ? extraInicial : duracaoMs,
+        extraInicial,
       };
       setArrastando(id);
     };
 
-  /** Clique duplo (ou dois toques) num elemento: abre os estilos dele. */
+  /** Clique duplo (ou dois toques) num texto: abre os estilos dele. */
   const tocarNoElemento = (o: EditPlanV1['overlays'][number]) => {
     const agora = Date.now();
     const duplo = ultimoToqueRef.current?.id === o.id && agora - ultimoToqueRef.current.em < 400;
@@ -207,11 +273,11 @@ export function Timeline({
     onSeek?.(o.timelineStartMs + 1);
   };
 
-  // ---------- Criar legenda e destaque no playhead ----------
+  // ---------- Criar no playhead ----------
   const noPlayhead = Math.min(Math.max(0, Math.round(posicaoMs)), Math.max(0, duracaoMs - 1000));
   const novaLegenda = () =>
     onOperacao?.({ op: 'adicionar_legenda', timelineStartMs: noPlayhead, durationMs: 1500, text: 'Nova legenda' });
-  const novoDestaque = () =>
+  const novoTexto = () =>
     onOperacao?.({
       op: 'adicionar_overlay',
       component: 'Destaque',
@@ -223,13 +289,6 @@ export function Timeline({
 
   const selecionado = (tipo: ItemDaTimeline['tipo'], id: string) =>
     itemSelecionado?.tipo === tipo && itemSelecionado.id === id;
-
-  const alternar = (conjunto: Set<Track>, set: (s: Set<Track>) => void, track: Track) => {
-    const proximo = new Set(conjunto);
-    if (proximo.has(track)) proximo.delete(track);
-    else proximo.add(track);
-    set(proximo);
-  };
 
   const semSelecao = clipeSelecionado === null;
 
@@ -243,29 +302,18 @@ export function Timeline({
   /** Onde o playhead cai dentro do ORIGINAL, ou null se esta fora. */
   const pontoNoOriginal = useMemo(() => {
     if (!clipeAtual) return null;
-
-    let acumulado = 0;
-    for (const c of plan.clips) {
-      const dur = c.sourceEndMs - c.sourceStartMs;
-      if (c.id === clipeAtual.id) {
-        const dentro = posicaoMs - acumulado;
-        if (dentro <= 0 || dentro >= dur) return null;
-        return clipeAtual.sourceStartMs + dentro;
-      }
-      acumulado += dur;
-    }
-    return null;
-  }, [clipeAtual, plan.clips, posicaoMs]);
+    const t = agenda.trechos.find((x) => x.clip.id === clipeAtual.id);
+    if (!t) return null;
+    const dentro = posicaoMs - t.inicioMs;
+    if (dentro <= 0 || dentro >= t.duracaoMs) return null;
+    return clipeAtual.sourceStartMs + dentro;
+  }, [clipeAtual, agenda, posicaoMs]);
 
   const podeDividir = pontoNoOriginal !== null;
 
   const dividir = useCallback(() => {
     if (!clipeSelecionado || pontoNoOriginal === null) return;
-    onOperacao?.({
-      op: 'dividir_clipe',
-      clipId: clipeSelecionado,
-      sourceMs: Math.round(pontoNoOriginal),
-    });
+    onOperacao?.({ op: 'dividir_clipe', clipId: clipeSelecionado, sourceMs: Math.round(pontoNoOriginal) });
   }, [clipeSelecionado, pontoNoOriginal, onOperacao]);
 
   /** Apara o comeco do trecho: o que vem antes do cursor sai. */
@@ -279,316 +327,394 @@ export function Timeline({
     });
   }, [clipeAtual, pontoNoOriginal, onOperacao]);
 
+  const duplicar = useCallback(() => {
+    if (clipeSelecionado) onOperacao?.({ op: 'duplicar_clipe', clipId: clipeSelecionado });
+  }, [clipeSelecionado, onOperacao]);
+
+  const excluirTrecho = useCallback(() => {
+    if (clipeSelecionado && plan.clips.length > 1) onOperacao?.({ op: 'alternar_clipe', clipId: clipeSelecionado, enabled: false });
+  }, [clipeSelecionado, plan.clips.length, onOperacao]);
+
+  // Atalhos do trecho: S divide, C corta, D duplica, Delete exclui (o
+  // Delete de um item selecionado -- legenda, texto, som -- é da página).
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement;
+      if (alvo instanceof HTMLInputElement || alvo instanceof HTMLTextAreaElement || alvo instanceof HTMLSelectElement || alvo.isContentEditable) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tecla = e.key.toLowerCase();
+      if (tecla === 's' && podeDividir) {
+        e.preventDefault();
+        dividir();
+      } else if (tecla === 'c' && podeDividir) {
+        e.preventDefault();
+        cortar();
+      } else if (tecla === 'd' && clipeSelecionado) {
+        e.preventDefault();
+        duplicar();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && !itemSelecionado && clipeSelecionado) {
+        e.preventDefault();
+        excluirTrecho();
+      }
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [podeDividir, dividir, cortar, duplicar, excluirTrecho, clipeSelecionado, itemSelecionado]);
+
+  // O playhead acompanha a reprodução: rola a timeline quando sai da vista.
+  useEffect(() => {
+    const area = rolagemRef.current;
+    if (!area || arrastando) return;
+    const x = msParaPx(posicaoMs, zoom);
+    const rotulo = area.querySelector<HTMLElement>('.timeline__canto')?.offsetWidth ?? 0;
+    const visivel = area.clientWidth - rotulo;
+    if (x < area.scrollLeft || x > area.scrollLeft + visivel - 40) area.scrollLeft = Math.max(0, x - visivel * 0.25);
+  }, [posicaoMs, zoom, arrastando]);
+
+  /** Zoom que cabe o vídeo inteiro na largura visível. */
+  const ajustar = () => {
+    const area = rolagemRef.current;
+    if (!area || duracaoMs <= 0) return setZoom(1);
+    const rotulo = area.querySelector<HTMLElement>('.timeline__canto')?.offsetWidth ?? 0;
+    const alvo = (area.clientWidth - rotulo - 24) / Math.max(1, msParaPx(duracaoMs, 1));
+    setZoom(Math.min(8, Math.max(0.25, alvo)));
+  };
+
   return (
     <>
-      {/* ---------- Barra de acoes ---------- */}
+      {/* ---------- Barra de ações ---------- */}
       <div className="timeline__barra">
-        {/* Cortar apara o trecho no playhead: o que vem antes do
-            cursor sai, e o trecho passa a comecar ali. */}
-        <Acao
-          Icone={IconeCortar}
-          rotulo="Cortar"
-          desabilitado={!podeDividir}
-          atalho="C"
-          onClick={cortar}
-        />
-        <Acao
-          Icone={IconeDividir}
-          rotulo="Dividir"
-          desabilitado={!podeDividir}
-          atalho="S"
-          onClick={dividir}
-        />
-        <Acao
-          Icone={IconeCopiar}
-          rotulo="Duplicar"
-          desabilitado={semSelecao}
-          atalho="D"
-          onClick={() =>
-            clipeSelecionado && onOperacao?.({ op: 'duplicar_clipe', clipId: clipeSelecionado })
-          }
-        />
-        <Acao
-          Icone={IconeLixeira}
-          rotulo="Excluir"
-          desabilitado={semSelecao || plan.clips.length === 1}
-          atalho="Del"
-          onClick={() =>
-            clipeSelecionado &&
-            onOperacao?.({ op: 'alternar_clipe', clipId: clipeSelecionado, enabled: false })
-          }
-        />
+        <Acao Icone={IconeCortar} rotulo="Cortar" desabilitado={!podeDividir} atalho="C" onClick={cortar} />
+        <Acao Icone={IconeDividir} rotulo="Dividir" desabilitado={!podeDividir} atalho="S" onClick={dividir} />
+        <Acao Icone={IconeCopiar} rotulo="Duplicar" desabilitado={semSelecao} atalho="D" onClick={duplicar} />
+        <Acao Icone={IconeLixeira} rotulo="Excluir" desabilitado={semSelecao || plan.clips.length === 1} atalho="Del" onClick={excluirTrecho} />
 
         <span className="timeline__separador" aria-hidden />
+        {onTirarPausas && (
+          <Acao Icone={IconeIA} rotulo="Tirar pausas" desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
+        )}
         <Acao Icone={IconeMais} rotulo="Legenda" desabilitado={!onOperacao} onClick={novaLegenda} />
-        <Acao Icone={IconeMais} rotulo="Destaque" desabilitado={!onOperacao} onClick={novoDestaque} />
+        <Acao Icone={IconeMais} rotulo="Texto" desabilitado={!onOperacao} onClick={novoTexto} />
+        {onAbrirBiblioteca && <Acao Icone={IconeMais} rotulo="Som" desabilitado={!onOperacao} onClick={() => onAbrirBiblioteca('sons')} />}
 
         <div className="linha auto" style={{ gap: 'var(--e2)' }}>
-          <button
-            type="button"
-            className="botao-icone botao-icone--pequeno"
-            onClick={() => setZoom((z) => Math.max(0.25, z / 1.5))}
-            aria-label="Diminuir zoom"
-          >
+          {onMostrarAtalhos && (
+            <button type="button" className="botao-icone botao-icone--pequeno" onClick={onMostrarAtalhos} aria-label="Atalhos de teclado" title="Atalhos de teclado (?)">
+              <IconeTeclado size={17} />
+            </button>
+          )}
+          <button type="button" className="botao-icone botao-icone--pequeno" onClick={() => setZoom((z) => Math.max(0.25, z / 1.5))} aria-label="Diminuir zoom">
             <IconeZoomMenos size={17} />
           </button>
-
           <input
             type="range"
-            className="deslizante"
-            style={{ width: 130 }}
+            className="deslizante timeline__zoom"
             min={25}
             max={800}
             value={Math.round(zoom * 100)}
             aria-label="Zoom da linha do tempo"
             onChange={(e) => setZoom(Number(e.target.value) / 100)}
           />
-
-          <button
-            type="button"
-            className="botao-icone botao-icone--pequeno"
-            onClick={() => setZoom((z) => Math.min(8, z * 1.5))}
-            aria-label="Aumentar zoom"
-          >
+          <button type="button" className="botao-icone botao-icone--pequeno" onClick={() => setZoom((z) => Math.min(8, z * 1.5))} aria-label="Aumentar zoom">
             <IconeZoomMais size={17} />
           </button>
-
-          <button
-            type="button"
-            className="botao botao--secundario botao--pequeno"
-            onClick={() => setZoom(1)}
-          >
+          <button type="button" className="botao botao--secundario botao--pequeno" onClick={ajustar}>
             <IconeAjustarZoom size={15} />
             Ajustar
           </button>
         </div>
       </div>
 
-      {/* ---------- Area rolavel ---------- */}
-      <div className="timeline__corpo" style={{ display: 'flex' }}>
-        {/* Coluna fixa com os nomes das faixas. Fora da rolagem
-            horizontal: rolar e perder de vista qual faixa e qual
-            torna a timeline confusa. */}
-        <div
-          className="timeline__rotulos"
-          style={{
-            flexShrink: 0,
-            width: LARGURA_ROTULO,
-            borderRight: '1px solid var(--border)',
-            position: 'sticky',
-            left: 0,
-            background: 'var(--surface-1)',
-            zIndex: 3,
-          }}
-        >
-          <div style={{ height: 28, borderBottom: '1px solid var(--border)' }} />
+      {/* ---------- Área rolável: uma rolagem só ---------- */}
+      <div
+        ref={rolagemRef}
+        className="timeline__rolagem"
+        onPointerMove={arrastando ? aoArrastar : undefined}
+        onPointerUp={arrastando ? aoSoltar : undefined}
+        onPointerCancel={arrastando ? aoSoltar : undefined}
+        onPointerLeave={arrastando ? aoSoltar : undefined}
+      >
+        <div className="timeline__conteudo" style={{ width: `calc(var(--rotulo-da-faixa) + ${larguraPx + 40}px)` }}>
+          {/* Régua presa no topo; o canto, preso nos dois. */}
+          <div className="timeline__linha timeline__linha--regua" style={{ height: ALTURA_REGUA }}>
+            <div className="timeline__canto" />
+            <div className="timeline__pista" style={{ width: larguraPx + 40 }}>
+              <TimelineRuler duracaoMs={duracaoMs} zoom={zoom} onSeek={onSeek} />
+            </div>
+          </div>
 
-          {FAIXAS.map(({ id, rotulo, Icone, som }) => {
-            const oculta = ocultas.has(id);
-            const muda = mudas.has(id);
-
-            return (
-              <div key={id} className="timeline__faixa" style={{ height: ALTURA_TRACK }}>
+          {FAIXAS.map(({ id, rotulo, Icone, altura }) => (
+            <div key={id} className={`timeline__linha timeline__linha--${id}`} style={{ height: altura }}>
+              {/* Nome da faixa, preso à esquerda durante a rolagem. */}
+              <div className="timeline__faixa" title={rotulo}>
                 <Icone size={16} />
-                <span className="crescer timeline__nome">{rotulo}</span>
-
-                <button
-                  type="button"
-                  className="botao-icone botao-icone--pequeno"
-                  aria-pressed={oculta}
-                  aria-label={`${oculta ? 'Mostrar' : 'Ocultar'} a faixa ${rotulo}`}
-                  onClick={() => alternar(ocultas, setOcultas, id)}
-                >
-                  {oculta ? <IconeOlhoFechado size={15} /> : <IconeOlho size={15} />}
-                </button>
-
-                {som && (
-                  <button
-                    type="button"
-                    className="botao-icone botao-icone--pequeno"
-                    aria-pressed={muda}
-                    aria-label={`${muda ? 'Ativar som' : 'Silenciar'} a faixa ${rotulo}`}
-                    onClick={() => alternar(mudas, setMudas, id)}
-                  >
-                    <IconeVolume size={15} weight={muda ? 'regular' : 'fill'} />
-                  </button>
-                )}
+                <span className="timeline__nome">{rotulo}</span>
+                {id === 'legendas' && onOperacao && <MaisNaFaixa rotulo="Nova legenda no cursor" onClick={novaLegenda} />}
+                {id === 'textos' && onOperacao && <MaisNaFaixa rotulo="Novo texto no cursor" onClick={novoTexto} />}
+                {id === 'sons' && onAbrirBiblioteca && <MaisNaFaixa rotulo="Adicionar efeito sonoro" onClick={() => onAbrirBiblioteca('sons')} />}
+                {id === 'trilha' && onAbrirBiblioteca && <MaisNaFaixa rotulo="Escolher trilha" onClick={() => onAbrirBiblioteca('trilha')} />}
               </div>
-            );
-          })}
-        </div>
 
-        <div
-          ref={areaRef}
-          onPointerMove={arrastando ? aoArrastar : undefined}
-          onPointerUp={arrastando ? aoSoltar : undefined}
-          onPointerLeave={arrastando ? aoSoltar : undefined}
-          style={{ flex: 1, overflowX: 'auto', position: 'relative' }}
-        >
-          <TimelineRuler duracaoMs={duracaoMs} zoom={zoom} onSeek={onSeek} />
-
-          {FAIXAS.map(({ id, som }) => (
-            <div
-              key={id}
-              style={{
-                position: 'relative',
-                height: ALTURA_TRACK,
-                minWidth: larguraPx,
-                borderBottom: '1px solid var(--border)',
-                opacity: ocultas.has(id) ? 0.35 : 1,
-              }}
-            >
-              {/* A trilha de audio mostra a forma de onda do original
-                  inteiro: e a referencia para conferir se um corte
-                  caiu no meio de uma palavra. */}
-              {som && !ocultas.has(id) && (
-                <FormaDeOnda largura={larguraPx} mudo={mudas.has(id)} />
-              )}
-
-              {(id === 'video' || id === 'music') &&
-                visao[id].map((item) => (
-                  <ClipeNaFaixa
-                    key={item.id}
-                    item={item}
-                    track={id}
-                    zoom={zoom}
-                    selecionado={item.id === clipeSelecionado}
-                    arrastavel={id === 'video' && onOperacao !== undefined}
-                    onSelecionar={() => {
-                      onSelecionarItem?.(null);
-                      onSelecionar?.(item.id);
-                    }}
-                    onIniciarArraste={iniciarArraste('clipe', item.id, item.startMs)}
-                  />
-                ))}
-
-              {/* Cada emenda entre trechos: corte seco ou transição. */}
-              {id === 'video' &&
-                listaDeCortes.map((c) => (
-                  <button
-                    key={`corte-${c.clipId}`}
-                    type="button"
-                    className="corte"
-                    data-transicao={c.transicao ? c.transicao.type : undefined}
-                    data-selecionado={selecionado('corte', c.clipId) || undefined}
-                    style={{ left: msParaPx(c.ms, zoom) }}
-                    title={c.transicao ? `Transição: ${c.transicao.type} (${c.transicao.durationMs} ms)` : 'Corte seco — clique para escolher uma transição'}
-                    aria-label={c.transicao ? `Transição ${c.transicao.type} neste corte` : 'Corte seco neste ponto'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelecionar?.(null);
-                      onSelecionarItem?.({ tipo: 'corte', id: c.clipId, clipId: c.clipId, ms: c.ms });
-                    }}
-                  >
-                    {c.transicao ? '◆' : ''}
-                  </button>
-                ))}
-
-              {/* Legendas: o que vai aparecer na tela, no tempo certo. */}
-              {id === 'text' &&
-                blocos.map((b) => (
-                  <ItemSimples
-                    key={b.id}
-                    id={b.id}
-                    inicioMs={b.inicioMs}
-                    fimMs={b.fimMs}
-                    zoom={zoom}
-                    cor={b.manualId ? '#0e7490' : '#1e3a8a'}
-                    rotulo={b.texto}
-                    classe="clipe--legenda"
-                    selecionado={selecionado('legenda', b.id)}
-                    arrastavel={Boolean(b.manualId) && onOperacao !== undefined}
-                    onIniciarArraste={b.manualId ? iniciarArraste('legenda', b.manualId, b.inicioMs, b.fimMs - b.inicioMs) : undefined}
-                    onRedimensionar={
-                      b.manualId && onOperacao !== undefined
-                        ? (borda) => iniciarArraste('legenda', b.manualId!, b.inicioMs, b.fimMs - b.inicioMs, borda)
-                        : undefined
-                    }
-                    onSelecionar={() => {
-                      onSelecionar?.(null);
-                      onSelecionarItem?.({
-                        tipo: 'legenda',
-                        id: b.id,
-                        wordIds: b.wordIds,
-                        ...(b.manualId ? { manualId: b.manualId } : {}),
-                        inicioMs: b.inicioMs,
-                        fimMs: b.fimMs,
-                        texto: b.texto,
-                      });
-                      onSeek?.(b.inicioMs + 1);
-                    }}
-                  />
-                ))}
-
-              {/* Elementos: título, chamada, destaques, logo, barra. */}
-              {id === 'assets' &&
-                plan.overlays.map((o) => (
-                  <ItemSimples
-                    key={o.id}
-                    id={o.id}
-                    inicioMs={o.timelineStartMs}
-                    fimMs={o.timelineStartMs + o.durationMs}
-                    zoom={zoom}
-                    cor={COR_DO_ELEMENTO[o.component] ?? '#334155'}
-                    rotulo={`${NOME_DO_ELEMENTO[o.component] ?? o.component}${o.text ? `: ${o.text}` : ''}`}
-                    selecionado={selecionado('elemento', o.id)}
-                    arrastavel={onOperacao !== undefined && o.component !== 'LogoBug' && o.component !== 'ProgressBar'}
-                    onIniciarArraste={iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs)}
-                    onRedimensionar={
-                      onOperacao !== undefined && o.component !== 'ProgressBar'
-                        ? (borda) => iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs, borda)
-                        : undefined
-                    }
-                    dica={TEXTOS_DE_TELA_SET.has(o.component) ? 'Clique duas vezes para personalizar' : undefined}
-                    onSelecionar={() => tocarNoElemento(o)}
-                  />
-                ))}
-
-              {/* Efeitos: zoom de cada trecho e efeitos sonoros. */}
-              {id === 'effects' &&
-                listaDeEfeitos.map((f) => (
-                  <ItemSimples
-                    key={f.id}
-                    id={f.id}
-                    inicioMs={f.inicioMs}
-                    fimMs={f.fimMs}
-                    zoom={zoom}
-                    cor={f.alvo.tipo === 'clipe' ? '#6d28d9' : '#0f766e'}
-                    rotulo={f.rotulo}
-                    selecionado={f.alvo.tipo === 'clipe' ? clipeSelecionado === f.alvo.clipId : selecionado('som', f.alvo.id)}
-                    onSelecionar={() => {
-                      if (f.alvo.tipo === 'clipe') {
+              <div className="timeline__pista" style={{ width: larguraPx + 40 }}>
+                {id === 'video' &&
+                  agenda.trechos.map((t) => (
+                    <ClipeNaFaixa
+                      key={t.clip.id}
+                      id={t.clip.id}
+                      funcao={t.clip.role}
+                      inicioMs={t.inicioMs}
+                      duracaoMs={t.duracaoMs}
+                      risco={t.clip.semanticRisk}
+                      recursos={recursos.get(t.clip.id)}
+                      zoom={zoom}
+                      altura={altura}
+                      selecionado={t.clip.id === clipeSelecionado}
+                      arrastavel={onOperacao !== undefined}
+                      onSelecionar={() => {
                         onSelecionarItem?.(null);
-                        onSelecionar?.(f.alvo.clipId);
-                      } else {
-                        onSelecionar?.(null);
-                        onSelecionarItem?.({ tipo: 'som', id: f.alvo.id });
+                        onSelecionar?.(t.clip.id);
+                      }}
+                      onIniciarArraste={iniciarArraste('clipe', t.clip.id, t.inicioMs)}
+                    />
+                  ))}
+
+                {/* Cada emenda entre trechos: corte seco ou transição. */}
+                {id === 'video' &&
+                  listaDeCortes.map((c) => (
+                    <button
+                      key={`corte-${c.clipId}`}
+                      type="button"
+                      className="corte"
+                      data-transicao={c.transicao ? c.transicao.type : undefined}
+                      data-selecionado={selecionado('corte', c.clipId) || undefined}
+                      style={{ left: msParaPx(c.ms, zoom) }}
+                      title={
+                        c.transicao
+                          ? `Transição: ${NOME_DA_TRANSICAO[c.transicao.type] ?? c.transicao.type} (${c.transicao.durationMs} ms)`
+                          : 'Corte seco — clique para escolher uma transição'
                       }
-                    }}
-                  />
-                ))}
+                      aria-label={c.transicao ? `Transição ${NOME_DA_TRANSICAO[c.transicao.type] ?? c.transicao.type} neste corte` : 'Corte seco neste ponto'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelecionar?.(null);
+                        onSelecionarItem?.({ tipo: 'corte', id: c.clipId, clipId: c.clipId, ms: c.ms });
+                      }}
+                    >
+                      {c.transicao ? <IconeTransicao size={12} weight="bold" /> : ''}
+                    </button>
+                  ))}
+
+                {id === 'audio' &&
+                  agenda.trechos.map((t, i) => {
+                    const peca = agenda.audio.find((p) => p.indice === i);
+                    const inicio = peca?.inicioMs ?? t.inicioMs;
+                    const duracao = peca?.duracaoMs ?? t.duracaoMs;
+                    const a = t.clip.audio;
+                    const left = msParaPx(inicio, zoom);
+                    const width = Math.max(4, msParaPx(duracao, zoom));
+                    return (
+                      <div
+                        key={t.clip.id}
+                        data-arrastavel={`audio-${t.clip.id}`}
+                        data-left={left}
+                        data-width={width}
+                        data-selecionado={selecionado('audio', t.clip.id) || undefined}
+                        data-mudo={a?.muted || undefined}
+                        role="button"
+                        tabIndex={0}
+                        className="audio-do-trecho"
+                        title={`Som de "${nomeDaFuncao(t.clip.role)}" — clique para volume, fades e J/L-cut. Puxe as bordas para o som entrar antes ou continuar depois da imagem.`}
+                        style={{ left, width, height: altura - 10 }}
+                        onClick={() => {
+                          onSelecionar?.(null);
+                          onSelecionarItem?.({ tipo: 'audio', id: t.clip.id });
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') onSelecionarItem?.({ tipo: 'audio', id: t.clip.id });
+                        }}
+                      >
+                        <FormaDeOnda
+                          onda={onda}
+                          sourceInicioMs={peca?.sourceInicioMs ?? t.clip.sourceStartMs}
+                          duracaoMs={duracao}
+                          largura={width}
+                          altura={altura - 14}
+                          fadeInMs={peca?.fadeInMs ?? 0}
+                          fadeOutMs={peca?.fadeOutMs ?? 0}
+                          ganhoDb={peca?.ganhoDb ?? 0}
+                        />
+                        <span className="audio-do-trecho__rotulo">
+                          {a?.muted ? <IconeMudo size={12} /> : null}
+                          {recursos.get(t.clip.id)?.audio ?? ''}
+                        </span>
+                        {onOperacao && !a?.muted && (
+                          <>
+                            <span
+                              className="clipe__borda clipe__borda--inicio"
+                              aria-hidden
+                              title="Puxe para a esquerda: o som entra antes da imagem (J-cut)"
+                              onPointerDown={iniciarArraste('audio', t.clip.id, t.inicioMs, 0, 'inicio', a?.leadMs ?? 0)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span
+                              className="clipe__borda clipe__borda--fim"
+                              aria-hidden
+                              title="Puxe para a direita: o som continua depois da imagem (L-cut)"
+                              onPointerDown={iniciarArraste('audio', t.clip.id, t.inicioMs, 0, 'fim', a?.tailMs ?? 0)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {/* Legendas: o que vai aparecer na tela, no tempo certo. */}
+                {id === 'legendas' &&
+                  blocos.map((b) => (
+                    <ItemSimples
+                      key={b.id}
+                      id={`legenda-${b.manualId ?? b.id}`}
+                      inicioMs={b.inicioMs}
+                      fimMs={b.fimMs}
+                      zoom={zoom}
+                      altura={altura}
+                      cor={b.manualId ? '#0e7490' : '#1e3a8a'}
+                      rotulo={b.texto}
+                      classe="clipe--legenda"
+                      selecionado={selecionado('legenda', b.id)}
+                      arrastavel={Boolean(b.manualId) && onOperacao !== undefined}
+                      onIniciarArraste={b.manualId ? iniciarArraste('legenda', b.manualId, b.inicioMs, b.fimMs - b.inicioMs) : undefined}
+                      onRedimensionar={
+                        b.manualId && onOperacao !== undefined
+                          ? (borda) => iniciarArraste('legenda', b.manualId!, b.inicioMs, b.fimMs - b.inicioMs, borda)
+                          : undefined
+                      }
+                      onSelecionar={() => {
+                        onSelecionar?.(null);
+                        onSelecionarItem?.({
+                          tipo: 'legenda',
+                          id: b.id,
+                          wordIds: b.wordIds,
+                          ...(b.manualId ? { manualId: b.manualId } : {}),
+                          inicioMs: b.inicioMs,
+                          fimMs: b.fimMs,
+                          texto: b.texto,
+                        });
+                        onSeek?.(b.inicioMs + 1);
+                      }}
+                    />
+                  ))}
+
+                {(id === 'textos' || id === 'elementos') &&
+                  plan.overlays
+                    .filter((o) => (id === 'textos') === COMPONENTES_DE_TEXTO.has(o.component))
+                    .map((o) => (
+                      <ItemSimples
+                        key={o.id}
+                        id={`elemento-${o.id}`}
+                        inicioMs={o.timelineStartMs}
+                        fimMs={o.timelineStartMs + o.durationMs}
+                        zoom={zoom}
+                        altura={altura}
+                        cor={COR_DO_ELEMENTO[o.component] ?? (id === 'textos' ? '#7c3aed' : '#334155')}
+                        rotulo={`${NOME_DO_ELEMENTO[o.component] ?? o.component}${o.text ? `: ${o.text}` : ''}`}
+                        selecionado={selecionado('elemento', o.id)}
+                        arrastavel={onOperacao !== undefined && o.component !== 'ProgressBar'}
+                        onIniciarArraste={iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs)}
+                        onRedimensionar={
+                          onOperacao !== undefined && o.component !== 'ProgressBar'
+                            ? (borda) => iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs, borda)
+                            : undefined
+                        }
+                        dica={(TEXTOS_DE_TELA as readonly string[]).includes(o.component) ? 'Clique duas vezes para personalizar' : undefined}
+                        onSelecionar={() => tocarNoElemento(o)}
+                      />
+                    ))}
+
+                {/* Efeitos: o zoom de cada trecho. */}
+                {id === 'efeitos' &&
+                  agenda.trechos
+                    .filter((t) => t.clip.effect)
+                    .map((t) => (
+                      <ItemSimples
+                        key={t.clip.id}
+                        id={`efeito-${t.clip.id}`}
+                        inicioMs={t.inicioMs}
+                        fimMs={t.inicioMs + t.duracaoMs}
+                        zoom={zoom}
+                        altura={altura}
+                        cor="#6d28d9"
+                        rotulo={NOME_DO_EFEITO[t.clip.effect!] ?? t.clip.effect!}
+                        selecionado={clipeSelecionado === t.clip.id}
+                        onSelecionar={() => {
+                          onSelecionarItem?.(null);
+                          onSelecionar?.(t.clip.id);
+                        }}
+                      />
+                    ))}
+
+                {id === 'sons' &&
+                  plan.soundEffects.map((s) => (
+                    <ItemSimples
+                      key={s.id}
+                      id={`som-${s.id}`}
+                      inicioMs={s.timelineStartMs}
+                      fimMs={s.timelineStartMs + 600}
+                      zoom={zoom}
+                      altura={altura}
+                      cor="#0f766e"
+                      rotulo={NOME_DO_SOM[s.assetId] ?? 'Som'}
+                      selecionado={selecionado('som', s.id)}
+                      arrastavel={onOperacao !== undefined}
+                      onIniciarArraste={iniciarArraste('som', s.id, s.timelineStartMs, 600)}
+                      onSelecionar={() => {
+                        onSelecionar?.(null);
+                        onSelecionarItem?.({ tipo: 'som', id: s.id });
+                      }}
+                    />
+                  ))}
+
+                {id === 'trilha' &&
+                  (plan.music ? (
+                    <ItemSimples
+                      id="trilha-trilha"
+                      inicioMs={0}
+                      fimMs={duracaoMs}
+                      zoom={zoom}
+                      altura={altura}
+                      cor="#9333ea"
+                      rotulo={`Trilha de fundo · ${plan.music.gainDb} dB${plan.music.duckUnderVoice ? ' · abaixa na fala' : ''}`}
+                      selecionado={selecionado('trilha', 'trilha')}
+                      onSelecionar={() => {
+                        onSelecionar?.(null);
+                        onSelecionarItem?.({ tipo: 'trilha', id: 'trilha' });
+                      }}
+                    />
+                  ) : (
+                    onAbrirBiblioteca && (
+                      <button type="button" className="timeline__vazio" onClick={() => onAbrirBiblioteca('trilha')}>
+                        <IconeMais size={13} /> Adicionar trilha de fundo
+                      </button>
+                    )
+                  ))}
+              </div>
             </div>
           ))}
 
-          {/* Playhead. No OpenCut a posicao vem do motor WASM; aqui
-              vem do player HTML5 sobre o proxy. */}
-          <div
-            aria-hidden
-            style={{
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: msParaPx(posicaoMs, zoom),
-              width: 2,
-              background: 'var(--accent)',
-              pointerEvents: 'none',
-              zIndex: 5,
-            }}
-          />
+          {/* Playhead. */}
+          <div className="timeline__playhead" aria-hidden style={{ left: `calc(var(--rotulo-da-faixa) + ${msParaPx(posicaoMs, zoom)}px)` }} />
         </div>
-
       </div>
     </>
+  );
+}
+
+function MaisNaFaixa({ rotulo, onClick }: { rotulo: string; onClick: () => void }) {
+  return (
+    <button type="button" className="botao-icone botao-icone--pequeno timeline__mais" aria-label={rotulo} title={rotulo} onClick={onClick}>
+      <IconeMais size={13} />
+    </button>
   );
 }
 
@@ -597,12 +723,14 @@ function Acao({
   rotulo,
   desabilitado,
   atalho,
+  dica,
   onClick,
 }: {
   Icone: Icon;
   rotulo: string;
   desabilitado?: boolean;
   atalho?: string;
+  dica?: string;
   onClick?: () => void;
 }) {
   return (
@@ -611,41 +739,82 @@ function Acao({
       className="botao botao--fantasma botao--pequeno"
       disabled={desabilitado}
       onClick={onClick}
-      title={atalho ? `${rotulo} (${atalho})` : rotulo}
+      title={[dica ?? rotulo, atalho ? `(${atalho})` : ''].filter(Boolean).join(' ')}
     >
       <Icone size={16} />
-      {rotulo}
+      <span className="timeline__acao-rotulo">{rotulo}</span>
+      {atalho && <kbd className="timeline__tecla">{atalho}</kbd>}
     </button>
   );
 }
 
 /**
- * Forma de onda do áudio.
- *
- * Enquanto a análise do proxy não existe, o desenho vem de uma
- * função determinística — a mesma timeline sempre produz a mesma
- * onda, então ela não "pisca" a cada render. Não é o áudio real, e
- * por isso não carrega rótulo que sugira precisão.
+ * Forma de onda REAL do trecho: os picos do original (100 por segundo)
+ * no pedaço que o trecho usa, com os fades e o volume aplicados -- o
+ * desenho é o que vai soar. Sem os picos (áudio ainda não disponível),
+ * uma linha neutra, sem fingir precisão.
  */
-function FormaDeOnda({ largura, mudo }: { largura: number; mudo: boolean }) {
-  const barras = Math.max(1, Math.floor(largura / 4));
-
-  return (
-    <div className="onda" style={{ opacity: mudo ? 0.3 : 1 }} aria-hidden>
-      {Array.from({ length: barras }, (_, i) => {
-        const altura = 25 + Math.abs(Math.sin(i * 0.35) * Math.cos(i * 0.11)) * 65;
-        return <span key={i} className="onda__barra" style={{ height: `${altura}%` }} />;
-      })}
-    </div>
-  );
+function FormaDeOnda({
+  onda,
+  sourceInicioMs,
+  duracaoMs,
+  largura,
+  altura,
+  fadeInMs,
+  fadeOutMs,
+  ganhoDb,
+}: {
+  onda: Uint8Array | null;
+  sourceInicioMs: number;
+  duracaoMs: number;
+  largura: number;
+  altura: number;
+  fadeInMs: number;
+  fadeOutMs: number;
+  ganhoDb: number;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(largura));
+    canvas.width = w * dpr;
+    canvas.height = Math.max(1, altura) * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, altura);
+    const meio = altura / 2;
+    const ganho = Math.min(2, 10 ** (ganhoDb / 20));
+    ctx.fillStyle = getComputedStyle(canvas).color || '#34d399';
+    for (let x = 0; x < w; x += 2) {
+      const ms = (x / w) * duracaoMs;
+      let v = 0.08;
+      if (onda && onda.length) {
+        const i0 = Math.floor((sourceInicioMs + ms) / 10);
+        const i1 = Math.max(i0 + 1, Math.floor((sourceInicioMs + ms + (2 / w) * duracaoMs) / 10));
+        let pico = 0;
+        for (let i = i0; i < i1 && i < onda.length; i += 1) pico = Math.max(pico, onda[i] ?? 0);
+        v = pico / 255;
+      }
+      let env = ganho;
+      if (fadeInMs > 0 && ms < fadeInMs) env *= ms / fadeInMs;
+      if (fadeOutMs > 0 && duracaoMs - ms < fadeOutMs) env *= (duracaoMs - ms) / fadeOutMs;
+      const h = Math.max(1, Math.min(1, v * env) * meio * 0.95);
+      ctx.fillRect(x, meio - h, 1.4, h * 2);
+    }
+  }, [onda, sourceInicioMs, duracaoMs, largura, altura, fadeInMs, fadeOutMs, ganhoDb]);
+  return <canvas ref={ref} className="audio-do-trecho__onda" style={{ width: largura, height: altura }} aria-hidden />;
 }
 
-/** Um item de faixa que não é trecho: legenda, elemento, efeito. */
+/** Um item de faixa que não é trecho: legenda, texto, elemento, efeito. */
 function ItemSimples({
   id,
   inicioMs,
   fimMs,
   zoom,
+  altura,
   cor,
   rotulo,
   classe,
@@ -660,6 +829,7 @@ function ItemSimples({
   inicioMs: number;
   fimMs: number;
   zoom: number;
+  altura: number;
   cor: string;
   rotulo: string;
   classe?: string;
@@ -691,62 +861,74 @@ function ItemSimples({
       style={{
         left: msParaPx(inicioMs, zoom),
         width: Math.max(6, msParaPx(fimMs - inicioMs, zoom)),
-        height: ALTURA_TRACK - 16,
-        top: 8,
+        height: altura - 12,
+        top: 6,
         background: cor,
         cursor: arrastavel ? 'grab' : 'pointer',
-        borderColor: selecionado ? 'var(--accent)' : 'transparent',
       }}
     >
       {onRedimensionar && (
-        <span
-          className="clipe__borda clipe__borda--inicio"
-          aria-hidden
-          onPointerDown={onRedimensionar('inicio')}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <span className="clipe__borda clipe__borda--inicio" aria-hidden onPointerDown={onRedimensionar('inicio')} onClick={(e) => e.stopPropagation()} />
       )}
       <span className="clipe__texto">{rotulo}</span>
       {onRedimensionar && (
-        <span
-          className="clipe__borda clipe__borda--fim"
-          aria-hidden
-          onPointerDown={onRedimensionar('fim')}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <span className="clipe__borda clipe__borda--fim" aria-hidden onPointerDown={onRedimensionar('fim')} onClick={(e) => e.stopPropagation()} />
       )}
     </div>
   );
 }
 
+/**
+ * Um trecho na faixa de vídeo, com os SELOS do que está aplicado nele:
+ * efeito, transição de entrada, legendas, textos, elementos, sons e o
+ * som do trecho -- de relance, o que a IA fez ali.
+ */
 function ClipeNaFaixa({
-  item,
-  track,
+  id,
+  funcao,
+  inicioMs,
+  duracaoMs,
+  risco,
+  recursos,
   zoom,
+  altura,
   selecionado,
   arrastavel,
   onSelecionar,
   onIniciarArraste,
 }: {
-  item: ItemDeTrack;
-  track: Track;
+  id: string;
+  funcao: string;
+  inicioMs: number;
+  duracaoMs: number;
+  risco: string;
+  recursos?: RecursosDoTrecho;
   zoom: number;
+  altura: number;
   selecionado: boolean;
   arrastavel: boolean;
   onSelecionar: () => void;
   onIniciarArraste: (e: React.PointerEvent) => void;
 }) {
-  const cor = corDaFuncao(item.label);
-  const largura = Math.max(2, msParaPx(item.endMs - item.startMs, zoom));
-  const legenda = track === 'text';
+  const cor = corDaFuncao(funcao);
+  const largura = Math.max(2, msParaPx(duracaoMs, zoom));
+  const selos: Array<{ chave: string; Icone: Icon; texto: string; dica: string }> = [];
+  if (recursos?.transicao) selos.push({ chave: 'tr', Icone: IconeTransicao, texto: recursos.transicao, dica: `Entra com transição: ${recursos.transicao}` });
+  if (recursos?.efeito) selos.push({ chave: 'fx', Icone: IconeEfeito, texto: recursos.efeito, dica: `Efeito: ${recursos.efeito}` });
+  if (recursos?.legendas) selos.push({ chave: 'lg', Icone: IconeLegenda, texto: String(recursos.legendas), dica: `${recursos.legendas} legendas` });
+  if (recursos?.textos) selos.push({ chave: 'tx', Icone: IconeTexto, texto: String(recursos.textos), dica: `${recursos.textos} textos na tela` });
+  if (recursos?.elementos) selos.push({ chave: 'el', Icone: IconeMidia, texto: String(recursos.elementos), dica: `${recursos.elementos} elementos (logo, imagem, barra)` });
+  if (recursos?.sons) selos.push({ chave: 'sn', Icone: IconeSom, texto: String(recursos.sons), dica: `${recursos.sons} efeitos sonoros` });
+  if (recursos?.audio) selos.push({ chave: 'au', Icone: recursos.audio === 'Mudo' ? IconeMudo : IconeOnda, texto: recursos.audio, dica: `Som do trecho: ${recursos.audio}` });
 
   return (
     <div
-      data-clip={item.id}
-      data-arrastavel={item.id}
+      data-clip={id}
+      data-arrastavel={`clipe-${id}`}
       data-selecionado={selecionado || undefined}
       role="button"
       tabIndex={0}
+      title={[nomeDaFuncao(funcao), ...selos.map((s) => s.dica)].join(' · ')}
       onClick={onSelecionar}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -755,48 +937,39 @@ function ClipeNaFaixa({
         }
       }}
       onPointerDown={arrastavel ? onIniciarArraste : undefined}
-      className="clipe"
+      className="clipe clipe--trecho"
       style={{
-        left: msParaPx(item.startMs, zoom),
+        left: msParaPx(inicioMs, zoom),
         width: largura,
-        height: ALTURA_TRACK - 10,
-        background: legenda ? cor : 'var(--surface-2)',
+        height: altura - 8,
+        top: 4,
         cursor: arrastavel ? 'grab' : 'pointer',
         // Risco alto ganha borda de alerta: ele exige confirmacao
-        // antes do render (plano, secao 9.3), e o usuario precisa
-        // ver isso na timeline, nao so num aviso separado.
-        borderColor: selecionado
-          ? 'var(--accent)'
-          : item.semanticRisk === 'high'
-            ? 'var(--warning)'
-            : 'transparent',
+        // antes do render, e precisa aparecer na timeline.
+        borderColor: selecionado ? 'var(--accent)' : risco === 'high' ? 'var(--warning)' : 'transparent',
       }}
     >
-      {/* Tira de frames: enquanto o proxy nao existe, um degrade da
-          cor da funcao ocupa o lugar sem fingir miniaturas que nao
-          temos. */}
-      {!legenda && (
-        <span
-          className="clipe__frames"
-          aria-hidden
-          style={{
-            backgroundImage: `repeating-linear-gradient(90deg, ${cor}55 0 32px, ${cor}22 32px 34px)`,
-          }}
-        />
-      )}
-
-      <span className="clipe__chip" style={{ background: legenda ? 'transparent' : cor }}>
-        {legenda ? (
-          item.label
-        ) : (
-          <>
-            {nomeDaFuncao(item.label)}
-            <span style={{ opacity: 0.75, fontWeight: 500 }}>
-              {((item.endMs - item.startMs) / 1000).toFixed(1)}s
-            </span>
-          </>
-        )}
+      <span
+        className="clipe__frames"
+        aria-hidden
+        style={{ backgroundImage: `repeating-linear-gradient(90deg, ${cor}55 0 32px, ${cor}22 32px 34px)` }}
+      />
+      <span className="clipe__topo">
+        <span className="clipe__chip" style={{ background: cor }}>
+          {nomeDaFuncao(funcao)}
+          <span style={{ opacity: 0.75, fontWeight: 500 }}>{(duracaoMs / 1000).toFixed(1)}s</span>
+        </span>
       </span>
+      {selos.length > 0 && (
+        <span className="clipe__selos">
+          {selos.map(({ chave, Icone, texto, dica }) => (
+            <span key={chave} className={`selo selo--${chave}`} title={dica}>
+              <Icone size={11} weight="bold" />
+              <span className="selo__texto">{texto}</span>
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }

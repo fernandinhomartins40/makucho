@@ -23,14 +23,18 @@ import {
   IconeLegenda,
   IconeMarca,
   IconeParametros,
+  IconeBiblioteca,
 } from '../icones';
 
-export type AbaDoEditor = 'ia' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
+export type AbaDoEditor = 'ia' | 'biblioteca' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
 
+// A ordem do trabalho: o que a IA fez, o que dá para acrescentar, o
+// texto da fala, os arquivos e a marca.
 const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
-  { id: 'ia', rotulo: 'Ferramentas', Icone: IconeIA },
-  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
+  { id: 'ia', rotulo: 'IA', Icone: IconeIA },
+  { id: 'biblioteca', rotulo: 'Biblioteca', Icone: IconeBiblioteca },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
+  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
   { id: 'marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 

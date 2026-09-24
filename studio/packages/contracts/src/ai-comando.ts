@@ -42,6 +42,9 @@ export const OPERACOES_DO_COMANDO = [
   'reordenar',
   'trocar_estilo_legenda',
   'trocar_musica',
+  'configurar_musica',
+  'ajustar_audio_do_clipe',
+  'editar_efeito_sonoro',
   'configurar_legenda',
   'definir_transicao',
   'transicao_em_todos',
@@ -131,6 +134,20 @@ function descrever(bruta: unknown, motivo: string): string {
  * IA entender "tira a parte em que eu falo do preco" sem receber a
  * transcricao inteira.
  */
+/** O som do trecho em poucas letras: "mudo", "+3dB J800", "-". */
+function somDoTrecho(a: EditPlanV1['clips'][number]['audio']): string {
+  if (!a) return '-';
+  if (a.muted) return 'mudo';
+  const partes = [
+    a.gainDb ? `${a.gainDb > 0 ? '+' : ''}${a.gainDb}dB` : '',
+    a.leadMs ? `J${a.leadMs}` : '',
+    a.tailMs ? `L${a.tailMs}` : '',
+    a.fadeInMs ? `in${a.fadeInMs}` : '',
+    a.fadeOutMs ? `out${a.fadeOutMs}` : '',
+  ].filter(Boolean);
+  return partes.join(' ') || '-';
+}
+
 export function resumoDoPlanoParaIa(
   plano: EditPlanV1,
   falas: Readonly<Record<string, string>> = {},
@@ -148,7 +165,7 @@ export function resumoDoPlanoParaIa(
     `Música: ${plano.music ? `sim (${plano.music.gainDb}dB, assetId=${plano.music.assetId})` : 'não'}${recursos.musicaAssetId ? ` | trilha da marca: assetId=${recursos.musicaAssetId}` : ' | a marca não tem trilha'}`,
     `Logo da marca: ${recursos.logoAssetId ? `assetId=${recursos.logoAssetId}` : 'não cadastrado'}`,
     '',
-    'Trechos (id|papel|início na timeline|duração|origem no bruto|efeito|transição antes|fala):',
+    'Trechos (id|papel|início na timeline|duração|origem no bruto|efeito|transição antes|som|fala):',
   ];
 
   let inicio = 0;
@@ -164,6 +181,7 @@ export function resumoDoPlanoParaIa(
         `${clip.sourceStartMs}-${clip.sourceEndMs}ms`,
         clip.effect ?? '-',
         transicaoAntes.get(i) ?? '-',
+        somDoTrecho(clip.audio),
         `"${fala.length > 90 ? `${fala.slice(0, 89)}…` : fala}"`,
       ].join('|'),
     );

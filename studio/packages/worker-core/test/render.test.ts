@@ -87,7 +87,9 @@ const entradasDeTrecho = (a: string[]) =>
 const trechosDoArgs = entradasDeTrecho(args);
 t('o primeiro trecho lê o original a partir de 10s', trechosDoArgs[0]?.ss === '10.000' && trechosDoArgs[0]?.arquivo === '/in.mp4');
 t('o segundo lê a partir de 40s', trechosDoArgs.some((e) => e.ss === '40.000'));
-t('cada entrada lê só o trecho (+0,5 s de folga)', trechosDoArgs.filter((e) => e.ss === '10.000').every((e) => e.t === '8.500') && trechosDoArgs.filter((e) => e.ss === '40.000').every((e) => e.t === '7.500'));
+t('cada entrada lê só o trecho (+0,5 s de folga)', trechosDoArgs.filter((e) => e.ss === '10.000').every((e) => e.t === '8.500' || e.t === '8.530') && trechosDoArgs.filter((e) => e.ss === '40.000').every((e) => e.t === '7.500'));
+// O áudio do segundo trecho começa 30 ms antes: é o cruzamento do corte.
+t('o áudio do trecho seguinte começa 30 ms antes do corte', trechosDoArgs.some((e) => e.ss === '39.970' && e.t === '7.530'));
 t('vídeo e áudio do trecho vêm de entradas separadas (nenhuma entrada alimenta dois ramos)', trechosDoArgs.filter((e) => e.ss === '10.000').length === 2);
 
 // setpts zera o relógio de cada trecho. Sem isso o concat mantém os
@@ -103,12 +105,17 @@ t('o primeiro trecho tem 240 quadros exatos', cadeiasDeVideo[0]!.includes('trim=
 t('o segundo trecho tem 210 quadros exatos', cadeiasDeVideo[1]!.includes('trim=end_frame=210'));
 // asetpts pelo mesmo motivo: sem ele o áudio entra deslocado do
 // quadro, que é o defeito mais visível possível.
-t('o áudio tem asetpts em cada trecho', (filtro.match(/asetpts=PTS-STARTPTS/g) ?? []).length === 2);
+t('o áudio tem asetpts em cada peça', (filtro.match(/\[\d+:a\]atrim=0:[^;]*asetpts=PTS-STARTPTS/g) ?? []).length === 2);
 
 t('o áudio é cortado junto do vídeo, da entrada do trecho', (filtro.match(/\[\d+:a\]atrim=0:/g) ?? []).length === 2);
 t('nenhum ramo lê o original inteiro (sem espera cruzada)', !filtro.includes('[0:v]trim=') && !filtro.includes('[0:a]atrim='));
 // O áudio do trecho tem a mesma duração do vídeo dele (quadros / 30).
-t('o áudio do trecho tem a duração exata do vídeo', filtro.includes('apad=whole_dur=8.0000,atrim=0:8.0000'));
+t('a peça de áudio cobre o trecho e o cruzamento de 30 ms', filtro.includes('apad=whole_dur=8.030,atrim=0:8.030'));
+// Cruzamento no corte seco: a primeira peça sai em 60 ms, a segunda
+// entra em 60 ms, começando 30 ms antes do corte.
+t('a peça que sai cruza o volume no corte', filtro.includes('afade=t=out:st=7.970:d=0.060'));
+t('a peça que entra começa 30 ms antes do corte', filtro.includes('adelay=delays=7970:all=1'));
+t('a peça que entra cresce em 60 ms', filtro.includes('afade=t=in:d=0.060'));
 
 // ============================================================
 // Formato vertical
@@ -126,7 +133,8 @@ t('corrige o aspecto de pixel', filtro.includes('setsar=1'));
 // ============================================================
 
 t('concatena o vídeo dos dois trechos', filtro.includes('concat=n=2:v=1:a=0'));
-t('concatena o áudio dos dois trechos', filtro.includes('concat=n=2:v=0:a=1[voz]'));
+t('soma as peças de áudio (sem normalizar o volume)', filtro.includes('amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,'));
+t('o áudio somado tem a duração exata do vídeo', filtro.includes('apad=whole_dur=15.000,atrim=0:15.000,asetpts=PTS-STARTPTS[voz]'));
 // Sem transição, nada de xfade: corte seco é concat.
 t('sem transição, não há xfade', !filtro.includes('xfade'));
 t('o vídeo montado vira [vsaida]', filtro.includes('null[vsaida]'));
@@ -176,7 +184,7 @@ t('o clip desligado não entra', !entradasDeTrecho(semC1).some((e) => e.ss === '
 t('o que sobrou entra (vídeo e áudio dele)', entradasDeTrecho(semC1).length === 2 && entradasDeTrecho(semC1).every((e) => e.ss === '40.000'));
 // Um único trecho ainda passa pelo concat: mudar o caminho para o
 // caso de um só produziria dois comportamentos para manter.
-t('um trecho só ainda concatena o áudio', filtroSemC1.includes('concat=n=1:v=0:a=1'));
+t('um trecho só ainda passa pela soma do áudio', filtroSemC1.includes('amix=inputs=1:'));
 
 let recusou = false;
 try {
@@ -253,20 +261,19 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('zoom lento cresce com o tempo (eval=frame)', f.includes('eval=frame'));
   t('punch-in recorta 1/1.12 e volta ao quadro', f.includes('crop=964:1714,scale=1080:1920'));
 
-  // Transição: cada uma é um segmento próprio (último quadro congelado
-  // do trecho que sai + começo do que entra), e tudo entra num concat
-  // só. Nenhum xfade recebe a saída de outro (no FFmpeg 5.1, o
-  // encadeado descarta o que vem depois da segunda transição), e nenhum
-  // trecho é repartido com split (o ramo lido mais tarde travava o
-  // FFmpeg): cada pedaço é uma leitura própria da entrada.
-  t('o último quadro do trecho que sai é um pedaço próprio', /\[\d+:v\][^;]*trim=end_frame=1,/.test(f));
-  t('o último quadro sai congelado pela duração da transição', f.includes('[z1]tpad=stop_mode=clone:stop=12,trim=end_frame=12,setpts=PTS-STARTPTS[u1]'));
-  t('o começo do trecho que entra é um pedaço de 12 quadros', /trim=end_frame=12,setpts=PTS-STARTPTS[^;]*\[qe2\]/.test(f) || f.includes('[e2]'));
-  t('o xfade é um segmento curto, começando em zero', f.includes('[u1][e2]xfade=transition=fade:duration=0.4000:offset=0,'));
-  t('o segmento da transição tem o número exato de quadros', /xfade=[^;]*trim=end_frame=12,setpts=PTS-STARTPTS\[t2\]/.test(f));
-  t('o quadro congelado dura exatamente a transição (um a mais travava o render)', /\[z1\]tpad=stop_mode=clone:stop=12,trim=end_frame=12,/.test(f));
-  t('o resto do trecho vem depois (168 quadros)', /trim=end_frame=168,setpts=PTS-STARTPTS/.test(f) && f.includes('[r2]'));
-  t('tudo num concat só, na ordem da timeline', f.includes('[c0][c1][t2][r2]concat=n=4:v=1:a=0[montado]'));
+  // Transição: centrada no corte, SEM congelar. O trecho que sai
+  // continua andando 6 quadros depois do fim (sobras do original) e o
+  // que entra começa 6 quadros antes do começo. A janela ocupa os 12
+  // quadros que tira dos dois lados: a duração total não muda.
+  t('o trecho que sai perde 6 quadros no miolo (210 → 204)', /trim=end_frame=204,setpts=PTS-STARTPTS/.test(f));
+  t('o fim de A anda além do corte (entrada a partir de 46,8 s)', a.includes('46.800'));
+  t('o começo de B vem das sobras antes dele (entrada a partir de 59,8 s)', a.includes('59.800'));
+  t('nada congela: sem pedaço de um quadro só', !/trim=end_frame=1,/.test(f));
+  t('o xfade é um segmento curto, começando em zero', f.includes('[sa1][en1]xfade=transition=fade:duration=0.4000:offset=0,'));
+  t('o segmento da transição tem o número exato de quadros', /xfade=[^;]*trim=end_frame=12,setpts=PTS-STARTPTS\[t1\]/.test(f));
+  t('o miolo de B vem depois (180 − 6 = 174 quadros)', /trim=end_frame=174,setpts=PTS-STARTPTS/.test(f));
+  t('tudo num concat só, na ordem da timeline', f.includes('[c0][c1][t1][c2]concat=n=4:v=1:a=0[montado]'));
+  t('o áudio cruza pela janela inteira da transição (400 ms)', f.includes('afade=t=in:d=0.400') && f.includes('d=0.400,adelay'));
   t('nenhum xfade recebe a saída de outro xfade', !/\[t\d+\]xfade/.test(f) && (f.match(/xfade=/g) ?? []).length === 1);
   t('nenhum trecho é repartido com split (só o desfoque divide o quadro)', !/\[c\d+\]split/.test(f));
   t('o zoom lento continua no pedaço seguinte (tempo deslocado)', !f.includes('(t+0.0000)'));

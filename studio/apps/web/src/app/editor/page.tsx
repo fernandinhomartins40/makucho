@@ -31,6 +31,7 @@ import {
   podeEditar,
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
   ROTULO_DE_ESTADO,
+  tirarPausas,
 } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
@@ -38,6 +39,8 @@ import { AvisoDeFechamento } from '../../components/editor/AvisoDeFechamento';
 import type { ItemDaTimeline } from '../../components/timeline/camadas';
 import type { ProgressoDoPreparo } from '@makucho/studio-contracts';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
+import { PainelDaBiblioteca, type CategoriaDaBiblioteca } from '../../components/biblioteca/PainelDaBiblioteca';
+import { AtalhosDoEditor } from '../../components/editor/AtalhosDoEditor';
 import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
 import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
 import { Inspector, type RecursosDaMarca } from '../../components/editor/Inspector';
@@ -120,6 +123,12 @@ function Editor({ projectId }: { projectId: string }) {
   const [titulo, setTitulo] = useState('');
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [comandoTocar, setComandoTocar] = useState(0);
+  const [comandoAlternar, setComandoAlternar] = useState(0);
+  const [atalhosAbertos, setAtalhosAbertos] = useState(false);
+  const [categoriaDaBiblioteca, setCategoriaDaBiblioteca] = useState<CategoriaDaBiblioteca>('textos');
+  const [aviso, setAviso] = useState<string | null>(null);
+  /** Picos do áudio do original (100/s): a forma de onda da faixa Áudio. */
+  const [onda, setOnda] = useState<Uint8Array | null>(null);
 
   const [transcricao, setTranscricao] = useState<Transcricao | null>(null);
   const [carregandoTranscricao, setCarregandoTranscricao] = useState(false);
@@ -383,6 +392,12 @@ function Editor({ projectId }: { projectId: string }) {
     }
   }, [projectId, receberPlano]);
 
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 6000);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
   const pedirAIa = useCallback(
     async (texto: string): Promise<RespostaDaIa | null> => {
       setErro(null);
@@ -525,6 +540,103 @@ function Editor({ projectId }: { projectId: string }) {
   const semIa = !!plano && plano.clips.every((c) => c.reason === MOTIVO_DA_MONTAGEM_AUTOMATICA);
   const reducao = plano ? Math.round((1 - duracaoMs / Math.max(1, plano.sourceDurationMs)) * 100) : 0;
   const temProxy = !!projeto?.mediaSources.some((m) => m.kind === 'PROXY');
+
+  useEffect(() => {
+    if (!temProxy || onda) return;
+    let cancelado = false;
+    void fetch(`/api/projects/${projectId}/onda`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.arrayBuffer() : null))
+      .then((b) => {
+        if (!cancelado && b && b.byteLength) setOnda(new Uint8Array(b));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelado = true;
+    };
+  }, [temProxy, projectId, onda]);
+
+  /** Aperta os cortes na fala e tira as pausas longas do meio. */
+  const tirarAsPausas = useCallback(() => {
+    if (!plano || !palavrasDaTranscricao.length) {
+      setErro('a transcrição ainda não carregou: sem ela não dá para achar as pausas.');
+      return;
+    }
+    const r = tirarPausas(plano, palavrasDaTranscricao, { pausaMinimaMs: 700 });
+    if (r.removidoMs < 100) {
+      setAviso('Os cortes já estão encostados na fala: não havia pausa para tirar.');
+      return;
+    }
+    setPassado((h) => [...h, plano]);
+    setFuturo([]);
+    setPlano(r.plano);
+    setErro(null);
+    void salvarDocumento(r.plano);
+    setAviso(
+      `Tiramos ${(r.removidoMs / 1000).toFixed(1).replace('.', ',')} s de pausas${r.divisoes ? ` (${r.divisoes} corte${r.divisoes > 1 ? 's' : ''} novo${r.divisoes > 1 ? 's' : ''} no meio da fala)` : ''}. Ctrl+Z desfaz.`,
+    );
+  }, [plano, palavrasDaTranscricao, salvarDocumento]);
+
+  /** Delete no item selecionado: cada tipo sai do jeito dele. */
+  const excluirItem = useCallback(() => {
+    const item = itemSelecionado;
+    if (!item) return false;
+    if (item.tipo === 'legenda') {
+      if (item.manualId) executar({ op: 'remover_legenda_manual', legendaId: item.manualId });
+      else if (item.wordIds.length) executar({ op: 'ocultar_legenda', wordIds: item.wordIds.slice(0, 80) });
+    } else if (item.tipo === 'elemento') executar({ op: 'remover_overlay', overlayId: item.id });
+    else if (item.tipo === 'som') executar({ op: 'remover_efeito_sonoro', soundEffectId: item.id });
+    else if (item.tipo === 'corte') executar({ op: 'definir_transicao', clipId: item.clipId, type: 'cut' });
+    else if (item.tipo === 'audio') executar({ op: 'ajustar_audio_do_clipe', clipId: item.id, muted: true });
+    else if (item.tipo === 'trilha') executar({ op: 'trocar_musica', assetId: null });
+    setItemSelecionado(null);
+    return true;
+  }, [itemSelecionado, executar]);
+
+  // Atalhos de editor de vídeo (fora de campos de texto).
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement;
+      if (
+        alvo instanceof HTMLInputElement ||
+        alvo instanceof HTMLTextAreaElement ||
+        alvo instanceof HTMLSelectElement ||
+        alvo.isContentEditable
+      ) {
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const quadro = 1000 / 30;
+      const fim = plano ? plano.targetDurationMs : 0;
+      if (e.key === ' ' || e.code === 'Space') {
+        // Espaço toca/pausa; Shift+Espaço toca do começo.
+        e.preventDefault();
+        if (e.shiftKey) setComandoTocar((n) => n + 1);
+        else setComandoAlternar((n) => n + 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setPosicaoMs(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setPosicaoMs(Math.max(0, fim - 1));
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const passo = e.shiftKey ? 1000 : quadro;
+        setPosicaoMs((p) => Math.min(Math.max(0, fim - 1), Math.max(0, p + (e.key === 'ArrowLeft' ? -passo : passo))));
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        // O trecho selecionado é da timeline; aqui, o item.
+        if (excluirItem()) e.preventDefault();
+      } else if (e.key === 'Escape') {
+        setItemSelecionado(null);
+        setSelecionado(null);
+        setAtalhosAbertos(false);
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setAtalhosAbertos((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [plano, excluirItem]);
 
   // ---------- Telas ----------
   if (erroDeCarga) {
@@ -816,6 +928,21 @@ function Editor({ projectId }: { projectId: string }) {
             />
           )}
           {aba === 'ia' && <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />}
+          {aba === 'biblioteca' && (
+            <PainelDaBiblioteca
+              plan={plano}
+              posicaoMs={posicaoMs}
+              categoria={categoriaDaBiblioteca}
+              onCategoria={setCategoriaDaBiblioteca}
+              itemSelecionado={itemSelecionado}
+              clipeSelecionado={selecionado}
+              marca={marcaDoVideo}
+              onOperacao={executar}
+              onOperacoes={executarVarias}
+              onSelecionarItem={(item) => setItemSelecionado(item)}
+              urlDoAsset={apiAssets.url}
+            />
+          )}
           {aba === 'midia' && projeto && <PainelDeMidia projeto={projeto} />}
           {aba === 'legendas' && (
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} />
@@ -832,6 +959,7 @@ function Editor({ projectId }: { projectId: string }) {
             desligados={desligados}
             transcricao={transcricao}
             comandoTocar={comandoTocar}
+            comandoAlternar={comandoAlternar}
             marca={marcaDoVideo}
             urlDoAsset={apiAssets.url}
             destaqueSelecionado={itemSelecionado?.tipo === 'elemento' ? itemSelecionado.id : null}
@@ -862,8 +990,16 @@ function Editor({ projectId }: { projectId: string }) {
             refazendoAcabamento={refazendoAcabamento}
             item={itemSelecionado}
             onFecharItem={() => setItemSelecionado(null)}
+            onSelecionarItem={(item) => setItemSelecionado(item)}
           />
         </aside>
+
+        {atalhosAbertos && <AtalhosDoEditor onFechar={() => setAtalhosAbertos(false)} />}
+        {aviso && (
+          <div className="editor__aviso" role="status">
+            <IconeCheck size={16} /> {aviso}
+          </div>
+        )}
 
         <section className="editor__timeline" aria-label="Linha do tempo">
           <Timeline
@@ -874,6 +1010,14 @@ function Editor({ projectId }: { projectId: string }) {
             clipeSelecionado={selecionado}
             onSelecionar={setSelecionado}
             palavras={palavrasDaTranscricao}
+            onda={onda}
+            onTirarPausas={tirarAsPausas}
+            onAbrirBiblioteca={(categoria) => {
+              setCategoriaDaBiblioteca(categoria === 'trilha' ? 'trilha' : categoria);
+              setAba('biblioteca');
+              if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
+            }}
+            onMostrarAtalhos={() => setAtalhosAbertos(true)}
             itemSelecionado={itemSelecionado}
             onSelecionarItem={(item) => {
               setItemSelecionado(item);
@@ -942,7 +1086,8 @@ function EntendimentoDaIa({ e }: { e: NonNullable<ProjetoDetalhado['entendimento
 }
 
 const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
-  ia: 'Ferramentas',
+  ia: 'IA',
+  biblioteca: 'Biblioteca',
   midia: 'Mídia',
   texto: 'Texto',
   legendas: 'Legendas',

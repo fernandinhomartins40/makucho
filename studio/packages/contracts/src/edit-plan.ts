@@ -47,6 +47,26 @@ export const EFEITOS_DE_TRECHO = ['punch_in', 'zoom_lento'] as const;
 export const efeitoDeTrechoSchema = z.enum(EFEITOS_DE_TRECHO);
 export type EfeitoDeTrecho = z.infer<typeof efeitoDeTrechoSchema>;
 
+// ---------- Audio do trecho ----------
+//
+// O som de cada trecho se edita separado da imagem: volume, mudo,
+// fades e o J/L-cut -- `leadMs` faz o som entrar antes da imagem (a
+// fala do proximo trecho comeca sobre o fim deste) e `tailMs` o deixa
+// continuar depois dela. Ausente, vale o som original com o cruzamento
+// automatico nos cortes (agenda.ts).
+export const audioDoTrechoSchema = z
+  .object({
+    gainDb: z.number().min(-30).max(12).optional(),
+    muted: z.boolean().optional(),
+    fadeInMs: z.number().int().min(0).max(3000).optional(),
+    fadeOutMs: z.number().int().min(0).max(3000).optional(),
+    leadMs: z.number().int().min(0).max(3000).optional(),
+    tailMs: z.number().int().min(0).max(3000).optional(),
+  })
+  .strict();
+
+export type AudioDoTrecho = z.infer<typeof audioDoTrechoSchema>;
+
 // ---------- Clip ----------
 export const clipSchema = z
   .object({
@@ -65,6 +85,7 @@ export const clipSchema = z
     reason: z.string().min(1).max(500),
     // Opcional: planos anteriores aos efeitos continuam validos.
     effect: efeitoDeTrechoSchema.optional(),
+    audio: audioDoTrechoSchema.optional(),
   })
   .refine((clip) => clip.sourceEndMs > clip.sourceStartMs, {
     message: 'sourceEndMs deve ser maior que sourceStartMs',
@@ -298,7 +319,18 @@ export const musicTrackSchema = z.object({
  * nao ha licenca a registrar, nada a baixar e nada ocupando o storage.
  * Qualquer outro `assetId` aponta para um SOUND_EFFECT do workspace.
  */
-export const EFEITOS_SONOROS_EMBUTIDOS = ['sfx-whoosh', 'sfx-pop', 'sfx-click'] as const;
+export const EFEITOS_SONOROS_EMBUTIDOS = [
+  'sfx-whoosh',
+  'sfx-pop',
+  'sfx-click',
+  'sfx-swipe',
+  'sfx-riser',
+  'sfx-impacto',
+  'sfx-ding',
+  'sfx-digitar',
+  'sfx-camera',
+  'sfx-glitch',
+] as const;
 export type EfeitoSonoroEmbutido = (typeof EFEITOS_SONOROS_EMBUTIDOS)[number];
 
 export function ehEfeitoSonoroEmbutido(id: string): id is EfeitoSonoroEmbutido {

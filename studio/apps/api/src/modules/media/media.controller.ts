@@ -132,6 +132,22 @@ export class MediaController {
     return new StreamableFile(createReadStream(arquivo.caminho));
   }
 
+  /** Forma de onda real: 100 picos por segundo do original (0-255). */
+  @Get('projects/:id/onda')
+  async onda(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') projectId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const picos = await this.media.ondaDoProjeto(tenant, projectId);
+    res.set({
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(picos.length),
+      'Cache-Control': 'private, max-age=86400',
+    });
+    return new StreamableFile(picos);
+  }
+
   @Get('projects/:id/video')
   async video(
     @CurrentTenant() tenant: TenantContext,

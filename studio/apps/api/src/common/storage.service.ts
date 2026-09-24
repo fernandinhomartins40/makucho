@@ -16,7 +16,7 @@
 // ============================================================
 
 import { createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat, readdir } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, readdir } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
@@ -105,6 +105,11 @@ export class StorageService {
     await pipeline(origem, createWriteStream(destino));
     const info = await stat(destino);
     return info.size;
+  }
+
+  /** O arquivo inteiro na memória: só para arquivos pequenos (cache, WAV de voz). */
+  async ler(chave: string): Promise<Buffer> {
+    return readFile(this.caminho(chave));
   }
 
   async tamanho(chave: string): Promise<number | null> {

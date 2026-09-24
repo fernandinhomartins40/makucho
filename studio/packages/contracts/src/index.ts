@@ -30,6 +30,8 @@ export * from './estilos-de-legenda';
 export * from './legendas-ass';
 export * from './metricas-de-fontes';
 export * from './textos-de-tela';
+export * from './agenda';
+export * from './pausas';
 export * from './acabamento';
 export * from './retomadas';
 export * from './progresso';

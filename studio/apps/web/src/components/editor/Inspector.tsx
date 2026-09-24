@@ -23,7 +23,9 @@ import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO } from '@makucho/studio-contracts';
+import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
+import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
+import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
 import { nomeDaFuncao, corDaFuncao, tempo } from './funcoes';
 import {
@@ -73,6 +75,8 @@ interface Props {
   /** Legenda, corte, elemento ou som selecionado na timeline. */
   item?: ItemDaTimeline | null;
   onFecharItem?: () => void;
+  /** Abre um recurso do trecho (transição, texto, som...) no painel. */
+  onSelecionarItem?: (item: ItemDaTimeline) => void;
   onOperacao: (op: TimelineOperation) => void;
   /** Várias operações de uma vez, numa versão só (zoom em todos, sons). */
   onOperacoes: (ops: TimelineOperation[]) => void;
@@ -93,6 +97,7 @@ export function Inspector({
   refazendoAcabamento,
   item,
   onFecharItem,
+  onSelecionarItem,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   const clipe = plan.clips.find((c) => c.id === clipId);
@@ -117,7 +122,7 @@ export function Inspector({
             marca={marca}
           />
         ) : clipe ? (
-          <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} />
+          <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} onSelecionarItem={onSelecionarItem} />
         ) : (
           <>
             <div className="abas" role="tablist">
@@ -687,10 +692,12 @@ function PropriedadesDoTrecho({
   plan,
   clipe,
   onOperacao,
+  onSelecionarItem,
 }: {
   plan: EditPlanV1;
   clipe: EditPlanV1['clips'][number];
   onOperacao: (op: TimelineOperation) => void;
+  onSelecionarItem?: (item: ItemDaTimeline) => void;
 }) {
   const duracaoMs = clipe.sourceEndMs - clipe.sourceStartMs;
   const posicao = plan.clips.findIndex((c) => c.id === clipe.id);
@@ -753,6 +760,8 @@ function PropriedadesDoTrecho({
         </span>
         <p style={{ fontSize: 13, lineHeight: 1.45 }}>{clipe.reason}</p>
       </div>
+
+      <RecursosDoTrecho plan={plan} clipe={clipe} onSelecionarItem={onSelecionarItem} />
 
       {clipe.semanticRisk === 'high' && (
         <div className="aviso aviso--atencao" style={{ marginBottom: 'var(--e4)' }}>
@@ -844,6 +853,86 @@ function PropriedadesDoTrecho({
       </button>
       {ultimo && <p className="campo__ajuda">O vídeo precisa de ao menos um trecho.</p>}
     </>
+  );
+}
+
+/**
+ * Tudo o que está aplicado neste trecho, com um clique para abrir cada
+ * coisa: o que a IA fez fica à vista e ao alcance.
+ */
+function RecursosDoTrecho({
+  plan,
+  clipe,
+  onSelecionarItem,
+}: {
+  plan: EditPlanV1;
+  clipe: EditPlanV1['clips'][number];
+  onSelecionarItem?: (item: ItemDaTimeline) => void;
+}) {
+  const agenda = agendaDoPlano(plan);
+  const t = agenda.trechos.find((x) => x.clip.id === clipe.id);
+  if (!t) return null;
+  const ini = t.inicioMs;
+  const fim = t.inicioMs + t.duracaoMs;
+  const indice = plan.clips.findIndex((c) => c.id === clipe.id);
+  const transicao = plan.transitions.find((x) => x.beforeClipIndex === indice && x.type !== 'cut');
+  const textos = plan.overlays.filter((o) => Math.min(fim, o.timelineStartMs + o.durationMs) - Math.max(ini, o.timelineStartMs) > 0);
+  const sons = plan.soundEffects.filter((e) => e.timelineStartMs >= ini && e.timelineStartMs < fim);
+  const a = clipe.audio;
+  const itens: Array<{ chave: string; rotulo: string; detalhe: string; abrir?: () => void }> = [];
+  if (transicao) {
+    itens.push({
+      chave: 'tr',
+      rotulo: 'Transição de entrada',
+      detalhe: `${NOME_DA_TRANSICAO[transicao.type] ?? transicao.type}, ${transicao.durationMs} ms`,
+      abrir: () => onSelecionarItem?.({ tipo: 'corte', id: clipe.id, clipId: clipe.id, ms: ini }),
+    });
+  }
+  if (clipe.effect) itens.push({ chave: 'fx', rotulo: 'Efeito', detalhe: NOME_DO_EFEITO[clipe.effect] ?? clipe.effect });
+  itens.push({
+    chave: 'au',
+    rotulo: 'Som do trecho',
+    detalhe: a?.muted ? 'Mudo' : [a?.gainDb ? `${a.gainDb} dB` : 'Original', a?.leadMs ? `entra ${a.leadMs} ms antes` : '', a?.tailMs ? `segue ${a.tailMs} ms depois` : ''].filter(Boolean).join(', '),
+    abrir: () => onSelecionarItem?.({ tipo: 'audio', id: clipe.id }),
+  });
+  for (const o of textos) {
+    itens.push({
+      chave: o.id,
+      rotulo: NOME_DO_ELEMENTO[o.component] ?? o.component,
+      detalhe: o.text ?? '',
+      abrir: () => onSelecionarItem?.({ tipo: 'elemento', id: o.id }),
+    });
+  }
+  for (const e of sons) {
+    itens.push({
+      chave: e.id,
+      rotulo: 'Efeito sonoro',
+      detalhe: `${NOME_DO_SOM[e.assetId] ?? 'Som'} em ${tempo(e.timelineStartMs)}`,
+      abrir: () => onSelecionarItem?.({ tipo: 'som', id: e.id }),
+    });
+  }
+
+  return (
+    <div className="campo" style={{ marginBottom: 'var(--e4)' }}>
+      <span className="campo__rotulo">Neste trecho</span>
+      <ul className="recursos-do-trecho">
+        {itens.map((i) => (
+          <li key={i.chave}>
+            {i.abrir ? (
+              <button type="button" className="recursos-do-trecho__item" onClick={i.abrir}>
+                <strong>{i.rotulo}</strong>
+                <span>{i.detalhe}</span>
+              </button>
+            ) : (
+              <span className="recursos-do-trecho__item">
+                <strong>{i.rotulo}</strong>
+                <span>{i.detalhe}</span>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

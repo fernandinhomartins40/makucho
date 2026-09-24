@@ -24,8 +24,10 @@ import {
   PREFIXO_DAS_FILAS,
   compilarProposta,
   montarPropostaSemIa,
+  editPlanV1Schema,
+  tirarPausas,
 } from '@makucho/studio-contracts';
-import type { SemanticIssue } from '@makucho/studio-contracts';
+import type { EditPlanV1, SemanticIssue } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
@@ -215,7 +217,12 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
   private async montarSemIa(workspaceId: string, projectId: string, motivo: string) {
     const transcricao = await this.prisma.transcription.findUnique({
       where: { projectId },
-      include: { segments: { orderBy: { position: 'asc' } } },
+      include: {
+        segments: {
+          orderBy: { position: 'asc' },
+          include: { words: { select: { id: true, startMs: true, endMs: true, word: true } } },
+        },
+      },
     });
     const original = await this.prisma.mediaSource.findFirst({
       where: { projectId, kind: 'ORIGINAL' },
@@ -251,7 +258,13 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     });
     if (!compilado.ok) return null;
 
-    return { plano: compilado.plano, avisos: compilado.avisos };
+    // Cortes encostados na fala, como na proposta da IA.
+    const palavras = transcricao.segments.flatMap((sg) => sg.words);
+    const apertado = tirarPausas(compilado.plano as EditPlanV1, palavras);
+    const plano =
+      apertado.removidoMs >= 150 && editPlanV1Schema.safeParse(apertado.plano).success ? apertado.plano : compilado.plano;
+
+    return { plano, avisos: compilado.avisos };
   }
 
   /**

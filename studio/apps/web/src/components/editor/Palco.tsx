@@ -6,10 +6,10 @@
 // Toca o PROXY (contexto mestre, seção 18): o original de 500 MB
 // nunca vira mídia do editor. O render final é que usa o original.
 //
-// O player pula entre os trechos conforme o EditPlan: a pessoa vê o
-// vídeo montado, não o bruto inteiro. O relógio é o do PRÓPRIO vídeo:
-// a posição na timeline é derivada do `currentTime`, e o único salto é
-// o que o plano pede — o fim de um trecho para o início do próximo.
+// A prévia mostra o vídeo montado, não o bruto inteiro. Dois players do
+// mesmo proxy se revezam: um toca o trecho atual, o outro espera parado
+// no começo do próximo -- o corte sai sem o tranco de um salto (seek).
+// O relógio é da prévia, e os players o seguem.
 //
 // O QUE A PRÉVIA MOSTRA DO ACABAMENTO
 //
@@ -19,9 +19,10 @@
 //     CSS sobre o vídeo, com as mesmas proporções do FFmpeg;
 //   - logo e imagem: na posição e no tamanho do render;
 //   - trilha: tocando junto, no volume do plano;
-//   - transições: uma indicação visual no início do trecho. A prévia
-//     tem um `<video>` só e não mistura dois quadros como o `xfade` —
-//     o arquivo exportado é que tem a transição completa.
+//   - transições: dois players tocando juntos, misturados em CSS na
+//     mesma janela da agenda que o render usa (motorDaPrevia.ts);
+//   - som: volume de cada trecho com o cruzamento dos cortes, fades e
+//     J/L-cut; efeitos sonoros e trilha tocando no ponto certo.
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -29,13 +30,16 @@ import type { EditPlanV1, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/st
 import {
   CORES_PADRAO_DA_MARCA,
   TEXTOS_DE_TELA,
+  agendaDoPlano,
   caixaDoTexto,
+  ehEfeitoSonoroEmbutido,
   gerarAss,
   planoPrecisaDeAss,
   resolverEstiloDaLegenda,
 } from '@makucho/studio-contracts';
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
+import { estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import { tempo } from './funcoes';
 import {
   IconeTocar,
@@ -61,6 +65,10 @@ interface Props {
   transcricao?: Transcricao | null;
   /** Muda para tocar do começo (o botão "Pré-visualizar"). */
   comandoTocar?: number;
+  /** Muda a cada Espaço: toca ou pausa de onde está. */
+  comandoAlternar?: number;
+  /** Avisa quando começa ou para de tocar. */
+  onTocando?: (tocando: boolean) => void;
   /** Cores e fontes do Kit de marca, para legenda e textos. */
   marca?: MarcaDoVideo;
   /** URL de um asset do workspace (logo, imagem, trilha). */
@@ -76,18 +84,6 @@ interface Props {
   onAbrirEstilos?: (overlayId: string) => void;
 }
 
-interface TrechoAtivo {
-  clipe: EditPlanV1['clips'][number];
-  /** Índice no plano: é o que `beforeClipIndex` referencia. */
-  indiceNoPlano: number;
-  inicioNaTimeline: number;
-  duracao: number;
-}
-
-/** Os mesmos números do render (worker-core/render.ts). */
-const ZOOM_DO_PUNCH_IN = 1.12;
-const ZOOM_LENTO = 0.08;
-
 export function Palco({
   plan,
   proxyUrl,
@@ -96,6 +92,8 @@ export function Palco({
   desligados,
   transcricao,
   comandoTocar,
+  comandoAlternar,
+  onTocando,
   marca,
   urlDoAsset,
   destaqueSelecionado,
@@ -104,13 +102,24 @@ export function Palco({
   onRedimensionarTexto,
   onAbrirEstilos,
 }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
+  // trecho atual, o outro espera no começo do próximo.
+  const videoARef = useRef<HTMLVideoElement>(null);
+  const videoBRef = useRef<HTMLVideoElement>(null);
+  const camadaARef = useRef<HTMLDivElement>(null);
+  const camadaBRef = useRef<HTMLDivElement>(null);
+  const players = useMemo(() => [videoARef, videoBRef] as const, []);
+  const camadas = useMemo(() => [camadaARef, camadaBRef] as const, []);
+  /** Que trecho (índice da agenda) cada player carrega. */
+  const donoRef = useRef<Array<number | null>>([null, null]);
   const quadroRef = useRef<HTMLDivElement>(null);
   const imagemRef = useRef<HTMLDivElement>(null);
   const fundoRef = useRef<HTMLCanvasElement>(null);
   const trilhaRef = useRef<HTMLAudioElement>(null);
   const [tocando, setTocando] = useState(false);
   const [mudo, setMudo] = useState(false);
+  const mudoRef = useRef(mudo);
+  mudoRef.current = mudo;
   const [zonasSeguras, setZonasSeguras] = useState(true);
   const [erroDoVideo, setErroDoVideo] = useState(false);
   const [libassFalhou, setLibassFalhou] = useState(false);
@@ -121,79 +130,24 @@ export function Palco({
   const ultimaPosicaoRef = useRef(-1);
   // Posição na timeline a cada quadro: o relógio da camada de legendas.
   const tempoAoVivo = useRef(posicaoMs);
+  /** O relógio da reprodução: a timeline anda por ele, e os players o seguem. */
+  const relogioRef = useRef({ ms: posicaoMs });
 
   const enquadramento = plan.render.fit ?? 'ajustar';
 
-  const trechos = useMemo<TrechoAtivo[]>(() => {
-    let acumulado = 0;
-    return plan.clips
-      .map((clipe, indiceNoPlano) => ({ clipe, indiceNoPlano }))
-      .filter(({ clipe }) => !desligados?.has(clipe.id))
-      .map(({ clipe, indiceNoPlano }) => {
-        const duracao = clipe.sourceEndMs - clipe.sourceStartMs;
-        const t = { clipe, indiceNoPlano, inicioNaTimeline: acumulado, duracao };
-        acumulado += duracao;
-        return t;
-      });
-  }, [plan.clips, desligados]);
+  const agenda = useMemo(() => agendaDoPlano(plan, [...(desligados ?? [])]), [plan, desligados]);
+  const duracaoMs = agenda.duracaoMs;
 
-  const duracaoMs = trechos.reduce((t, c) => t + c.duracao, 0);
-  const transicaoAntes = useMemo(
-    () => new Map(plan.transitions.map((t) => [t.beforeClipIndex, t])),
-    [plan.transitions],
-  );
-
-  /** Posição na timeline → trecho e ponto no original. */
-  const localizar = useCallback(
-    (msNaTimeline: number) => {
-      for (let i = 0; i < trechos.length; i += 1) {
-        const t = trechos[i]!;
-        if (msNaTimeline < t.inicioNaTimeline + t.duracao) {
-          return { indice: i, sourceMs: t.clipe.sourceStartMs + Math.max(0, msNaTimeline - t.inicioNaTimeline) };
-        }
-      }
-      return null;
-    },
-    [trechos],
-  );
-
-  // ---------- Acabamento visual (zoom, transição, fundo) ----------
-  //
-  // Aplicado direto no estilo dos elementos, a cada quadro: passar por
-  // estado do React re-renderizaria o editor inteiro 60 vezes por
-  // segundo.
-  const aplicarEfeitos = useCallback(
-    (msNaTimeline: number) => {
-      const alvo = imagemRef.current;
-      if (!alvo) return;
-      const t = trechos[indiceRef.current];
-      if (!t) return;
-
-      const noTrecho = Math.max(0, msNaTimeline - t.inicioNaTimeline);
-      let escala = 1;
-      if (t.clipe.effect === 'punch_in') escala = ZOOM_DO_PUNCH_IN;
-      if (t.clipe.effect === 'zoom_lento') escala = 1 + ZOOM_LENTO * Math.min(1, noTrecho / Math.max(1, t.duracao));
-
-      let opacidade = 1;
-      let deslocamento = '';
-      const tr = indiceRef.current > 0 ? transicaoAntes.get(t.indiceNoPlano) : undefined;
-      if (tr && tr.type !== 'cut' && noTrecho < tr.durationMs) {
-        const p = noTrecho / tr.durationMs;
-        if (tr.type === 'slide' || tr.type === 'wipe' || tr.type === 'smooth') deslocamento = `translateX(${(1 - p) * 100}%)`;
-        else if (tr.type === 'slideup') deslocamento = `translateY(${(1 - p) * 100}%)`;
-        else opacidade = 0.25 + 0.75 * p;
-      }
-
-      alvo.style.transform = `${deslocamento} scale(${escala})`.trim();
-      alvo.style.opacity = String(opacidade);
-    },
-    [trechos, transicaoAntes],
-  );
+  /** O player que mostra o trecho "dono" do instante. */
+  const playerVisivel = useCallback(() => {
+    const p = donoRef.current.indexOf(indiceRef.current);
+    return (p >= 0 ? players[p]! : players[0]).current;
+  }, [players]);
 
   /** O fundo desfocado: o próprio quadro, pequeno, ampliado com blur. */
   const desenharFundo = useCallback(() => {
     if (enquadramento !== 'desfoque') return;
-    const video = videoRef.current;
+    const video = playerVisivel();
     const fundo = fundoRef.current;
     if (!video || !fundo || video.readyState < 2) return;
     const ctx = fundo.getContext('2d');
@@ -205,81 +159,170 @@ export function Palco({
     const w = vw * escala;
     const h = vh * escala;
     ctx.drawImage(video, (fundo.width - w) / 2, (fundo.height - h) / 2, w, h);
-  }, [enquadramento]);
+  }, [enquadramento, playerVisivel]);
+
+  /**
+   * Leva os dois players ao instante `ms`: quem carrega que trecho, em
+   * que ponto do original, com que volume, e como cada camada aparece
+   * (transição, zoom). Chamado a cada quadro tocando, e a cada mudança
+   * de posição parado.
+   */
+  const aplicar = useCallback(
+    (ms: number, tocandoAgora: boolean) => {
+      if (agenda.trechos.length === 0) return;
+      const estado = estadoNoInstante(agenda, ms);
+      indiceRef.current = estado.indice;
+      const dono = donoRef.current;
+
+      // Trecho que precisa de player e não tem: vai para um livre.
+      for (const i of estado.necessarios) {
+        if (dono.includes(i)) continue;
+        const livre = [0, 1].find((p) => dono[p] === null || !estado.necessarios.includes(dono[p]!));
+        if (livre === undefined) break;
+        dono[livre] = i;
+      }
+      // O player que sobrou já espera parado no começo do próximo.
+      const proximo = estado.necessarios.length ? Math.max(...estado.necessarios) + 1 : estado.indice + 1;
+      if (proximo < agenda.trechos.length && !dono.includes(proximo)) {
+        const livre = [0, 1].find((p) => dono[p] === null || !estado.necessarios.includes(dono[p]!));
+        const v = livre !== undefined ? players[livre]!.current : null;
+        if (livre !== undefined && v) {
+          dono[livre] = proximo;
+          v.pause();
+          v.currentTime = sourceNoInstante(agenda, proximo, inicioDoUso(agenda, proximo));
+        }
+      }
+
+      for (const p of [0, 1]) {
+        const v = players[p]!.current;
+        const camada = camadas[p]!.current;
+        if (!v || !camada) continue;
+        const i = dono[p] ?? null;
+        const necessario = i !== null && estado.necessarios.includes(i);
+        const c = estado.camadas.find((x) => x.indice === i);
+
+        if (necessario && i !== null) {
+          const alvo = sourceNoInstante(agenda, i, ms);
+          // Tocando, só corrige desvio real (buscar a cada quadro trava);
+          // parado, vai ao quadro exato.
+          const desvio = Math.abs(v.currentTime - alvo);
+          if ((tocandoAgora && desvio > 0.15 && !v.seeking) || (!tocandoAgora && desvio > 0.02)) v.currentTime = alvo;
+          if (tocandoAgora && v.paused) void v.play().catch(() => undefined);
+          if (!tocandoAgora && !v.paused) v.pause();
+          const volume = estado.volumes.get(i) ?? 0;
+          v.muted = mudoRef.current || volume <= 0;
+          v.volume = Math.min(1, Math.max(0, volume));
+        } else if (!v.paused) {
+          v.pause();
+        }
+
+        camada.style.opacity = c ? String(c.opacidade) : '0';
+        camada.style.transform = c?.transformacao ?? '';
+        camada.style.filter = c?.filtro ?? '';
+        camada.style.clipPath = c?.recorte ?? '';
+        camada.style.zIndex = c?.frente ? '2' : '1';
+      }
+    },
+    [agenda, players, camadas],
+  );
 
   // ---------- Posição vinda de fora (timeline, trechos) ----------
   useEffect(() => {
-    if (tocando) return;
-    if (Math.abs(posicaoMs - ultimaPosicaoRef.current) < 5) return;
-    const video = videoRef.current;
-    const destino = localizar(Math.min(posicaoMs, Math.max(0, duracaoMs - 1)));
-    if (!destino) return;
-    indiceRef.current = destino.indice;
-    tempoAoVivo.current = posicaoMs;
-    setSourceMs(destino.sourceMs);
-    aplicarEfeitos(posicaoMs);
-    if (video && video.readyState >= 1) video.currentTime = destino.sourceMs / 1000;
-  }, [posicaoMs, tocando, localizar, duracaoMs, aplicarEfeitos]);
+    // Tocando, só um salto de verdade (clique na régua) move o relógio;
+    // a posição que a própria prévia avisou volta aqui e é ignorada.
+    if (tocando && Math.abs(posicaoMs - ultimaPosicaoRef.current) < 250) return;
+    if (!tocando && Math.abs(posicaoMs - relogioRef.current.ms) < 5 && ultimaPosicaoRef.current >= 0) return;
+    const ms = Math.min(posicaoMs, Math.max(0, duracaoMs - 1));
+    relogioRef.current.ms = ms;
+    ultimaPosicaoRef.current = ms;
+    tempoAoVivo.current = ms;
+    aplicar(ms, tocando);
+    if (agenda.trechos[indiceRef.current]) setSourceMs(sourceNoInstante(agenda, indiceRef.current, ms) * 1000);
+    desenharFundo();
+  }, [posicaoMs, tocando, duracaoMs, aplicar, agenda, desenharFundo]);
 
-  // Um efeito trocado no Inspector aparece sem precisar mexer no vídeo.
+  // Um ajuste no plano (efeito, transição, volume) aparece parado também.
   useEffect(() => {
-    aplicarEfeitos(tempoAoVivo.current);
-  }, [aplicarEfeitos]);
+    if (!tocando) aplicar(relogioRef.current.ms, false);
+  }, [aplicar, tocando]);
+
+  // ---------- Efeitos sonoros ----------
+  const sons = useRef(new Map<string, HTMLAudioElement>());
+  const tocarSom = useCallback(
+    (e: EditPlanV1['soundEffects'][number]) => {
+      if (mudoRef.current) return;
+      const url = ehEfeitoSonoroEmbutido(e.assetId) ? `/sons/${e.assetId}.wav` : urlDoAsset?.(e.assetId);
+      if (!url) return;
+      let audio = sons.current.get(url);
+      if (!audio) {
+        audio = new Audio(url);
+        audio.preload = 'auto';
+        sons.current.set(url, audio);
+      }
+      audio.volume = Math.min(1, 10 ** (e.gainDb / 20));
+      audio.currentTime = 0;
+      void audio.play().catch(() => undefined);
+    },
+    [urlDoAsset],
+  );
+  // Carregados antes de tocar: o primeiro "pop" não sai atrasado.
+  useEffect(() => {
+    for (const e of plan.soundEffects) {
+      const url = ehEfeitoSonoroEmbutido(e.assetId) ? `/sons/${e.assetId}.wav` : urlDoAsset?.(e.assetId);
+      if (url && !sons.current.has(url)) {
+        const a = new Audio(url);
+        a.preload = 'auto';
+        sons.current.set(url, a);
+      }
+    }
+  }, [plan.soundEffects, urlDoAsset]);
 
   // ---------- Reprodução ----------
   useEffect(() => {
     if (!tocando) return;
-    const video = videoRef.current;
-    if (!video) return;
-
     let quadro = 0;
+    let anterior = performance.now();
     let ultimoAviso = 0;
 
-    const passo = () => {
-      const trecho = trechos[indiceRef.current];
-      if (!trecho) {
-        video.pause();
+    const passo = (agora: number) => {
+      const relogio = relogioRef.current;
+      const dt = agora - anterior;
+      anterior = agora;
+      // O relógio espera o player carregar (depois de um salto ou com a
+      // rede lenta): sem isso a timeline correria na frente da imagem.
+      const principal = playerVisivel();
+      const carregando = principal && !principal.paused && principal.readyState < 3;
+      const de = relogio.ms;
+      if (!carregando) relogio.ms += Math.min(dt, 100);
+
+      if (relogio.ms >= duracaoMs) {
+        relogio.ms = duracaoMs;
+        for (const p of players) p.current?.pause();
         setTocando(false);
+        ultimaPosicaoRef.current = duracaoMs;
+        onPosicao(duracaoMs);
         return;
       }
 
-      const agoraMs = video.currentTime * 1000;
+      for (const e of sonsQueComecam(plan, de, relogio.ms)) tocarSom(e);
+      aplicar(relogio.ms, true);
+      tempoAoVivo.current = relogio.ms;
+      desenharFundo();
 
-      if (agoraMs >= trecho.clipe.sourceEndMs - 20) {
-        const proximo = trechos[indiceRef.current + 1];
-        if (!proximo) {
-          video.pause();
-          setTocando(false);
-          ultimaPosicaoRef.current = duracaoMs;
-          onPosicao(duracaoMs);
-          return;
-        }
-        indiceRef.current += 1;
-        video.currentTime = proximo.clipe.sourceStartMs / 1000;
-      } else if (agoraMs < trecho.clipe.sourceStartMs - 250) {
-        // Ainda antes do trecho (a busca não terminou): espera.
-      } else {
-        const naTimeline = trecho.inicioNaTimeline + Math.max(0, agoraMs - trecho.clipe.sourceStartMs);
-        tempoAoVivo.current = naTimeline;
-        aplicarEfeitos(naTimeline);
-        desenharFundo();
-        // A timeline e a legenda de reserva não precisam de 60
-        // atualizações por segundo: cada uma re-renderiza o editor.
-        const agora = performance.now();
-        if (agora - ultimoAviso > 90) {
-          ultimoAviso = agora;
-          setSourceMs(agoraMs);
-          ultimaPosicaoRef.current = naTimeline;
-          onPosicao(naTimeline);
-        }
+      // A timeline e a legenda de reserva não precisam de 60
+      // atualizações por segundo: cada uma re-renderiza o editor.
+      if (agora - ultimoAviso > 90) {
+        ultimoAviso = agora;
+        setSourceMs(sourceNoInstante(agenda, indiceRef.current, relogio.ms) * 1000);
+        ultimaPosicaoRef.current = relogio.ms;
+        onPosicao(relogio.ms);
       }
-
       quadro = requestAnimationFrame(passo);
     };
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, trechos, duracaoMs, onPosicao, aplicarEfeitos, desenharFundo]);
+  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom]);
 
   // ---------- Trilha ----------
   const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;
@@ -291,7 +334,7 @@ export function Palco({
     const db = plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0);
     audio.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * 4));
     if (tocando) {
-      if (audio.duration) audio.currentTime = (tempoAoVivo.current / 1000) % audio.duration;
+      if (audio.duration) audio.currentTime = (relogioRef.current.ms / 1000) % audio.duration;
       void audio.play().catch(() => undefined);
     } else {
       audio.pause();
@@ -300,36 +343,30 @@ export function Palco({
 
   const tocarDe = useCallback(
     (msNaTimeline: number) => {
-      const video = videoRef.current;
-      if (!video || trechos.length === 0) return;
-      const inicio = msNaTimeline >= duracaoMs ? 0 : msNaTimeline;
-      const destino = localizar(inicio);
-      if (!destino) return;
-      indiceRef.current = destino.indice;
+      if (agenda.trechos.length === 0) return;
+      const inicio = msNaTimeline >= duracaoMs - 50 ? 0 : msNaTimeline;
+      relogioRef.current.ms = inicio;
       tempoAoVivo.current = inicio;
-      video.currentTime = destino.sourceMs / 1000;
       ultimaPosicaoRef.current = inicio;
       onPosicao(inicio);
-      void video.play().then(
-        () => setTocando(true),
-        () => setTocando(false),
-      );
+      aplicar(inicio, true);
+      setTocando(true);
     },
-    [trechos.length, duracaoMs, localizar, onPosicao],
+    [agenda.trechos.length, duracaoMs, onPosicao, aplicar],
   );
 
+  const pausar = useCallback(() => {
+    for (const p of players) p.current?.pause();
+    setTocando(false);
+    onPosicao(relogioRef.current.ms);
+  }, [players, onPosicao]);
+
   const alternar = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (tocando) {
-      video.pause();
-      setTocando(false);
-      return;
-    }
-    tocarDe(posicaoMs);
+    if (tocando) pausar();
+    else tocarDe(relogioRef.current.ms);
   };
 
-  // "Pré-visualizar": do começo, do jeito que o vídeo vai sair.
+  // "Pré-visualizar" (e Shift+Espaço): do começo, do jeito que vai sair.
   const comandoAnterior = useRef(comandoTocar);
   useEffect(() => {
     if (comandoTocar === undefined || comandoTocar === comandoAnterior.current) return;
@@ -337,9 +374,20 @@ export function Palco({
     tocarDe(0);
   }, [comandoTocar, tocarDe]);
 
+  // Espaço: tocar ou pausar de onde está.
+  const alternarAnterior = useRef(comandoAlternar);
+  useEffect(() => {
+    if (comandoAlternar === undefined || comandoAlternar === alternarAnterior.current) return;
+    alternarAnterior.current = comandoAlternar;
+    if (tocando) pausar();
+    else tocarDe(relogioRef.current.ms);
+  }, [comandoAlternar, tocando, pausar, tocarDe]);
+
+  useEffect(() => onTocando?.(tocando), [tocando, onTocando]);
+
   /** Pula para o começo do trecho anterior ou do próximo. */
   const pular = (frente: boolean) => {
-    const inicios = trechos.map((t) => t.inicioNaTimeline);
+    const inicios = agenda.trechos.map((t) => t.inicioMs);
     const destino = frente
       ? inicios.find((ms) => ms > posicaoMs + 50)
       : [...inicios].reverse().find((ms) => ms < posicaoMs - 50);
@@ -472,10 +520,10 @@ export function Palco({
     );
   };
 
-  const trechoAtual = trechos[indiceRef.current];
+  const trechoAtual = agenda.trechos[indiceRef.current];
   const legendaCss =
     libassFalhou && plan.captions.enabled && sourceMs !== null && trechoAtual
-      ? legendaNoPonto(palavras, trechoAtual.clipe, sourceMs, plan.captions.wordsPerBlock)
+      ? legendaNoPonto(palavras, trechoAtual.clip, sourceMs, plan.captions.wordsPerBlock)
       : null;
   const estiloCss = useMemo(
     () => resolverEstiloDaLegenda(plan.captions.styleId, { marca: marcaDoVideo }),
@@ -515,24 +563,24 @@ export function Palco({
             {enquadramento === 'desfoque' && (
               <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
             )}
-            <video
-              ref={videoRef}
-              src={proxyUrl}
-              playsInline
-              preload="auto"
-              muted={mudo}
-              className="palco__video"
-              style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
-              onLoadedMetadata={(e) => {
-                // Primeiro quadro no ponto certo, antes de qualquer play.
-                const destino = localizar(posicaoMs);
-                if (destino) e.currentTarget.currentTime = destino.sourceMs / 1000;
-              }}
-              onSeeked={desenharFundo}
-              onLoadedData={desenharFundo}
-              onError={() => setErroDoVideo(true)}
-              onPause={() => setTocando(false)}
-            />
+            {[0, 1].map((p) => (
+              <div key={p} ref={camadas[p]} className="palco__player" style={{ opacity: p === 0 ? 1 : 0 }}>
+                <video
+                  ref={players[p]}
+                  src={proxyUrl}
+                  playsInline
+                  preload="auto"
+                  muted={mudo}
+                  className="palco__video"
+                  style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
+                  // Primeiro quadro no ponto certo, antes de qualquer play.
+                  onLoadedMetadata={() => aplicar(relogioRef.current.ms, false)}
+                  onSeeked={desenharFundo}
+                  onLoadedData={desenharFundo}
+                  onError={() => setErroDoVideo(true)}
+                />
+              </div>
+            ))}
           </div>
         ) : (
           <div className="palco__vazio">
@@ -659,7 +707,7 @@ export function Palco({
         <button
           type="button"
           onClick={alternar}
-          disabled={!proxyUrl || erroDoVideo || trechos.length === 0}
+          disabled={!proxyUrl || erroDoVideo || agenda.trechos.length === 0}
           aria-label={tocando ? 'Pausar' : 'Reproduzir'}
           className="botao palco__play"
         >
