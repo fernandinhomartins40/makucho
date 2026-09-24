@@ -138,10 +138,11 @@ t(
   'nenhuma chamada usa os nomes desligados em 2026-07-24',
   CHAMADAS_DE_IA.every((c) => !['deepseek-chat', 'deepseek-reasoner'].includes(MODELO_POR_CHAMADA[c])),
 );
+// Medido: sem raciocínio a seleção escolhe os mesmos trechos por 1/7
+// do custo; o raciocínio fica só na segunda tentativa (analise.service).
 t(
-  'seleção e risco usam raciocínio (seção 26.6)',
-  CONFIG_POR_CHAMADA.selecionar_trechos.raciocinio !== 'desligado' &&
-    CONFIG_POR_CHAMADA.avaliar_risco.raciocinio !== 'desligado',
+  'nenhuma chamada paga raciocínio por padrão',
+  CHAMADAS_DE_IA.every((c) => CONFIG_POR_CHAMADA[c].raciocinio === 'desligado'),
 );
 t(
   'as chamadas de escrita curta NÃO pagam raciocínio',

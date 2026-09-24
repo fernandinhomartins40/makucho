@@ -26,6 +26,11 @@ const servidor = createServer((req, res) => {
   req.on('data', (c) => (dados += c));
   req.on('end', () => {
     corpos.push(JSON.parse(dados));
+    if (JSON.parse(dados).model === 'modelo-inexistente') {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: { message: 'Model Not Exist (key sk-abc123xyz)', type: 'invalid_request_error' } }));
+      return;
+    }
     res.setHeader('content-type', 'application/json');
     res.end(
       JSON.stringify({
@@ -71,9 +76,18 @@ async function main() {
   t('com raciocínio: sem temperature (não suportado)', !('temperature' in comRaciocinio));
   t('com raciocínio: sem response_format (não suportado)', !('response_format' in comRaciocinio));
 
+  // Erro de configuração: a mensagem da DeepSeek aparece, a chave não.
+  const errado = new DeepseekProvedor('sk-teste', 'modelo-inexistente' as never);
+  let publico = '';
+  try {
+    await errado.conversar({ chamada: 'gerar_roteiro', sistema: 's', usuario: 'u', maxTokens: 5, raciocinio: 'desligado' });
+  } catch (e) {
+    publico = (e as { publico?: string }).publico ?? '';
+  }
+  t('erro 400 mostra a mensagem da DeepSeek', publico.includes('Model Not Exist') && publico.includes('400'));
+  t('e nunca a chave', !publico.includes('sk-abc123xyz') && publico.includes('[chave]'));
+
   servidor.close();
-  console.log(`\n${ok} ok, ${fail} falha(s)`);
-  if (fail > 0) process.exit(1);
 }
 
 void main().then(() => {

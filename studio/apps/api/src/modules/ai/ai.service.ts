@@ -21,7 +21,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import IORedis from 'ioredis';
 import { CONFIG_POR_CHAMADA, MODELOS_DE_IA } from '@makucho/studio-contracts';
-import type { ChamadaDeIa, ModeloDeIa } from '@makucho/studio-contracts';
+import type { ChamadaDeIa, ModeloDeIa, Raciocinio } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
@@ -77,6 +77,8 @@ export interface PedidoDeIa {
    * resposta, não a mesma.
    */
   semCache?: boolean;
+  /** Substitui o raciocinio da tabela (a segunda tentativa da selecao). */
+  raciocinio?: Raciocinio;
 }
 
 export interface ResultadoDeIa {
@@ -158,7 +160,10 @@ export class AiService {
    * nova sem ganhar nada.
    */
   async chamar(pedido: PedidoDeIa): Promise<ResultadoDeIa> {
-    const config = CONFIG_POR_CHAMADA[pedido.chamada];
+    const config = {
+      ...CONFIG_POR_CHAMADA[pedido.chamada],
+      ...(pedido.raciocinio ? { raciocinio: pedido.raciocinio } : {}),
+    };
     const modelo = MODELO_DO_AMBIENTE ?? config.modelo;
 
     // Por workspace: a mesma pergunta de dois clientes não compartilha
@@ -249,7 +254,7 @@ export class AiService {
           parsedOk: false,
           inputTokens: consumo.inputTokens,
           outputTokens: consumo.outputTokens,
-          costCents: custo,
+          costCents: Math.ceil(custo),
         },
       })
       .catch((e: unknown) => {
@@ -312,6 +317,35 @@ export class AiService {
     // cadastrado: a escolha entre chat e reasoner é técnica (seção
     // 26.6), não preferência do usuário.
     return new DeepseekProvedor(chave, modelo);
+  }
+
+  /**
+   * Testa a chave com a menor chamada possivel (poucos tokens, sem
+   * raciocinio) e diz o resultado exato: e o que separa "a chave nao
+   * funciona" de "a IA ainda nao foi chamada".
+   */
+  async testarChave(workspaceId: string): Promise<{ ok: boolean; mensagem: string; modelo?: string; ms?: number }> {
+    const modelo = MODELO_DO_AMBIENTE ?? CONFIG_POR_CHAMADA.comandar_edicao.modelo;
+    const inicio = Date.now();
+    try {
+      const provedor = await this.provedorDe(workspaceId, modelo);
+      await provedor.conversar({
+        chamada: 'comandar_edicao',
+        sistema: 'Responda somente com o JSON {"ok": true}.',
+        usuario: 'teste de conexao (json)',
+        maxTokens: 20,
+        raciocinio: 'desligado',
+      });
+      await this.prisma.aiCredential
+        .updateMany({ where: { workspaceId }, data: { lastUsedAt: new Date() } })
+        .catch(() => undefined);
+      return { ok: true, modelo, ms: Date.now() - inicio, mensagem: `A DeepSeek respondeu em ${((Date.now() - inicio) / 1000).toFixed(1)} s com o modelo ${modelo}.` };
+    } catch (e) {
+      const publico =
+        e instanceof ErroDoProvedor ? e.publico : e instanceof Error ? e.message : 'o teste falhou';
+      this.log.warn(`teste da chave falhou no workspace ${workspaceId}: ${e instanceof Error ? e.message : e}`);
+      return { ok: false, modelo, mensagem: publico };
+    }
   }
 
   /** Reexporta para quem trata falha de provedor sem importar o tipo. */

@@ -79,10 +79,14 @@ export interface ConfigDaChamada {
 export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   gerar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   sugerir_melhorias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
-  selecionar_trechos: { modelo: 'deepseek-flash', raciocinio: 'high' },
+  // Sem raciocinio: medido, escolhe os mesmos trechos por 1/7 do custo.
+  // So uma resposta invalida paga a segunda tentativa, com raciocinio.
+  selecionar_trechos: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   propor_candidatos: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
-  avaliar_risco: { modelo: 'deepseek-flash', raciocinio: 'high' },
-  refinar_cortes: { modelo: 'deepseek-flash', raciocinio: 'low' },
+  avaliar_risco: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  // "low" gasta o mesmo que "high" (medido: ~5 mil tokens de raciocinio
+  // nos dois); o refino so ajusta bordas.
+  refinar_cortes: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   comandar_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
@@ -136,6 +140,34 @@ export function custoEmCentavos(
     1_000_000;
   return Math.ceil(bruto * (quando ? fatorDoHorario(quando) : 1));
 }
+
+/**
+ * Custo EXATO de uma chamada, em milionesimos de dolar (micro-dolares).
+ *
+ * E o que o registro de uso soma. Somar centavos arredondados para
+ * cima fazia toda chamada custar pelo menos 1 centavo no painel --
+ * uma selecao de US$ 0,0008 aparecia como US$ 0,01, doze vezes mais.
+ * Micro-dolares inteiros nao perdem nada por chamada e nao acumulam
+ * erro de ponto flutuante.
+ */
+export function custoEmMicros(
+  modelo: ModeloDeIa,
+  tokensDeEntrada: number,
+  tokensDeSaida: number,
+  tokensEmCache = 0,
+  quando?: Date,
+): number {
+  const preco = PRECO_POR_MILHAO[modelo] ?? PRECO_POR_MILHAO['deepseek-v4-pro'];
+  const emCache = Math.min(Math.max(0, tokensEmCache), tokensDeEntrada);
+  // Centavos por milhao / 100 = dolares por milhao = micro-dolares por token.
+  const micros =
+    ((tokensDeEntrada - emCache) * preco.entrada + emCache * preco.entradaEmCache + tokensDeSaida * preco.saida) /
+    100;
+  return Math.ceil(micros * (quando ? fatorDoHorario(quando) : 1));
+}
+
+/** Micro-dolares em centavos (com fracao), para exibir. */
+export const microsEmCentavos = (micros: number) => micros / 10_000;
 
 /**
  * Fator de preco do horario: 1 no pico, 0,5 fora dele.
@@ -211,13 +243,15 @@ export const AVISO_EM = 0.8;
 export const situacaoDeUsoSchema = z.object({
   /** AAAA-MM do periodo apurado. */
   periodo: z.string().regex(/^\d{4}-\d{2}$/),
-  gastoCentavos: z.number().int().nonnegative(),
+  // Com fracao: o gasto real, somado em micro-dolares, nao em centavos
+  // arredondados por chamada.
+  gastoCentavos: z.number().nonnegative(),
   limiteCentavos: z.number().int().positive(),
   chamadas: z.number().int().nonnegative(),
   /** Quanto de cada chamada, para o painel. */
   porChamada: z.record(chamadaDeIaSchema, z.number().int().nonnegative()).optional(),
   /** Quanto o cache e o horario deixaram de custar no mes. */
-  economiaCentavos: z.number().int().nonnegative().optional(),
+  economiaCentavos: z.number().nonnegative().optional(),
   /** Respostas reaproveitadas sem chamar o provedor. */
   acertosDoCache: z.number().int().nonnegative().optional(),
 });

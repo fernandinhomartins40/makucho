@@ -223,6 +223,8 @@ export interface ProjetoDetalhado {
     createdAt: string;
   }>;
   editPlans: Array<{ id: string; version: number; createdAt: string }>;
+  /** Por que a IA não montou a proposta atual, quando não montou. */
+  aiFallbackReason?: string | null;
 }
 
 export interface ParteDoProjeto {
@@ -700,4 +702,9 @@ export const credencialDeIa = {
   salvar: (dados: { provider: 'deepseek'; apiKey: string; model?: string }) =>
     api<CredencialDeIa>('/settings/ai-credential', { metodo: 'PUT', corpo: dados }),
   remover: () => api<CredencialDeIa>('/settings/ai-credential', { metodo: 'DELETE' }),
+  /** Uma chamada mínima à DeepSeek, com o resultado exato. */
+  testar: () =>
+    api<{ ok: boolean; mensagem: string; modelo?: string; ms?: number }>('/settings/ai-credential/test', {
+      metodo: 'POST',
+    }),
 };

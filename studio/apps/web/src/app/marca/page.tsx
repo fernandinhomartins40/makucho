@@ -11,6 +11,7 @@
 // um quadradinho não responde; cor aplicada sobre um frame, sim.
 // ============================================================
 
+import { dolares } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
 import type { PreferenciasDeVideo, TipoDeTransicao } from '@makucho/studio-contracts';
 import { PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, presetDaLegenda } from '@makucho/studio-contracts';
@@ -771,7 +772,7 @@ export default function MarcaPage() {
                     ),
                     mensagem: null,
                   }}
-                  formatar={(centavos) => `US$ ${(centavos / 100).toFixed(2)}`}
+                  formatar={dolares}
                 />
 
                 {consumo.detalhe.length > 0 && (
@@ -791,7 +792,7 @@ export default function MarcaPage() {
                         style={{ fontSize: 12, color: 'var(--texto-2)' }}
                       >
                         <span>{d.rotulo}</span>
-                        <span>US$ {(d.centavos / 100).toFixed(2)}</span>
+                        <span>{dolares(d.centavos)}</span>
                       </li>
                     ))}
                   </ul>

@@ -26,8 +26,9 @@ import { join } from 'node:path';
  * a v1, e reescrevê-la faria o registro mentir sobre o que foi pedido.
  */
 export const VERSAO_DO_PROMPT = {
-  // v2: a mesma selecao, mais o acabamento sugerido (`style`).
-  selecionar_trechos: 'selecao-v2',
+  // v3: os valores aceitos listados (papel, framework, risco) e motivos
+  // curtos -- e o que deixa a selecao funcionar SEM raciocinio.
+  selecionar_trechos: 'selecao-v3',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',

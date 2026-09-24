@@ -6,7 +6,7 @@
 // defeito, do ponto de vista de quem está usando.
 // ============================================================
 
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Put, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ROTULO_DA_CHAMADA, avisoDeUso, estadoDoLimite } from '@makucho/studio-contracts';
@@ -14,6 +14,7 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { PrismaService } from '../../common/prisma.service';
 import { assertIsOwner } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
+import { AiService } from './ai.service';
 import { UsoDeIaService } from './uso.service';
 
 const limiteSchema = z.object({
@@ -29,6 +30,7 @@ export class AiController {
   constructor(
     private readonly uso: UsoDeIaService,
     private readonly prisma: PrismaService,
+    private readonly ai: AiService,
   ) {}
 
   @Get('ai-usage')
@@ -61,6 +63,12 @@ export class AiController {
         centavos,
       })),
     };
+  }
+
+  /** Uma chamada mínima para confirmar que a chave funciona. */
+  @Post('ai-credential/test')
+  testarChave(@CurrentTenant() tenant: TenantContext) {
+    return this.ai.testarChave(tenant.workspaceId);
   }
 
   @Put('ai-limit')

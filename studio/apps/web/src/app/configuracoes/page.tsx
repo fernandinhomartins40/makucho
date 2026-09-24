@@ -8,6 +8,7 @@
 // nunca rodava. É daqui que a IA passa a funcionar.
 // ============================================================
 
+import { dolares } from '../../lib/dinheiro';
 import { useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
 import { useDados } from '../../lib/useDados';
@@ -49,6 +50,22 @@ function SecaoDeIa() {
   const [mostrar, setMostrar] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
+
+  const [testando, setTestando] = useState(false);
+  const [teste, setTeste] = useState<{ ok: boolean; mensagem: string } | null>(null);
+
+  const testar = async () => {
+    setTestando(true);
+    setTeste(null);
+    try {
+      setTeste(await credencialDeIa.testar());
+      credencial.recarregar();
+    } catch (e) {
+      setTeste({ ok: false, mensagem: e instanceof Error ? e.message : 'o teste falhou' });
+    } finally {
+      setTestando(false);
+    }
+  };
 
   const [limite, setLimite] = useState('');
   const [salvandoLimite, setSalvandoLimite] = useState(false);
@@ -153,12 +170,26 @@ function SecaoDeIa() {
           <dd>DeepSeek</dd>
           <dt className="texto-secundario">Chave</dt>
           <dd style={{ fontFamily: 'monospace' }}>{atual.keyPrefix}••••••••</dd>
-          <dt className="texto-secundario">Modelo</dt>
-          <dd>{atual.model || 'padrão'}</dd>
           <dt className="texto-secundario">Último uso</dt>
           <dd>{atual.lastUsedAt ? new Date(atual.lastUsedAt).toLocaleString('pt-BR') : 'ainda não usada'}</dd>
         </dl>
       ) : null}
+
+      {/* O teste separa "a chave não funciona" de "a IA ainda não foi
+          chamada": uma chamada mínima, e o resultado exato da DeepSeek. */}
+      {atual?.configured && (
+        <div style={{ display: 'grid', gap: 'var(--e2)', justifyItems: 'start' }}>
+          <button type="button" className="botao botao--secundario" disabled={testando} onClick={() => void testar()}>
+            {testando ? 'Testando…' : 'Testar a chave'}
+          </button>
+          {teste && (
+            <div className={teste.ok ? 'aviso aviso--sucesso' : 'aviso aviso--erro'} role="status">
+              <IconeAviso size={16} />
+              <span>{teste.ok ? `Funcionando. ${teste.mensagem}` : teste.mensagem}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -245,7 +276,7 @@ function SecaoDeIa() {
               />
             </div>
             <p style={{ fontSize: 14 }}>
-              US$ {(uso.gastoCentavos / 100).toFixed(2)} de US$ {(uso.limiteCentavos / 100).toFixed(2)} ·{' '}
+              {dolares(uso.gastoCentavos)} de {dolares(uso.limiteCentavos)} ·{' '}
               {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
             </p>
             {uso.aviso && (
@@ -256,7 +287,7 @@ function SecaoDeIa() {
             )}
             {(uso.economiaCentavos ?? 0) > 0 && (
               <p className="texto-secundario" style={{ fontSize: 13 }}>
-                Economia no mês: <strong>US$ {((uso.economiaCentavos ?? 0) / 100).toFixed(2)}</strong>
+                Economia no mês: <strong>{dolares(uso.economiaCentavos ?? 0)}</strong>
                 {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''}
                 {' '}(cache e horário fora do pico).
               </p>
@@ -276,7 +307,7 @@ function SecaoDeIa() {
                 {uso.detalhe.map((d) => (
                   <li key={d.chamada} className="linha entre">
                     <span className="texto-secundario">{d.rotulo}</span>
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>US$ {(d.centavos / 100).toFixed(2)}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{dolares(d.centavos)}</span>
                   </li>
                 ))}
               </ul>

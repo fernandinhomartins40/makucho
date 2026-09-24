@@ -86,3 +86,28 @@ transições, zoom, logo, trilha e sons.
   na seleção (cerca de 4x o preço) ou revisar o prompt `selecao-v2`.
 - **Uso intenso de "Peça à IA"**: se virar a chamada mais cara, dá para responder pedidos comuns
   ("legenda maior", "sem música") por regra, sem modelo.
+
+## 7. Medição com a chave real (24/09/2026)
+
+Mesmo vídeo de 41 s, prompt da seleção com o catálogo de estilos, DeepSeek Flash:
+
+| Configuração | Tokens de saída (raciocínio) | Custo (pico) | Tempo | Resultado |
+|---|---|---|---|---|
+| `selecao-v2`, raciocínio alto | 5.838 (5.126) | US$ 0,0071 | 25,8 s | válido |
+| `selecao-v2`, raciocínio baixo | 5.864 (5.304) | US$ 0,0075 | 25,1 s | válido |
+| `selecao-v2`, sem raciocínio | 449 (0) | US$ 0,0010 | 2,4 s | **inválido**: papéis em português ("abertura") |
+| `selecao-v3`, sem raciocínio | 370–394 (0) | US$ 0,0005–0,0010 | 2,3–2,7 s | válido, **os mesmos 5 trechos** do raciocínio alto |
+
+Conclusões aplicadas:
+
+- O raciocínio era 90% da conta, e o nível "baixo" não economiza nada. O `selecao-v2` só
+  funcionava com raciocínio porque não listava os valores aceitos; o `selecao-v3` lista
+  papel, framework e risco, e pede motivos de até 15 palavras.
+- Seleção e refino rodam **sem raciocínio**. A seleção só paga uma segunda tentativa, com
+  raciocínio, se a primeira resposta não passar no contrato ou no compilador.
+- O uso é somado em **micro-dólares** (`ai_usage.costMicros`): antes, cada chamada contava pelo
+  menos 1 centavo inteiro, e uma seleção de US$ 0,0005 aparecia como US$ 0,01.
+- Resultado: um vídeo completo (seleção + um comando) sai por **~US$ 0,0009**, contra
+  ~US$ 0,009 antes — dez vezes menos, e a proposta chega em segundos.
+- Diagnóstico: o motivo de uma proposta montada sem IA fica no projeto e aparece no editor, e
+  Configurações tem "Testar a chave" (uma chamada de ~50 tokens com o resultado exato da DeepSeek).

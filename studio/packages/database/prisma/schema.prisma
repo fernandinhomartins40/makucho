@@ -426,6 +426,9 @@ model Project {
   // Quanto da selecao da IA ficou no video exportado (0 a 1), medido na
   // exportacao. E o sinal de qualidade da IA (aproveitamentoDaSelecao).
   aiKeptRatio Float?
+  // Por que a IA NAO montou a proposta atual (chave recusada, sem
+  // credito, rede...). Mostrado no editor; nulo quando a IA montou.
+  aiFallbackReason String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -600,6 +603,10 @@ model AiUsage {
   cachedTokens Int   @default(0)
   cacheHits    Int   @default(0)
   savedCents   Int   @default(0)
+  // Gasto e economia EXATOS, em micro-dolares. `costCents`/`savedCents`
+  // ficam por compatibilidade; o painel e o teto somam estes.
+  costMicros   Int   @default(0)
+  savedMicros  Int   @default(0)
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

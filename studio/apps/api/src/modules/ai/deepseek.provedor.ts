@@ -90,9 +90,21 @@ export class DeepseekProvedor implements ProvedorDeIa {
       const corpo = await resposta.text().catch(() => '');
       this.log.error(`deepseek respondeu ${resposta.status}: ${corpo.slice(0, 400)}`);
 
+      // A mensagem da DeepSeek vai junto ("Model Not Exist", "Invalid
+      // parameter"...): sem ela, um erro de configuracao vira "o servico
+      // falhou" e ninguem consegue dizer o que fazer. Qualquer coisa com
+      // cara de chave sai antes.
+      let detalhe = '';
+      try {
+        const lido = JSON.parse(corpo) as { error?: { message?: string } };
+        detalhe = (lido.error?.message ?? '').replace(/sk-[A-Za-z0-9*._-]+/g, '[chave]').slice(0, 160);
+      } catch {
+        detalhe = '';
+      }
+
       throw new ErroDoProvedor(
         `deepseek respondeu ${resposta.status}`,
-        mensagemPara(resposta.status),
+        `${mensagemPara(resposta.status)}${detalhe ? ` (DeepSeek, ${resposta.status}: ${detalhe})` : ` (DeepSeek respondeu ${resposta.status}.)`}`,
         // 4xx é problema de configuração ou de crédito: insistir não
         // resolve e ainda gasta a cota de requisições.
         resposta.status >= 500 || resposta.status === 429,

@@ -194,6 +194,15 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     await this.planos.salvar(sistema, projectId, plano, resposta.origem === 'ia' ? 'ai' : 'user');
     await this.ativar(projectId);
 
+    // O motivo fica no projeto: a tela diz POR QUE a IA não montou
+    // (chave recusada, sem crédito, rede), e não só que não montou.
+    await this.prisma.project
+      .update({
+        where: { id: projectId },
+        data: { aiFallbackReason: resposta.origem === 'ia' || resultado.ok ? null : resultado.erro.slice(0, 500) },
+      })
+      .catch(() => undefined);
+
     return resposta;
   }
 

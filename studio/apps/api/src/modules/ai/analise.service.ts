@@ -44,6 +44,9 @@ import { PromptsService } from './prompts.service';
 // teto sobe para a resposta nao ser cortada no meio do JSON.
 const MAX_TOKENS = 16000;
 
+/** Sem raciocinio, a resposta e so o JSON: 60 trechos cabem com folga. */
+const MAX_TOKENS_SEM_RACIOCINIO = 6000;
+
 @Injectable()
 export class AnaliseService {
   private readonly log = new Logger(AnaliseService.name);
@@ -121,46 +124,78 @@ export class AnaliseService {
     const sistema = `${instrucoes}\n\n## Estilos de legenda (captionPreset: descrição)\n${catalogoDeEstilosParaIa()}`;
     const acabamento = await this.acabamento.contexto(workspaceId);
 
-    let resposta;
-    try {
-      resposta = await this.ai.chamar({
-        workspaceId,
+    const usuario = this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs, acabamento);
+
+    // ---------- Duas tentativas: barata, e com raciocinio so se precisar ----------
+    //
+    // Medido no mesmo video: sem raciocinio, a selecao sai em 2,5 s por
+    // ~US$ 0,001 e escolhe os MESMOS trechos que com raciocinio alto
+    // (25 s, ~US$ 0,007 -- os tokens de pensamento sao 90% da conta). Com
+    // raciocinio "baixo" o gasto e o mesmo do alto. Entao a primeira
+    // tentativa vai sem raciocinio; so uma resposta que nao passa no
+    // contrato ou no compilador paga a segunda, com raciocinio.
+    const tentar = async (raciocinio: 'desligado' | 'high', semCache: boolean) => {
+      let resposta;
+      try {
+        resposta = await this.ai.chamar({
+          workspaceId,
+          projectId,
+          chamada: 'selecionar_trechos',
+          sistema,
+          usuario,
+          maxTokens: raciocinio === 'desligado' ? MAX_TOKENS_SEM_RACIOCINIO : MAX_TOKENS,
+          promptVersion: versao,
+          semCache,
+          raciocinio,
+        });
+      } catch (e) {
+        const publico =
+          e && typeof e === 'object' && 'publico' in e
+            ? String((e as { publico: unknown }).publico)
+            : e instanceof Error
+              ? e.message
+              : 'a análise falhou';
+        // Erro de provedor ou de limite: nao adianta a segunda tentativa.
+        return { tipo: 'provedor' as const, erro: publico };
+      }
+
+      const lida = parseAiProposal(resposta.texto);
+      if (!lida.ok) {
+        await this.ai.concluirAnalise(projectId, false, lida.error);
+        this.log.warn(`proposta recusada no projeto ${projectId} (${raciocinio}): ${lida.error}`);
+        return {
+          tipo: 'invalida' as const,
+          erro: 'A IA devolveu uma resposta que não pôde ser lida. Tente de novo.',
+          temporario: lida.repairable,
+        };
+      }
+
+      const compilado = compilarProposta({
+        proposta: lida.proposal,
         projectId,
-        chamada: 'selecionar_trechos',
-        sistema,
-        usuario: this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs, acabamento),
-        maxTokens: MAX_TOKENS,
-        promptVersion: versao,
-        semCache: opcoes.semCache,
+        sourceMediaId: original.id,
+        sourceDurationMs: original.durationMs!,
+        segmentos,
+        acabamento,
       });
-    } catch (e) {
-      const publico =
-        e && typeof e === 'object' && 'publico' in e
-          ? String((e as { publico: unknown }).publico)
-          : e instanceof Error
-            ? e.message
-            : 'a análise falhou';
+      if (!compilado.ok) {
+        await this.ai.concluirAnalise(projectId, false, compilado.erro);
+        this.log.warn(`compilação recusada no projeto ${projectId} (${raciocinio}): ${compilado.erro}`);
+        return { tipo: 'invalida' as const, erro: `A proposta da IA não pôde ser usada: ${compilado.erro}`, temporario: true };
+      }
 
-      // Erro de provedor ou de limite: o projeto volta a um estado de
-      // onde dá para tentar, e a gravação continua intacta.
-      return { ok: false, erro: publico, temporario: true };
+      return { tipo: 'ok' as const, lida, compilado };
+    };
+
+    let tentativa = await tentar('desligado', Boolean(opcoes.semCache));
+    if (tentativa.tipo === 'invalida') {
+      this.log.log(`projeto ${projectId}: segunda tentativa, com raciocínio`);
+      tentativa = await tentar('high', true);
     }
+    if (tentativa.tipo === 'provedor') return { ok: false, erro: tentativa.erro, temporario: true };
+    if (tentativa.tipo === 'invalida') return { ok: false, erro: tentativa.erro, temporario: tentativa.temporario };
 
-    // ---------- Parser e Zod ----------
-    const lida = parseAiProposal(resposta.texto);
-
-    if (!lida.ok) {
-      await this.ai.concluirAnalise(projectId, false, lida.error);
-      this.log.warn(`proposta recusada no projeto ${projectId}: ${lida.error}`);
-
-      return {
-        ok: false,
-        erro: 'A IA devolveu uma resposta que não pôde ser lida. Tente de novo.',
-        // Erro de sintaxe costuma passar numa segunda tentativa;
-        // violação de schema é erro de conteúdo e insistir não ajuda.
-        temporario: lida.repairable,
-      };
-    }
+    const { lida, compilado } = tentativa;
 
     // ---------- Validador semântico ----------
     //
@@ -179,27 +214,6 @@ export class AnaliseService {
     });
 
     const problemas = validateSemanticSafety(lida.proposal.segments, textos);
-
-    // ---------- Compilador ----------
-    const compilado = compilarProposta({
-      proposta: lida.proposal,
-      projectId,
-      sourceMediaId: original.id,
-      sourceDurationMs: original.durationMs,
-      segmentos,
-      acabamento,
-    });
-
-    if (!compilado.ok) {
-      await this.ai.concluirAnalise(projectId, false, compilado.erro);
-      this.log.warn(`compilação recusada no projeto ${projectId}: ${compilado.erro}`);
-
-      return {
-        ok: false,
-        erro: `A proposta da IA não pôde ser usada: ${compilado.erro}`,
-        temporario: true,
-      };
-    }
 
     await this.ai.concluirAnalise(projectId, true);
 

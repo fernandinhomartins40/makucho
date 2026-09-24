@@ -17,7 +17,9 @@ import {
   avisoDeUso,
   cabeNoLimite,
   custoEmCentavos,
+  custoEmMicros,
   estadoDoLimite,
+  microsEmCentavos,
   periodoDe,
 } from '@makucho/studio-contracts';
 import type { ChamadaDeIa, SituacaoDeUso } from '@makucho/studio-contracts';
@@ -51,11 +53,11 @@ export class UsoDeIaService {
     let acertos = 0;
 
     for (const linha of linhas) {
-      gasto += linha.costCents;
+      gasto += microsEmCentavos(linha.costMicros);
       chamadas += linha.calls;
-      economia += linha.savedCents;
+      economia += microsEmCentavos(linha.savedMicros);
       acertos += linha.cacheHits;
-      porChamada[linha.call] = linha.costCents;
+      porChamada[linha.call] = microsEmCentavos(linha.costMicros);
     }
 
     return {
@@ -117,9 +119,9 @@ export class UsoDeIaService {
     // O preco real do horario (metade fora do pico) e o do cache de
     // contexto. A diferenca para o preco cheio, sem cache, e a economia.
     const agora = new Date();
-    const custo = custoEmCentavos(modelo, inputTokens, outputTokens, tokensEmCache, agora);
-    const semEconomia = custoEmCentavos(modelo, inputTokens, outputTokens);
-    const economia = Math.max(0, semEconomia - custo);
+    const micros = custoEmMicros(modelo, inputTokens, outputTokens, tokensEmCache, agora);
+    const economiaMicros = Math.max(0, custoEmMicros(modelo, inputTokens, outputTokens) - micros);
+    const custo = microsEmCentavos(micros);
     const periodo = periodoDe();
 
     try {
@@ -129,20 +131,22 @@ export class UsoDeIaService {
           workspaceId,
           period: periodo,
           call: chamada,
-          costCents: custo,
           calls: 1,
           inputTokens,
           outputTokens,
           cachedTokens: tokensEmCache,
-          savedCents: economia,
+          costCents: Math.ceil(custo),
+          costMicros: micros,
+          savedMicros: economiaMicros,
         },
         update: {
-          costCents: { increment: custo },
+          costCents: { increment: Math.ceil(custo) },
+          costMicros: { increment: micros },
           calls: { increment: 1 },
           inputTokens: { increment: inputTokens },
           outputTokens: { increment: outputTokens },
           cachedTokens: { increment: tokensEmCache },
-          savedCents: { increment: economia },
+          savedMicros: { increment: economiaMicros },
         },
       });
     } catch (e) {
@@ -167,8 +171,8 @@ export class UsoDeIaService {
     await this.prisma.aiUsage
       .upsert({
         where: { workspaceId_period_call: { workspaceId, period: periodo, call: chamada } },
-        create: { workspaceId, period: periodo, call: chamada, cacheHits: 1, savedCents: economiaCentavos },
-        update: { cacheHits: { increment: 1 }, savedCents: { increment: economiaCentavos } },
+        create: { workspaceId, period: periodo, call: chamada, cacheHits: 1, savedMicros: Math.round(economiaCentavos * 10_000) },
+        update: { cacheHits: { increment: 1 }, savedMicros: { increment: Math.round(economiaCentavos * 10_000) } },
       })
       .catch((e: unknown) => this.log.error('não foi possível registrar o acerto do cache', e as Error));
   }

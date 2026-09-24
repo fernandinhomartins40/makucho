@@ -673,8 +673,18 @@ function Editor({ projectId }: { projectId: string }) {
                   <IconeAviso size={15} />
                   <span style={{ fontSize: 12 }}>
                     Esta proposta foi montada <strong>sem IA</strong>: toda a fala, sem as pausas longas.
-                    Para a IA escolher os melhores trechos, cadastre a chave em{' '}
-                    <Link href="/configuracoes">Configurações</Link> e analise.
+                    {projeto?.aiFallbackReason ? (
+                      <>
+                        {' '}Motivo: <strong>{projeto.aiFallbackReason}</strong> Depois de resolver, clique em
+                        &quot;Analisar com IA&quot;. Para conferir a chave, use &quot;Testar a chave&quot; em{' '}
+                        <Link href="/configuracoes">Configurações</Link>.
+                      </>
+                    ) : (
+                      <>
+                        {' '}Para a IA escolher os melhores trechos, cadastre a chave em{' '}
+                        <Link href="/configuracoes">Configurações</Link> e clique em &quot;Analisar com IA&quot;.
+                      </>
+                    )}
                   </span>
                 </div>
               )}
