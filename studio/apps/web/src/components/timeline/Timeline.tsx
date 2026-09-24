@@ -606,6 +606,7 @@ function ItemSimples({
   return (
     <div
       data-arrastavel={id}
+      data-inicio={inicioMs}
       data-selecionado={selecionado || undefined}
       role="button"
       tabIndex={0}

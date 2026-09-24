@@ -19,6 +19,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  analisarFechamento,
+  aplicarOperacao,
   catalogoDeEstilosParaIa,
   compilarProposta,
   confiancaDoPlano,
@@ -31,6 +33,7 @@ import {
 import type {
   AnaliseDaIa,
   CommunicationProfileInput,
+  EditPlanV1,
   ContextoDoAcabamento,
   SegmentoDaTranscricao,
   SemanticIssue,
@@ -279,6 +282,34 @@ export class AnaliseService {
 
     const avisos = [...compilado.avisos];
 
+    // ---------- O vídeo termina concluindo o assunto? ----------
+    //
+    // Conferido aqui, sem token, e não só pedido no prompt: um corte
+    // final no meio da frase é estendido até o fim dela (com a fala que
+    // existe); faltando conclusão, o editor mostra as opções.
+    let plano = compilado.plano as EditPlanV1;
+    const fechamento = analisarFechamento(
+      plano,
+      segmentos.map((sg) => ({ id: sg.id, startMs: sg.startMs, endMs: sg.endMs, text: sg.text })),
+    );
+    if (fechamento.problema === 'meio_da_frase' && fechamento.estender) {
+      const estendido = aplicarOperacao(plano, {
+        op: 'ajustar_corte',
+        clipId: fechamento.estender.clipId,
+        sourceStartMs: fechamento.estender.sourceStartMs,
+        sourceEndMs: fechamento.estender.sourceEndMs,
+      });
+      if (estendido.ok && estendido.plan) {
+        plano = estendido.plan;
+        avisos.push('O último trecho foi estendido até o fim da frase, para o vídeo não terminar no meio da ideia.');
+      }
+    }
+    const depois = analisarFechamento(
+      plano,
+      segmentos.map((sg) => ({ id: sg.id, startMs: sg.startMs, endMs: sg.endMs, text: sg.text })),
+    );
+    if (depois.problema) avisos.push(`${depois.mensagem} Veja as opções no editor.`);
+
     // Os problemas bloqueantes viram aviso visível, não recusa: o
     // plano é uma proposta para o usuário revisar, e esconder o que
     // ele precisa olhar seria pior que mostrá-lo com ressalva.
@@ -290,7 +321,7 @@ export class AnaliseService {
 
     return {
       ok: true,
-      plano: compilado.plano,
+      plano,
       avisos,
       entendimento: lida.proposal.analysis,
       // O número não vem do modelo (seção 26.4): é agregação dos

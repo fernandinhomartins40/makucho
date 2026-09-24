@@ -4246,3 +4246,28 @@ button {
 .palco__alca-destaque:active {
   cursor: grabbing;
 }
+
+/* Aviso de fechamento: o vídeo termina concluindo o assunto? */
+.fechamento {
+  margin: var(--e3) var(--e4) 0;
+  flex-shrink: 0;
+  align-items: flex-start;
+}
+
+.fechamento__corpo {
+  display: grid;
+  gap: var(--e2);
+  min-width: 0;
+}
+
+.fechamento__opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e2);
+}
+
+.fechamento__candidato {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}

@@ -30,7 +30,9 @@ export const VERSAO_DO_PROMPT = {
   // curtos -- e o que deixa a selecao funcionar SEM raciocinio.
   // v4: protocolo dos vídeos que retêm (gancho, promessa, entrega,
   // recompensa, CTA), `analysis` antes dos cortes e acabamento obrigatório.
-  selecionar_trechos: 'selecao-v4',
+  // v5: corte com intenção (frase, reação e demonstração inteiras),
+  // corte seco como padrão e conferência de começo, meio e conclusão.
+  selecionar_trechos: 'selecao-v5',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',

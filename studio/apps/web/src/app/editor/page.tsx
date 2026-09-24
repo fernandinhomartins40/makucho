@@ -34,6 +34,7 @@ import {
 } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
+import { AvisoDeFechamento } from '../../components/editor/AvisoDeFechamento';
 import type { ItemDaTimeline } from '../../components/timeline/camadas';
 import type { ProgressoDoPreparo } from '@makucho/studio-contracts';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
@@ -723,6 +724,15 @@ function Editor({ projectId }: { projectId: string }) {
           <IconeAviso size={16} />
           <span>{erro}</span>
         </div>
+      )}
+
+      {transcricao && (
+        <AvisoDeFechamento
+          plano={plano}
+          segmentos={transcricao.segmentos}
+          desligados={[...desligados]}
+          onOperacao={executar}
+        />
       )}
 
       <div className="editor" data-folha={folha ?? undefined}>

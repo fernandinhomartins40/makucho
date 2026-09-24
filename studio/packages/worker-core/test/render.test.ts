@@ -78,16 +78,24 @@ const filtro = args[args.indexOf('-filter_complex') + 1]!;
 t('a entrada é o original', args.includes('/in.mp4'));
 t('a saída está no vetor', args.includes('/out.mp4'));
 
-// Os tempos vêm do plano, em segundos com três casas.
-t('o primeiro clip corta de 10s a 18s', filtro.includes('trim=10.000:18.000'));
-t('o segundo corta de 40s a 47s', filtro.includes('trim=40.000:47.000'));
+// Cada trecho é uma ENTRADA própria, já posicionada no original:
+// trechos fora de ordem não fazem o FFmpeg segurar quadros de um ramo
+// esperando o outro (o render travava com CPU a zero).
+/** O `-ss` e o `-t` de cada entrada de trecho, na ordem. */
+const entradasDeTrecho = (a: string[]) =>
+  a.flatMap((x, i) => (x === '-ss' ? [{ ss: a[i + 1]!, t: a[i + 3]!, arquivo: a[i + 5]! }] : []));
+const trechosDoArgs = entradasDeTrecho(args);
+t('o primeiro trecho lê o original a partir de 10s', trechosDoArgs[0]?.ss === '10.000' && trechosDoArgs[0]?.arquivo === '/in.mp4');
+t('o segundo lê a partir de 40s', trechosDoArgs.some((e) => e.ss === '40.000'));
+t('cada entrada lê só o trecho (+0,5 s de folga)', trechosDoArgs.filter((e) => e.ss === '10.000').every((e) => e.t === '8.500') && trechosDoArgs.filter((e) => e.ss === '40.000').every((e) => e.t === '7.500'));
+t('vídeo e áudio do trecho vêm de entradas separadas (nenhuma entrada alimenta dois ramos)', trechosDoArgs.filter((e) => e.ss === '10.000').length === 2);
 
 // setpts zera o relógio de cada trecho. Sem isso o concat mantém os
 // timestamps originais e o resultado fica com buracos do tamanho do
 // que foi cortado entre eles.
 // O `` importa: `asetpts` também contém `setpts`, e sem a borda
 // o contador daria 4 e o teste passaria por engano.
-const cadeiasDeVideo = filtro.split(';').filter((p) => p.startsWith('[0:v]trim='));
+const cadeiasDeVideo = filtro.split(';').filter((p) => /^\[\d+:v\]setpts=/.test(p) && !p.startsWith('[0:v]'));
 t('há uma cadeia de vídeo por trecho', cadeiasDeVideo.length === 2);
 t('o vídeo tem setpts em cada trecho', cadeiasDeVideo.every((p) => p.includes(',setpts=PTS-STARTPTS')));
 // Número exato de quadros por trecho: 8s e 7s a 30 fps.
@@ -97,7 +105,8 @@ t('o segundo trecho tem 210 quadros exatos', cadeiasDeVideo[1]!.includes('trim=e
 // quadro, que é o defeito mais visível possível.
 t('o áudio tem asetpts em cada trecho', (filtro.match(/asetpts=PTS-STARTPTS/g) ?? []).length === 2);
 
-t('o áudio é cortado junto do vídeo', (filtro.match(/\[0:a\]atrim=/g) ?? []).length === 2);
+t('o áudio é cortado junto do vídeo, da entrada do trecho', (filtro.match(/\[\d+:a\]atrim=0:/g) ?? []).length === 2);
+t('nenhum ramo lê o original inteiro (sem espera cruzada)', !filtro.includes('[0:v]trim=') && !filtro.includes('[0:a]atrim='));
 // O áudio do trecho tem a mesma duração do vídeo dele (quadros / 30).
 t('o áudio do trecho tem a duração exata do vídeo', filtro.includes('apad=whole_dur=8.0000,atrim=0:8.0000'));
 
@@ -163,8 +172,8 @@ const semC1 = montarArgumentos({
 });
 const filtroSemC1 = semC1[semC1.indexOf('-filter_complex') + 1]!;
 
-t('o clip desligado não entra', !filtroSemC1.includes('trim=10.000:18.000'));
-t('o que sobrou entra', filtroSemC1.includes('trim=40.000:47.000'));
+t('o clip desligado não entra', !entradasDeTrecho(semC1).some((e) => e.ss === '10.000'));
+t('o que sobrou entra (vídeo e áudio dele)', entradasDeTrecho(semC1).length === 2 && entradasDeTrecho(semC1).every((e) => e.ss === '40.000'));
 // Um único trecho ainda passa pelo concat: mudar o caminho para o
 // caso de um só produziria dois comportamentos para manter.
 t('um trecho só ainda concatena o áudio', filtroSemC1.includes('concat=n=1:v=0:a=1'));
@@ -192,15 +201,9 @@ t('desligar um trecho encurta o resultado', duracaoDoResultado(plano, ['c1']) ==
 // ============================================================
 
 const embaralhado: EditPlanV1 = { ...plano, clips: [plano.clips[1]!, plano.clips[0]!] };
-const filtroOrdenado = (() => {
-  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: embaralhado });
-  return a[a.indexOf('-filter_complex') + 1]!;
-})();
+const ordenados = entradasDeTrecho(montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: embaralhado }));
 
-t(
-  'ordena pela timeline, não pela posição no array',
-  filtroOrdenado.indexOf('trim=10.000') < filtroOrdenado.indexOf('trim=40.000'),
-);
+t('ordena pela timeline, não pela posição no array', ordenados[0]?.ss === '10.000' && ordenados.findIndex((e) => e.ss === '40.000') > ordenados.findIndex((e) => e.ss === '10.000'));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 // ============================================================
@@ -256,10 +259,12 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   // encadeado descarta o que vem depois da segunda transição), e nenhum
   // trecho é repartido com split (o ramo lido mais tarde travava o
   // FFmpeg): cada pedaço é uma leitura própria da entrada.
-  t('o último quadro do trecho que sai é um pedaço próprio', f.includes('trim=8.967:9.000') || /\[0:v\]trim=[0-9.]+:[0-9.]+,[^;]*trim=end_frame=1,/.test(f));
-  t('o último quadro sai congelado pela duração da transição', f.includes('[z1]tpad=stop_mode=clone:stop=12[u1]'));
+  t('o último quadro do trecho que sai é um pedaço próprio', /\[\d+:v\][^;]*trim=end_frame=1,/.test(f));
+  t('o último quadro sai congelado pela duração da transição', f.includes('[z1]tpad=stop_mode=clone:stop=12,trim=end_frame=12,setpts=PTS-STARTPTS[u1]'));
   t('o começo do trecho que entra é um pedaço de 12 quadros', /trim=end_frame=12,setpts=PTS-STARTPTS[^;]*\[qe2\]/.test(f) || f.includes('[e2]'));
-  t('o xfade é um segmento curto, começando em zero', f.includes('[u1][e2]xfade=transition=fade:duration=0.4000:offset=0[t2]'));
+  t('o xfade é um segmento curto, começando em zero', f.includes('[u1][e2]xfade=transition=fade:duration=0.4000:offset=0,'));
+  t('o segmento da transição tem o número exato de quadros', /xfade=[^;]*trim=end_frame=12,setpts=PTS-STARTPTS\[t2\]/.test(f));
+  t('o quadro congelado dura exatamente a transição (um a mais travava o render)', /\[z1\]tpad=stop_mode=clone:stop=12,trim=end_frame=12,/.test(f));
   t('o resto do trecho vem depois (168 quadros)', /trim=end_frame=168,setpts=PTS-STARTPTS/.test(f) && f.includes('[r2]'));
   t('tudo num concat só, na ordem da timeline', f.includes('[c0][c1][t2][r2]concat=n=4:v=1:a=0[montado]'));
   t('nenhum xfade recebe a saída de outro xfade', !/\[t\d+\]xfade/.test(f) && (f.match(/xfade=/g) ?? []).length === 1);

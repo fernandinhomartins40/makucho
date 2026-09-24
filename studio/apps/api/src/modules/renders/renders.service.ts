@@ -24,6 +24,12 @@ import { StorageService } from '../../common/storage.service';
 import { assertOwnership } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 
+/**
+ * Um render parado há mais que isso não conta como em andamento: o
+ * teto de um render (vídeo de 30 min na VPS) é bem menor.
+ */
+const RENDER_PARADO_APOS_MS = 45 * 60_000;
+
 @Injectable()
 export class RendersService {
   constructor(
@@ -54,9 +60,18 @@ export class RendersService {
     // pesado do pipeline numa VPS onde o lock é único.
     const emAndamento = await this.prisma.render.findFirst({
       where: { projectId, finishedAt: null, startedAt: { not: null } },
+      orderBy: { createdAt: 'desc' },
     });
 
-    if (emAndamento) {
+    // Um render que FALHOU fica sem finishedAt (o worker grava só o
+    // erro), e contava como "em andamento" para sempre: depois de uma
+    // falha, "Exportar de novo" devolvia o render morto e não fazia
+    // nada. Com erro registrado, ou parado há mais que o teto de um
+    // render, ele não bloqueia o próximo.
+    const falhou = Boolean((emAndamento?.qualityCheck as { erro?: unknown } | null)?.erro);
+    const parado = emAndamento?.startedAt ? Date.now() - emAndamento.startedAt.getTime() > RENDER_PARADO_APOS_MS : false;
+
+    if (emAndamento && !falhou && !parado) {
       return { id: emAndamento.id, estado: 'processando' as const, jaExistia: true };
     }
 

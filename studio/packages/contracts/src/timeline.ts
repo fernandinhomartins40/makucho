@@ -97,6 +97,8 @@ export const dividirClipeSchema = z.object({
   // Ponto do corte no ORIGINAL, nao na timeline: e a unica
   // referencia que sobrevive a reordenacoes.
   sourceMs: msSchema,
+  /** Id da segunda metade, escolhido por quem pede (ver `comIdsNovos`). */
+  novoClipId: idSchema.optional(),
 });
 
 /**
@@ -108,6 +110,8 @@ export const dividirClipeSchema = z.object({
 export const duplicarClipeSchema = z.object({
   op: z.literal('duplicar_clipe'),
   clipId: idSchema,
+  /** Id da cópia, escolhido por quem pede (ver `comIdsNovos`). */
+  novoClipId: idSchema.optional(),
 });
 
 /**
@@ -138,6 +142,8 @@ export const inserirClipeSchema = z.object({
    * lugar errado.
    */
   aposClipId: idSchema.optional(),
+  /** Id do trecho novo, escolhido por quem pede (ver `comIdsNovos`). */
+  novoClipId: idSchema.optional(),
 });
 
 /** Troca a ordem dos clipes. A validacao semantica roda depois. */
@@ -497,7 +503,7 @@ export function aplicarOperacao(
       // continua valendo para as duas.
       const segunda = {
         ...clip,
-        id: `${clip.id}-b${Date.now().toString(36)}`,
+        id: livre(operacao.novoClipId, clips, `${clip.id}-b`.slice(0, 48)),
         sourceStartMs: operacao.sourceMs,
       };
       clip.sourceEndMs = operacao.sourceMs;
@@ -513,7 +519,7 @@ export function aplicarOperacao(
       const clip = clips[indice];
       if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
 
-      const copia = { ...clip, id: `${clip.id}-c${Date.now().toString(36)}` };
+      const copia = { ...clip, id: livre(operacao.novoClipId, clips, `${clip.id}-c`.slice(0, 48)) };
       const comCopia = [...clips];
       comCopia.splice(indice + 1, 0, copia);
       novo = { ...novo, clips: recomporTimeline(comCopia) };
@@ -542,7 +548,7 @@ export function aplicarOperacao(
       }
 
       const clipeNovo = {
-        id: `ins${Date.now().toString(36)}`,
+        id: livre(operacao.novoClipId, clips, 'ins'),
         sourceStartMs: operacao.sourceStartMs,
         sourceEndMs: operacao.sourceEndMs,
         // Recomposto logo abaixo; o valor aqui e so para satisfazer
@@ -996,6 +1002,10 @@ export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
       return operacao.id ? operacao : { ...operacao, id: novoId('ov') };
     case 'adicionar_efeito_sonoro':
       return operacao.id ? operacao : { ...operacao, id: novoId('sf') };
+    case 'dividir_clipe':
+    case 'duplicar_clipe':
+    case 'inserir':
+      return operacao.novoClipId ? operacao : { ...operacao, novoClipId: novoId('cl') };
     default:
       return operacao;
   }

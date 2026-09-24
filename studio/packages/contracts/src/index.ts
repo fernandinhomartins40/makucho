@@ -31,4 +31,5 @@ export * from './legendas-ass';
 export * from './acabamento';
 export * from './retomadas';
 export * from './progresso';
+export * from './fechamento';
 export * from './ai-comando';

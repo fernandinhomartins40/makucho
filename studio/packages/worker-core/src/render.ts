@@ -126,6 +126,29 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   let proximaEntrada = 1;
   const partes: string[] = [];
 
+  // ---------- Uma entrada por PEDACO ----------
+  //
+  // Antes todos os pedacos saiam da MESMA entrada (`[0:v]trim=...`), e o
+  // FFmpeg repartia os quadros dela entre os ramos. Um ramo que ja tinha
+  // terminado (o comeco de uma transicao) ou que so seria lido depois (o
+  // fim de um trecho, ou um trecho do fim da gravacao abrindo o video --
+  // exatamente o que a IA faz) prendia a fila, e o render parava. Medido:
+  // CPU a zero por 15 min, sem erro, travado no primeiro quadro depois de
+  // uma transicao.
+  //
+  // Agora cada pedaco de video e cada audio de trecho e uma entrada
+  // propria, ja posicionada (`-ss`) e limitada (`-t`): nenhuma entrada
+  // alimenta dois ramos, e nao ha espera cruzada. O `-ss` antes do `-i`
+  // busca o quadro-chave e decodifica ate o ponto exato.
+  const novaEntrada = (inicioMs: number, duracaoMs: number): number => {
+    const indice = proximaEntrada;
+    proximaEntrada += 1;
+    // Meio segundo de folga: o `tpad` do pedaco completa o que faltar,
+    // e o `trim=end_frame` corta o que sobrar.
+    entradas.push('-ss', (inicioMs / 1000).toFixed(3), '-t', (duracaoMs / 1000 + 0.5).toFixed(3), '-i', opcoes.entrada);
+    return indice;
+  };
+
   // ---------- Transicoes: quantos quadros cada uma ocupa ----------
   const transicaoAntes = new Map(plano.transitions.map((tr) => [tr.beforeClipIndex, tr]));
 
@@ -143,21 +166,21 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
    * Um pedaco de um trecho, do quadro `de` ao `ate` (exclusivo), ja no
    * quadro vertical e com o efeito do trecho.
    *
-   * Cada pedaco e uma leitura PROPRIA da entrada (`[0:v]trim`), e nao
-   * um `split` do trecho inteiro: com `split`, o ramo que so seria lido
-   * mais tarde (o fim do trecho, para a transicao) segurava quadros e o
-   * FFmpeg parava esperando -- medido: CPU a zero e 1,4 GB retidos.
+   * Cada pedaco e uma leitura PROPRIA da entrada do trecho (`trim`), e
+   * nao um `split` do trecho inteiro: com `split`, o ramo que so seria
+   * lido mais tarde (o fim do trecho, para a transicao) segurava quadros
+   * e o FFmpeg parava esperando -- medido: CPU a zero e 1,4 GB retidos.
    */
   const pedaco = (i: number, de: number, ate: number, rotulo: string): void => {
     const { clip, quadros } = trechos[i]!;
     const n = ate - de;
-    const inicio = (clip.sourceStartMs / 1000 + de / FPS).toFixed(3);
-    const fim = (clip.sourceStartMs / 1000 + ate / FPS).toFixed(3);
+    // A entrada do pedaco ja comeca nele: sem `trim` de inicio.
+    const entrada = novaEntrada(clip.sourceStartMs + (de * 1000) / FPS, (n * 1000) / FPS);
 
     // `setpts=PTS-STARTPTS` zera o relogio do pedaco; o `tpad` +
     // `trim=end_frame` fixam o numero exato de quadros.
     const base =
-      `[0:v]trim=${inicio}:${fim},setpts=PTS-STARTPTS,fps=${FPS},` +
+      `[${entrada}:v]setpts=PTS-STARTPTS,fps=${FPS},` +
       `tpad=stop_mode=clone:stop=${FPS},trim=end_frame=${n},setpts=PTS-STARTPTS`;
 
     const quadroVertical = `q${rotulo}`;
@@ -191,7 +214,11 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       pedaco(i, 0, entrada, `e${i}`);
       pedaco(i, entrada, t.quadros, `r${i}`);
       partes.push(
-        `[u${i - 1}][e${i}]xfade=transition=${XFADE_DA_TRANSICAO[tipo] ?? 'fade'}:duration=${s(entrada)}:offset=0[t${i}]`,
+        // O segmento da transicao sai com o numero EXATO de quadros: o
+        // `tpad` completa se o `xfade` entregar um a menos, e o `trim`
+        // corta o que passar. Video e audio continuam do mesmo tamanho.
+        `[u${i - 1}][e${i}]xfade=transition=${XFADE_DA_TRANSICAO[tipo] ?? 'fade'}:duration=${s(entrada)}:offset=0,` +
+          `tpad=stop_mode=clone:stop=2,trim=end_frame=${entrada},setpts=PTS-STARTPTS[t${i}]`,
       );
       segmentos.push(`[t${i}]`, `[r${i}]`);
     } else {
@@ -200,10 +227,14 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     }
 
     if (saida) {
-      // O ultimo quadro, congelado um quadro a mais que a transicao: o
-      // `xfade` exige que a primeira entrada dure `offset + duration`.
+      // O ultimo quadro, congelado pelo tempo EXATO da transicao
+      // (`offset + duration`, o que o `xfade` exige da primeira
+      // entrada). Um quadro a mais -- como era, `tpad stop=N` sozinho
+      // da N+1 -- ficava sem consumir, o `xfade` nunca terminava e o
+      // render travava no quadro seguinte a cada transicao (medido: CPU
+      // a zero por 15 min, sem erro).
       pedaco(i, t.quadros - 1, t.quadros, `z${i}`);
-      partes.push(`[z${i}]tpad=stop_mode=clone:stop=${saida}[u${i}]`);
+      partes.push(`[z${i}]tpad=stop_mode=clone:stop=${saida},trim=end_frame=${saida},setpts=PTS-STARTPTS[u${i}]`);
     }
 
     // Audio com a MESMA duracao do video do trecho. `apad` + `atrim`
@@ -212,8 +243,9 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     const { clip, quadros } = t;
     const durS = s(quadros);
     const fimDoFade = Math.max(0, quadros / FPS - 0.012).toFixed(3);
+    const entradaDoAudio = novaEntrada(clip.sourceStartMs, (quadros * 1000) / FPS);
     partes.push(
-      `[0:a]atrim=${(clip.sourceStartMs / 1000).toFixed(3)}:${(clip.sourceStartMs / 1000 + quadros / FPS).toFixed(3)},asetpts=PTS-STARTPTS,` +
+      `[${entradaDoAudio}:a]atrim=0:${(quadros / FPS).toFixed(3)},asetpts=PTS-STARTPTS,` +
         `aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_dur=${durS},atrim=0:${durS},` +
         `afade=t=in:d=0.012,afade=t=out:st=${fimDoFade}:d=0.012[a${i}]`,
     );
