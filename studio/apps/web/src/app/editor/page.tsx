@@ -835,10 +835,17 @@ function Editor({ projectId }: { projectId: string }) {
             marca={marcaDoVideo}
             urlDoAsset={apiAssets.url}
             destaqueSelecionado={itemSelecionado?.tipo === 'elemento' ? itemSelecionado.id : null}
-            onSelecionarDestaque={(id) => setItemSelecionado({ tipo: 'elemento', id })}
+            onSelecionarDestaque={(id) =>
+              setItemSelecionado((atual) => (atual?.tipo === 'elemento' && atual.id === id ? atual : { tipo: 'elemento', id }))
+            }
             onMoverDestaque={(id, x, y) =>
               executar({ op: 'editar_overlay', overlayId: id, style: { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 } })
             }
+            onRedimensionarTexto={(id, sizeScale) => executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } })}
+            onAbrirEstilos={(id) => {
+              setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
+              if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+            }}
           />
         </main>
 
@@ -870,9 +877,10 @@ function Editor({ projectId }: { projectId: string }) {
             itemSelecionado={itemSelecionado}
             onSelecionarItem={(item) => {
               setItemSelecionado(item);
-              // No celular as propriedades ficam numa folha: selecionar
-              // um item já a abre.
-              if (item && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+              // No celular as propriedades ficam numa folha: abrir os
+              // estilos (clique duplo) já a abre.
+              if (item && item.tipo === 'elemento' && item.aba && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+              else if (item && item.tipo !== 'elemento' && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
             }}
           />
         </section>

@@ -14,10 +14,13 @@
 import { montarBlocos, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
 import type { EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
 
+export type AbaDoElemento = 'estilos' | 'texto' | 'fundo' | 'animacao';
+
 export type ItemDaTimeline =
   | { tipo: 'legenda'; id: string; wordIds: string[]; manualId?: string; inicioMs: number; fimMs: number; texto: string }
   | { tipo: 'corte'; id: string; clipId: string; ms: number }
-  | { tipo: 'elemento'; id: string }
+  /** `aba`: a aba do painel que abre junto (clique duplo = Estilos). */
+  | { tipo: 'elemento'; id: string; aba?: AbaDoElemento }
   | { tipo: 'som'; id: string };
 
 export interface BlocoNaFaixa {

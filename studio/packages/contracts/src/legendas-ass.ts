@@ -28,6 +28,7 @@
 
 import type { CaptionStyleInput } from './brand';
 import type { EditPlanV1 } from './edit-plan';
+import { eventosDoTextoDeTela } from './textos-de-tela';
 import {
   CORES_PADRAO_DA_MARCA,
   FONTES_DE_VIDEO,
@@ -608,6 +609,9 @@ export const TAMANHO_DO_DESTAQUE = 92;
 /** Posição padrão de um destaque novo: terço de cima, longe da legenda. */
 export const POSICAO_PADRAO_DO_DESTAQUE = { x: 0.5, y: 0.3 } as const;
 
+/** Textos que passam ao desenho novo quando ganham um estilo. */
+const TEXTOS_COM_ESTILO = new Set(['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard']);
+
 function estilosDosTextos(plano: EditPlanV1, marca: MarcaDoVideo): string[] {
   const { width, height } = plano.canvas;
   const titulo = fonteDaFamilia(marca.fonteTitulo, 'montserrat');
@@ -704,6 +708,23 @@ function estilosDosTextos(plano: EditPlanV1, marca: MarcaDoVideo): string[] {
       alinhamento: 5,
       margemV: 0,
     }),
+    // Textos de tela com estilo próprio (textos-de-tela.ts): fonte,
+    // cores, contorno e posição vêm por evento; o fundo é uma forma
+    // vetorial desenhada num evento à parte.
+    linhaDeEstilo({
+      ...base,
+      nome: 'TextoDeTela',
+      fonte: titulo.nomeAss,
+      negrito: titulo.negrito,
+      tamanho: TAMANHO_DO_DESTAQUE,
+      primaria: corAss('#FFFFFF'),
+      contorno: corAss('#000000'),
+      fundo: '&H00000000',
+      borda: 1,
+      larguraDoContorno: 0,
+      alinhamento: 5,
+      margemV: 0,
+    } as LinhaDeEstilo),
     linhaDeEstilo({
       ...base,
       nome: 'Barra',
@@ -720,7 +741,7 @@ function estilosDosTextos(plano: EditPlanV1, marca: MarcaDoVideo): string[] {
   ];
 }
 
-function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
+function eventosDosTextos(plano: EditPlanV1, duracaoMs: number, marca: MarcaDoVideo): string[] {
   const { width } = plano.canvas;
   const eventos: string[] = [];
 
@@ -732,6 +753,13 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
     // `\q0`: estes textos podem ter duas linhas, e a quebra
     // inteligente evita que saiam pela borda.
     const texto = escaparAss(o.text ?? '');
+
+    // Com estilo próprio (sempre, no destaque), o desenho completo:
+    // fundo em forma, entrada, animação durante e saída.
+    if (o.component === 'Destaque' || (o.style && TEXTOS_COM_ESTILO.has(o.component))) {
+      eventos.push(...eventosDoTextoDeTela(plano, o, inicio, fim, marca));
+      continue;
+    }
 
     switch (o.component) {
       case 'HookTitle':
@@ -765,11 +793,6 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
         eventos.push(dialogo(5, inicio, fim, 'Cartao', `{\\q0\\fad(200,200)}${corpo}`));
         break;
       }
-      case 'Destaque': {
-        if (!texto) break;
-        eventos.push(eventoDoDestaque(plano, o, inicio, fim, texto));
-        break;
-      }
       case 'ProgressBar': {
         // Um retangulo vetorial no topo, revelado por um \clip que
         // cresce ao longo do video inteiro: uma linha, sem filtro
@@ -794,74 +817,6 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
   }
 
   return eventos;
-}
-
-/**
- * Um texto de destaque: posição livre (\pos), fonte, tamanho, cor,
- * decoração e animação por evento -- o mesmo evento na prévia e no
- * render, porque os dois desenham este .ass.
- */
-function eventoDoDestaque(
-  plano: EditPlanV1,
-  o: EditPlanV1['overlays'][number],
-  inicio: number,
-  fim: number,
-  texto: string,
-): string {
-  const { width, height } = plano.canvas;
-  const e = o.style ?? {};
-  const x = Math.round((e.x ?? POSICAO_PADRAO_DO_DESTAQUE.x) * width);
-  const y = Math.round((e.y ?? POSICAO_PADRAO_DO_DESTAQUE.y) * height);
-  const fonte = e.fontId ? (FONTES_DE_VIDEO as Record<string, FonteDeVideo>)[e.fontId] : undefined;
-  const tamanho = Math.round(TAMANHO_DO_DESTAQUE * (e.sizeScale ?? 1));
-  const cor = e.color ?? '#FFFFFF';
-  const destaque = e.accentColor ?? '#FFD400';
-  const decoracao = e.decoration ?? 'contorno';
-
-  const tags: string[] = [`\\an5`, `\\pos(${x},${y})`, `\\fs${tamanho}`, `\\q2`];
-  if (fonte) tags.push(`\\fn${fonte.nomeAss}`, `\\b${fonte.negrito ? 1 : 0}`);
-  let estilo = 'Destaque';
-
-  switch (decoracao) {
-    case 'nenhuma':
-      tags.push(`\\c${corTag(cor)}`, '\\bord0', '\\shad0');
-      break;
-    case 'contorno':
-      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag('#000000')}`, '\\bord7', '\\shad0');
-      break;
-    case 'sombra':
-      tags.push(`\\c${corTag(cor)}`, '\\bord2', `\\3c${corTag('#000000')}`, '\\shad6', `\\4c${corTag('#000000')}`, '\\4a&H40&');
-      break;
-    case 'sublinhado':
-      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag('#000000')}`, '\\bord5', '\\u1');
-      break;
-    case 'caixa':
-      estilo = 'DestaqueCaixa';
-      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag(destaque)}`, '\\bord18', '\\shad0');
-      break;
-    case 'marca_texto':
-      // Marca-texto: caixa na cor de destaque, texto escuro por cima.
-      estilo = 'DestaqueCaixa';
-      tags.push(`\\c${corTag('#111111')}`, `\\3c${corTag(destaque)}`, '\\bord12', '\\shad0');
-      break;
-  }
-
-  switch (e.animation ?? 'pop') {
-    case 'pop':
-      tags.push('\\fscx60\\fscy60\\t(0,140,\\fscx108\\fscy108)\\t(140,220,\\fscx100\\fscy100)', '\\fad(0,160)');
-      break;
-    case 'surgir':
-      tags.push('\\fad(220,200)');
-      break;
-    case 'deslizar':
-      tags.splice(1, 1, `\\move(${x - 80},${y},${x},${y},0,220)`);
-      tags.push('\\fad(160,160)');
-      break;
-    default:
-      break;
-  }
-
-  return dialogo(4, inicio, fim, estilo, `{${tags.join('')}}${texto}`);
 }
 
 /** Duracao do resultado, somando os trechos ligados. */
@@ -917,7 +872,7 @@ export function gerarAss(opcoes: OpcoesDoAss): string {
   ];
 
   const legendas = plano.captions.enabled ? eventosDaLegenda(plano, estilo, montarBlocos(opcoes)) : [];
-  const textos = eventosDosTextos(plano, duracaoDoVideo(plano, opcoes.clipsDesligados));
+  const textos = eventosDosTextos(plano, duracaoDoVideo(plano, opcoes.clipsDesligados), marca);
 
   return [...cabecalho, ...legendas, ...textos, ''].join('\n');
 }

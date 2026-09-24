@@ -26,7 +26,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
-import { CORES_PADRAO_DA_MARCA, gerarAss, planoPrecisaDeAss, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
+import {
+  CORES_PADRAO_DA_MARCA,
+  TEXTOS_DE_TELA,
+  caixaDoTexto,
+  gerarAss,
+  planoPrecisaDeAss,
+  resolverEstiloDaLegenda,
+} from '@makucho/studio-contracts';
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { tempo } from './funcoes';
@@ -63,6 +70,10 @@ interface Props {
   onSelecionarDestaque?: (overlayId: string) => void;
   /** Soltou o destaque num ponto novo (0 a 1 do quadro). */
   onMoverDestaque?: (overlayId: string, x: number, y: number) => void;
+  /** Puxou o canto: tamanho novo do texto (escala sobre o tamanho base). */
+  onRedimensionarTexto?: (overlayId: string, sizeScale: number) => void;
+  /** Clique duplo no texto da prévia: abre os estilos dele. */
+  onAbrirEstilos?: (overlayId: string) => void;
 }
 
 interface TrechoAtivo {
@@ -90,6 +101,8 @@ export function Palco({
   destaqueSelecionado,
   onSelecionarDestaque,
   onMoverDestaque,
+  onRedimensionarTexto,
+  onAbrirEstilos,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const quadroRef = useRef<HTMLDivElement>(null);
@@ -346,21 +359,24 @@ export function Palco({
 
   const marcaDoVideo = useMemo<MarcaDoVideo>(() => marca ?? { cores: CORES_PADRAO_DA_MARCA }, [marca]);
 
-  // Arraste de um destaque em andamento: o .ass é gerado com a posição
-  // do dedo, então a prévia mostra o texto de verdade andando -- e ao
-  // soltar vira uma operação no plano, a mesma que o render lê.
-  const [arrasteDoDestaque, setArrasteDoDestaque] = useState<{ id: string; x: number; y: number } | null>(null);
+  // Arraste de um texto de tela em andamento (mover ou redimensionar):
+  // o .ass é gerado com a posição e o tamanho do dedo, então a prévia
+  // mostra o texto de verdade andando e crescendo -- e ao soltar vira
+  // uma operação no plano, a mesma que o render lê.
+  const [arrasteDoTexto, setArrasteDoTexto] = useState<{ id: string; x?: number; y?: number; sizeScale?: number } | null>(null);
   const planoDaPrevia = useMemo(
     () =>
-      arrasteDoDestaque
+      arrasteDoTexto
         ? {
             ...plan,
-            overlays: plan.overlays.map((o) =>
-              o.id === arrasteDoDestaque.id ? { ...o, style: { ...(o.style ?? {}), x: arrasteDoDestaque.x, y: arrasteDoDestaque.y } } : o,
-            ),
+            overlays: plan.overlays.map((o) => {
+              if (o.id !== arrasteDoTexto.id) return o;
+              const { id: _id, ...mudanca } = arrasteDoTexto;
+              return { ...o, style: { ...(o.style ?? {}), ...mudanca } };
+            }),
           }
         : plan,
-    [plan, arrasteDoDestaque],
+    [plan, arrasteDoTexto],
   );
 
   const ass = useMemo(() => {
@@ -373,37 +389,87 @@ export function Palco({
     return gerarAss({ plano: plan, estilo, palavras, clipsDesligados: [...(desligados ?? [])], marca: marcaDoVideo });
   }, [planoDaPrevia, palavras, desligados, marcaDoVideo]);
 
-  const destaquesVisiveis = planoDaPrevia.overlays.filter(
-    (o) => o.component === 'Destaque' && posicaoMs >= o.timelineStartMs && posicaoMs < o.timelineStartMs + o.durationMs,
-  );
+  // Textos na tela agora, com a caixa que ocupam (medida pela fonte).
+  const textosVisiveis = planoDaPrevia.overlays
+    .filter(
+      (o) =>
+        (TEXTOS_DE_TELA as readonly string[]).includes(o.component) &&
+        o.text &&
+        posicaoMs >= o.timelineStartMs &&
+        posicaoMs < o.timelineStartMs + o.durationMs,
+    )
+    .map((o) => ({ o, caixa: caixaDoTexto(planoDaPrevia, o, marcaDoVideo) }));
 
-  const arrastarDestaque = (id: string) => (e: React.PointerEvent<HTMLButtonElement>) => {
+  /** Pontos do ponteiro relativos ao quadro, de 0 a 1. */
+  const noQuadro = () => {
     const quadro = quadroRef.current;
-    if (!quadro || !onMoverDestaque) return;
-    e.preventDefault();
-    onSelecionarDestaque?.(id);
+    if (!quadro) return null;
     const caixa = quadro.getBoundingClientRect();
-    const ponto = (ev: PointerEvent | React.PointerEvent) => ({
-      x: Math.min(0.95, Math.max(0.05, (ev.clientX - caixa.left) / caixa.width)),
-      y: Math.min(0.95, Math.max(0.05, (ev.clientY - caixa.top) / caixa.height)),
+    return (ev: PointerEvent | React.PointerEvent) => ({
+      x: (ev.clientX - caixa.left) / caixa.width,
+      y: (ev.clientY - caixa.top) / caixa.height,
     });
-    let ultimo = ponto(e);
-    let moveu = false;
-    const mover = (ev: PointerEvent) => {
-      ultimo = ponto(ev);
-      moveu = true;
-      setArrasteDoDestaque({ id, ...ultimo });
-    };
-    const soltar = () => {
+  };
+
+  const acompanhar = (mover: (ev: PointerEvent) => void, soltar: () => void) => {
+    const fim = () => {
       window.removeEventListener('pointermove', mover);
-      window.removeEventListener('pointerup', soltar);
-      if (moveu) onMoverDestaque(id, ultimo.x, ultimo.y);
-      // A posição do arraste fica até o plano novo chegar, para o texto
-      // não "voltar" por um instante.
-      setTimeout(() => setArrasteDoDestaque(null), 400);
+      window.removeEventListener('pointerup', fim);
+      window.removeEventListener('pointercancel', fim);
+      soltar();
+      // O arraste fica até o plano novo chegar: o texto não "volta".
+      setTimeout(() => setArrasteDoTexto(null), 400);
     };
     window.addEventListener('pointermove', mover);
-    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointerup', fim);
+    window.addEventListener('pointercancel', fim);
+  };
+
+  const arrastarTexto = (id: string, cx: number, cy: number) => (e: React.PointerEvent<HTMLElement>) => {
+    const ponto = noQuadro();
+    if (!ponto || !onMoverDestaque) return;
+    e.preventDefault();
+    onSelecionarDestaque?.(id);
+    // Pega o texto de onde o dedo tocou, não pelo centro: sem salto.
+    const inicio = ponto(e);
+    const limite = (v: number) => Math.min(0.97, Math.max(0.03, v));
+    let ultimo = { x: cx, y: cy };
+    let moveu = false;
+    acompanhar(
+      (ev) => {
+        const p = ponto(ev);
+        ultimo = { x: limite(cx + p.x - inicio.x), y: limite(cy + p.y - inicio.y) };
+        moveu = moveu || Math.abs(p.x - inicio.x) + Math.abs(p.y - inicio.y) > 0.004;
+        if (moveu) setArrasteDoTexto({ id, ...ultimo });
+      },
+      () => {
+        if (moveu) onMoverDestaque(id, ultimo.x, ultimo.y);
+      },
+    );
+  };
+
+  const redimensionarTexto = (id: string, cx: number, cy: number, escala: number) => (e: React.PointerEvent<HTMLElement>) => {
+    const ponto = noQuadro();
+    const quadro = quadroRef.current;
+    if (!ponto || !quadro || !onRedimensionarTexto) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSelecionarDestaque?.(id);
+    // Distância do centro ao canto, em pixels da tela: a escala segue a
+    // proporção dessa distância -- livre, em qualquer direção.
+    const { width, height } = quadro.getBoundingClientRect();
+    const distancia = (p: { x: number; y: number }) => Math.hypot((p.x - cx) * width, (p.y - cy) * height);
+    const d0 = Math.max(8, distancia(ponto(e)));
+    let ultima = escala;
+    acompanhar(
+      (ev) => {
+        ultima = Math.round(Math.min(3, Math.max(0.4, (escala * distancia(ponto(ev))) / d0)) * 100) / 100;
+        setArrasteDoTexto({ id, sizeScale: ultima });
+      },
+      () => {
+        if (ultima !== escala) onRedimensionarTexto(id, ultima);
+      },
+    );
   };
 
   const trechoAtual = trechos[indiceRef.current];
@@ -515,21 +581,49 @@ export function Palco({
 
         {zonasSeguras && <span className="palco__zonas" aria-hidden />}
 
-        {/* Alças dos textos de destaque: clicar seleciona, arrastar
-            posiciona. O texto em si é o do .ass, desenhado acima. */}
+        {/* Alças dos textos de tela: do tamanho do texto de verdade.
+            Arrastar move (mouse ou dedo), o canto redimensiona, clique
+            duplo abre os estilos. O texto em si é o do .ass, acima. */}
         {!tocando &&
-          destaquesVisiveis.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              className="palco__alca-destaque"
-              data-selecionado={destaqueSelecionado === o.id || undefined}
-              style={{ left: `${(o.style?.x ?? 0.5) * 100}%`, top: `${(o.style?.y ?? 0.3) * 100}%` }}
-              aria-label={`Mover o destaque "${o.text ?? ''}"`}
-              title="Arraste para posicionar"
-              onPointerDown={arrastarDestaque(o.id)}
-            />
-          ))}
+          textosVisiveis.map(({ o, caixa }) => {
+            const { width, height } = planoDaPrevia.canvas;
+            const cx = caixa.cx / width;
+            const cy = caixa.cy / height;
+            const selecionado = destaqueSelecionado === o.id;
+            return (
+              <div
+                key={o.id}
+                role="button"
+                tabIndex={0}
+                className="palco__alca-destaque"
+                data-selecionado={selecionado || undefined}
+                style={{
+                  left: `${cx * 100}%`,
+                  top: `${cy * 100}%`,
+                  width: `${Math.min(100, ((caixa.largura + 16) / width) * 100)}%`,
+                  height: `${((caixa.altura + 16) / height) * 100}%`,
+                  transform: `translate(-50%, -50%) rotate(${o.style?.rotation ?? 0}deg)`,
+                }}
+                aria-label={`Mover "${o.text ?? ''}"`}
+                title="Arraste para mover · canto para redimensionar · clique duplo para estilos"
+                onPointerDown={arrastarTexto(o.id, cx, cy)}
+                onDoubleClick={() => onAbrirEstilos?.(o.id)}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Enter') onAbrirEstilos?.(o.id);
+                }}
+              >
+                {selecionado &&
+                  (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
+                    <span
+                      key={canto}
+                      className={`palco__canto palco__canto--${canto}`}
+                      aria-hidden
+                      onPointerDown={redimensionarTexto(o.id, cx, cy, o.style?.sizeScale ?? 1)}
+                    />
+                  ))}
+              </div>
+            );
+          })}
 
         {/* Reserva: navegador sem WebAssembly/OffscreenCanvas. Aproxima o
             estilo (fonte e cores), sem as animações. */}

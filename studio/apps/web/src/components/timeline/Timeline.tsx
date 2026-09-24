@@ -16,7 +16,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, ItemDeTrack, PalavraDaTranscricao, Track, TimelineOperation } from '@makucho/studio-contracts';
-import { montarVisao, duracaoDoPlano } from '@makucho/studio-contracts';
+import { montarVisao, duracaoDoPlano, PRESETS_DE_TEXTO, TEXTOS_DE_TELA } from '@makucho/studio-contracts';
 import {
   COR_DO_ELEMENTO,
   NOME_DO_ELEMENTO,
@@ -49,6 +49,7 @@ import {
 import type { Icon } from '@phosphor-icons/react';
 
 const ALTURA_TRACK = 56;
+const TEXTOS_DE_TELA_SET = new Set<string>(TEXTOS_DE_TELA);
 const LARGURA_ROTULO = 128;
 
 const FAIXAS: Array<{ id: Track; rotulo: string; Icone: Icon; som?: boolean }> = [
@@ -92,11 +93,17 @@ export function Timeline({
   const arrasteRef = useRef<{
     tipo: 'clipe' | 'elemento' | 'legenda';
     id: string;
+    /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
+    modo: 'mover' | 'inicio' | 'fim';
     xInicial: number;
     startMsInicial: number;
+    duracaoInicial: number;
     /** Onde o item está AGORA, durante o arraste. */
     atualMs: number;
+    atualDuracao: number;
   } | null>(null);
+  /** Último toque/clique num elemento: dois seguidos abrem os estilos. */
+  const ultimoToqueRef = useRef<{ id: string; em: number } | null>(null);
 
   const visao = useMemo(() => montarVisao(plan), [plan]);
   const duracaoMs = useMemo(() => duracaoDoPlano(plan), [plan]);
@@ -112,7 +119,19 @@ export function Timeline({
 
     if (!arraste || !onOperacao) return;
     // Um clique sem arraste não vira versão nova do plano.
-    if (Math.abs(arraste.atualMs - arraste.startMsInicial) < 20) return;
+    if (Math.abs(arraste.atualMs - arraste.startMsInicial) < 20 && Math.abs(arraste.atualDuracao - arraste.duracaoInicial) < 20) return;
+
+    // Borda puxada: começo e duração juntos, numa operação só.
+    if (arraste.modo !== 'mover') {
+      const inicio = Math.max(0, alinharAoFrame(arraste.atualMs));
+      const duracao = Math.max(300, alinharAoFrame(arraste.atualDuracao));
+      if (arraste.tipo === 'elemento') {
+        onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
+      } else if (arraste.tipo === 'legenda') {
+        onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
+      }
+      return;
+    }
 
     // A operacao so e emitida AO SOLTAR, nao a cada pixel: uma
     // versao do EditPlan por movimento do mouse encheria o historico
@@ -133,22 +152,59 @@ export function Timeline({
       const arraste = arrasteRef.current;
       if (!arraste) return;
 
-      const deslocamentoPx = e.clientX - arraste.xInicial;
-      const novoMs = Math.max(0, arraste.startMsInicial + pxParaMs(deslocamentoPx, zoom));
-      arraste.atualMs = novoMs;
+      const deslocamentoMs = pxParaMs(e.clientX - arraste.xInicial, zoom);
+      const fimInicial = arraste.startMsInicial + arraste.duracaoInicial;
+      if (arraste.modo === 'mover') {
+        arraste.atualMs = Math.max(0, arraste.startMsInicial + deslocamentoMs);
+      } else if (arraste.modo === 'fim') {
+        arraste.atualDuracao = Math.max(300, arraste.duracaoInicial + deslocamentoMs);
+      } else {
+        // O fim fica parado; o começo anda, sem passar dele.
+        arraste.atualMs = Math.min(Math.max(0, arraste.startMsInicial + deslocamentoMs), fimInicial - 300);
+        arraste.atualDuracao = fimInicial - arraste.atualMs;
+      }
 
       // Feedback visual imediato; o estado real so muda ao soltar.
       const elemento = areaRef.current?.querySelector<HTMLElement>(`[data-arrastavel="${arraste.id}"]`);
       if (elemento) {
-        elemento.style.left = `${msParaPx(alinharAoFrame(novoMs), zoom)}px`;
+        elemento.style.left = `${msParaPx(alinharAoFrame(arraste.atualMs), zoom)}px`;
+        if (arraste.modo !== 'mover') elemento.style.width = `${Math.max(6, msParaPx(arraste.atualDuracao, zoom))}px`;
       }
     },
     [zoom],
   );
 
-  const iniciarArraste = (tipo: 'clipe' | 'elemento' | 'legenda', id: string, startMs: number) => (e: React.PointerEvent) => {
-    arrasteRef.current = { tipo, id, xInicial: e.clientX, startMsInicial: startMs, atualMs: startMs };
-    setArrastando(id);
+  const iniciarArraste =
+    (tipo: 'clipe' | 'elemento' | 'legenda', id: string, startMs: number, duracaoMs = 0, modo: 'mover' | 'inicio' | 'fim' = 'mover') =>
+    (e: React.PointerEvent) => {
+      if (modo !== 'mover') e.stopPropagation();
+      arrasteRef.current = {
+        tipo,
+        id,
+        modo,
+        xInicial: e.clientX,
+        startMsInicial: startMs,
+        duracaoInicial: duracaoMs,
+        atualMs: startMs,
+        atualDuracao: duracaoMs,
+      };
+      setArrastando(id);
+    };
+
+  /** Clique duplo (ou dois toques) num elemento: abre os estilos dele. */
+  const tocarNoElemento = (o: EditPlanV1['overlays'][number]) => {
+    const agora = Date.now();
+    const duplo = ultimoToqueRef.current?.id === o.id && agora - ultimoToqueRef.current.em < 400;
+    ultimoToqueRef.current = duplo ? null : { id: o.id, em: agora };
+    onSelecionar?.(null);
+    if (duplo) {
+      onSelecionarItem?.({ tipo: 'elemento', id: o.id, aba: 'estilos' });
+      // No meio do elemento: já com a entrada feita, visível na prévia.
+      onSeek?.(o.timelineStartMs + Math.min(o.durationMs / 2, 900));
+      return;
+    }
+    onSelecionarItem?.({ tipo: 'elemento', id: o.id });
+    onSeek?.(o.timelineStartMs + 1);
   };
 
   // ---------- Criar legenda e destaque no playhead ----------
@@ -162,7 +218,7 @@ export function Timeline({
       text: 'Seu destaque',
       timelineStartMs: noPlayhead,
       durationMs: Math.min(2500, Math.max(300, duracaoMs - noPlayhead)),
-      style: { x: 0.5, y: 0.3, decoration: 'marca_texto', animation: 'pop' },
+      style: { ...(PRESETS_DE_TEXTO.find((p) => p.id === 'marca_texto')?.estilo ?? {}), x: 0.5, y: 0.3 },
     });
 
   const selecionado = (tipo: ItemDaTimeline['tipo'], id: string) =>
@@ -442,7 +498,12 @@ export function Timeline({
                     classe="clipe--legenda"
                     selecionado={selecionado('legenda', b.id)}
                     arrastavel={Boolean(b.manualId) && onOperacao !== undefined}
-                    onIniciarArraste={b.manualId ? iniciarArraste('legenda', b.manualId, b.inicioMs) : undefined}
+                    onIniciarArraste={b.manualId ? iniciarArraste('legenda', b.manualId, b.inicioMs, b.fimMs - b.inicioMs) : undefined}
+                    onRedimensionar={
+                      b.manualId && onOperacao !== undefined
+                        ? (borda) => iniciarArraste('legenda', b.manualId!, b.inicioMs, b.fimMs - b.inicioMs, borda)
+                        : undefined
+                    }
                     onSelecionar={() => {
                       onSelecionar?.(null);
                       onSelecionarItem?.({
@@ -472,12 +533,14 @@ export function Timeline({
                     rotulo={`${NOME_DO_ELEMENTO[o.component] ?? o.component}${o.text ? `: ${o.text}` : ''}`}
                     selecionado={selecionado('elemento', o.id)}
                     arrastavel={onOperacao !== undefined && o.component !== 'LogoBug' && o.component !== 'ProgressBar'}
-                    onIniciarArraste={iniciarArraste('elemento', o.id, o.timelineStartMs)}
-                    onSelecionar={() => {
-                      onSelecionar?.(null);
-                      onSelecionarItem?.({ tipo: 'elemento', id: o.id });
-                      onSeek?.(o.timelineStartMs + 1);
-                    }}
+                    onIniciarArraste={iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs)}
+                    onRedimensionar={
+                      onOperacao !== undefined && o.component !== 'ProgressBar'
+                        ? (borda) => iniciarArraste('elemento', o.id, o.timelineStartMs, o.durationMs, borda)
+                        : undefined
+                    }
+                    dica={TEXTOS_DE_TELA_SET.has(o.component) ? 'Clique duas vezes para personalizar' : undefined}
+                    onSelecionar={() => tocarNoElemento(o)}
                   />
                 ))}
 
@@ -588,8 +651,10 @@ function ItemSimples({
   classe,
   selecionado,
   arrastavel,
+  dica,
   onSelecionar,
   onIniciarArraste,
+  onRedimensionar,
 }: {
   id: string;
   inicioMs: number;
@@ -600,8 +665,11 @@ function ItemSimples({
   classe?: string;
   selecionado: boolean;
   arrastavel?: boolean;
+  dica?: string;
   onSelecionar: () => void;
   onIniciarArraste?: (e: React.PointerEvent) => void;
+  /** Puxar a borda do começo ou do fim muda o tempo na tela. */
+  onRedimensionar?: (borda: 'inicio' | 'fim') => (e: React.PointerEvent) => void;
 }) {
   return (
     <div
@@ -610,7 +678,7 @@ function ItemSimples({
       data-selecionado={selecionado || undefined}
       role="button"
       tabIndex={0}
-      title={rotulo}
+      title={dica ? `${rotulo} — ${dica}` : rotulo}
       className={`clipe clipe--item ${classe ?? ''}`}
       onClick={onSelecionar}
       onKeyDown={(e) => {
@@ -630,7 +698,23 @@ function ItemSimples({
         borderColor: selecionado ? 'var(--accent)' : 'transparent',
       }}
     >
+      {onRedimensionar && (
+        <span
+          className="clipe__borda clipe__borda--inicio"
+          aria-hidden
+          onPointerDown={onRedimensionar('inicio')}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
       <span className="clipe__texto">{rotulo}</span>
+      {onRedimensionar && (
+        <span
+          className="clipe__borda clipe__borda--fim"
+          aria-hidden
+          onPointerDown={onRedimensionar('fim')}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
     </div>
   );
 }

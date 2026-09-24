@@ -4247,6 +4247,137 @@ button {
   cursor: grabbing;
 }
 
+/* Cantos de redimensionar: grandes o bastante para o dedo. */
+.palco__canto {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: #fff;
+  touch-action: none;
+}
+
+.palco__canto::before {
+  /* Área de toque maior que o desenho. */
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.palco__canto--nw { left: -9px; top: -9px; cursor: nwse-resize; }
+.palco__canto--se { right: -9px; bottom: -9px; cursor: nwse-resize; }
+.palco__canto--ne { right: -9px; top: -9px; cursor: nesw-resize; }
+.palco__canto--sw { left: -9px; bottom: -9px; cursor: nesw-resize; }
+
+/* Bordas do item na timeline: puxar muda começo e duração. */
+.clipe__borda {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.clipe__borda::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 55%);
+  opacity: 0;
+  transition: opacity var(--transicao);
+}
+
+.clipe--item:hover .clipe__borda::after,
+.clipe--item[data-selecionado] .clipe__borda::after {
+  opacity: 1;
+}
+
+.clipe__borda--inicio { left: 0; }
+.clipe__borda--fim { right: 0; }
+
+/* ---------- Estilos prontos de título ---------- */
+
+.estilos--texto {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.estilos--texto .estilo__amostra {
+  height: 64px;
+  background: linear-gradient(160deg, #4b5a73, #1c2536);
+}
+
+.amostra-texto {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.estilo:hover .amostra-texto,
+.estilo:focus-visible .amostra-texto {
+  animation: amostra-entrada 0.5s ease-out;
+}
+
+.amostra-texto[data-entrada='zoom'] { --de: scale(1.6); }
+.amostra-texto[data-entrada='pop'],
+.amostra-texto[data-entrada='elastico'] { --de: scale(0.5); }
+.amostra-texto[data-entrada='deslizar_esquerda'] { --de: translateX(-40px); }
+.amostra-texto[data-entrada='deslizar_direita'] { --de: translateX(40px); }
+.amostra-texto[data-entrada='subir'] { --de: translateY(18px); }
+.amostra-texto[data-entrada='descer'] { --de: translateY(-18px); }
+
+@keyframes amostra-entrada {
+  from {
+    opacity: 0;
+    transform: var(--de, none) rotate(var(--rot, 0deg));
+  }
+}
+
+.formas-de-fundo {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--e2);
+}
+
+.forma-de-fundo {
+  display: grid;
+  gap: 4px;
+  place-items: center;
+  padding: var(--e2) 2px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.forma-de-fundo[aria-checked='true'] {
+  border-color: var(--primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.forma-de-fundo__desenho {
+  width: 34px;
+  height: 14px;
+  background: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .estilo:hover .amostra-texto,
+  .estilo:focus-visible .amostra-texto {
+    animation: none;
+  }
+}
+
 /* Aviso de fechamento: o vídeo termina concluindo o assunto? */
 .fechamento {
   margin: var(--e3) var(--e4) 0;

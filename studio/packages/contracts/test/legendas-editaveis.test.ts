@@ -97,7 +97,7 @@ const assD = gerarAss({ plano: d.plan!, estilo, palavras });
 const linha = assD.split('\n').find((l) => l.includes('Responda'))!;
 t('destaque no ponto escolhido (\pos)', linha.includes('\pos(540,480)'));
 t('destaque com a fonte escolhida', linha.includes(String.raw`\fnBebas Neue`));
-t('destaque em caixa (marca-texto)', linha.includes(',DestaqueCaixa,'));
+t('destaque em caixa (marca-texto): fundo amarelo desenhado atrás', assD.split('\n').some((l) => l.includes(String.raw`\c&H00D4FF&`) && l.includes(String.raw`\p1`)));
 t('destaque no tempo certo', linha.includes('0:00:01.00,0:00:03.50'));
 const movido = aplicarOperacao(d.plan!, { op: 'editar_overlay', overlayId: d.plan!.overlays[0]!.id, style: { y: 0.6 } });
 t('mover não apaga o resto do estilo', movido.plan!.overlays[0]!.style?.decoration === 'marca_texto' && movido.plan!.overlays[0]!.style?.y === 0.6);

@@ -114,6 +114,7 @@ export function Inspector({
             onOperacao={onOperacao}
             onOperacoes={onOperacoes}
             onFechar={() => onFecharItem?.()}
+            marca={marca}
           />
         ) : clipe ? (
           <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} />

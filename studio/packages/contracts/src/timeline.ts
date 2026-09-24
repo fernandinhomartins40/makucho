@@ -27,7 +27,7 @@ import {
   estiloDoTextoSchema,
   tipoDeTransicaoSchema,
 } from './edit-plan';
-import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
+import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
 
@@ -317,6 +317,11 @@ export const editarOverlaySchema = z.object({
   durationMs: z.number().int().min(300).max(600_000).optional(),
   /** Mesclado ao estilo atual: mudar a cor não apaga a posição. */
   style: estiloDoTextoSchema.optional(),
+  /**
+   * Troca o estilo inteiro (um estilo pronto), guardando só a posição
+   * -- nada do estilo anterior "vaza" para o novo.
+   */
+  replaceStyle: z.boolean().optional(),
 });
 
 export const removerOverlaySchema = z.object({
@@ -816,17 +821,35 @@ export function aplicarOperacao(
     }
 
     case 'editar_overlay': {
+      const posicaoDo = (e?: EstiloDoTexto) => ({
+        ...(e?.x !== undefined ? { x: e.x } : {}),
+        ...(e?.y !== undefined ? { y: e.y } : {}),
+      });
+      const semIndefinidos = (e: EstiloDoTexto) =>
+        Object.fromEntries(Object.entries(e).filter(([, v]) => v !== undefined)) as EstiloDoTexto;
       if (!novo.overlays.some((o) => o.id === operacao.overlayId)) {
         return { ok: false, erro: 'elemento nao encontrado' };
       }
-      const { op: _op, overlayId, style, ...mudancas } = operacao;
+      const { op: _op, overlayId, style, replaceStyle, ...mudancas } = operacao;
       const definidas = Object.fromEntries(
         Object.entries(mudancas).filter(([, v]) => v !== undefined),
       );
       novo = {
         ...novo,
         overlays: novo.overlays.map((o) =>
-          o.id === overlayId ? { ...o, ...definidas, ...(style ? { style: { ...(o.style ?? {}), ...style } } : {}) } : o,
+          o.id === overlayId
+            ? {
+                ...o,
+                ...definidas,
+                ...(style
+                  ? {
+                      style: replaceStyle
+                        ? { ...posicaoDo(o.style), ...semIndefinidos(style) }
+                        : { ...(o.style ?? {}), ...semIndefinidos(style) },
+                    }
+                  : {}),
+              }
+            : o,
         ),
       };
       break;

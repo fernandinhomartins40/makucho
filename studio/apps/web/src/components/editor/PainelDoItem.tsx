@@ -10,15 +10,21 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
+import type { EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
-  ANIMACOES_DE_TEXTO,
-  DECORACOES_DE_TEXTO,
+  ANIMACOES_DURANTE,
   DURACAO_PADRAO_DA_TRANSICAO,
+  ENTRADAS_DE_TEXTO,
   FONTES_DE_VIDEO,
+  FORMAS_DE_FUNDO,
+  PRESETS_DE_TEXTO,
+  SAIDAS_DE_TEXTO,
+  TEXTOS_DE_TELA,
   TIPOS_DE_TRANSICAO,
+  resolverEstiloDoTexto,
 } from '@makucho/studio-contracts';
-import type { ItemDaTimeline } from '../timeline/camadas';
+import type { AbaDoElemento, ItemDaTimeline } from '../timeline/camadas';
+import { AmostraDeTexto } from './AmostraDeTexto';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { IconeLixeira } from '../icones';
 import { Segmentado } from './Inspector';
@@ -29,6 +35,7 @@ interface Props {
   onOperacao: (op: TimelineOperation) => void;
   onOperacoes: (ops: TimelineOperation[]) => void;
   onFechar: () => void;
+  marca?: MarcaDoVideo;
 }
 
 export const NOME_DA_TRANSICAO: Record<string, string> = {
@@ -46,26 +53,10 @@ export const NOME_DA_TRANSICAO: Record<string, string> = {
   pixelize: 'Pixels',
 };
 
-const NOME_DA_DECORACAO: Record<string, string> = {
-  nenhuma: 'Nenhuma',
-  contorno: 'Contorno',
-  caixa: 'Caixa',
-  sombra: 'Sombra',
-  sublinhado: 'Sublinhado',
-  marca_texto: 'Marca-texto',
-};
-
-const NOME_DA_ANIMACAO: Record<string, string> = {
-  nenhuma: 'Nenhuma',
-  pop: 'Pop',
-  surgir: 'Surgir',
-  deslizar: 'Deslizar',
-};
-
 const segundos = (ms: number) => (ms / 1000).toFixed(1).replace('.', ',');
 const paraMs = (texto: string) => Math.round(Number(texto.replace(',', '.')) * 1000);
 
-export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar }: Props) {
+export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, marca }: Props) {
   return (
     <div className="painel-do-item">
       <div className="linha entre" style={{ marginBottom: 'var(--e3)' }}>
@@ -76,7 +67,9 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar }: 
       </div>
       {item.tipo === 'legenda' && <Legenda item={item} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'corte' && <Corte plan={plan} clipId={item.clipId} onOperacao={onOperacao} />}
-      {item.tipo === 'elemento' && <Elemento plan={plan} overlayId={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
+      {item.tipo === 'elemento' && (
+        <Elemento plan={plan} overlayId={item.id} abaPedida={item.aba} marca={marca} onOperacao={onOperacao} onFechar={onFechar} />
+      )}
       {item.tipo === 'som' && (
         <button
           type="button"
@@ -243,14 +236,70 @@ function Corte({ plan, clipId, onOperacao }: { plan: EditPlanV1; clipId: string;
 
 // ---------- Elemento (título, chamada, destaque...) ----------
 
+const NOME_DA_FORMA: Record<string, string> = {
+  nenhum: 'Sem fundo',
+  retangulo: 'Caixa',
+  arredondado: 'Arredondado',
+  pilula: 'Pílula',
+  faixa: 'Faixa',
+};
+
+const NOME_DA_ENTRADA: Record<string, string> = {
+  nenhuma: 'Nenhuma',
+  surgir: 'Surgir',
+  pop: 'Pop',
+  zoom: 'Zoom',
+  elastico: 'Elástico',
+  deslizar_esquerda: 'Da esquerda',
+  deslizar_direita: 'Da direita',
+  subir: 'Subir',
+  descer: 'Descer',
+  digitar: 'Digitar',
+};
+
+const NOME_DA_SAIDA: Record<string, string> = {
+  nenhuma: 'Nenhuma',
+  sumir: 'Sumir',
+  encolher: 'Encolher',
+  zoom: 'Zoom',
+  deslizar_esquerda: 'Para a esquerda',
+  deslizar_direita: 'Para a direita',
+  subir: 'Subir',
+  descer: 'Descer',
+};
+
+const NOME_DO_DURANTE: Record<string, string> = {
+  nenhuma: 'Parado',
+  pulsar: 'Pulsar',
+  balancar: 'Balançar',
+  brilhar: 'Brilhar',
+  tremer: 'Tremer',
+};
+
+const ABAS_DO_ELEMENTO: ReadonlyArray<readonly [AbaDoElemento, string]> = [
+  ['estilos', 'Estilos'],
+  ['texto', 'Texto'],
+  ['fundo', 'Fundo'],
+  ['animacao', 'Animação'],
+];
+
+/** O visual de antes (sem estilo): o cartão "Original". */
+const ORIGINAL = { id: 'original', rotulo: 'Original', descricao: 'O visual padrão deste elemento, com as cores da marca.', estilo: {} };
+
+type Estilo = NonNullable<EditPlanV1['overlays'][number]['style']>;
+
 function Elemento({
   plan,
   overlayId,
+  abaPedida,
+  marca,
   onOperacao,
   onFechar,
 }: {
   plan: EditPlanV1;
   overlayId: string;
+  abaPedida?: AbaDoElemento;
+  marca?: MarcaDoVideo;
   onOperacao: (op: TimelineOperation) => void;
   onFechar: () => void;
 }) {
@@ -258,31 +307,41 @@ function Elemento({
   const [texto, setTexto] = useState(o?.text ?? '');
   const [inicio, setInicio] = useState(segundos(o?.timelineStartMs ?? 0));
   const [duracao, setDuracao] = useState(segundos(o?.durationMs ?? 0));
+  const [aba, setAba] = useState<AbaDoElemento>(abaPedida ?? 'estilos');
   useEffect(() => {
     setTexto(o?.text ?? '');
     setInicio(segundos(o?.timelineStartMs ?? 0));
     setDuracao(segundos(o?.durationMs ?? 0));
   }, [o?.id, o?.text, o?.timelineStartMs, o?.durationMs]);
+  // Clique duplo de novo (mesmo elemento): volta para a aba pedida.
+  useEffect(() => {
+    if (abaPedida) setAba(abaPedida);
+  }, [abaPedida, overlayId]);
 
   if (!o) return <p className="texto-secundario">Este elemento não existe mais.</p>;
   const temTexto = o.component !== 'LogoBug' && o.component !== 'ProgressBar' && o.component !== 'ImageOverlay';
-  const destaque = o.component === 'Destaque';
-  const e = o.style ?? {};
-  const estilo = (mudanca: NonNullable<EditPlanV1['overlays'][number]['style']>) =>
-    onOperacao({ op: 'editar_overlay', overlayId, style: mudanca });
+  const personalizavel = (TEXTOS_DE_TELA as readonly string[]).includes(o.component);
+  const e: Estilo = o.style ?? {};
+  const r = resolverEstiloDoTexto(o.component, e, marca);
+  const estilo = (mudanca: Estilo) => onOperacao({ op: 'editar_overlay', overlayId, style: mudanca });
+  const aplicar = (novo: Estilo) => onOperacao({ op: 'editar_overlay', overlayId, style: novo, replaceStyle: true });
+  // Duas palavras do próprio texto: cabem no cartão em qualquer fonte.
+  const amostra = (o.text ?? '').split(/\n|\|/)[0]!.trim().split(/\s+/).slice(0, 2).join(' ').slice(0, 12) || 'Seu título';
 
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       {temTexto && (
         <label className="campo" style={{ marginBottom: 0 }}>
           <span className="campo__rotulo">Texto</span>
-          <input
-            className="campo__entrada"
+          <textarea
+            className="campo__area"
+            style={{ minHeight: 56 }}
             value={texto}
             maxLength={200}
             onChange={(ev) => setTexto(ev.target.value)}
             onBlur={() => texto.trim() && texto !== o.text && onOperacao({ op: 'editar_overlay', overlayId, text: texto.trim() })}
           />
+          {personalizavel && <span className="campo__ajuda">Enter quebra a linha. Linhas longas quebram sozinhas.</span>}
         </label>
       )}
       <div className="linha" style={{ gap: 'var(--e2)' }}>
@@ -308,77 +367,151 @@ function Elemento({
         </label>
       </div>
 
-      {destaque && (
+      {personalizavel && (
         <>
           <p className="campo__ajuda" style={{ marginTop: 0 }}>
-            Arraste o texto na prévia para posicionar. Evite cobrir o rosto e a legenda.
+            Na prévia: arraste para mover, puxe um canto para mudar o tamanho. Na timeline, puxe as bordas para mudar o tempo.
           </p>
-          <label className="campo" style={{ marginBottom: 0 }}>
-            <span className="campo__rotulo">Fonte</span>
-            <select className="campo__selecao" value={e.fontId ?? ''} onChange={(ev) => estilo({ fontId: ev.target.value || undefined })}>
-              <option value="">Fonte de títulos da marca</option>
-              {Object.entries(FONTES_DE_VIDEO).map(([id, f]) => (
-                <option key={id} value={id}>
-                  {f.rotulo}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="campo" style={{ marginBottom: 0 }}>
-            <span className="campo__rotulo">Tamanho: {Math.round((e.sizeScale ?? 1) * 100)}%</span>
-            <input
-              type="range"
-              className="deslizante"
-              min={40}
-              max={300}
-              step={5}
-              value={Math.round((e.sizeScale ?? 1) * 100)}
-              onChange={(ev) => estilo({ sizeScale: Number(ev.target.value) / 100 })}
-            />
-          </label>
-          <div className="linha" style={{ gap: 'var(--e3)' }}>
-            <Cor rotulo="Cor do texto" valor={e.color ?? '#FFFFFF'} onTrocar={(v) => estilo({ color: v })} />
-            <Cor rotulo="Cor de destaque" valor={e.accentColor ?? '#FFD400'} onTrocar={(v) => estilo({ accentColor: v })} />
-          </div>
-          <div className="campo" style={{ marginBottom: 0 }}>
-            <span className="campo__rotulo">Decoração</span>
-            <div className="transicoes">
-              {DECORACOES_DE_TEXTO.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  role="radio"
-                  aria-checked={(e.decoration ?? 'contorno') === d}
-                  className="transicoes__item"
-                  onClick={() => estilo({ decoration: d })}
-                >
-                  {NOME_DA_DECORACAO[d]}
-                </button>
-              ))}
+          <Segmentado rotulo="Personalizar" valor={aba} opcoes={ABAS_DO_ELEMENTO} onTrocar={(v) => setAba(v as AbaDoElemento)} />
+
+          {aba === 'estilos' && (
+            <div className="campo" style={{ marginBottom: 0 }}>
+              <div className="estilos estilos--texto" role="radiogroup" aria-label="Estilos prontos">
+                {[ORIGINAL, ...PRESETS_DE_TEXTO].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={p.id === 'original' ? !o.style || Object.keys(o.style).every((k) => k === 'x' || k === 'y') : e.preset === p.id}
+                    className="estilo"
+                    title={p.descricao}
+                    onClick={() => aplicar(p.estilo)}
+                  >
+                    <span className="estilo__amostra">
+                      <AmostraDeTexto estilo={p.estilo} componente={o.component} marca={marca} texto={amostra} />
+                    </span>
+                    <span className="estilo__rotulo">{p.rotulo}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="campo__ajuda">Aplicar um estilo mantém o texto, o tempo e a posição. Depois, ajuste o que quiser nas outras abas.</p>
             </div>
-          </div>
-          <div className="campo" style={{ marginBottom: 0 }}>
-            <span className="campo__rotulo">Entrada</span>
-            <Segmentado
-              rotulo="Animação de entrada"
-              valor={e.animation ?? 'pop'}
-              opcoes={ANIMACOES_DE_TEXTO.map((a) => [a, NOME_DA_ANIMACAO[a] ?? a] as const)}
-              onTrocar={(v) => estilo({ animation: v as (typeof ANIMACOES_DE_TEXTO)[number] })}
-            />
-          </div>
-          <div className="campo" style={{ marginBottom: 0 }}>
-            <span className="campo__rotulo">Posição rápida</span>
-            <Segmentado
-              rotulo="Posição do destaque"
-              valor={(e.y ?? 0.3) < 0.4 ? 'topo' : (e.y ?? 0.3) > 0.6 ? 'baixo' : 'meio'}
-              opcoes={[
-                ['topo', 'Topo'],
-                ['meio', 'Meio'],
-                ['baixo', 'Acima da legenda'],
-              ]}
-              onTrocar={(v) => estilo({ x: 0.5, y: v === 'topo' ? 0.22 : v === 'meio' ? 0.45 : 0.62 })}
-            />
-          </div>
+          )}
+
+          {aba === 'texto' && (
+            <>
+              <label className="campo" style={{ marginBottom: 0 }}>
+                <span className="campo__rotulo">Fonte</span>
+                <select className="campo__selecao" value={e.fontId ?? ''} onChange={(ev) => estilo({ fontId: ev.target.value || undefined })}>
+                  <option value="">Fonte de títulos da marca</option>
+                  {Object.entries(FONTES_DE_VIDEO).map(([id, f]) => (
+                    <option key={id} value={id}>
+                      {f.rotulo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Deslizante rotulo="Tamanho" valor={Math.round((e.sizeScale ?? 1) * 100)} min={40} max={300} passo={5} unidade="%" onSoltar={(v) => estilo({ sizeScale: v / 100 })} />
+              <div className="linha" style={{ gap: 'var(--e3)' }}>
+                <Cor rotulo="Cor do texto" valor={r.cor} onTrocar={(v) => estilo({ color: v })} />
+                <Cor rotulo="Cor do contorno" valor={r.contorno.cor} onTrocar={(v) => estilo({ outlineColor: v })} />
+              </div>
+              <Deslizante rotulo="Contorno" valor={r.contorno.largura} min={0} max={20} passo={1} unidade="px" onSoltar={(v) => estilo({ outlineWidth: v })} />
+              <div className="linha" style={{ gap: 'var(--e3)', alignItems: 'end' }}>
+                <div className="crescer">
+                  <Deslizante rotulo="Sombra" valor={r.sombra.distancia} min={0} max={20} passo={1} unidade="px" onSoltar={(v) => estilo({ shadow: v })} />
+                </div>
+                <Cor rotulo="Cor da sombra" valor={r.sombra.cor} onTrocar={(v) => estilo({ shadowColor: v })} />
+              </div>
+              <Deslizante rotulo="Espaço entre letras" valor={r.espacamento} min={-5} max={30} passo={1} unidade="px" onSoltar={(v) => estilo({ letterSpacing: v })} />
+              <Deslizante rotulo="Inclinação" valor={r.rotacao} min={-45} max={45} passo={1} unidade="°" onSoltar={(v) => estilo({ rotation: v })} />
+              <div className="campo" style={{ marginBottom: 0 }}>
+                <span className="campo__rotulo">Letras</span>
+                <Segmentado
+                  rotulo="Caixa das letras"
+                  valor={r.caixaAlta ? 'alta' : 'normal'}
+                  opcoes={[
+                    ['normal', 'Como escrito'],
+                    ['alta', 'MAIÚSCULAS'],
+                  ]}
+                  onTrocar={(v) => estilo({ uppercase: v === 'alta' })}
+                />
+              </div>
+              <div className="campo" style={{ marginBottom: 0 }}>
+                <span className="campo__rotulo">Posição rápida</span>
+                <Segmentado
+                  rotulo="Posição do texto"
+                  valor={r.y < 0.35 ? 'topo' : r.y > 0.58 ? 'baixo' : 'meio'}
+                  opcoes={[
+                    ['topo', 'Topo'],
+                    ['meio', 'Meio'],
+                    ['baixo', 'Acima da legenda'],
+                  ]}
+                  onTrocar={(v) => estilo({ x: 0.5, y: v === 'topo' ? 0.18 : v === 'meio' ? 0.45 : 0.62 })}
+                />
+              </div>
+            </>
+          )}
+
+          {aba === 'fundo' && (
+            <>
+              <div className="campo" style={{ marginBottom: 0 }}>
+                <span className="campo__rotulo">Forma do fundo</span>
+                <div className="formas-de-fundo" role="radiogroup" aria-label="Forma do fundo">
+                  {FORMAS_DE_FUNDO.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      role="radio"
+                      aria-checked={(r.fundo?.forma ?? 'nenhum') === f}
+                      className="forma-de-fundo"
+                      onClick={() => estilo({ bgShape: f, ...(f !== 'nenhum' && !e.bgColor && !r.fundo ? { bgColor: marca?.cores.primary ?? '#2F66FF' } : {}) })}
+                    >
+                      <span
+                        className="forma-de-fundo__desenho"
+                        aria-hidden
+                        style={{
+                          opacity: f === 'nenhum' ? 0.2 : 1,
+                          borderRadius: f === 'pilula' ? 999 : f === 'arredondado' ? 5 : 0,
+                          width: f === 'faixa' ? '100%' : undefined,
+                        }}
+                      />
+                      {NOME_DA_FORMA[f]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {r.fundo ? (
+                <>
+                  <Cor rotulo="Cor do fundo" valor={r.fundo.cor} onTrocar={(v) => estilo({ bgColor: v })} />
+                  <Deslizante
+                    rotulo="Opacidade"
+                    valor={Math.round(r.fundo.opacidade * 100)}
+                    min={10}
+                    max={100}
+                    passo={5}
+                    unidade="%"
+                    onSoltar={(v) => estilo({ bgOpacity: v / 100 })}
+                  />
+                  <Deslizante rotulo="Espaço em volta do texto" valor={r.fundo.margem} min={0} max={80} passo={2} unidade="px" onSoltar={(v) => estilo({ bgPadding: v })} />
+                </>
+              ) : (
+                <p className="campo__ajuda">Sem fundo, o texto se destaca pelo contorno e pela sombra (aba Texto).</p>
+              )}
+            </>
+          )}
+
+          {aba === 'animacao' && (
+            <>
+              <Opcoes rotulo="Entrada" valor={r.entrada} opcoes={ENTRADAS_DE_TEXTO} nomes={NOME_DA_ENTRADA} onTrocar={(v) => estilo({ entrada: v as Estilo['entrada'] })} />
+              <Opcoes rotulo="Durante a exibição" valor={r.durante} opcoes={ANIMACOES_DURANTE} nomes={NOME_DO_DURANTE} onTrocar={(v) => estilo({ durante: v as Estilo['durante'] })} />
+              {r.durante === 'brilhar' && <Cor rotulo="Cor do brilho" valor={r.corDeDestaque} onTrocar={(v) => estilo({ accentColor: v })} />}
+              <Opcoes rotulo="Saída" valor={r.saida} opcoes={SAIDAS_DE_TEXTO} nomes={NOME_DA_SAIDA} onTrocar={(v) => estilo({ saida: v as Estilo['saida'] })} />
+              {o.durationMs < 900 && r.saida !== 'nenhuma' && (
+                <p className="campo__ajuda">A saída aparece em elementos com 0,9 s ou mais na tela.</p>
+              )}
+            </>
+          )}
         </>
       )}
 
@@ -394,6 +527,80 @@ function Elemento({
         <IconeLixeira size={15} /> Remover
       </button>
     </div>
+  );
+}
+
+/** Grade de opções com nome (entrada, saída, animação). */
+function Opcoes({
+  rotulo,
+  valor,
+  opcoes,
+  nomes,
+  onTrocar,
+}: {
+  rotulo: string;
+  valor: string;
+  opcoes: readonly string[];
+  nomes: Record<string, string>;
+  onTrocar: (v: string) => void;
+}) {
+  return (
+    <div className="campo" style={{ marginBottom: 0 }}>
+      <span className="campo__rotulo">{rotulo}</span>
+      <div className="transicoes" role="radiogroup" aria-label={rotulo}>
+        {opcoes.map((v) => (
+          <button key={v} type="button" role="radio" aria-checked={valor === v} className="transicoes__item" onClick={() => valor !== v && onTrocar(v)}>
+            {nomes[v] ?? v}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Deslizante que só grava ao soltar: arrastar não cria uma versão do
+ * plano por pixel. O número ao lado acompanha o dedo.
+ */
+function Deslizante({
+  rotulo,
+  valor,
+  min,
+  max,
+  passo,
+  unidade,
+  onSoltar,
+}: {
+  rotulo: string;
+  valor: number;
+  min: number;
+  max: number;
+  passo: number;
+  unidade: string;
+  onSoltar: (v: number) => void;
+}) {
+  const [local, setLocal] = useState(valor);
+  useEffect(() => setLocal(valor), [valor]);
+  const gravar = () => local !== valor && onSoltar(local);
+  return (
+    <label className="campo" style={{ marginBottom: 0 }}>
+      <span className="campo__rotulo">
+        {rotulo}: {local}
+        {unidade}
+      </span>
+      <input
+        type="range"
+        className="deslizante"
+        min={min}
+        max={max}
+        step={passo}
+        value={local}
+        onChange={(ev) => setLocal(Number(ev.target.value))}
+        onPointerUp={gravar}
+        onKeyUp={gravar}
+        onBlur={gravar}
+      />
+    </label>
   );
 }
 

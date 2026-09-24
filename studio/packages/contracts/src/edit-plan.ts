@@ -236,10 +236,32 @@ export const estiloDoTextoSchema = z
     sizeScale: z.number().min(0.4).max(3).optional(),
     color: corHexSchema.optional(),
     accentColor: corHexSchema.optional(),
+    // Campos antigos: o render ainda os entende, a tela usa os novos.
     decoration: z.enum(DECORACOES_DE_TEXTO).optional(),
     animation: z.enum(ANIMACOES_DE_TEXTO).optional(),
     x: z.number().min(0).max(1).optional(),
     y: z.number().min(0).max(1).optional(),
+    // Texto
+    outlineColor: corHexSchema.optional(),
+    outlineWidth: z.number().min(0).max(20).optional(),
+    shadow: z.number().min(0).max(20).optional(),
+    shadowColor: corHexSchema.optional(),
+    uppercase: z.boolean().optional(),
+    letterSpacing: z.number().min(-5).max(30).optional(),
+    rotation: z.number().min(-45).max(45).optional(),
+    // Fundo
+    bgShape: z.enum(['nenhum', 'retangulo', 'arredondado', 'pilula', 'faixa']).optional(),
+    bgColor: corHexSchema.optional(),
+    bgOpacity: z.number().min(0).max(1).optional(),
+    bgPadding: z.number().min(0).max(80).optional(),
+    // Animação
+    entrada: z
+      .enum(['nenhuma', 'surgir', 'pop', 'zoom', 'elastico', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer', 'digitar'])
+      .optional(),
+    saida: z.enum(['nenhuma', 'sumir', 'encolher', 'zoom', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer']).optional(),
+    durante: z.enum(['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer']).optional(),
+    /** O estilo pronto de onde isto veio (só para marcar o cartão). */
+    preset: z.string().max(40).optional(),
   })
   .strict();
 

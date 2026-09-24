@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/edit-plan.test.ts && tsx test/ai-proposal.test.ts && tsx test/brand.test.ts && tsx test/script.test.ts && tsx test/ingest.test.ts && tsx test/retention.test.ts && tsx test/timeline.test.ts && tsx test/bridge.test.ts && tsx test/ai-usage.test.ts && tsx test/compilador.test.ts && tsx test/ai-roteiro.test.ts && tsx test/ai-refino.test.ts && tsx test/montagem-automatica.test.ts && tsx test/legendas-e-acabamento.test.ts && tsx test/protocolo-viral.test.ts && tsx test/legendas-editaveis.test.ts && tsx test/fechamento.test.ts",
+    "test": "tsx test/edit-plan.test.ts && tsx test/ai-proposal.test.ts && tsx test/brand.test.ts && tsx test/script.test.ts && tsx test/ingest.test.ts && tsx test/retention.test.ts && tsx test/timeline.test.ts && tsx test/bridge.test.ts && tsx test/ai-usage.test.ts && tsx test/compilador.test.ts && tsx test/ai-roteiro.test.ts && tsx test/ai-refino.test.ts && tsx test/montagem-automatica.test.ts && tsx test/legendas-e-acabamento.test.ts && tsx test/protocolo-viral.test.ts && tsx test/legendas-editaveis.test.ts && tsx test/fechamento.test.ts && tsx test/textos-de-tela.test.ts",
     "build": "rimraf dist tsconfig.tsbuildinfo && tsc"
   },
   "dependencies": {
