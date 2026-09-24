@@ -24,6 +24,7 @@ import {
   OVERLAY_COMPONENTS,
   editPlanV1Schema,
   efeitoDeTrechoSchema,
+  estiloDoTextoSchema,
   tipoDeTransicaoSchema,
 } from './edit-plan';
 import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
@@ -206,6 +207,45 @@ export const configurarLegendaSchema = z.object({
   position: z.enum(['top', 'center', 'bottom']).optional(),
   highlightActiveWord: z.boolean().optional(),
   sizeScale: z.number().min(0.6).max(1.6).optional(),
+  /** `null` volta ao do estilo. */
+  fontId: z.string().max(40).nullable().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  highlightColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+});
+
+/** Exclui legendas: as palavras continuam na fala, somem da tela. */
+export const ocultarLegendaSchema = z.object({
+  op: z.literal('ocultar_legenda'),
+  wordIds: z.array(idSchema).min(1).max(80),
+});
+
+/** Desfaz a exclusão. */
+export const restaurarLegendaSchema = z.object({
+  op: z.literal('restaurar_legenda'),
+  wordIds: z.array(idSchema).min(1).max(80),
+});
+
+/** Uma legenda escrita à mão, no tempo da timeline. */
+export const adicionarLegendaSchema = z.object({
+  op: z.literal('adicionar_legenda'),
+  /** Id escolhido por quem pede (ver `comIdsNovos`). */
+  id: idSchema.optional(),
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(200).max(20_000),
+  text: z.string().trim().min(1).max(160),
+});
+
+export const editarLegendaManualSchema = z.object({
+  op: z.literal('editar_legenda_manual'),
+  legendaId: idSchema,
+  text: z.string().trim().min(1).max(160).optional(),
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(200).max(20_000).optional(),
+});
+
+export const removerLegendaManualSchema = z.object({
+  op: z.literal('remover_legenda_manual'),
+  legendaId: idSchema,
 });
 
 /**
@@ -251,12 +291,15 @@ export const configurarVideoSchema = z.object({
  */
 export const adicionarOverlaySchema = z.object({
   op: z.literal('adicionar_overlay'),
+  /** Id escolhido por quem pede (ver `comIdsNovos`). */
+  id: idSchema.optional(),
   component: z.enum(OVERLAY_COMPONENTS),
   text: z.string().min(1).max(200).optional(),
   assetId: idSchema.optional(),
   variant: z.string().max(40).optional(),
   timelineStartMs: msSchema,
   durationMs: z.number().int().min(300).max(600_000),
+  style: estiloDoTextoSchema.optional(),
 });
 
 export const editarOverlaySchema = z.object({
@@ -266,6 +309,8 @@ export const editarOverlaySchema = z.object({
   variant: z.string().max(40).optional(),
   timelineStartMs: msSchema.optional(),
   durationMs: z.number().int().min(300).max(600_000).optional(),
+  /** Mesclado ao estilo atual: mudar a cor não apaga a posição. */
+  style: estiloDoTextoSchema.optional(),
 });
 
 export const removerOverlaySchema = z.object({
@@ -276,6 +321,8 @@ export const removerOverlaySchema = z.object({
 /** Efeito sonoro num ponto da timeline (embutido ou do workspace). */
 export const adicionarEfeitoSonoroSchema = z.object({
   op: z.literal('adicionar_efeito_sonoro'),
+  /** Id escolhido por quem pede (ver `comIdsNovos`). */
+  id: idSchema.optional(),
   assetId: idSchema,
   timelineStartMs: msSchema,
   gainDb: z.number().min(-40).max(6).optional(),
@@ -298,6 +345,11 @@ export const timelineOperationSchema = z
     reordenarSchema,
     editarLegendaSchema,
     desfazerCorrecaoSchema,
+    ocultarLegendaSchema,
+    restaurarLegendaSchema,
+    adicionarLegendaSchema,
+    editarLegendaManualSchema,
+    removerLegendaManualSchema,
     trocarEstiloLegendaSchema,
     trocarMusicaSchema,
     configurarLegendaSchema,
@@ -620,10 +672,68 @@ export function aplicarOperacao(
 
     case 'configurar_legenda': {
       const { op: _op, ...mudancas } = operacao;
-      const definidas = Object.fromEntries(
-        Object.entries(mudancas).filter(([, v]) => v !== undefined),
-      ) as Partial<EditPlanV1['captions']>;
-      novo = { ...novo, captions: { ...novo.captions, ...definidas } };
+      const captions: Record<string, unknown> = { ...novo.captions };
+      for (const [chave, valor] of Object.entries(mudancas)) {
+        if (valor === undefined) continue;
+        // `null` volta ao valor do estilo: tira a escolha do plano.
+        if (valor === null) delete captions[chave];
+        else captions[chave] = valor;
+      }
+      novo = { ...novo, captions: captions as EditPlanV1['captions'] };
+      break;
+    }
+
+    case 'ocultar_legenda': {
+      const ocultas = new Set(novo.captions.hiddenWordIds ?? []);
+      operacao.wordIds.forEach((id) => ocultas.add(id));
+      novo = { ...novo, captions: { ...novo.captions, hiddenWordIds: [...ocultas].slice(0, 3000) } };
+      break;
+    }
+
+    case 'restaurar_legenda': {
+      const tirar = new Set(operacao.wordIds);
+      const restantes = (novo.captions.hiddenWordIds ?? []).filter((id) => !tirar.has(id));
+      novo = { ...novo, captions: { ...novo.captions, hiddenWordIds: restantes } };
+      break;
+    }
+
+    case 'adicionar_legenda': {
+      const manuais = novo.captions.manual ?? [];
+      if (manuais.length >= 200) return { ok: false, erro: 'o video ja tem o maximo de legendas manuais' };
+      novo = {
+        ...novo,
+        captions: {
+          ...novo.captions,
+          manual: [
+            ...manuais,
+            {
+              id: livre(operacao.id, novo.captions.manual ?? [], 'lg'),
+              timelineStartMs: operacao.timelineStartMs,
+              durationMs: operacao.durationMs,
+              text: operacao.text,
+            },
+          ],
+        },
+      };
+      break;
+    }
+
+    case 'editar_legenda_manual': {
+      const manuais = novo.captions.manual ?? [];
+      if (!manuais.some((m) => m.id === operacao.legendaId)) return { ok: false, erro: 'legenda nao encontrada' };
+      const { op: _op, legendaId, ...mudancas } = operacao;
+      const definidas = Object.fromEntries(Object.entries(mudancas).filter(([, v]) => v !== undefined));
+      novo = {
+        ...novo,
+        captions: { ...novo.captions, manual: manuais.map((m) => (m.id === legendaId ? { ...m, ...definidas } : m)) },
+      };
+      break;
+    }
+
+    case 'remover_legenda_manual': {
+      const manuais = novo.captions.manual ?? [];
+      if (!manuais.some((m) => m.id === operacao.legendaId)) return { ok: false, erro: 'legenda nao encontrada' };
+      novo = { ...novo, captions: { ...novo.captions, manual: manuais.filter((m) => m.id !== operacao.legendaId) } };
       break;
     }
 
@@ -667,7 +777,7 @@ export function aplicarOperacao(
       if (novo.overlays.length >= 40) {
         return { ok: false, erro: 'o video ja tem o maximo de elementos sobre a imagem' };
       }
-      const precisaDeTexto = ['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard'];
+      const precisaDeTexto = ['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard', 'Destaque'];
       if (precisaDeTexto.includes(operacao.component) && !operacao.text) {
         return { ok: false, erro: `${operacao.component} precisa de texto` };
       }
@@ -685,11 +795,12 @@ export function aplicarOperacao(
         overlays: [
           ...restantes,
           {
-            id: novoId('ov'),
+            id: livre(operacao.id, novo.overlays, 'ov'),
             component: operacao.component,
             ...(operacao.text ? { text: operacao.text } : {}),
             ...(operacao.assetId ? { assetId: operacao.assetId } : {}),
             ...(operacao.variant ? { variant: operacao.variant } : {}),
+            ...(operacao.style ? { style: operacao.style } : {}),
             timelineStartMs: operacao.timelineStartMs,
             durationMs: operacao.durationMs,
           },
@@ -702,13 +813,15 @@ export function aplicarOperacao(
       if (!novo.overlays.some((o) => o.id === operacao.overlayId)) {
         return { ok: false, erro: 'elemento nao encontrado' };
       }
-      const { op: _op, overlayId, ...mudancas } = operacao;
+      const { op: _op, overlayId, style, ...mudancas } = operacao;
       const definidas = Object.fromEntries(
         Object.entries(mudancas).filter(([, v]) => v !== undefined),
       );
       novo = {
         ...novo,
-        overlays: novo.overlays.map((o) => (o.id === overlayId ? { ...o, ...definidas } : o)),
+        overlays: novo.overlays.map((o) =>
+          o.id === overlayId ? { ...o, ...definidas, ...(style ? { style: { ...(o.style ?? {}), ...style } } : {}) } : o,
+        ),
       };
       break;
     }
@@ -729,7 +842,7 @@ export function aplicarOperacao(
         soundEffects: [
           ...novo.soundEffects,
           {
-            id: novoId('sf'),
+            id: livre(operacao.id, novo.soundEffects, 'sf'),
             assetId: operacao.assetId,
             timelineStartMs: operacao.timelineStartMs,
             gainDb: operacao.gainDb ?? -8,
@@ -859,6 +972,33 @@ function definirTransicao(
 /** Id curto e unico o bastante para elementos do plano. */
 function novoId(prefixo: string): string {
   return `${prefixo}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/** O id pedido, se ainda não existe; senão, um novo. */
+function livre(pedido: string | undefined, existentes: ReadonlyArray<{ id: string }>, prefixo: string): string {
+  return pedido && !existentes.some((e) => e.id === pedido) ? pedido : novoId(prefixo);
+}
+
+/**
+ * Dá id às operações que criam algo, ANTES de aplicá-las.
+ *
+ * O editor aplica a operação na tela e manda a mesma ao servidor, que
+ * a aplica de novo. Se cada lado sorteasse o próprio id, o elemento
+ * criado teria um id na tela e outro no banco -- e a edição seguinte
+ * ("mover o destaque") falharia com "elemento não encontrado". Com o
+ * id escolhido aqui e enviado junto, os dois lados criam o mesmo.
+ */
+export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
+  switch (operacao.op) {
+    case 'adicionar_legenda':
+      return operacao.id ? operacao : { ...operacao, id: novoId('lg') };
+    case 'adicionar_overlay':
+      return operacao.id ? operacao : { ...operacao, id: novoId('ov') };
+    case 'adicionar_efeito_sonoro':
+      return operacao.id ? operacao : { ...operacao, id: novoId('sf') };
+    default:
+      return operacao;
+  }
 }
 
 /** Duracao total do plano, somando os clipes ativos. */

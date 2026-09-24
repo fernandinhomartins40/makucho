@@ -48,6 +48,14 @@ export const mediaProbeSchema = z.object({
   audioCodec: z.string().min(1).max(40).nullable(),
   sizeBytes: z.number().int().positive(),
   bitrateKbps: z.number().int().positive().optional(),
+  // Juntar partes sem recodificar exige estes IGUAIS: com taxa de
+  // amostragem ou canais diferentes (comum entre vídeos do WhatsApp) o
+  // concat por cópia corrompe o áudio das partes seguintes -- e sem
+  // áudio não há transcrição nem legenda nelas.
+  audioSampleRate: z.number().int().positive().optional(),
+  audioChannels: z.number().int().positive().optional(),
+  pixFmt: z.string().max(40).optional(),
+  rotacao: z.number().int().optional(),
 });
 
 export type MediaProbe = z.infer<typeof mediaProbeSchema>;

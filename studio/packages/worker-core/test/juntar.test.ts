@@ -2,7 +2,7 @@
 // Juntar várias partes num original só: os argumentos do FFmpeg.
 // ============================================================
 
-import { argumentosDeJuntar, listaDeConcat, podeCopiar, quadroDaJuncao } from '../src/juntar';
+import { argumentosDeJuntar, juncaoConfere, listaDeConcat, podeCopiar, quadroDaJuncao } from '../src/juntar';
 import type { ParteParaJuntar } from '../src/juntar';
 
 let ok = 0,
@@ -20,6 +20,10 @@ const probe = (o: Partial<ParteParaJuntar['probe']> = {}): ParteParaJuntar['prob
   videoCodec: 'h264',
   audioCodec: 'aac',
   sizeBytes: 1000,
+  audioSampleRate: 48000,
+  audioChannels: 2,
+  pixFmt: 'yuv420p',
+  rotacao: 0,
   ...o,
 });
 
@@ -29,6 +33,20 @@ const iguais: ParteParaJuntar[] = [
 ];
 
 t('partes iguais do mesmo celular são coladas por cópia', podeCopiar(iguais));
+
+// O caso do WhatsApp: tudo igual, menos o áudio.
+const audioDiferente = (o: Partial<ParteParaJuntar['probe']>) => [
+  { caminho: '/s/a.mp4', probe: probe() },
+  { caminho: '/s/b.mp4', probe: probe(o) },
+];
+t('taxa de amostragem diferente: normaliza (senão o áudio da 2ª parte quebra)', !podeCopiar(audioDiferente({ audioSampleRate: 44100 })));
+t('canais diferentes: normaliza', !podeCopiar(audioDiferente({ audioChannels: 1 })));
+t('taxa de amostragem desconhecida: normaliza', !podeCopiar(audioDiferente({ audioSampleRate: undefined })));
+t('rotação diferente: normaliza', !podeCopiar(audioDiferente({ rotacao: 90 })));
+t('formato de pixel diferente: normaliza', !podeCopiar(audioDiferente({ pixFmt: 'yuvj420p' })));
+t('forçar normalização ignora a cópia', argumentosDeJuntar(iguais, '/o.mp4', '/l.txt', { forcarNormalizacao: true }).includes('-filter_complex'));
+t('junção com a duração das partes confere', juncaoConfere(iguais, 15_050));
+t('junção 2 s mais longa (timestamps quebrados) não confere', !juncaoConfere(iguais, 17_100));
 const copia = argumentosDeJuntar(iguais, '/o.mp4', '/l.txt');
 t('cópia usa o demuxer de concat sem recodificar', copia.includes('concat') && copia.includes('copy') && !copia.includes('libx264'));
 t('a lista escapa aspas simples', listaDeConcat([{ caminho: "/s/it's.mp4", probe: probe() }]).includes(String.raw`'\''`));

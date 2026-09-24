@@ -58,6 +58,11 @@ interface Props {
   marca?: MarcaDoVideo;
   /** URL de um asset do workspace (logo, imagem, trilha). */
   urlDoAsset?: (assetId: string) => string;
+  /** Texto de destaque selecionado: ganha moldura e pode ser arrastado. */
+  destaqueSelecionado?: string | null;
+  onSelecionarDestaque?: (overlayId: string) => void;
+  /** Soltou o destaque num ponto novo (0 a 1 do quadro). */
+  onMoverDestaque?: (overlayId: string, x: number, y: number) => void;
 }
 
 interface TrechoAtivo {
@@ -82,6 +87,9 @@ export function Palco({
   comandoTocar,
   marca,
   urlDoAsset,
+  destaqueSelecionado,
+  onSelecionarDestaque,
+  onMoverDestaque,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const quadroRef = useRef<HTMLDivElement>(null);
@@ -338,14 +346,65 @@ export function Palco({
 
   const marcaDoVideo = useMemo<MarcaDoVideo>(() => marca ?? { cores: CORES_PADRAO_DA_MARCA }, [marca]);
 
+  // Arraste de um destaque em andamento: o .ass é gerado com a posição
+  // do dedo, então a prévia mostra o texto de verdade andando -- e ao
+  // soltar vira uma operação no plano, a mesma que o render lê.
+  const [arrasteDoDestaque, setArrasteDoDestaque] = useState<{ id: string; x: number; y: number } | null>(null);
+  const planoDaPrevia = useMemo(
+    () =>
+      arrasteDoDestaque
+        ? {
+            ...plan,
+            overlays: plan.overlays.map((o) =>
+              o.id === arrasteDoDestaque.id ? { ...o, style: { ...(o.style ?? {}), x: arrasteDoDestaque.x, y: arrasteDoDestaque.y } } : o,
+            ),
+          }
+        : plan,
+    [plan, arrasteDoDestaque],
+  );
+
   const ass = useMemo(() => {
+    const plan = planoDaPrevia;
     if (!planoPrecisaDeAss(plan)) return null;
     const estilo = resolverEstiloDaLegenda(plan.captions.styleId, {
       marca: marcaDoVideo,
       escala: plan.captions.sizeScale ?? 1,
     });
     return gerarAss({ plano: plan, estilo, palavras, clipsDesligados: [...(desligados ?? [])], marca: marcaDoVideo });
-  }, [plan, palavras, desligados, marcaDoVideo]);
+  }, [planoDaPrevia, palavras, desligados, marcaDoVideo]);
+
+  const destaquesVisiveis = planoDaPrevia.overlays.filter(
+    (o) => o.component === 'Destaque' && posicaoMs >= o.timelineStartMs && posicaoMs < o.timelineStartMs + o.durationMs,
+  );
+
+  const arrastarDestaque = (id: string) => (e: React.PointerEvent<HTMLButtonElement>) => {
+    const quadro = quadroRef.current;
+    if (!quadro || !onMoverDestaque) return;
+    e.preventDefault();
+    onSelecionarDestaque?.(id);
+    const caixa = quadro.getBoundingClientRect();
+    const ponto = (ev: PointerEvent | React.PointerEvent) => ({
+      x: Math.min(0.95, Math.max(0.05, (ev.clientX - caixa.left) / caixa.width)),
+      y: Math.min(0.95, Math.max(0.05, (ev.clientY - caixa.top) / caixa.height)),
+    });
+    let ultimo = ponto(e);
+    let moveu = false;
+    const mover = (ev: PointerEvent) => {
+      ultimo = ponto(ev);
+      moveu = true;
+      setArrasteDoDestaque({ id, ...ultimo });
+    };
+    const soltar = () => {
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      if (moveu) onMoverDestaque(id, ultimo.x, ultimo.y);
+      // A posição do arraste fica até o plano novo chegar, para o texto
+      // não "voltar" por um instante.
+      setTimeout(() => setArrasteDoDestaque(null), 400);
+    };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+  };
 
   const trechoAtual = trechos[indiceRef.current];
   const legendaCss =
@@ -455,6 +514,22 @@ export function Palco({
         )}
 
         {zonasSeguras && <span className="palco__zonas" aria-hidden />}
+
+        {/* Alças dos textos de destaque: clicar seleciona, arrastar
+            posiciona. O texto em si é o do .ass, desenhado acima. */}
+        {!tocando &&
+          destaquesVisiveis.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              className="palco__alca-destaque"
+              data-selecionado={destaqueSelecionado === o.id || undefined}
+              style={{ left: `${(o.style?.x ?? 0.5) * 100}%`, top: `${(o.style?.y ?? 0.3) * 100}%` }}
+              aria-label={`Mover o destaque "${o.text ?? ''}"`}
+              title="Arraste para posicionar"
+              onPointerDown={arrastarDestaque(o.id)}
+            />
+          ))}
 
         {/* Reserva: navegador sem WebAssembly/OffscreenCanvas. Aproxima o
             estilo (fonte e cores), sem as animações. */}

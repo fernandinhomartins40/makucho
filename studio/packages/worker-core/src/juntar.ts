@@ -24,7 +24,7 @@
 // ============================================================
 
 import type { MediaProbe } from '@makucho/studio-contracts';
-import { executarBinario } from './ffmpeg';
+import { executarBinario, lerMetadados } from './ffmpeg';
 
 export interface ParteParaJuntar {
   caminho: string;
@@ -46,8 +46,30 @@ export function podeCopiar(partes: readonly ParteParaJuntar[]): boolean {
       probe.heightPx === p.heightPx &&
       Math.abs(probe.fps - p.fps) < 0.01 &&
       probe.audioCodec !== null &&
-      probe.audioCodec === p.audioCodec,
+      probe.audioCodec === p.audioCodec &&
+      // Sem estes, o concat por cópia cola o fluxo de áudio de uma
+      // parte com o cabeçalho da primeira: 44,1 kHz tocado como 48 kHz
+      // vira ruído ou silêncio, e a transcrição perde a fala -- a causa
+      // de "legenda só no primeiro trecho" com vídeos do WhatsApp.
+      // Desconhecido conta como diferente: na dúvida, normaliza.
+      probe.audioSampleRate !== undefined &&
+      probe.audioSampleRate === p.audioSampleRate &&
+      probe.audioChannels !== undefined &&
+      probe.audioChannels === p.audioChannels &&
+      probe.pixFmt === p.pixFmt &&
+      (probe.rotacao ?? 0) === (p.rotacao ?? 0),
   );
+}
+
+/**
+ * A junção por cópia deu certo? A duração do resultado tem de bater
+ * com a soma das partes. Timestamps quebrados aparecem como diferença
+ * de segundos -- e aí o arquivo não serve de original.
+ */
+export function juncaoConfere(partes: readonly ParteParaJuntar[], duracaoDoResultadoMs: number): boolean {
+  const soma = partes.reduce((t, p) => t + (p.probe.durationMs || 0), 0);
+  if (!soma || !duracaoDoResultadoMs) return false;
+  return Math.abs(duracaoDoResultadoMs - soma) <= Math.max(400, soma * 0.01);
 }
 
 /** O conteudo da lista do demuxer de concat. */
@@ -76,10 +98,15 @@ export function quadroDaJuncao(partes: readonly ParteParaJuntar[]): { w: number;
  * `lista` e o caminho do arquivo de lista, usado so no caminho de copia
  * (quem chama o grava com `listaDeConcat`).
  */
-export function argumentosDeJuntar(partes: readonly ParteParaJuntar[], saida: string, lista: string): string[] {
+export function argumentosDeJuntar(
+  partes: readonly ParteParaJuntar[],
+  saida: string,
+  lista: string,
+  opcoes: { forcarNormalizacao?: boolean } = {},
+): string[] {
   if (partes.length === 0) throw new Error('nenhuma parte para juntar');
 
-  if (podeCopiar(partes)) {
+  if (!opcoes.forcarNormalizacao && podeCopiar(partes)) {
     return ['-y', '-f', 'concat', '-safe', '0', '-i', lista, '-c', 'copy', '-movflags', '+faststart', saida];
   }
 
@@ -146,9 +173,27 @@ export async function juntarVideos(opcoes: {
   aoProgredir?: (fracao: number) => void;
 }): Promise<void> {
   const total = opcoes.partes.reduce((t, p) => t + (p.probe.durationMs || 0), 0);
-  await executarBinario('ffmpeg', argumentosDeJuntar(opcoes.partes, opcoes.saida, opcoes.lista), {
-    duracaoTotalMs: total || undefined,
-    aoProgredir: opcoes.aoProgredir,
-    timeoutMs: 60 * 60 * 1000,
-  });
+  const rodar = (forcarNormalizacao: boolean) =>
+    executarBinario('ffmpeg', argumentosDeJuntar(opcoes.partes, opcoes.saida, opcoes.lista, { forcarNormalizacao }), {
+      duracaoTotalMs: total || undefined,
+      aoProgredir: opcoes.aoProgredir,
+      timeoutMs: 60 * 60 * 1000,
+    });
+
+  if (!podeCopiar(opcoes.partes)) {
+    await rodar(true);
+    return;
+  }
+
+  // Cópia primeiro (segundos, sem perda). Se o resultado não tiver a
+  // duração das partes somadas, algo no fluxo não era compatível: refaz
+  // normalizando, em vez de entregar um original com a fala quebrada.
+  await rodar(false);
+  const resultado = await lerMetadados(opcoes.saida).catch(() => null);
+  if (!resultado || !juncaoConfere(opcoes.partes, resultado.durationMs)) {
+    console.warn(
+      `[juntar] cópia saiu com ${resultado?.durationMs ?? '?'} ms para ${total} ms de partes: refazendo normalizado`,
+    );
+    await rodar(true);
+  }
 }

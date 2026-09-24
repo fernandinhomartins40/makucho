@@ -117,6 +117,27 @@ export const captionCorrectionSchema = z
 
 export type CaptionCorrection = z.infer<typeof captionCorrectionSchema>;
 
+/** Cor em hexadecimal, `#RRGGBB`. */
+const corHexSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'cor deve ser #RRGGBB');
+
+/**
+ * Legenda escrita à mão, já no tempo da TIMELINE.
+ *
+ * Para o que a transcrição não tem (uma fala mal ouvida que a pessoa
+ * reescreve inteira) ou para reescrever um bloco: as palavras do bloco
+ * são ocultadas e esta entra no lugar, no mesmo tempo.
+ */
+export const legendaManualSchema = z
+  .object({
+    id: idSchema,
+    timelineStartMs: msSchema,
+    durationMs: z.number().int().min(200).max(20_000),
+    text: z.string().trim().min(1).max(160),
+  })
+  .strict();
+
+export type LegendaManual = z.infer<typeof legendaManualSchema>;
+
 export const captionTrackSchema = z
   .object({
     enabled: z.boolean(),
@@ -142,6 +163,18 @@ export const captionTrackSchema = z
      * decisao editorial mora no plano, versionada como as outras.
      */
     corrections: z.array(captionCorrectionSchema).max(300).default([]),
+    /**
+     * Escolhas por cima do estilo: fonte (id de FONTES_DE_VIDEO), cor
+     * do texto e da palavra falada. Ausentes, vale o estilo -- e trocar
+     * de estilo as mantém, porque são decisão da pessoa, não do preset.
+     */
+    fontId: z.string().max(40).optional(),
+    color: corHexSchema.optional(),
+    highlightColor: corHexSchema.optional(),
+    /** Legendas excluídas: as palavras continuam na fala, não na tela. */
+    hiddenWordIds: z.array(idSchema).max(3000).optional(),
+    /** Legendas incluídas ou reescritas à mão. */
+    manual: z.array(legendaManualSchema).max(200).optional(),
   })
   // Uma palavra corrigida duas vezes tornaria o resultado dependente
   // da ordem do array.
@@ -183,7 +216,34 @@ export const OVERLAY_COMPONENTS = [
   'StatCard',
   'EmojiPop',
   'ImageOverlay',
+  // Texto de destaque: palavra-chave, chamada ou frase forte, separada
+  // da legenda de fala -- com fonte, cor, decoração e posição próprias.
+  'Destaque',
 ] as const;
+
+export const DECORACOES_DE_TEXTO = ['nenhuma', 'contorno', 'caixa', 'sombra', 'sublinhado', 'marca_texto'] as const;
+export const ANIMACOES_DE_TEXTO = ['nenhuma', 'pop', 'surgir', 'deslizar'] as const;
+
+/**
+ * Estilo de um texto de tela (o "Destaque", e opcionalmente os outros).
+ *
+ * `x`/`y` são a posição do CENTRO do texto, de 0 a 1 do quadro: a
+ * pessoa arrasta na prévia e o render desenha no mesmo ponto.
+ */
+export const estiloDoTextoSchema = z
+  .object({
+    fontId: z.string().max(40).optional(),
+    sizeScale: z.number().min(0.4).max(3).optional(),
+    color: corHexSchema.optional(),
+    accentColor: corHexSchema.optional(),
+    decoration: z.enum(DECORACOES_DE_TEXTO).optional(),
+    animation: z.enum(ANIMACOES_DE_TEXTO).optional(),
+    x: z.number().min(0).max(1).optional(),
+    y: z.number().min(0).max(1).optional(),
+  })
+  .strict();
+
+export type EstiloDoTexto = z.infer<typeof estiloDoTextoSchema>;
 
 export const overlaySchema = z.object({
   id: idSchema,
@@ -195,6 +255,7 @@ export const overlaySchema = z.object({
   assetId: idSchema.optional(),
   timelineStartMs: msSchema,
   durationMs: msSchema.refine((v) => v > 0, 'durationMs deve ser positivo'),
+  style: estiloDoTextoSchema.optional(),
 });
 
 // ---------- Trilha e efeitos ----------

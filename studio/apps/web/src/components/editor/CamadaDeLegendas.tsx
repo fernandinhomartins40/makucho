@@ -34,7 +34,7 @@ interface Props {
 
 interface Jassub {
   ready: Promise<void>;
-  renderer: { setTrack(conteudo: string): Promise<void> | void };
+  renderer: { setTrack(conteudo: string): Promise<void> | void; addFonts?(fontes: string[]): Promise<boolean> };
   manualRender(dados: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }, repaint?: boolean): Promise<void>;
   destroy(): Promise<void>;
 }
@@ -47,6 +47,23 @@ const FONTES = Object.fromEntries(
   Object.values(FONTES_DE_VIDEO).map((f) => [f.nomeAss.toLowerCase(), `/fonts/${f.arquivo}`]),
 );
 
+/**
+ * As fontes que o .ass usa (estilos e `\fn` dos textos de destaque),
+ * como URL.
+ *
+ * Carregadas de ANTEMÃO: pelo nome (`availableFonts`) o libass não as
+ * achava e caía na LiberationSans -- a prévia saía com outra fonte e
+ * outra quebra de linha, diferente dos exemplos e do arquivo final.
+ */
+function fontesDoAss(ass: string): string[] {
+  const nomes = new Set<string>();
+  for (const linha of ass.split('\n')) {
+    if (linha.startsWith('Style: ')) nomes.add(linha.slice(7).split(',')[1]?.trim().toLowerCase() ?? '');
+  }
+  for (const m of ass.matchAll(/\\fn([^\\}]+)/g)) nomes.add(m[1]!.trim().toLowerCase());
+  return [...nomes].map((n) => FONTES[n]).filter((u): u is string => Boolean(u));
+}
+
 /** O quadro do vídeo final: é a ele que o PlayRes do .ass se refere. */
 const LARGURA = 1080;
 const ALTURA = 1920;
@@ -56,6 +73,7 @@ export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }
   const instancia = useRef<Jassub | null>(null);
   const pronto = useRef(false);
   const assAtual = useRef(ass);
+  const fontesCarregadas = useRef<Set<string>>(new Set());
   const falhou = useRef(onFalha);
   falhou.current = onFalha;
 
@@ -95,9 +113,12 @@ export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }
         const { default: JASSUB } = await import('jassub');
         if (cancelado) return;
 
+        const iniciais = fontesDoAss(assAtual.current);
+        fontesCarregadas.current = new Set(iniciais);
         const j = new JASSUB({
           canvas,
           subContent: assAtual.current,
+          fonts: iniciais,
           availableFonts: FONTES,
           // Sem fontes do computador de quem assiste: a prévia tem de
           // usar exatamente as fontes do render.
@@ -132,7 +153,13 @@ export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }
     assAtual.current = ass;
     const j = instancia.current;
     if (!j || !pronto.current) return;
-    void Promise.resolve(j.renderer.setTrack(ass)).then(() => desenhar(tocando ? tempoAoVivo.current : tempoMs, true));
+    // Uma fonte nova (trocada no editor) entra antes do texto que a usa.
+    const novas = fontesDoAss(ass).filter((u) => !fontesCarregadas.current.has(u));
+    novas.forEach((u) => fontesCarregadas.current.add(u));
+    void Promise.resolve(novas.length && j.renderer.addFonts ? j.renderer.addFonts(novas) : true)
+      .catch(() => true)
+      .then(() => j.renderer.setTrack(ass))
+      .then(() => desenhar(tocando ? tempoAoVivo.current : tempoMs, true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ass]);
 

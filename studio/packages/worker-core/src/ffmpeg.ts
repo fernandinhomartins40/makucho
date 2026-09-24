@@ -162,6 +162,9 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
       codec_type?: string;
       codec_name?: string;
       duration?: string;
+      sample_rate?: string;
+      channels?: number;
+      pix_fmt?: string;
       width?: number;
       height?: number;
       r_frame_rate?: string;
@@ -211,6 +214,10 @@ export async function lerMetadados(caminho: string): Promise<MediaProbe> {
     videoCodec: video.codec_name ?? 'desconhecido',
     audioCodec: audio?.codec_name ?? null,
     sizeBytes: Number(dados.format?.size ?? 0),
+    ...(audio?.sample_rate ? { audioSampleRate: Number(audio.sample_rate) } : {}),
+    ...(audio?.channels ? { audioChannels: audio.channels } : {}),
+    ...(video.pix_fmt ? { pixFmt: video.pix_fmt } : {}),
+    rotacao: Math.round(Number(rotacao) || 0),
     ...(dados.format?.bit_rate
       ? { bitrateKbps: Math.round(Number(dados.format.bit_rate) / 1000) }
       : {}),

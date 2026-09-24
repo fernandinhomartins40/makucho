@@ -19,9 +19,11 @@
 // exige poder restaurar um trecho descartado.
 // ============================================================
 
+import { PainelDoItem, Cor } from './PainelDoItem';
+import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO } from '@makucho/studio-contracts';
+import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO } from '@makucho/studio-contracts';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
 import { nomeDaFuncao, corDaFuncao, tempo } from './funcoes';
 import {
@@ -68,6 +70,9 @@ export interface RecursosDaMarca {
 interface Props {
   plan: EditPlanV1;
   clipId: string | null;
+  /** Legenda, corte, elemento ou som selecionado na timeline. */
+  item?: ItemDaTimeline | null;
+  onFecharItem?: () => void;
   onOperacao: (op: TimelineOperation) => void;
   /** Várias operações de uma vez, numa versão só (zoom em todos, sons). */
   onOperacoes: (ops: TimelineOperation[]) => void;
@@ -86,6 +91,8 @@ export function Inspector({
   recursos,
   onRefazerAcabamento,
   refazendoAcabamento,
+  item,
+  onFecharItem,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   const clipe = plan.clips.find((c) => c.id === clipId);
@@ -100,7 +107,15 @@ export function Inspector({
       </header>
 
       <div className="painel__corpo">
-        {clipe ? (
+        {item ? (
+          <PainelDoItem
+            plan={plan}
+            item={item}
+            onOperacao={onOperacao}
+            onOperacoes={onOperacoes}
+            onFechar={() => onFecharItem?.()}
+          />
+        ) : clipe ? (
           <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} />
         ) : (
           <>
@@ -298,6 +313,48 @@ function AbaDeLegendas({
       </div>
 
       <div className="campo">
+        <label className="campo__rotulo" htmlFor="fonte-da-legenda">
+          Fonte
+        </label>
+        <select
+          id="fonte-da-legenda"
+          className="campo__selecao"
+          value={c.fontId ?? ''}
+          onChange={(e) => onOperacao({ op: 'configurar_legenda', fontId: e.target.value || null })}
+        >
+          <option value="">A do estilo</option>
+          {Object.entries(FONTES_DE_VIDEO).map(([id, f]) => (
+            <option key={id} value={id}>
+              {f.rotulo}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="linha" style={{ gap: 'var(--e3)', marginBottom: 'var(--e4)' }}>
+        <Cor
+          rotulo="Cor do texto"
+          valor={c.color ?? '#FFFFFF'}
+          onTrocar={(v) => onOperacao({ op: 'configurar_legenda', color: v })}
+        />
+        <Cor
+          rotulo="Palavra falada"
+          valor={c.highlightColor ?? '#FFD400'}
+          onTrocar={(v) => onOperacao({ op: 'configurar_legenda', highlightColor: v })}
+        />
+      </div>
+      {(c.fontId || c.color || c.highlightColor) && (
+        <button
+          type="button"
+          className="botao botao--fantasma botao--pequeno"
+          style={{ marginTop: 'calc(-1 * var(--e2))', marginBottom: 'var(--e3)' }}
+          onClick={() => onOperacao({ op: 'configurar_legenda', fontId: null, color: null, highlightColor: null })}
+        >
+          Voltar à fonte e às cores do estilo
+        </button>
+      )}
+
+      <div className="campo">
         <label className="campo__rotulo" htmlFor="palavras-por-bloco">
           Palavras por vez
         </label>
@@ -323,7 +380,7 @@ function AbaDeLegendas({
       />
 
       <p className="campo__ajuda" style={{ marginTop: 'var(--e3)' }}>
-        Para corrigir uma palavra, use a aba Legendas à esquerda. A legenda sempre sai da fala gravada.
+        Clique numa legenda na linha do tempo para reescrever ou excluir, ou use &quot;+ Legenda&quot; para incluir uma.
       </p>
     </>
   );
@@ -825,7 +882,7 @@ function Ajuste({
 }
 
 /** Um interruptor com rótulo e ajuda. */
-function Chave({
+export function Chave({
   rotulo,
   ajuda,
   ligada,
@@ -860,7 +917,7 @@ function Chave({
 }
 
 /** Botões lado a lado, um escolhido (radiogroup). */
-function Segmentado({
+export function Segmentado({
   rotulo,
   valor,
   opcoes,

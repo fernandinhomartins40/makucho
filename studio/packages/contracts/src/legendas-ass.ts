@@ -30,9 +30,11 @@ import type { CaptionStyleInput } from './brand';
 import type { EditPlanV1 } from './edit-plan';
 import {
   CORES_PADRAO_DA_MARCA,
+  FONTES_DE_VIDEO,
   fonteDaFamilia,
   resolverEstiloPersonalizado,
   type EstiloResolvido,
+  type FonteDeVideo,
   type MarcaDoVideo,
 } from './estilos-de-legenda';
 
@@ -84,7 +86,19 @@ export interface BlocoDeLegenda {
   inicioMs: number;
   fimMs: number;
   palavras: PalavraNoBloco[];
+  /** As palavras da transcrição que o bloco mostra (para editar/excluir). */
+  wordIds?: string[];
+  /** Legenda escrita à mão: o id dela no plano. */
+  manualId?: string;
 }
+
+/**
+ * Quanto de uma palavra precisa cair dentro do trecho para ela ser
+ * legendada. Antes era a palavra INTEIRA: um corte que pegava um
+ * pedaço dela -- comum ao aparar ou dividir -- apagava a legenda, e
+ * uma sequência dessas deixava trechos inteiros sem legenda.
+ */
+const FRACAO_MINIMA_DA_PALAVRA = 0.5;
 
 /**
  * Bloco de menos de 300ms pisca: aparece e sai antes de ser lido. Ele
@@ -118,7 +132,18 @@ function ehEstiloResolvido(e: EstiloResolvido | CaptionStyleInput): e is EstiloR
  */
 function paraResolvido(e: EstiloResolvido | CaptionStyleInput, plano?: EditPlanV1): EstiloResolvido {
   const resolvido = ehEstiloResolvido(e) ? e : resolverEstiloPersonalizado(e);
-  return plano ? { ...resolvido, posicao: plano.captions.position } : resolvido;
+  if (!plano) return resolvido;
+  // Fonte e cores escolhidas no editor valem por cima do estilo -- nos
+  // dois lados (prévia e render), porque os dois passam por aqui.
+  const c = plano.captions;
+  const fonte = c.fontId ? (FONTES_DE_VIDEO as Record<string, FonteDeVideo>)[c.fontId] : undefined;
+  return {
+    ...resolvido,
+    posicao: c.position,
+    ...(fonte ? { fonte } : {}),
+    ...(c.color ? { cor: c.color } : {}),
+    ...(c.highlightColor ? { corDestaque: c.highlightColor } : {}),
+  };
 }
 
 /**
@@ -148,6 +173,7 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
   // o da palavra falada. E o que faz a correcao ficar no frame certo
   // sem ninguem digitar tempo nenhum.
   const correcoes = new Map(plano.captions.corrections.map((c) => [c.wordId, c.text]));
+  const ocultas = new Set(plano.captions.hiddenWordIds ?? []);
 
   const blocos: BlocoDeLegenda[] = [];
 
@@ -161,10 +187,16 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
     const duracaoDoClip = clip.sourceEndMs - clip.sourceStartMs;
     const fimDoClip = inicioNaTimeline + duracaoDoClip;
 
-    // Somente as palavras que caem DENTRO do trecho. Uma palavra
-    // cortada no meio legendaria som que nao esta no resultado.
+    // As palavras cuja MAIOR PARTE cai dentro do trecho. Inteira era
+    // rígido demais: um corte que pegava um pedaço da palavra (aparar,
+    // dividir) apagava a legenda dela. Menos da metade continua de
+    // fora -- aí o som quase não está no resultado.
     const doClip = palavras
-      .filter((p) => p.startMs >= clip.sourceStartMs && p.endMs <= clip.sourceEndMs)
+      .filter((p) => {
+        if (p.id && ocultas.has(p.id)) return false;
+        const dentro = Math.min(p.endMs, clip.sourceEndMs) - Math.max(p.startMs, clip.sourceStartMs);
+        return dentro > 0 && dentro >= (p.endMs - p.startMs) * FRACAO_MINIMA_DA_PALAVRA;
+      })
       .sort((a, b) => a.startMs - b.startMs);
 
     const doTrecho: BlocoDeLegenda[] = [];
@@ -177,9 +209,11 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
       if (!bruto) continue;
       const texto = estilo.caixaAlta ? bruto.toLocaleUpperCase('pt-BR') : bruto;
 
-      // A mesma conta que o `setpts=PTS-STARTPTS` faz no video.
-      const inicio = inicioNaTimeline + (palavra.startMs - clip.sourceStartMs);
-      const fim = inicioNaTimeline + (palavra.endMs - clip.sourceStartMs);
+      // A mesma conta que o `setpts=PTS-STARTPTS` faz no video, presa
+      // às bordas do trecho (a palavra pode começar um pouco antes).
+      const inicio = inicioNaTimeline + Math.max(0, palavra.startMs - clip.sourceStartMs);
+      const fim = Math.min(fimDoClip, inicioNaTimeline + (palavra.endMs - clip.sourceStartMs));
+      if (fim <= inicio) continue;
 
       const cabe =
         atual !== null &&
@@ -190,6 +224,7 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
       if (atual && cabe) {
         atual.palavras.push({ texto, inicioMs: inicio, fimMs: fim, duracaoMs: Math.max(1, fim - atual.fimMs) });
         atual.fimMs = fim;
+        if (palavra.id) atual.wordIds!.push(palavra.id);
         caracteres += texto.length + 1;
         continue;
       }
@@ -198,6 +233,7 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
         inicioMs: inicio,
         fimMs: fim,
         palavras: [{ texto, inicioMs: inicio, fimMs: fim, duracaoMs: Math.max(1, fim - inicio) }],
+        wordIds: palavra.id ? [palavra.id] : [],
       };
       caracteres = texto.length;
       doTrecho.push(atual);
@@ -215,6 +251,34 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
     inicioNaTimeline = fimDoClip;
   }
 
+  // Legendas escritas à mão: já estão no tempo da timeline. As
+  // palavras são espalhadas pela duração, para o destaque da palavra
+  // falada andar mesmo sem tempo por palavra.
+  const duracaoTotal = inicioNaTimeline;
+  for (const m of plano.captions.manual ?? []) {
+    const inicio = m.timelineStartMs;
+    const fim = Math.min(m.timelineStartMs + m.durationMs, duracaoTotal);
+    if (fim <= inicio) continue;
+    const textos = m.text
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((t) => (estilo.caixaAlta ? t.toLocaleUpperCase('pt-BR') : t));
+    const passo = (fim - inicio) / textos.length;
+    blocos.push({
+      inicioMs: inicio,
+      fimMs: fim,
+      manualId: m.id,
+      wordIds: [],
+      palavras: textos.map((texto, i) => ({
+        texto,
+        inicioMs: Math.round(inicio + i * passo),
+        fimMs: Math.round(inicio + (i + 1) * passo),
+        duracaoMs: Math.max(1, Math.round(passo)),
+      })),
+    });
+  }
+  blocos.sort((a, b) => a.inicioMs - b.inicioMs);
+
   return juntarCurtos(blocos);
 }
 
@@ -230,9 +294,12 @@ function juntarCurtos(blocos: BlocoDeLegenda[]): BlocoDeLegenda[] {
     const curto = bloco.fimMs - bloco.inicioMs < DURACAO_MINIMA_MS;
     const anterior = saida[saida.length - 1];
 
-    if (curto && anterior) {
+    // Uma legenda manual nunca é absorvida (nem absorve): ela tem id
+    // próprio, e a timeline precisa achá-la para editar.
+    if (curto && anterior && !anterior.manualId && !bloco.manualId) {
       anterior.palavras.push(...bloco.palavras);
       anterior.fimMs = Math.max(anterior.fimMs, bloco.fimMs);
+      anterior.wordIds = [...(anterior.wordIds ?? []), ...(bloco.wordIds ?? [])];
       continue;
     }
 
@@ -533,7 +600,13 @@ function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDe
 // ---------- Textos de tela (overlays) ----------
 
 /** Componentes que o .ass desenha. Logo e imagem sao do render. */
-export const OVERLAYS_DE_TEXTO = ['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard', 'ProgressBar'] as const;
+export const OVERLAYS_DE_TEXTO = ['HookTitle', 'CTA', 'LowerThird', 'QuoteCard', 'StatCard', 'ProgressBar', 'Destaque'] as const;
+
+/** Tamanho base do texto de destaque, antes do `sizeScale`. */
+export const TAMANHO_DO_DESTAQUE = 92;
+
+/** Posição padrão de um destaque novo: terço de cima, longe da legenda. */
+export const POSICAO_PADRAO_DO_DESTAQUE = { x: 0.5, y: 0.3 } as const;
 
 function estilosDosTextos(plano: EditPlanV1, marca: MarcaDoVideo): string[] {
   const { width, height } = plano.canvas;
@@ -601,6 +674,36 @@ function estilosDosTextos(plano: EditPlanV1, marca: MarcaDoVideo): string[] {
       alinhamento: 5,
       margemV: 0,
     }),
+    // Texto de destaque: contorno (padrão) e caixa (BorderStyle 3 só
+    // existe por estilo, então a decoração "caixa"/"marca-texto" usa
+    // este segundo). Fonte, tamanho, cor e posição vêm por evento.
+    linhaDeEstilo({
+      ...base,
+      nome: 'Destaque',
+      fonte: titulo.nomeAss,
+      negrito: titulo.negrito,
+      tamanho: TAMANHO_DO_DESTAQUE,
+      primaria: corAss('#FFFFFF'),
+      contorno: corAss('#000000'),
+      fundo: '&H00000000',
+      borda: 1,
+      larguraDoContorno: 7,
+      alinhamento: 5,
+      margemV: 0,
+    } as LinhaDeEstilo),
+    linhaDeEstilo({
+      ...base,
+      nome: 'DestaqueCaixa',
+      fonte: titulo.nomeAss,
+      negrito: titulo.negrito,
+      tamanho: TAMANHO_DO_DESTAQUE,
+      primaria: corAss('#FFFFFF'),
+      contorno: corAss(cores.primary),
+      borda: 3,
+      larguraDoContorno: 18,
+      alinhamento: 5,
+      margemV: 0,
+    }),
     linhaDeEstilo({
       ...base,
       nome: 'Barra',
@@ -662,6 +765,11 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
         eventos.push(dialogo(5, inicio, fim, 'Cartao', `{\\q0\\fad(200,200)}${corpo}`));
         break;
       }
+      case 'Destaque': {
+        if (!texto) break;
+        eventos.push(eventoDoDestaque(plano, o, inicio, fim, texto));
+        break;
+      }
       case 'ProgressBar': {
         // Um retangulo vetorial no topo, revelado por um \clip que
         // cresce ao longo do video inteiro: uma linha, sem filtro
@@ -686,6 +794,74 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number): string[] {
   }
 
   return eventos;
+}
+
+/**
+ * Um texto de destaque: posição livre (\pos), fonte, tamanho, cor,
+ * decoração e animação por evento -- o mesmo evento na prévia e no
+ * render, porque os dois desenham este .ass.
+ */
+function eventoDoDestaque(
+  plano: EditPlanV1,
+  o: EditPlanV1['overlays'][number],
+  inicio: number,
+  fim: number,
+  texto: string,
+): string {
+  const { width, height } = plano.canvas;
+  const e = o.style ?? {};
+  const x = Math.round((e.x ?? POSICAO_PADRAO_DO_DESTAQUE.x) * width);
+  const y = Math.round((e.y ?? POSICAO_PADRAO_DO_DESTAQUE.y) * height);
+  const fonte = e.fontId ? (FONTES_DE_VIDEO as Record<string, FonteDeVideo>)[e.fontId] : undefined;
+  const tamanho = Math.round(TAMANHO_DO_DESTAQUE * (e.sizeScale ?? 1));
+  const cor = e.color ?? '#FFFFFF';
+  const destaque = e.accentColor ?? '#FFD400';
+  const decoracao = e.decoration ?? 'contorno';
+
+  const tags: string[] = [`\\an5`, `\\pos(${x},${y})`, `\\fs${tamanho}`, `\\q2`];
+  if (fonte) tags.push(`\\fn${fonte.nomeAss}`, `\\b${fonte.negrito ? 1 : 0}`);
+  let estilo = 'Destaque';
+
+  switch (decoracao) {
+    case 'nenhuma':
+      tags.push(`\\c${corTag(cor)}`, '\\bord0', '\\shad0');
+      break;
+    case 'contorno':
+      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag('#000000')}`, '\\bord7', '\\shad0');
+      break;
+    case 'sombra':
+      tags.push(`\\c${corTag(cor)}`, '\\bord2', `\\3c${corTag('#000000')}`, '\\shad6', `\\4c${corTag('#000000')}`, '\\4a&H40&');
+      break;
+    case 'sublinhado':
+      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag('#000000')}`, '\\bord5', '\\u1');
+      break;
+    case 'caixa':
+      estilo = 'DestaqueCaixa';
+      tags.push(`\\c${corTag(cor)}`, `\\3c${corTag(destaque)}`, '\\bord18', '\\shad0');
+      break;
+    case 'marca_texto':
+      // Marca-texto: caixa na cor de destaque, texto escuro por cima.
+      estilo = 'DestaqueCaixa';
+      tags.push(`\\c${corTag('#111111')}`, `\\3c${corTag(destaque)}`, '\\bord12', '\\shad0');
+      break;
+  }
+
+  switch (e.animation ?? 'pop') {
+    case 'pop':
+      tags.push('\\fscx60\\fscy60\\t(0,140,\\fscx108\\fscy108)\\t(140,220,\\fscx100\\fscy100)', '\\fad(0,160)');
+      break;
+    case 'surgir':
+      tags.push('\\fad(220,200)');
+      break;
+    case 'deslizar':
+      tags.splice(1, 1, `\\move(${x - 80},${y},${x},${y},0,220)`);
+      tags.push('\\fad(160,160)');
+      break;
+    default:
+      break;
+  }
+
+  return dialogo(4, inicio, fim, estilo, `{${tags.join('')}}${texto}`);
 }
 
 /** Duracao do resultado, somando os trechos ligados. */

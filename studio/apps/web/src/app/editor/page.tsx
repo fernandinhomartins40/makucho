@@ -24,6 +24,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { EditPlanV1, MarcaDoVideo, ProjectState, TimelineOperation } from '@makucho/studio-contracts';
 import {
   aplicarOperacao,
+  comIdsNovos,
   aplicarOperacoes,
   CORES_PADRAO_DA_MARCA,
   estaProcessando,
@@ -33,6 +34,7 @@ import {
 } from '@makucho/studio-contracts';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
+import type { ItemDaTimeline } from '../../components/timeline/camadas';
 import type { ProgressoDoPreparo } from '@makucho/studio-contracts';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
@@ -109,6 +111,8 @@ function Editor({ projectId }: { projectId: string }) {
   // Celular: qual folha está aberta sobre o preview. No computador os
   // painéis ficam sempre à vista e o CSS ignora isto.
   const [folha, setFolha] = useState<'painel' | 'inspector' | null>(null);
+  // Legenda, corte, elemento ou som selecionado na timeline.
+  const [itemSelecionado, setItemSelecionado] = useState<ItemDaTimeline | null>(null);
   // Preparo: progresso ao vivo e a comemoração antes de abrir o editor.
   const [progresso, setProgresso] = useState<ProgressoDoPreparo | null>(null);
   const [comemorando, setComemorando] = useState(false);
@@ -259,23 +263,46 @@ function Editor({ projectId }: { projectId: string }) {
   }, [projeto, plano, estado, projectId, carregarProjeto, carregarPlano]);
 
   // ---------- Salvar ----------
+  // Todo salvamento passa por UMA fila, na ordem em que a pessoa editou.
+  // Em paralelo, o documento inteiro (de uma edição em lote) podia
+  // chegar ao servidor depois de uma operação feita em seguida -- e
+  // apagá-la. Com a fila, cada um sai quando o anterior terminou.
+  const filaDeSalvamento = useRef<Promise<unknown>>(Promise.resolve());
+  const enfileirar = useCallback(<T,>(tarefa: () => Promise<T>): Promise<T> => {
+    const proxima = filaDeSalvamento.current.then(tarefa, tarefa);
+    filaDeSalvamento.current = proxima.catch(() => undefined);
+    return proxima;
+  }, []);
+
   const salvarDocumento = useCallback(
     (documento: EditPlanV1) => {
       setSalvamento('salvando');
-      return apiPlanos
-        .salvar(projectId, documento)
+      return enfileirar(() => apiPlanos.salvar(projectId, documento))
         .then(() => setSalvamento('salvo'))
         .catch((e: unknown) => {
           setSalvamento('erro');
           setErro(e instanceof Error ? e.message : 'não foi possível salvar.');
         });
     },
-    [projectId],
+    [projectId, enfileirar],
+  );
+
+  // As palavras, no formato do contrato: a faixa de legendas da
+  // timeline sai delas pela mesma função que gera o .ass.
+  const palavrasDaTranscricao = useMemo(
+    () =>
+      (transcricao?.segmentos ?? [])
+        .flatMap((sg) => sg.palavras)
+        .map((w) => ({ id: w.id, startMs: w.startMs, endMs: w.endMs, word: w.texto })),
+    [transcricao],
   );
 
   const executar = useCallback(
-    (operacao: TimelineOperation) => {
+    (pedida: TimelineOperation) => {
       if (!plano) return;
+      // O id do que for criado é escolhido AQUI e vai junto para o
+      // servidor: tela e banco criam o mesmo elemento, com o mesmo id.
+      const operacao = comIdsNovos(pedida);
       const resultado = aplicarOperacao(plano, operacao);
 
       if (!resultado.ok || !resultado.plan) {
@@ -293,8 +320,7 @@ function Editor({ projectId }: { projectId: string }) {
       // O servidor aplica a mesma operação e cria a versão. Se recusar,
       // a tela volta: os dois lados não podem discordar do que está salvo.
       setSalvamento('salvando');
-      void apiPlanos
-        .operar(projectId, operacao)
+      void enfileirar(() => apiPlanos.operar(projectId, operacao))
         .then(() => setSalvamento('salvo'))
         .catch((e: unknown) => {
           setPlano(anterior);
@@ -305,7 +331,7 @@ function Editor({ projectId }: { projectId: string }) {
 
       if (operacao.op === 'alternar_clipe' && !operacao.enabled) setSelecionado(null);
     },
-    [plano, projectId],
+    [plano, projectId, enfileirar],
   );
 
   /**
@@ -798,6 +824,11 @@ function Editor({ projectId }: { projectId: string }) {
             comandoTocar={comandoTocar}
             marca={marcaDoVideo}
             urlDoAsset={apiAssets.url}
+            destaqueSelecionado={itemSelecionado?.tipo === 'elemento' ? itemSelecionado.id : null}
+            onSelecionarDestaque={(id) => setItemSelecionado({ tipo: 'elemento', id })}
+            onMoverDestaque={(id, x, y) =>
+              executar({ op: 'editar_overlay', overlayId: id, style: { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 } })
+            }
           />
         </main>
 
@@ -812,6 +843,8 @@ function Editor({ projectId }: { projectId: string }) {
             recursos={recursos}
             onRefazerAcabamento={() => void refazerAcabamento()}
             refazendoAcabamento={refazendoAcabamento}
+            item={itemSelecionado}
+            onFecharItem={() => setItemSelecionado(null)}
           />
         </aside>
 
@@ -823,6 +856,14 @@ function Editor({ projectId }: { projectId: string }) {
             onOperacao={executar}
             clipeSelecionado={selecionado}
             onSelecionar={setSelecionado}
+            palavras={palavrasDaTranscricao}
+            itemSelecionado={itemSelecionado}
+            onSelecionarItem={(item) => {
+              setItemSelecionado(item);
+              // No celular as propriedades ficam numa folha: selecionar
+              // um item já a abre.
+              if (item && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+            }}
           />
         </section>
       </div>
