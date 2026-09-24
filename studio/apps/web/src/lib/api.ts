@@ -225,6 +225,14 @@ export interface ProjetoDetalhado {
   editPlans: Array<{ id: string; version: number; createdAt: string }>;
   /** Por que a IA não montou a proposta atual, quando não montou. */
   aiFallbackReason?: string | null;
+  /** O que a IA entendeu do vídeo na última análise. */
+  entendimentoDaIa?: {
+    topic: string;
+    audience?: string;
+    promise: string;
+    structure: string;
+    hookType: string;
+  } | null;
 }
 
 export interface ParteDoProjeto {

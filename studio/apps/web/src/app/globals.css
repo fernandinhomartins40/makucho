@@ -3643,3 +3643,37 @@ button {
     margin-top: calc(-1 * var(--e1));
   }
 }
+
+/* O que a IA entendeu do vídeo (painel da IA, no editor). */
+.entendimento {
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--r-controle);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  padding: var(--e2) var(--e3);
+  font-size: 12px;
+}
+
+.entendimento summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  list-style: none;
+}
+
+.entendimento dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px var(--e3);
+  margin-top: var(--e2);
+}
+
+.entendimento dt {
+  color: var(--text-secondary);
+}
+
+.entendimento dd {
+  margin: 0;
+}

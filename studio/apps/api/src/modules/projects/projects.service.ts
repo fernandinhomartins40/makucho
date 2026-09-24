@@ -11,7 +11,7 @@
 // ============================================================
 
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { canTransition } from '@makucho/studio-contracts';
+import { analiseDaIaSchema, canTransition } from '@makucho/studio-contracts';
 import type { ProjectInput, ProjectPatch, ProjectState } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { FilaService } from '../../common/fila.service';
@@ -101,7 +101,29 @@ export class ProjectsService {
     // Confere a posse ANTES de devolver: sem isto, conhecer o id de um
     // projeto de outro workspace bastaria para lê-lo.
     assertOwnership(tenant, projeto, 'projeto');
-    return projeto;
+    return { ...projeto, entendimentoDaIa: await this.entendimentoDaIa(id) };
+  }
+
+  /**
+   * O que a IA entendeu do vídeo na última seleção que deu certo:
+   * assunto, promessa, estrutura. Mostrado no editor, para a pessoa
+   * ver se a IA pegou o ponto antes de revisar os cortes.
+   */
+  private async entendimentoDaIa(projectId: string) {
+    const ultima = await this.prisma.aiAnalysis.findFirst({
+      where: { projectId, parsedOk: true, promptVersion: { startsWith: 'selecao' } },
+      orderBy: { createdAt: 'desc' },
+      select: { rawOutput: true },
+    });
+    const texto = (ultima?.rawOutput as { texto?: string } | null)?.texto;
+    if (!texto) return null;
+    try {
+      const json = JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1));
+      const lido = analiseDaIaSchema.safeParse(json?.analysis);
+      return lido.success ? lido.data : null;
+    } catch {
+      return null;
+    }
   }
 
   criar(tenant: TenantContext, dados: ProjectInput) {

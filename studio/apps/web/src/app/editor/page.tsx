@@ -726,6 +726,7 @@ function Editor({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12 }}>{a}</span>
                 </div>
               ))}
+              {!semIa && projeto?.entendimentoDaIa && <EntendimentoDaIa e={projeto.entendimentoDaIa} />}
               {!semIa && <PedirAIa onEnviar={pedirAIa} />}
             </div>
           )}
@@ -800,6 +801,58 @@ function Editor({ projectId }: { projectId: string }) {
         </section>
       </div>
     </>
+  );
+}
+
+const ESTRUTURA: Record<string, string> = {
+  gancho_promessa_entrega: 'Gancho → promessa → entrega',
+  problema_solucao: 'Problema → solução',
+  topicos_numerados: 'Tópicos numerados',
+  tutorial: 'Tutorial passo a passo',
+  antes_depois: 'Antes e depois',
+  historia: 'História',
+  opiniao_polemica: 'Opinião forte',
+  loop: 'Loop (o fim puxa o começo)',
+};
+
+const GANCHO: Record<string, string> = {
+  curiosidade: 'curiosidade',
+  dor: 'dor do público',
+  promessa: 'promessa',
+  polemica: 'polêmica',
+  pergunta: 'pergunta',
+  prova: 'prova',
+  numero: 'número',
+};
+
+/**
+ * O que a IA entendeu do vídeo, antes de cortar. Se o assunto ou a
+ * promessa estiverem errados, os cortes também estarão -- e a pessoa
+ * vê isso num relance, sem precisar assistir tudo.
+ */
+function EntendimentoDaIa({ e }: { e: NonNullable<ProjetoDetalhado['entendimentoDaIa']> }) {
+  return (
+    <details className="entendimento" open>
+      <summary>
+        <IconeIA size={14} weight="fill" /> O que a IA entendeu
+      </summary>
+      <dl>
+        <dt>Assunto</dt>
+        <dd>{e.topic}</dd>
+        {e.audience && (
+          <>
+            <dt>Para quem</dt>
+            <dd>{e.audience}</dd>
+          </>
+        )}
+        <dt>Promessa</dt>
+        <dd>{e.promise}</dd>
+        <dt>Estrutura</dt>
+        <dd>
+          {ESTRUTURA[e.structure] ?? e.structure} · gancho de {GANCHO[e.hookType] ?? e.hookType}
+        </dd>
+      </dl>
+    </details>
   );
 }
 

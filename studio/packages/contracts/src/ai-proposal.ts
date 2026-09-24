@@ -65,6 +65,40 @@ export const estiloPropostoSchema = z
 
 export type EstiloProposto = z.infer<typeof estiloPropostoSchema>;
 
+// ---------- O que a IA entendeu ----------
+//
+// Vem PRIMEIRO na resposta, antes dos trechos: o modelo sem raciocínio
+// decide melhor quando escreve o tema, a promessa e a estrutura antes
+// de cortar -- é o "pensar antes" que cabe em ~60 tokens. E a tela
+// mostra à pessoa o que a IA entendeu do vídeo.
+export const ESTRUTURAS_VIRAIS = [
+  'gancho_promessa_entrega',
+  'problema_solucao',
+  'topicos_numerados',
+  'tutorial',
+  'antes_depois',
+  'historia',
+  'opiniao_polemica',
+  'loop',
+] as const;
+
+export const TIPOS_DE_GANCHO = ['curiosidade', 'dor', 'promessa', 'polemica', 'pergunta', 'prova', 'numero'] as const;
+
+export const analiseDaIaSchema = z
+  .object({
+    /** O assunto do vídeo, em uma frase. */
+    topic: z.string().min(2).max(140),
+    /** Para quem é. */
+    audience: z.string().min(2).max(100).optional(),
+    /** O que quem assiste ganha ficando até o fim. */
+    promise: z.string().min(2).max(160),
+    structure: z.enum(ESTRUTURAS_VIRAIS),
+    hookType: z.enum(TIPOS_DE_GANCHO),
+  })
+  .strict();
+
+export type AnaliseDaIa = z.infer<typeof analiseDaIaSchema>;
+
 // ---------- Proposta ----------
 //
 // `.strict()` e essencial: qualquer chave extra vinda do modelo faz o
@@ -73,6 +107,8 @@ export type EstiloProposto = z.infer<typeof estiloPropostoSchema>;
 export const aiProposalV1Schema = z
   .object({
     schemaVersion: z.literal('1.0'),
+    // Ausente nas propostas antigas; o prompt atual sempre pede.
+    analysis: analiseDaIaSchema.optional(),
     framework: frameworkSchema,
     targetDurationMs: msSchema.min(5000).max(180000),
     segments: z.array(proposedSegmentSchema).min(1).max(60),

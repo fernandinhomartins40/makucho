@@ -228,7 +228,7 @@ export class RoteiroService {
    * responder por que um roteiro de março soou diferente de um de
    * setembro — e um prompt improvisado não é.
    */
-  private async perfilDe(workspaceId: string): Promise<CommunicationProfileInput> {
+  async perfilDe(workspaceId: string): Promise<CommunicationProfileInput> {
     const salvo = await this.prisma.communicationProfile.findUnique({ where: { workspaceId } });
     if (!salvo) return PERFIL_COMUNICACAO_PADRAO;
 

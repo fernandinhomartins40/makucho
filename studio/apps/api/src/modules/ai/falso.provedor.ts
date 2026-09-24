@@ -89,8 +89,16 @@ export class FalsoProvedor implements ProvedorDeIa {
 
       case 'valido':
       default:
+        // Desenvolvimento: ver exatamente o que a IA real receberia.
+        if (process.env.STUDIO_IA_FALSA_MOSTRAR_ENTRADA === '1') {
+          console.log(`[ia-falsa] ${pedido.chamada}
+${pedido.usuario}`);
+        }
         if (pedido.chamada === 'selecionar_trechos') {
-          return JSON.stringify(this.propostaValida());
+          // A duração da gravação vem na entrada: a proposta cabe no
+          // vídeo de verdade, e o caminho da IA é o que roda no teste.
+          const gravacao = /gravação: (\d+) s/.exec(pedido.usuario);
+          return JSON.stringify(this.propostaValida(gravacao ? Number(gravacao[1]) * 1000 : this.duracaoMs));
         }
         if (pedido.chamada === 'gerar_roteiro') {
           return JSON.stringify(this.roteiroValido());
@@ -223,13 +231,21 @@ export class FalsoProvedor implements ProvedorDeIa {
   }
 
   /** Uma proposta que passa no schema e no validador semântico. */
-  private propostaValida() {
-    const terco = Math.floor(this.duracaoMs / 3);
+  private propostaValida(duracaoMs = this.duracaoMs) {
+    const terco = Math.floor(duracaoMs / 3);
 
     return {
       schemaVersion: '1.0' as const,
+      // O prompt atual pede o entendimento antes dos cortes.
+      analysis: {
+        topic: 'Atendimento rápido no WhatsApp',
+        audience: 'donos de pequenos negócios',
+        promise: 'vender mais respondendo rápido',
+        structure: 'problema_solucao' as const,
+        hookType: 'dor' as const,
+      },
       framework: 'authority_education' as const,
-      targetDurationMs: Math.min(this.duracaoMs, 60_000),
+      targetDurationMs: Math.max(5_000, Math.min(duracaoMs, 60_000)),
       segments: [
         {
           sourceStartMs: 0,
@@ -260,6 +276,8 @@ export class FalsoProvedor implements ProvedorDeIa {
         captionPreset: 'destaque' as const,
         hookTitle: 'O erro que custa cliente',
         emphasis: [1],
+        transitions: [{ before: 1, type: 'smooth' as const }],
+        cta: 'Salva pra não esquecer',
       },
     };
   }

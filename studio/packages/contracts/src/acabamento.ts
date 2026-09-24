@@ -162,6 +162,18 @@ export function aplicarAcabamento(
     }
   } else if (prefs.transicaoPadrao && prefs.transicaoPadrao !== 'cut') {
     for (let i = 1; i < n; i += 1) pedidas.set(i, prefs.transicaoPadrao);
+  } else if (!dicas.transitions && prefs.transicaoPadrao !== 'cut') {
+    // Sem pedido da IA nem da marca: o padrão dos vídeos que retêm é
+    // corte seco DENTRO de um bloco e uma transição curta nas VIRADAS
+    // da narrativa -- do problema para a solução, da entrega para o
+    // resultado, e antes da chamada final. No máximo duas, para não
+    // virar apresentação de slides. (Com `cut` fixado pela marca, e
+    // quando a IA respondeu "nenhuma" com lista vazia, não entra nada.)
+    const VIRADAS = new Set(['solution', 'payoff', 'offer', 'cta']);
+    for (let i = 1; i < n && pedidas.size < 2; i += 1) {
+      const papel = clips[i]!.role;
+      if (VIRADAS.has(papel) && clips[i - 1]!.role !== papel) pedidas.set(i, 'smooth');
+    }
   }
 
   const transitions: EditPlanV1['transitions'] = [...pedidas.entries()]

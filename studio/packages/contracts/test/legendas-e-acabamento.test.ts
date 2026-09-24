@@ -257,7 +257,9 @@ const dialogos = (ass: string) => ass.split('\n').filter((l) => l.startsWith('Di
   t('logo na posição escolhida', a.overlays.some((o) => o.component === 'LogoBug' && o.variant === 'se'));
   t('trilha com ducking', a.music?.assetId === 'mus1' && a.music.gainDb === -22 && a.music.duckUnderVoice);
   t('desfoque e voz limpa por padrão', a.render.fit === 'desfoque' && a.render.voiceEnhance === true);
-  t('sem transição por padrão (corte seco)', a.transitions.length === 0);
+  t('sem dica, transição curta só na virada (antes do CTA)', a.transitions.length === 1 && a.transitions[0]!.beforeClipIndex === 2);
+  t('com corte seco fixado pela marca, nenhuma transição', aplicarAcabamento(plano, { preferencias: { transicaoPadrao: 'cut' } }).transitions.length === 0);
+  t('a IA dizendo "nenhuma" (lista vazia) vale', aplicarAcabamento(plano, {}, { transitions: [] }).transitions.length === 0);
 
   const d = aplicarAcabamento(plano, { preferencias: { efeitosSonoros: true } }, {
     captionPreset: 'uma_palavra',

@@ -29,4 +29,5 @@ export * from './montagem-automatica';
 export * from './estilos-de-legenda';
 export * from './legendas-ass';
 export * from './acabamento';
+export * from './retomadas';
 export * from './ai-comando';

@@ -28,7 +28,9 @@ import { join } from 'node:path';
 export const VERSAO_DO_PROMPT = {
   // v3: os valores aceitos listados (papel, framework, risco) e motivos
   // curtos -- e o que deixa a selecao funcionar SEM raciocinio.
-  selecionar_trechos: 'selecao-v3',
+  // v4: protocolo dos vídeos que retêm (gancho, promessa, entrega,
+  // recompensa, CTA), `analysis` antes dos cortes e acabamento obrigatório.
+  selecionar_trechos: 'selecao-v4',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',

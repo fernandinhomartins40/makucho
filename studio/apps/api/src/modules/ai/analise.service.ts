@@ -22,15 +22,29 @@ import {
   catalogoDeEstilosParaIa,
   compilarProposta,
   confiancaDoPlano,
+  detectarRetomadas,
   hasBlockingIssues,
   parseAiProposal,
+  removerRetomadasEscolhidas,
   validateSemanticSafety,
 } from '@makucho/studio-contracts';
-import type { ContextoDoAcabamento, SegmentoDaTranscricao, SemanticIssue } from '@makucho/studio-contracts';
+import type {
+  AnaliseDaIa,
+  CommunicationProfileInput,
+  ContextoDoAcabamento,
+  SegmentoDaTranscricao,
+  SemanticIssue,
+} from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
 import { PromptsService } from './prompts.service';
+import { RoteiroService } from './roteiro.service';
+
+/** Silêncio a partir do qual a pausa antes de uma linha é anotada. */
+const PAUSA_ANOTADA_MS = 700;
+/** Confiança de palavra abaixo da qual a linha é marcada. */
+const CONFIANCA_BAIXA = 0.6;
 
 /**
  * Teto de tokens da resposta.
@@ -56,6 +70,7 @@ export class AnaliseService {
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
     private readonly acabamento: AcabamentoService,
+    private readonly roteiros: RoteiroService,
   ) {}
 
   /**
@@ -69,7 +84,15 @@ export class AnaliseService {
     projectId: string,
     opcoes: { semCache?: boolean } = {},
   ): Promise<
-    | { ok: true; plano: unknown; avisos: string[]; confianca: number; problemas: SemanticIssue[] }
+    | {
+        ok: true;
+        plano: unknown;
+        avisos: string[];
+        confianca: number;
+        problemas: SemanticIssue[];
+        /** O que a IA entendeu do vídeo (assunto, promessa, estrutura). */
+        entendimento?: AnaliseDaIa;
+      }
     | { ok: false; erro: string; temporario: boolean }
   > {
     const transcricao = await this.prisma.transcription.findUnique({
@@ -101,7 +124,21 @@ export class AnaliseService {
 
     const projeto = await this.prisma.project.findUnique({
       where: { id: projectId },
-      select: { framework: true, targetDurationMs: true },
+      select: {
+        title: true,
+        objective: true,
+        framework: true,
+        targetDurationMs: true,
+        // O roteiro de onde a gravação saiu é o melhor resumo do assunto:
+        // a IA entende o que a pessoa QUERIA dizer antes de ler o que disse.
+        script: {
+          select: {
+            title: true,
+            framework: true,
+            blocks: { orderBy: { position: 'asc' }, select: { role: true, goal: true, text: true } },
+          },
+        },
+      },
     });
 
     const segmentos: SegmentoDaTranscricao[] = transcricao.segments.map((s) => ({
@@ -124,7 +161,21 @@ export class AnaliseService {
     const sistema = `${instrucoes}\n\n## Estilos de legenda (captionPreset: descrição)\n${catalogoDeEstilosParaIa()}`;
     const acabamento = await this.acabamento.contexto(workspaceId);
 
-    const usuario = this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs, acabamento);
+    const perfil = await this.roteiros.perfilDe(workspaceId).catch(() => null);
+    const retomadas = detectarRetomadas(segmentos);
+
+    const usuario = this.montarEntrada({
+      segmentos,
+      retomadas,
+      framework: projeto?.framework ?? projeto?.script?.framework,
+      duracaoAlvoMs: projeto?.targetDurationMs,
+      duracaoDaGravacaoMs: original.durationMs,
+      acabamento,
+      perfil,
+      titulo: projeto?.title,
+      objetivo: projeto?.objective,
+      roteiro: projeto?.script ?? null,
+    });
 
     // ---------- Duas tentativas: barata, e com raciocinio so se precisar ----------
     //
@@ -159,8 +210,9 @@ export class AnaliseService {
         return { tipo: 'provedor' as const, erro: publico };
       }
 
-      const lida = parseAiProposal(resposta.texto);
-      if (!lida.ok) {
+      const lidaCrua = parseAiProposal(resposta.texto);
+      if (!lidaCrua.ok) {
+        const lida = lidaCrua;
         await this.ai.concluirAnalise(projectId, false, lida.error);
         this.log.warn(`proposta recusada no projeto ${projectId} (${raciocinio}): ${lida.error}`);
         return {
@@ -168,6 +220,14 @@ export class AnaliseService {
           erro: 'A IA devolveu uma resposta que não pôde ser lida. Tente de novo.',
           temporario: lida.repairable,
         };
+      }
+
+      // A mesma fala escolhida duas vezes (a tentativa e a retomada):
+      // fica a última. É mecânico, e o modelo sem raciocínio erra.
+      const semRetomada = removerRetomadasEscolhidas(lidaCrua.proposal, segmentos, retomadas);
+      const lida = { ...lidaCrua, proposal: semRetomada.proposta };
+      if (semRetomada.removidos > 0) {
+        this.log.log(`projeto ${projectId}: ${semRetomada.removidos} trecho(s) repetido(s) removido(s)`);
       }
 
       const compilado = compilarProposta({
@@ -232,6 +292,7 @@ export class AnaliseService {
       ok: true,
       plano: compilado.plano,
       avisos,
+      entendimento: lida.proposal.analysis,
       // O número não vem do modelo (seção 26.4): é agregação dos
       // riscos que ele classificou, não uma probabilidade.
       confianca: confiancaDoPlano(compilado.plano),
@@ -242,32 +303,80 @@ export class AnaliseService {
   /**
    * O que vai no prompt do usuário.
    *
-   * Só a transcrição SEGMENTADA, como a seção 26.7 manda: as
-   * `TranscriptWord` servem à legenda, não à escolha do trecho, e
-   * mandá-las multiplicaria o custo por dez sem melhorar a decisão.
+   * A transcrição SEGMENTADA (as palavras servem à legenda, não à
+   * escolha, e multiplicariam o custo), com o que um editor anotaria
+   * na margem -- pausa antes da linha, "esta refaz aquela", palavra mal
+   * ouvida -- e o contexto que faz a IA entender o assunto: o roteiro
+   * de onde a gravação saiu, o perfil de quem fala e o que o Kit de
+   * marca já decide. Tudo em poucas centenas de tokens.
    */
-  private montarEntrada(
-    segmentos: readonly SegmentoDaTranscricao[],
-    framework?: string | null,
-    duracaoAlvoMs?: number | null,
-    acabamento?: ContextoDoAcabamento,
-  ): string {
-    const linhas = segmentos.map(
-      (s) => `[${s.startMs}–${s.endMs}] ${s.text}`,
-    );
+  private montarEntrada(e: {
+    segmentos: readonly SegmentoDaTranscricao[];
+    retomadas: ReadonlyMap<number, number>;
+    framework?: string | null;
+    duracaoAlvoMs?: number | null;
+    duracaoDaGravacaoMs: number;
+    acabamento?: ContextoDoAcabamento;
+    perfil?: CommunicationProfileInput | null;
+    titulo?: string | null;
+    objetivo?: string | null;
+    roteiro?: { title: string; blocks: Array<{ role: string; goal: string | null; text: string }> } | null;
+  }): string {
+    const linhas = e.segmentos.map((s, i) => {
+      const notas: string[] = [];
+      const anterior = e.segmentos[i - 1];
+      if (anterior && s.startMs - anterior.endMs >= PAUSA_ANOTADA_MS) {
+        notas.push(`(pausa ${((s.startMs - anterior.endMs) / 1000).toFixed(1)}s)`);
+      }
+      const refaz = e.retomadas.get(i);
+      if (refaz !== undefined) notas.push(`⟲ refaz #${refaz}`);
+      if (s.minWordConfidence < CONFIANCA_BAIXA) notas.push('?confiança baixa');
+      return `#${i} [${s.startMs}–${s.endMs}]${notas.length ? ` ${notas.join(' ')}` : ''} ${s.text}`;
+    });
 
-    // Com o estilo fixado pela marca, a IA nem o escolhe: sao tokens de
-    // saida que seriam descartados pelo acabamento de qualquer forma.
-    const estiloDaMarca = acabamento?.preferencias?.captionPreset;
+    const contexto: string[] = [];
+    const titulo = e.titulo && !/^vídeo sem título$/i.test(e.titulo) ? e.titulo : null;
+    if (titulo) contexto.push(`Título do projeto: ${titulo}`);
+    if (e.objetivo) contexto.push(`Objetivo: ${e.objetivo}`);
+    if (e.roteiro) {
+      contexto.push(`Roteiro de origem: "${e.roteiro.title}"`);
+      for (const b of e.roteiro.blocks.slice(0, 8)) {
+        contexto.push(`  - ${b.role}${b.goal ? ` (${b.goal})` : ''}: ${b.text.replace(/\s+/g, ' ').slice(0, 90)}`);
+      }
+    }
+
+    const p = e.perfil;
+    if (p) {
+      contexto.push(
+        `Perfil do criador: tom ${p.tone}, energia ${p.energy}, ganchos preferidos ${p.allowedHooks.join('/') || 'livres'}, ` +
+          `auto-apresentação ${p.selfIntroPolicy}, estilo de CTA ${p.ctaStyle}, agressividade de corte ${p.cutAggressiveness}.`,
+      );
+      if (p.removableFillers.length) contexto.push(`Muletas deste criador (corte): ${p.removableFillers.slice(0, 15).join(', ')}`);
+      if (p.bannedWords.length) contexto.push(`Palavras que não podem aparecer: ${p.bannedWords.slice(0, 15).join(', ')}`);
+    }
+
+    // O que o Kit de marca já decide a IA não decide: seria gastar
+    // tokens numa escolha que o acabamento descarta.
+    const prefs = e.acabamento?.preferencias ?? {};
+    const marca: string[] = [];
+    marca.push(prefs.captionPreset ? `estilo de legenda FIXO (${prefs.captionPreset}): omita captionPreset` : 'estilo de legenda: escolha');
+    marca.push(prefs.transicaoPadrao ? `transição FIXA (${prefs.transicaoPadrao}): omita transitions` : 'transições: escolha nas viradas');
+    if (e.acabamento?.logoAssetId) marca.push('tem logo no canto');
+    if (e.acabamento?.musicaAssetId) marca.push('tem trilha de fundo');
+
+    const pedido = e.duracaoAlvoMs ?? (p ? Math.round((p.targetDurationMinMs + p.targetDurationMaxMs) / 2) : 60_000);
+    // O alvo nunca passa da gravação: com 20 s gravados e 60 s pedidos,
+    // a IA tentaria "esticar" e manteria o que devia sair. Aí o alvo é
+    // cortar o que não serve -- uns 85% do que foi gravado, no máximo.
+    const alvo = Math.min(pedido, Math.round(e.duracaoDaGravacaoMs * 0.85));
 
     return [
-      `Framework: ${framework ?? 'authority_education'}`,
-      `Duração alvo: ${Math.round((duracaoAlvoMs ?? 60_000) / 1000)} segundos`,
-      estiloDaMarca
-        ? `Estilo de legenda: definido pela marca (${estiloDaMarca}); omita captionPreset.`
-        : 'Estilo de legenda: escolha em style.captionPreset.',
+      `Framework: ${e.framework ?? 'authority_education'}`,
+      `Duração alvo: ${Math.round(alvo / 1000)} s (gravação: ${Math.round(e.duracaoDaGravacaoMs / 1000)} s)`,
+      `Kit de marca: ${marca.join('; ')}.`,
+      ...(contexto.length ? ['', ...contexto] : []),
       '',
-      'Transcrição (tempos em milissegundos):',
+      'Transcrição (#linha [início–fim em ms] notas texto):',
       ...linhas,
     ].join('\n');
   }
