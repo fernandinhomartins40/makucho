@@ -18,12 +18,14 @@
 // obrigatoriamente por Zod.
 // ============================================================
 
-import type { ChamadaDeIa } from '@makucho/studio-contracts';
+import type { ChamadaDeIa, Raciocinio } from '@makucho/studio-contracts';
 
 /** O que uma chamada consumiu. Alimenta a trava de custo. */
 export interface ConsumoDaChamada {
   inputTokens: number;
   outputTokens: number;
+  /** Quantos dos tokens de entrada acertaram o cache de contexto. */
+  tokensEmCache?: number;
   modelo: string;
 }
 
@@ -52,6 +54,12 @@ export interface PedidoAoProvedor {
    * produzir um corte diferente a cada execução sem motivo.
    */
   temperatura?: number;
+  /**
+   * Raciocínio do modelo. `desligado` precisa ser pedido: na DeepSeek
+   * ele vem LIGADO por padrão, e cada token de pensamento é cobrado
+   * como saída.
+   */
+  raciocinio?: Raciocinio;
   /** Aborta a chamada quando o job é cancelado ou estoura o tempo. */
   sinal?: AbortSignal;
 }

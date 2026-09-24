@@ -40,7 +40,9 @@ import { PromptsService } from './prompts.service';
  * com folga; sem teto, uma resposta que cresce sem fim seguraria a
  * requisição até o timeout.
  */
-const MAX_TOKENS = 8000;
+// Com raciocinio ligado, os tokens de pensamento contam na saida: o
+// teto sobe para a resposta nao ser cortada no meio do JSON.
+const MAX_TOKENS = 16000;
 
 @Injectable()
 export class AnaliseService {
@@ -62,6 +64,7 @@ export class AnaliseService {
   async analisar(
     workspaceId: string,
     projectId: string,
+    opcoes: { semCache?: boolean } = {},
   ): Promise<
     | { ok: true; plano: unknown; avisos: string[]; confianca: number; problemas: SemanticIssue[] }
     | { ok: false; erro: string; temporario: boolean }
@@ -128,6 +131,7 @@ export class AnaliseService {
         usuario: this.montarEntrada(segmentos, projeto?.framework, projeto?.targetDurationMs, acabamento),
         maxTokens: MAX_TOKENS,
         promptVersion: versao,
+        semCache: opcoes.semCache,
       });
     } catch (e) {
       const publico =

@@ -22,9 +22,9 @@ import {
 } from '@makucho/studio-contracts';
 import type { ChamadaDeIa, SituacaoDeUso } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
-import type { PRECO_POR_MILHAO } from '@makucho/studio-contracts';
+import type { ModeloDeIa } from '@makucho/studio-contracts';
 
-type Modelo = keyof typeof PRECO_POR_MILHAO;
+type Modelo = ModeloDeIa;
 
 @Injectable()
 export class UsoDeIaService {
@@ -105,8 +105,10 @@ export class UsoDeIaService {
     modelo: Modelo,
     inputTokens: number,
     outputTokens: number,
+    /** Tokens de entrada que acertaram o cache (cobrados a uma fração). */
+    tokensEmCache = 0,
   ): Promise<number> {
-    const custo = custoEmCentavos(modelo, inputTokens, outputTokens);
+    const custo = custoEmCentavos(modelo, inputTokens, outputTokens, tokensEmCache);
     const periodo = periodoDe();
 
     try {

@@ -48,50 +48,86 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
 
 // ---------- Modelos ----------
 //
-// A tabela da secao 26.6. O modelo por chamada nao e preferencia: as
-// de escolha (#3, #5) precisam sustentar coerencia sobre a
-// transcricao inteira, e as de escrita curta nao.
-export const MODELO_POR_CHAMADA: Record<ChamadaDeIa, 'deepseek-chat' | 'deepseek-reasoner'> = {
-  gerar_roteiro: 'deepseek-chat',
-  sugerir_melhorias: 'deepseek-chat',
-  selecionar_trechos: 'deepseek-reasoner',
-  propor_candidatos: 'deepseek-chat',
-  avaliar_risco: 'deepseek-reasoner',
-  refinar_cortes: 'deepseek-chat',
-  // Traduzir um pedido curto em operacoes fechadas nao exige raciocinio
-  // longo: o chat responde em segundos e custa metade.
-  comandar_edicao: 'deepseek-chat',
+// Os nomes `deepseek-chat` e `deepseek-reasoner` foram DESLIGADOS pela
+// DeepSeek em 2026-07-24: depois dessa data toda chamada com eles falha.
+// O raciocinio deixou de ser um modelo separado e virou um parametro
+// (`thinking`), LIGADO por padrao -- entao toda chamada que nao pede
+// raciocinio precisa desliga-lo explicitamente, ou paga tokens de
+// pensamento que ninguem le.
+export const MODELOS_DE_IA = ['deepseek-flash', 'deepseek-v4-pro'] as const;
+export type ModeloDeIa = (typeof MODELOS_DE_IA)[number];
+
+/** `desligado`, ou o esforco de raciocinio pedido ao modelo. */
+export type Raciocinio = 'desligado' | 'low' | 'high';
+
+export interface ConfigDaChamada {
+  modelo: ModeloDeIa;
+  raciocinio: Raciocinio;
+}
+
+/**
+ * Modelo e raciocinio por chamada.
+ *
+ * O Flash (V4.1) atende todas: e o mais barato e o mais recente. O
+ * raciocinio fica so onde ha julgamento sobre o texto inteiro -- a
+ * escolha dos trechos (#3, #5) e o acabamento das bordas (#6). Escrever
+ * roteiro, sugerir, propor candidatos e traduzir um comando em
+ * operacoes fechadas sao tarefas diretas: raciocinio ali e custo sem
+ * ganho. O modelo pode ser trocado por ambiente (DEEPSEEK_MODELO), sem
+ * mexer no codigo.
+ */
+export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
+  gerar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  sugerir_melhorias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  selecionar_trechos: { modelo: 'deepseek-flash', raciocinio: 'high' },
+  propor_candidatos: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  avaliar_risco: { modelo: 'deepseek-flash', raciocinio: 'high' },
+  refinar_cortes: { modelo: 'deepseek-flash', raciocinio: 'low' },
+  comandar_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
+
+/** Compatibilidade: so o modelo de cada chamada. */
+export const MODELO_POR_CHAMADA: Record<ChamadaDeIa, ModeloDeIa> = Object.fromEntries(
+  Object.entries(CONFIG_POR_CHAMADA).map(([c, cfg]) => [c, cfg.modelo]),
+) as Record<ChamadaDeIa, ModeloDeIa>;
 
 /**
  * Preco por milhao de tokens, em centavos de dolar.
  *
- * Numeros da tabela publica da DeepSeek em 2026-09; o preco muda, e
- * por isso ele mora numa constante nomeada e nao espalhado pelo
- * codigo. Quando mudar, muda aqui -- e o historico ja gravado em
- * AiAnalysis continua valendo, porque o custo e gravado junto da
- * chamada, nao recalculado depois.
+ * Tabela publica da DeepSeek em 2026-09, no HORARIO DE PICO (o preco
+ * varia entre pico e fora dele): o teto de gasto nunca pode estimar
+ * abaixo do que sera cobrado. `entradaEmCache` e o preco do token de
+ * entrada que acerta o cache de contexto -- automatico, para prefixos
+ * repetidos, como o prompt de sistema fixo de cada chamada. Arredondado
+ * para cima (0,6 vira 1).
+ *
+ * O custo e gravado junto da chamada, nao recalculado depois: mudar o
+ * preco aqui nao reescreve o historico.
  */
-export const PRECO_POR_MILHAO = {
-  'deepseek-chat': { entrada: 27, saida: 110 },
-  'deepseek-reasoner': { entrada: 55, saida: 219 },
-} as const;
+export const PRECO_POR_MILHAO: Readonly<Record<ModeloDeIa, { entrada: number; entradaEmCache: number; saida: number }>> = {
+  'deepseek-flash': { entrada: 30, entradaEmCache: 1, saida: 120 },
+  'deepseek-v4-pro': { entrada: 132, entradaEmCache: 5, saida: 396 },
+};
 
 /**
  * Custo de uma chamada, em centavos.
  *
  * Arredonda para CIMA: um teto que erra para baixo deixa passar a
- * chamada que estoura, e o cliente descobre na fatura. Errar um
- * centavo a mais por chamada e barato; errar para baixo nao e.
+ * chamada que estoura, e o cliente descobre na fatura. Tokens de
+ * raciocinio sao cobrados como saida -- quem chama os soma a saida.
  */
 export function custoEmCentavos(
-  modelo: keyof typeof PRECO_POR_MILHAO,
+  modelo: ModeloDeIa,
   tokensDeEntrada: number,
   tokensDeSaida: number,
+  /** Quantos dos tokens de entrada acertaram o cache. */
+  tokensEmCache = 0,
 ): number {
-  const preco = PRECO_POR_MILHAO[modelo];
+  const preco = PRECO_POR_MILHAO[modelo] ?? PRECO_POR_MILHAO['deepseek-v4-pro'];
+  const emCache = Math.min(Math.max(0, tokensEmCache), tokensDeEntrada);
   const bruto =
-    (tokensDeEntrada * preco.entrada + tokensDeSaida * preco.saida) / 1_000_000;
+    ((tokensDeEntrada - emCache) * preco.entrada + emCache * preco.entradaEmCache + tokensDeSaida * preco.saida) /
+    1_000_000;
   return Math.ceil(bruto);
 }
 

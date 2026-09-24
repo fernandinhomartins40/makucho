@@ -408,36 +408,25 @@ function Roteiro() {
 
   // ---------- Sugestões da IA ----------
   //
-  // Debounce de 2 s (seção 26.3), e o servidor ainda aplica um
-  // intervalo mínimo de 20 s por roteiro: o debounce é proteção do
-  // cliente, e cliente não é confiável. Uma aba presa num laço
-  // transformaria digitação em uma chamada por tecla.
-  //
-  // Depende do `roteiroId`, então só roda depois do primeiro
-  // salvamento — pedir sugestão sobre um roteiro que o servidor não
-  // conhece não teria o que analisar.
-  useEffect(() => {
-    if (!roteiroId) return;
-    if (!blocos.some((b) => b.texto.trim())) return;
-
-    const id = setTimeout(async () => {
-      setPedindoSugestoes(true);
-      try {
-        const r = await ia.sugestoesDeRoteiro(roteiroId);
-        setSugestoesIa(r.sugestoes);
-        setIaIndisponivel(r.indisponivel ?? null);
-      } catch (e) {
-        // Não vira aviso na tela: ninguém clicou em nada, e um erro
-        // vermelho que aparece sozinho é indistinguível de defeito.
-        setSugestoesIa([]);
-        setIaIndisponivel(e instanceof Error ? e.message : 'sugestões indisponíveis');
-      } finally {
-        setPedindoSugestoes(false);
-      }
-    }, 2000);
-
-    return () => clearTimeout(id);
-  }, [blocos, roteiroId]);
+  // Sob demanda, por um botão. Antes elas eram pedidas sozinhas a cada
+  // pausa de 2 s na digitação: uma sessão de escrita de dez minutos
+  // virava dezenas de chamadas pagas sobre versões intermediárias que
+  // ninguém ia ler. Agora quem escreve pede quando terminou — e pedir de
+  // novo sobre o mesmo texto sai do cache do servidor, sem custo.
+  const pedirSugestoes = useCallback(async () => {
+    if (!roteiroId || pedindoSugestoes) return;
+    setPedindoSugestoes(true);
+    try {
+      const r = await ia.sugestoesDeRoteiro(roteiroId);
+      setSugestoesIa(r.sugestoes);
+      setIaIndisponivel(r.indisponivel ?? null);
+    } catch (e) {
+      setSugestoesIa([]);
+      setIaIndisponivel(e instanceof Error ? e.message : 'sugestões indisponíveis');
+    } finally {
+      setPedindoSugestoes(false);
+    }
+  }, [roteiroId, pedindoSugestoes]);
 
   /**
    * Aplica uma sugestão: troca o texto do bloco pelo reescrito.
@@ -779,6 +768,18 @@ function Roteiro() {
             {/* As sugestoes da IA vem DEPOIS dos ajustes locais e
                 antes do checklist: sao adicionais, e a ordem diz
                 isso sem precisar de rotulo explicando. */}
+            {roteiroId && blocos.some((b) => b.texto.trim()) && (
+              <button
+                type="button"
+                className="botao botao--secundario botao--largo"
+                style={{ marginBottom: 'var(--e4)' }}
+                disabled={pedindoSugestoes}
+                onClick={() => void pedirSugestoes()}
+              >
+                {pedindoSugestoes ? 'A IA está lendo o roteiro…' : 'Pedir sugestões à IA'}
+              </button>
+            )}
+
             {(sugestoesIa.length > 0 || iaIndisponivel || pedindoSugestoes) && (
               <>
                 <h3 style={{ marginBottom: 'var(--e3)' }}>

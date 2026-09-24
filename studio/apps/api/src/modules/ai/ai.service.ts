@@ -18,8 +18,9 @@
 // ============================================================
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { MODELO_POR_CHAMADA, PRECO_POR_MILHAO } from '@makucho/studio-contracts';
-import type { ChamadaDeIa } from '@makucho/studio-contracts';
+import { createHash } from 'node:crypto';
+import { CONFIG_POR_CHAMADA, MODELOS_DE_IA } from '@makucho/studio-contracts';
+import type { ChamadaDeIa, ModeloDeIa } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
@@ -31,6 +32,27 @@ import { UsoDeIaService } from './uso.service';
 /** Ativa o provedor falso sem credencial, para desenvolvimento. */
 const USAR_FALSO = process.env.AI_PROVIDER === 'falso';
 
+/**
+ * Troca o modelo de todas as chamadas sem mexer no código (ex.:
+ * `deepseek-v4-pro` para mais qualidade). Nome fora da lista é
+ * ignorado: um erro de digitação não pode derrubar a IA inteira.
+ */
+const MODELO_DO_AMBIENTE = (MODELOS_DE_IA as readonly string[]).includes(process.env.DEEPSEEK_MODELO ?? '')
+  ? (process.env.DEEPSEEK_MODELO as ModeloDeIa)
+  : null;
+
+/**
+ * Cache de respostas idênticas.
+ *
+ * O mesmo pedido (mesma chamada, modelo, instruções e conteúdo) devolve
+ * a mesma resposta sem ir ao provedor e sem custo: reabrir sugestões de
+ * um roteiro que não mudou, repetir um comando, pedir candidatos de novo
+ * sobre o mesmo plano. Em memória e por 24 h: é economia, não
+ * persistência -- um reinício só faz a próxima chamada ir ao provedor.
+ */
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAXIMO = 300;
+
 export interface PedidoDeIa {
   workspaceId: string;
   chamada: ChamadaDeIa;
@@ -41,6 +63,12 @@ export interface PedidoDeIa {
   projectId?: string;
   promptVersion: string;
   sinal?: AbortSignal;
+  /**
+   * Ir ao provedor mesmo que a mesma pergunta tenha resposta guardada.
+   * É o caso de "refazer a análise": quem pede de novo quer outra
+   * resposta, não a mesma.
+   */
+  semCache?: boolean;
 }
 
 export interface ResultadoDeIa {
@@ -49,11 +77,14 @@ export interface ResultadoDeIa {
   inputTokens: number;
   outputTokens: number;
   modelo: string;
+  /** A resposta veio do cache: nada foi cobrado. */
+  doCache?: boolean;
 }
 
 @Injectable()
 export class AiService {
   private readonly log = new Logger(AiService.name);
+  private readonly cache = new Map<string, { quando: number; resultado: ResultadoDeIa }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -70,34 +101,44 @@ export class AiService {
    * nova sem ganhar nada.
    */
   async chamar(pedido: PedidoDeIa): Promise<ResultadoDeIa> {
-    const modelo = MODELO_POR_CHAMADA[pedido.chamada];
+    const config = CONFIG_POR_CHAMADA[pedido.chamada];
+    const modelo = MODELO_DO_AMBIENTE ?? config.modelo;
+
+    // Por workspace: a mesma pergunta de dois clientes não compartilha
+    // resposta (nem a trava de custo de um paga pelo outro).
+    const chave = createHash('sha256')
+      .update([pedido.workspaceId, pedido.chamada, modelo, config.raciocinio, pedido.sistema, pedido.usuario].join('\u0000'))
+      .digest('hex');
+    const guardado = this.cache.get(chave);
+    if (!pedido.semCache && guardado && Date.now() - guardado.quando < CACHE_TTL_MS) {
+      this.log.log(`${pedido.chamada}: resposta do cache, sem custo`);
+      return { ...guardado.resultado, custoCentavos: 0, doCache: true };
+    }
+
     const provedor = await this.provedorDe(pedido.workspaceId, modelo);
 
     // A estimativa usa o MÁXIMO que o pedido autoriza, não a média:
     // estimar pela média deixaria passar justamente a chamada grande,
     // que é a que estoura o teto.
     const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4);
-    await this.uso.conferirAntes(
-      pedido.workspaceId,
-      modelo as keyof typeof PRECO_POR_MILHAO,
-      entradaEstimada,
-      pedido.maxTokens,
-    );
+    await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
 
     const resposta = await provedor.conversar({
       chamada: pedido.chamada,
       sistema: pedido.sistema,
       usuario: pedido.usuario,
       maxTokens: pedido.maxTokens,
+      raciocinio: config.raciocinio,
       sinal: pedido.sinal,
     });
 
     const custo = await this.uso.registrar(
       pedido.workspaceId,
       pedido.chamada,
-      modelo as keyof typeof PRECO_POR_MILHAO,
+      modelo,
       resposta.consumo.inputTokens,
       resposta.consumo.outputTokens,
+      resposta.consumo.tokensEmCache ?? 0,
     );
 
     // A credencial registra o uso para que a tela mostre "usada pela
@@ -114,13 +155,20 @@ export class AiService {
       await this.registrarAnalise(pedido, resposta.texto, custo, resposta.consumo);
     }
 
-    return {
+    const resultado: ResultadoDeIa = {
       texto: resposta.texto,
       custoCentavos: custo,
       inputTokens: resposta.consumo.inputTokens,
       outputTokens: resposta.consumo.outputTokens,
       modelo: resposta.consumo.modelo,
     };
+
+    this.cache.set(chave, { quando: Date.now(), resultado });
+    // Teto simples: o Map guarda a ordem de inserção, então o primeiro
+    // é o mais antigo.
+    if (this.cache.size > CACHE_MAXIMO) this.cache.delete(this.cache.keys().next().value!);
+
+    return resultado;
   }
 
   /**
@@ -181,7 +229,7 @@ export class AiService {
    * cache de chave em claro transformaria um vazamento de heap em
    * vazamento de credencial de todos os workspaces de uma vez.
    */
-  private async provedorDe(workspaceId: string, modelo: string): Promise<ProvedorDeIa> {
+  private async provedorDe(workspaceId: string, modelo: ModeloDeIa): Promise<ProvedorDeIa> {
     if (USAR_FALSO) return new FalsoProvedor('valido');
 
     const credencial = await this.prisma.aiCredential.findUnique({ where: { workspaceId } });

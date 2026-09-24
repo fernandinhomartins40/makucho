@@ -46,7 +46,6 @@ function SecaoDeIa() {
   const consumo = useDados<ConsumoDeIa>(() => apiIa.consumo());
 
   const [chave, setChave] = useState('');
-  const [modelo, setModelo] = useState('');
   const [mostrar, setMostrar] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
@@ -64,7 +63,6 @@ function SecaoDeIa() {
       const salvo = await credencialDeIa.salvar({
         provider: 'deepseek',
         apiKey: chave.trim(),
-        ...(modelo.trim() ? { model: modelo.trim() } : {}),
       });
       credencial.definir(salvo);
       setChave('');
@@ -197,15 +195,13 @@ function SecaoDeIa() {
           </span>
         </label>
 
-        <label className="campo" style={{ maxWidth: 320 }}>
-          <span className="campo__rotulo">Modelo (opcional)</span>
-          <input
-            className="campo__entrada"
-            placeholder="deepseek-chat"
-            value={modelo}
-            onChange={(e) => setModelo(e.target.value)}
-          />
-        </label>
+        {/* Sem campo de modelo: o Studio escolhe o modelo e o nível de
+            raciocínio de cada função (o mais barato que dá conta dela),
+            e um modelo digitado aqui era salvo e ignorado. */}
+        <p className="campo__ajuda" style={{ maxWidth: 520 }}>
+          O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no
+          acabamento dos cortes.
+        </p>
 
         <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
           <button type="submit" className="botao" disabled={!chaveValida || salvando}>

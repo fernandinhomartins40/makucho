@@ -163,7 +163,9 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     projectId: string,
     opcoes: { comReserva: boolean },
   ): Promise<ResultadoDaProposta> {
-    const resultado = await this.analise.analisar(workspaceId, projectId);
+    // Pedido manual ("refazer a análise") quer uma resposta nova, não a
+    // guardada; o automático aceita o cache.
+    const resultado = await this.analise.analisar(workspaceId, projectId, { semCache: !opcoes.comReserva });
 
     let plano: unknown;
     let resposta: ResultadoDaProposta;

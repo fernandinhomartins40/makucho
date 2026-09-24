@@ -6,6 +6,7 @@ import {
   periodoDe,
   situacaoDeUsoSchema,
   MODELO_POR_CHAMADA,
+  CONFIG_POR_CHAMADA,
   CHAMADAS_DE_IA,
   LIMITE_MENSAL_PADRAO_CENTAVOS,
 } from '../src/index';
@@ -25,25 +26,34 @@ const t = (nome: string, cond: boolean) => {
 // produção — aparece na fatura.
 // ============================================================
 
-// 1M de entrada no chat = 27 centavos, por definição da tabela.
-t('1M de tokens de entrada no chat custa 27 centavos', custoEmCentavos('deepseek-chat', 1_000_000, 0) === 27);
-t('1M de tokens de saída no chat custa 110 centavos', custoEmCentavos('deepseek-chat', 0, 1_000_000) === 110);
+// Preço de pico da tabela, por definição.
+t('1M de tokens de entrada no Flash custa 30 centavos', custoEmCentavos('deepseek-flash', 1_000_000, 0) === 30);
+t('1M de tokens de saída no Flash custa 120 centavos', custoEmCentavos('deepseek-flash', 0, 1_000_000) === 120);
 
-// O reasoner é mais caro: é o que justifica reservá-lo às duas
-// chamadas que precisam sustentar coerência sobre a transcrição.
+// O cache de contexto: a entrada que acerta o cache custa uma fração.
 t(
-  'o reasoner custa mais que o chat pelo mesmo uso',
-  custoEmCentavos('deepseek-reasoner', 1_000_000, 0) > custoEmCentavos('deepseek-chat', 1_000_000, 0),
+  'entrada em cache sai muito mais barata',
+  custoEmCentavos('deepseek-flash', 1_000_000, 0, 1_000_000) === 1,
+);
+t(
+  'cache maior que a entrada não gera custo negativo',
+  custoEmCentavos('deepseek-flash', 1000, 0, 5000) >= 0,
+);
+
+// O Pro é mais caro: é o que justifica deixá-lo como opção, não padrão.
+t(
+  'o Pro custa mais que o Flash pelo mesmo uso',
+  custoEmCentavos('deepseek-v4-pro', 1_000_000, 0) > custoEmCentavos('deepseek-flash', 1_000_000, 0),
 );
 
 // Arredondamento PARA CIMA: um teto que erra para baixo deixa passar
 // a chamada que estoura.
-t('custo fracionário arredonda para cima', custoEmCentavos('deepseek-chat', 1000, 0) === 1);
-t('chamada de custo zero continua zero', custoEmCentavos('deepseek-chat', 0, 0) === 0);
+t('custo fracionário arredonda para cima', custoEmCentavos('deepseek-flash', 1000, 0) === 1);
+t('chamada de custo zero continua zero', custoEmCentavos('deepseek-flash', 0, 0) === 0);
 
 // Uma chamada típica de seleção: transcrição de 10 min cabe em uns
-// 8 mil tokens de entrada, resposta em uns 2 mil.
-const tipica = custoEmCentavos('deepseek-reasoner', 8000, 2000);
+// 8 mil tokens de entrada, resposta com raciocínio em uns 6 mil.
+const tipica = custoEmCentavos('deepseek-flash', 8000, 6000);
 t('uma seleção típica custa menos de 1% do teto mensal', tipica < LIMITE_MENSAL_PADRAO_CENTAVOS / 100);
 
 // ============================================================
@@ -123,14 +133,19 @@ t(
   CHAMADAS_DE_IA.every((c) => !!MODELO_POR_CHAMADA[c]),
 );
 t(
-  'seleção e risco usam o reasoner (seção 26.6)',
-  MODELO_POR_CHAMADA.selecionar_trechos === 'deepseek-reasoner' &&
-    MODELO_POR_CHAMADA.avaliar_risco === 'deepseek-reasoner',
+  'nenhuma chamada usa os nomes desligados em 2026-07-24',
+  CHAMADAS_DE_IA.every((c) => !['deepseek-chat', 'deepseek-reasoner'].includes(MODELO_POR_CHAMADA[c])),
 );
 t(
-  'as chamadas de escrita curta usam o chat',
-  MODELO_POR_CHAMADA.gerar_roteiro === 'deepseek-chat' &&
-    MODELO_POR_CHAMADA.sugerir_melhorias === 'deepseek-chat',
+  'seleção e risco usam raciocínio (seção 26.6)',
+  CONFIG_POR_CHAMADA.selecionar_trechos.raciocinio !== 'desligado' &&
+    CONFIG_POR_CHAMADA.avaliar_risco.raciocinio !== 'desligado',
+);
+t(
+  'as chamadas de escrita curta NÃO pagam raciocínio',
+  CONFIG_POR_CHAMADA.gerar_roteiro.raciocinio === 'desligado' &&
+    CONFIG_POR_CHAMADA.sugerir_melhorias.raciocinio === 'desligado' &&
+    CONFIG_POR_CHAMADA.comandar_edicao.raciocinio === 'desligado',
 );
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);

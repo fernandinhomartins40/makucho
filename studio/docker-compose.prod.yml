@@ -154,6 +154,9 @@ services:
       MAX_UPLOAD_BYTES: '524288000'
       MAX_VIDEO_DURATION_MS: '900000'
       AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      # Opcional: troca o modelo de todas as chamadas (deepseek-flash por
+      # padrao; deepseek-v4-pro para mais qualidade, a ~4x o preco).
+      DEEPSEEK_MODELO: ${DEEPSEEK_MODELO:-}
       AI_API_KEY: ${AI_API_KEY}
       NODE_OPTIONS: --max-old-space-size=128
     depends_on:

@@ -36,7 +36,7 @@ export class RoteiroController {
   /**
    * #1 — gera um rascunho a partir do tema.
    *
-   * Síncrona: leva poucos segundos com `deepseek-chat`, e o usuário
+   * Síncrona: leva poucos segundos no modelo rápido, sem raciocínio, e o usuário
    * clicou em "Gerar com IA" e está esperando. Não salva nada — o
    * retorno vai para a tela, editável, e quem decide salvar é quem
    * vai falar o texto.

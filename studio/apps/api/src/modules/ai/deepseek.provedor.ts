@@ -21,6 +21,9 @@ const URL_BASE = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
  */
 const TIMEOUT_MS = 120_000;
 
+/** Com raciocínio, o modelo pensa antes de responder: mais tempo. */
+const TIMEOUT_COM_RACIOCINIO_MS = 300_000;
+
 export class DeepseekProvedor implements ProvedorDeIa {
   readonly nome = 'deepseek';
   private readonly log = new Logger(DeepseekProvedor.name);
@@ -34,7 +37,8 @@ export class DeepseekProvedor implements ProvedorDeIa {
     // Dois abortos somados: o do chamador (job cancelado) e o do
     // tempo. `AbortSignal.any` é o que evita ter de escolher entre um
     // e outro.
-    const relogio = AbortSignal.timeout(TIMEOUT_MS);
+    const raciocinio = pedido.raciocinio ?? 'desligado';
+    const relogio = AbortSignal.timeout(raciocinio === 'desligado' ? TIMEOUT_MS : TIMEOUT_COM_RACIOCINIO_MS);
     const sinal = pedido.sinal ? AbortSignal.any([pedido.sinal, relogio]) : relogio;
 
     let resposta: Response;
@@ -52,14 +56,20 @@ export class DeepseekProvedor implements ProvedorDeIa {
             { role: 'user', content: pedido.usuario },
           ],
           max_tokens: pedido.maxTokens,
-          // Zero por padrão: escolha de trecho e avaliação de risco
-          // precisam ser reprodutíveis. O mesmo vídeo não pode render
-          // corte diferente a cada execução sem motivo.
-          temperature: pedido.temperatura ?? 0,
-          // O modo JSON reduz a cerca de markdown, mas não a elimina:
-          // o parser dos contratos continua removendo a cerca.
-          response_format: { type: 'json_object' },
           stream: false,
+          // O raciocínio vem LIGADO por padrão na API atual: desligar é
+          // explícito. Ligado, o modo não aceita `temperature` nem
+          // `response_format`; o parser dos contratos já tira a cerca
+          // de markdown e valida o JSON de qualquer forma.
+          ...(raciocinio === 'desligado'
+            ? {
+                thinking: { type: 'disabled' },
+                // Zero: o mesmo pedido não pode dar resultado diferente
+                // a cada execução sem motivo.
+                temperature: pedido.temperatura ?? 0,
+                response_format: { type: 'json_object' },
+              }
+            : { thinking: { type: 'enabled' }, reasoning_effort: raciocinio }),
         }),
         signal: sinal,
       });
@@ -91,7 +101,7 @@ export class DeepseekProvedor implements ProvedorDeIa {
 
     const dados = (await resposta.json().catch(() => null)) as {
       choices?: Array<{ message?: { content?: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
     } | null;
 
     const texto = dados?.choices?.[0]?.message?.content;
@@ -113,7 +123,10 @@ export class DeepseekProvedor implements ProvedorDeIa {
         inputTokens: dados.usage?.prompt_tokens ?? Math.ceil(
           (pedido.sistema.length + pedido.usuario.length) / 4,
         ),
+        // `completion_tokens` já inclui o raciocínio, que é cobrado como
+        // saída.
         outputTokens: dados.usage?.completion_tokens ?? Math.ceil(texto.length / 4),
+        tokensEmCache: dados.usage?.prompt_cache_hit_tokens ?? 0,
         modelo: this.modelo,
       },
     };
