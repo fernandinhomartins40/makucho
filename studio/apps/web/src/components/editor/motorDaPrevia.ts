@@ -11,8 +11,8 @@
 // de cada trecho (cruzamento no corte, fades, J/L-cut).
 // ============================================================
 
-import type { Agenda, EditPlanV1, JanelaDeTransicao } from '@makucho/studio-contracts';
-import { volumeDaPeca } from '@makucho/studio-contracts';
+import type { Agenda, EditPlanV1, EfeitoDeTela, JanelaDeTransicao } from '@makucho/studio-contracts';
+import { janelaDoEfeito, volumeDaPeca } from '@makucho/studio-contracts';
 
 /** Os mesmos números do render (worker-core/render.ts). */
 const ZOOM_DO_PUNCH_IN = 1.12;
@@ -183,4 +183,27 @@ export function inicioDoUso(agenda: Agenda, indice: number): number {
 /** Os efeitos sonoros que começam no intervalo (de, ate]. */
 export function sonsQueComecam(plano: EditPlanV1, de: number, ate: number) {
   return plano.soundEffects.filter((e) => e.timelineStartMs > de && e.timelineStartMs <= ate);
+}
+
+/**
+ * Os efeitos de tela ativos no instante `ms`, com o quadro dentro de cada
+ * um -- a mesma janela (`janelaDoEfeito`) e o mesmo corte no fim do vídeo
+ * que o render usa.
+ */
+export function efeitosNoQuadro(
+  efeitos: readonly EfeitoDeTela[] | undefined,
+  ms: number,
+  totalQuadros: number,
+): Array<{ tipo: string; intensidade: number; j: number; nf: number }> {
+  if (!efeitos?.length) return [];
+  const quadro = Math.floor((ms * 30) / 1000);
+  const ativos: Array<{ tipo: string; intensidade: number; j: number; nf: number }> = [];
+  for (const e of efeitos) {
+    const { inicio, quadros } = janelaDoEfeito(e);
+    if (inicio >= totalQuadros) continue;
+    const nf = Math.min(quadros, totalQuadros - inicio);
+    const j = quadro - inicio;
+    if (j >= 0 && j < nf) ativos.push({ tipo: e.type, intensidade: e.intensity, j, nf });
+  }
+  return ativos;
 }

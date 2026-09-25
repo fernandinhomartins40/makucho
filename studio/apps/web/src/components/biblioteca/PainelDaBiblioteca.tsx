@@ -11,9 +11,15 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CategoriaDeTransicao, EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
-import { CATEGORIAS_DE_TRANSICAO, DURACAO_PADRAO_DA_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
-import { QUADROS_DA_MINIATURA, quadrosDaTransicao } from '../editor/gl/miniaturas';
+import type { CategoriaDeEfeitoDeTela, CategoriaDeTransicao, EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
+import {
+  CATEGORIAS_DE_EFEITO_DE_TELA,
+  CATEGORIAS_DE_TRANSICAO,
+  DURACAO_PADRAO_DA_TRANSICAO,
+  EFEITOS_DE_TELA,
+  agendaDoPlano,
+} from '@makucho/studio-contracts';
+import { QUADROS_DA_MINIATURA, quadrosDaTransicao, quadrosDoEfeito } from '../editor/gl/miniaturas';
 import { assets as apiAssets, type Asset, type Transcricao } from '../../lib/api';
 import { EstilosDeTexto } from '../editor/EstilosDeTexto';
 import type { ItemDaTimeline } from '../timeline/camadas';
@@ -300,9 +306,119 @@ function Transicoes({ plan, posicaoMs, itemSelecionado, onOperacao, onOperacoes,
   );
 }
 
+// ---------- Efeitos de tela ----------
+
+/**
+ * Miniatura de um efeito de tela desenhada pelo shader da prévia: um
+ * quadro do meio parado; com o mouse ou o foco, o efeito em loop.
+ */
+function MiniaturaDoEfeito({ id, intensidade, ativo }: { id: string; intensidade: number; ativo: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [quadros, setQuadros] = useState<string[] | null | undefined>(undefined);
+  const [k, setK] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let cancelado = false;
+    const obs = new IntersectionObserver((entradas) => {
+      if (!entradas.some((e) => e.isIntersecting)) return;
+      obs.disconnect();
+      const gerar = () => {
+        if (cancelado) return;
+        const q = quadrosDoEfeito(id, intensidade);
+        setQuadros(q);
+        if (q) setK(Math.floor(q.length / 3));
+      };
+      if ('requestIdleCallback' in window) window.requestIdleCallback(gerar, { timeout: 800 });
+      else setTimeout(gerar, 0);
+    });
+    obs.observe(el);
+    return () => {
+      cancelado = true;
+      obs.disconnect();
+    };
+  }, [id, intensidade]);
+
+  useEffect(() => {
+    if (!ativo || !quadros || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let passo = 0;
+    const total = quadros.length + 8;
+    const t = setInterval(() => {
+      passo = (passo + 1) % total;
+      setK(Math.min(quadros.length - 1, passo));
+    }, 1000 / 24);
+    return () => clearInterval(t);
+  }, [ativo, quadros]);
+
+  return (
+    <span ref={ref} className="demo demo--gl" aria-hidden>
+      {quadros && <img src={quadros[k]} alt="" draggable={false} />}
+    </span>
+  );
+}
+
+function EfeitosDeTela({ plan, posicaoMs, onOperacao, onSelecionarItem }: Props) {
+  const [grupo, setGrupo] = useState<CategoriaDeEfeitoDeTela | 'todas'>('todas');
+  const [sobre, setSobre] = useState<string | null>(null);
+  const duracaoTotal = useMemo(() => agendaDoPlano(plan).duracaoMs, [plan]);
+  const noCursor = Math.min(Math.max(0, Math.round(posicaoMs)), Math.max(0, duracaoTotal - 200));
+  return (
+    <>
+      <h3 className="biblioteca__subtitulo" style={{ marginTop: 0 }}>
+        Efeitos de tela
+      </h3>
+      <Alvo>Entram no cursor ({tempo(noCursor)}) na faixa Efeitos; depois é só arrastar e puxar as bordas.</Alvo>
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Tipo de efeito">
+        {([['todas', 'Todos'], ...Object.entries(CATEGORIAS_DE_EFEITO_DE_TELA)] as Array<[CategoriaDeEfeitoDeTela | 'todas', string]>).map(
+          ([id, rotulo]) => (
+            <button key={id} type="button" role="radio" aria-checked={grupo === id} className="biblioteca__chip" onClick={() => setGrupo(id)}>
+              {rotulo}
+            </button>
+          ),
+        )}
+      </div>
+      <div className="demos">
+        {EFEITOS_DE_TELA.filter((e) => grupo === 'todas' || e.categoria === grupo).map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            className="demo-cartao"
+            title={`${e.descricao} ${e.quando}`}
+            onMouseEnter={() => setSobre(e.id)}
+            onMouseLeave={() => setSobre((s) => (s === e.id ? null : s))}
+            onFocus={() => setSobre(e.id)}
+            onBlur={() => setSobre((s) => (s === e.id ? null : s))}
+            onClick={() => {
+              const id = `ef${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+              onOperacao({
+                op: 'adicionar_efeito_de_tela',
+                id,
+                type: e.id,
+                timelineStartMs: noCursor,
+                durationMs: Math.max(100, Math.min(e.duracaoPadraoMs, duracaoTotal - noCursor)),
+                intensity: e.intensidadePadrao,
+              });
+              onSelecionarItem({ tipo: 'efeito', id });
+            }}
+          >
+            <MiniaturaDoEfeito id={e.id} intensidade={e.intensidadePadrao} ativo={sobre === e.id} />
+            <span className="demo-cartao__nome">
+              {e.rotulo}
+              {'pesado' in e && e.pesado && <span className="demo-cartao__selo" title="Mais lento para exportar">pesado</span>}
+            </span>
+            <span className="demo-cartao__quando">{e.quando}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ---------- Efeitos de trecho ----------
 
-function Efeitos({ plan, posicaoMs, clipeSelecionado, onOperacao, onOperacoes }: Props) {
+function Efeitos(props: Props) {
+  const { plan, posicaoMs, clipeSelecionado, onOperacao, onOperacoes } = props;
   const agenda = useMemo(() => agendaDoPlano(plan), [plan]);
   const alvo =
     agenda.trechos.find((t) => t.clip.id === clipeSelecionado) ??
@@ -313,6 +429,8 @@ function Efeitos({ plan, posicaoMs, clipeSelecionado, onOperacao, onOperacoes }:
 
   return (
     <>
+      <EfeitosDeTela {...props} />
+      <h3 className="biblioteca__subtitulo">Zoom do trecho</h3>
       <Alvo>
         Aplica no trecho {clipeSelecionado ? 'selecionado' : 'sob o cursor'} ({tempo(alvo.inicioMs)}–{tempo(alvo.inicioMs + alvo.duracaoMs)}).
       </Alvo>

@@ -23,6 +23,8 @@ export type ItemDaTimeline =
   /** `aba`: a aba do painel que abre junto (clique duplo = Estilos). */
   | { tipo: 'elemento'; id: string; aba?: AbaDoElemento }
   | { tipo: 'som'; id: string }
+  /** Um efeito de tela (vinheta, flash...) da faixa Efeitos. */
+  | { tipo: 'efeito'; id: string }
   /** O som de um trecho (id = id do trecho), separado da imagem. */
   | { tipo: 'audio'; id: string }
   | { tipo: 'trilha'; id: 'trilha' };

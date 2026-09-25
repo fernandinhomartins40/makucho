@@ -7,7 +7,9 @@
 //      preencher ou desfoque) com o zoom dele -- um framebuffer por trecho;
 //   2. a transição mistura os dois com a fórmula do `xfade`
 //      (transicoesGlsl.ts);
-//   3. o resultado vai para a tela.
+//   3. os efeitos de tela (efeitosGlsl.ts), um passo cada, na ordem do
+//      plano -- como no render, sobre o vídeo montado;
+//   4. o resultado vai para a tela.
 //
 // A cor do trecho (filtro + ajustes) é a tabela 3D de contracts/cor.ts,
 // aplicada no fim do passo 1 -- como o `lut3d` no fim do trecho no render.
@@ -17,6 +19,7 @@
 // ============================================================
 
 import { shaderDeTransicao } from './transicoesGlsl';
+import { INDICE_DO_EFEITO, SHADER_DE_EFEITO } from './efeitosGlsl';
 
 export type Enquadramento = 'ajustar' | 'preencher' | 'desfoque';
 
@@ -34,11 +37,20 @@ export interface TabelaDeCor {
   dados: Uint8Array;
 }
 
+/** Um efeito de tela no quadro: `j` é o quadro dentro dele, de `nf`. */
+export interface EfeitoNoQuadro {
+  tipo: string;
+  intensidade: number;
+  j: number;
+  nf: number;
+}
+
 export interface QuadroParaDesenhar {
   camadas: CamadaDoQuadro[];
   /** Transição entre camadas[0] (sai) e camadas[1] (entra). */
   transicao?: { indice: number; progresso: number; quadros: number } | null;
   enquadramento: Enquadramento;
+  efeitos?: readonly EfeitoNoQuadro[];
 }
 
 const VERTICES = `#version 300 es
@@ -104,12 +116,17 @@ export class Compositor {
   private enquadrar: Programa;
   private transicao: Programa;
   private copiar: Programa;
+  private efeito: Programa;
   private texVideo: WebGLTexture[] = [];
   /** A textura de cada player: guarda o último quadro bom dele. */
   private texDoPlayer = new Map<HTMLVideoElement, { tex: WebGLTexture; w: number; h: number; t: number }>();
   private fbos: Array<{ fb: WebGLFramebuffer; tex: WebGLTexture }> = [];
   private largura = 0;
   private altura = 0;
+  /** Máscara da pessoa (256x256), para os efeitos que mudam só o fundo. */
+  private texMascara: WebGLTexture | null = null;
+  private temMascara = false;
+  private amostra: { fb: WebGLFramebuffer; tex: WebGLTexture; pixels: Uint8Array } | null = null;
   /** Tabelas de cor já na placa, por chave (as mais recentes). */
   private luts = new Map<string, WebGLTexture>();
 
@@ -132,6 +149,10 @@ export class Compositor {
     this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado']);
     this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
+    this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
+    gl.useProgram(this.efeito.programa);
+    gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
+    gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
     // A tabela de cor mora sempre na unidade 2: um sampler3D na unidade 0,
     // onde fica a textura 2D do vídeo, faria a placa recusar o desenho.
     gl.useProgram(this.enquadrar.programa);
@@ -173,7 +194,8 @@ export class Compositor {
       gl.deleteFramebuffer(f.fb);
       gl.deleteTexture(f.tex);
     }
-    this.fbos = [0, 1].map(() => {
+    // 0 e 1: um por trecho; 2 e 3: o pós-processamento (efeitos).
+    this.fbos = [0, 1, 2, 3].map(() => {
       const tex = gl.createTexture()!;
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, largura, altura, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -332,7 +354,9 @@ export class Compositor {
     this.garantirTamanho(canvas.width, canvas.height);
     quadro.camadas.slice(0, 2).forEach((c, i) => this.montarCamada(i, c, quadro.enquadramento));
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const passos = this.passosDosEfeitos(quadro.efeitos ?? []);
+    // Com efeitos, o quadro composto vai para um framebuffer, não para a tela.
+    gl.bindFramebuffer(gl.FRAMEBUFFER, passos.length ? this.fbos[2]!.fb : null);
     gl.viewport(0, 0, this.largura, this.altura);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbos[0]!.tex);
@@ -353,6 +377,136 @@ export class Compositor {
       gl.uniform1i(p.uniforms.uA!, 0);
     }
     this.desenharRetangulo();
+    this.aplicarEfeitos(this.fbos[2]!.tex, passos);
+  }
+
+  /** Cada efeito vira um passo; o desfoque, dois (horizontal e vertical). */
+  private passosDosEfeitos(efeitos: readonly EfeitoNoQuadro[]) {
+    const passos: Array<EfeitoNoQuadro & { indice: number; dir: [number, number] }> = [];
+    for (const e of efeitos) {
+      const indice = INDICE_DO_EFEITO[e.tipo];
+      if (!indice) continue;
+      passos.push({ ...e, indice, dir: [1, 0] });
+      if (e.tipo === 'desfoque' || e.tipo === 'fundo_desfocado') passos.push({ ...e, indice, dir: [0, 1] });
+    }
+    return passos;
+  }
+
+  /**
+   * Passa `origem` por cada passo, alternando os framebuffers 2 e 3; o
+   * último vai para a tela.
+   */
+  private aplicarEfeitos(origem: WebGLTexture, passos: ReturnType<Compositor['passosDosEfeitos']>) {
+    const gl = this.gl;
+    const p = this.efeito;
+    let fonte = origem;
+    let entradaDoEfeito = origem;
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.texMascara);
+    passos.forEach((passo, n) => {
+      // O primeiro passo de cada efeito guarda a entrada dele (uOrig).
+      if (passo.dir[0] === 1) entradaDoEfeito = fonte;
+      const ultimo = n === passos.length - 1;
+      const destino = this.fbos[fonte === this.fbos[2]!.tex ? 3 : 2]!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, ultimo ? null : destino.fb);
+      gl.viewport(0, 0, this.largura, this.altura);
+      gl.useProgram(p.programa);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, fonte);
+      gl.uniform1i(p.uniforms.uC!, 0);
+      gl.uniform1i(p.uniforms.uTipo!, passo.indice);
+      gl.uniform1f(p.uniforms.uK!, passo.intensidade);
+      gl.uniform1f(p.uniforms.uJ!, passo.j);
+      gl.uniform1f(p.uniforms.uNf!, passo.nf);
+      gl.uniform2f(p.uniforms.uTamanho!, this.largura, this.altura);
+      gl.uniform2f(p.uniforms.uDir!, passo.dir[0], passo.dir[1]);
+      gl.uniform1f(p.uniforms.uTemMascara!, this.temMascara ? 1 : 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, entradaDoEfeito);
+      gl.activeTexture(gl.TEXTURE0);
+      this.desenharRetangulo();
+      fonte = destino.tex;
+    });
+  }
+
+  /**
+   * A máscara da pessoa (0-255, `lado` x `lado`, linha 0 em cima), ou
+   * `null` para tirar -- os efeitos de fundo passam a valer no quadro todo.
+   */
+  definirMascara(dados: Uint8Array | null, lado = 256): void {
+    const gl = this.gl;
+    if (!dados) {
+      this.temMascara = false;
+      return;
+    }
+    if (!this.texMascara) {
+      this.texMascara = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.texMascara);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.texMascara);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, lado, lado, 0, gl.RED, gl.UNSIGNED_BYTE, dados);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.activeTexture(gl.TEXTURE0);
+    this.temMascara = true;
+  }
+
+  /**
+   * O último quadro composto ANTES dos efeitos, reduzido a `lado` x `lado`
+   * (a entrada do modelo da pessoa), em `destino`. Só vale quando o último
+   * desenho teve efeitos -- é quando o quadro passa pelo framebuffer 2.
+   */
+  amostraSemEfeitos(destino: HTMLCanvasElement, lado = 256): boolean {
+    const gl = this.gl;
+    if (!this.fbos[2] || !this.largura) return false;
+    if (!this.amostra) {
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, lado, lado, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      const fb = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      this.amostra = { fb, tex, pixels: new Uint8Array(lado * lado * 4) };
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbos[2]!.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.amostra.fb);
+    gl.blitFramebuffer(0, 0, this.largura, this.altura, 0, 0, lado, lado, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.amostra.fb);
+    gl.readPixels(0, 0, lado, lado, gl.RGBA, gl.UNSIGNED_BYTE, this.amostra.pixels);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // A leitura vem de baixo para cima; a imagem, de cima para baixo.
+    destino.width = lado;
+    destino.height = lado;
+    const img = new ImageData(lado, lado);
+    const linha = lado * 4;
+    for (let y = 0; y < lado; y += 1) img.data.set(this.amostra.pixels.subarray((lado - 1 - y) * linha, (lado - y) * linha), y * linha);
+    destino.getContext('2d')!.putImageData(img, 0, 0);
+    return true;
+  }
+
+  /**
+   * Um efeito sobre uma imagem pronta (banco de paridade): a imagem entra
+   * como o quadro composto.
+   */
+  desenharEfeitoNaImagem(img: HTMLImageElement | HTMLCanvasElement, efeito: EfeitoNoQuadro): void {
+    const gl = this.gl;
+    const canvas = gl.canvas as HTMLCanvasElement;
+    if (canvas.width !== img.width || canvas.height !== img.height) {
+      canvas.width = img.width;
+      canvas.height = img.height;
+    }
+    this.garantirTamanho(canvas.width, canvas.height);
+    // A imagem vai para o framebuffer 2, como se fosse o quadro composto.
+    gl.bindTexture(gl.TEXTURE_2D, this.fbos[2]!.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    this.aplicarEfeitos(this.fbos[2]!.tex, this.passosDosEfeitos([efeito]));
   }
 
   /**

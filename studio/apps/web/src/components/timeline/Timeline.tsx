@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
-import { PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano } from '@makucho/studio-contracts';
+import { PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela } from '@makucho/studio-contracts';
 import {
   COMPONENTES_DE_TEXTO,
   COR_DO_ELEMENTO,
@@ -79,7 +79,7 @@ const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number }> 
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40 },
   { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40 },
   { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36 },
-  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 36 },
+  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 56 },
   { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36 },
   { id: 'trilha', rotulo: 'Trilha', Icone: IconeTrilha, altura: 40 },
 ];
@@ -108,7 +108,7 @@ interface Props {
 }
 
 type Arraste = {
-  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio';
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito';
   id: string;
   /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
   modo: 'mover' | 'inicio' | 'fim';
@@ -178,6 +178,8 @@ export function Timeline({
       const duracao = Math.max(300, alinharAoFrame(arraste.atualDuracao));
       if (arraste.tipo === 'elemento') {
         onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
+      } else if (arraste.tipo === 'efeito') {
+        onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(100, duracao) });
       } else if (arraste.tipo === 'legenda') {
         onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
       }
@@ -188,6 +190,7 @@ export function Timeline({
     if (arraste.tipo === 'clipe') onOperacao({ op: 'mover_clipe', clipId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'elemento') onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'som') onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: destino });
+    else if (arraste.tipo === 'efeito') onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: destino });
     else onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
   }, [onOperacao]);
 
@@ -633,7 +636,32 @@ export function Timeline({
                       />
                     ))}
 
-                {/* Efeitos: o zoom de cada trecho. */}
+                {/* Efeitos de tela (em cima), com começo e fim livres. */}
+                {id === 'efeitos' &&
+                  (plan.screenEffects ?? []).map((e) => (
+                    <ItemSimples
+                      key={e.id}
+                      id={`efeito-${e.id}`}
+                      inicioMs={e.timelineStartMs}
+                      fimMs={e.timelineStartMs + e.durationMs}
+                      zoom={zoom}
+                      altura={altura}
+                      linha={0}
+                      cor="#be185d"
+                      rotulo={`${definicaoDoEfeitoDeTela(e.type)?.rotulo ?? e.type} · ${Math.round(e.intensity * 100)}%`}
+                      selecionado={selecionado('efeito', e.id)}
+                      arrastavel={onOperacao !== undefined}
+                      onIniciarArraste={iniciarArraste('efeito', e.id, e.timelineStartMs, e.durationMs)}
+                      onRedimensionar={onOperacao !== undefined ? (borda) => iniciarArraste('efeito', e.id, e.timelineStartMs, e.durationMs, borda) : undefined}
+                      onSelecionar={() => {
+                        onSelecionar?.(null);
+                        onSelecionarItem?.({ tipo: 'efeito', id: e.id });
+                        onSeek?.(e.timelineStartMs + 1);
+                      }}
+                    />
+                  ))}
+
+                {/* Efeitos: o zoom de cada trecho (embaixo). */}
                 {id === 'efeitos' &&
                   agenda.trechos
                     .filter((t) => t.clip.effect)
@@ -645,6 +673,7 @@ export function Timeline({
                         fimMs={t.inicioMs + t.duracaoMs}
                         zoom={zoom}
                         altura={altura}
+                        linha={1}
                         cor="#6d28d9"
                         rotulo={NOME_DO_EFEITO[t.clip.effect!] ?? t.clip.effect!}
                         selecionado={clipeSelecionado === t.clip.id}
@@ -822,6 +851,7 @@ function ItemSimples({
   selecionado,
   arrastavel,
   dica,
+  linha,
   onSelecionar,
   onIniciarArraste,
   onRedimensionar,
@@ -837,6 +867,8 @@ function ItemSimples({
   selecionado: boolean;
   arrastavel?: boolean;
   dica?: string;
+  /** Faixa com duas linhas: 0 em cima, 1 embaixo. */
+  linha?: 0 | 1;
   onSelecionar: () => void;
   onIniciarArraste?: (e: React.PointerEvent) => void;
   /** Puxar a borda do começo ou do fim muda o tempo na tela. */
@@ -862,8 +894,8 @@ function ItemSimples({
       style={{
         left: msParaPx(inicioMs, zoom),
         width: Math.max(6, msParaPx(fimMs - inicioMs, zoom)),
-        height: altura - 12,
-        top: 6,
+        height: linha === undefined ? altura - 12 : altura / 2 - 6,
+        top: linha === undefined ? 6 : 4 + linha * (altura / 2 - 2),
         background: cor,
         cursor: arrastavel ? 'grab' : 'pointer',
       }}

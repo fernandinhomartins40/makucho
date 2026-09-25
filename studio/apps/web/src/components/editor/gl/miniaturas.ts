@@ -78,3 +78,23 @@ export function quadrosDaTransicao(id: string): string[] | null {
   cache.set(id, quadros);
   return quadros;
 }
+
+/**
+ * Os quadros de um efeito de tela sobre a imagem A, do começo ao fim do
+ * efeito, na intensidade padrão. `null` sem WebGL2.
+ */
+export function quadrosDoEfeito(id: string, intensidade: number): string[] | null {
+  const chave = `efeito:${id}:${intensidade}`;
+  const pronto = cache.get(chave);
+  if (pronto) return pronto;
+  const c = iniciar();
+  if (!c) return null;
+  const n = QUADROS_DA_MINIATURA + 2;
+  const quadros: string[] = [];
+  for (let j = 0; j < n; j += 1) {
+    c.desenharEfeitoNaImagem(fontes[0], { tipo: id, intensidade, j, nf: n });
+    quadros.push(canvas.toDataURL('image/webp', 0.8));
+  }
+  cache.set(chave, quadros);
+  return quadros;
+}

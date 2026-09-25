@@ -10,7 +10,7 @@
 //     ponto, mas a proporção e a cor sim).
 // ============================================================
 
-import { APARENCIAS, TRANSICOES_DO_CATALOGO, type CorDoTrecho } from '@makucho/studio-contracts';
+import { APARENCIAS, EFEITOS_DE_TELA, TRANSICOES_DO_CATALOGO, type CorDoTrecho } from '@makucho/studio-contracts';
 import { tabelaDaPrevia } from '../../src/components/editor/gl/cores';
 import { Compositor } from '../../src/components/editor/gl/compositor';
 import { INDICE_DA_TRANSICAO, transicoesSemGlsl } from '../../src/components/editor/gl/transicoesGlsl';
@@ -27,6 +27,7 @@ declare global {
   interface Window {
     paridade: (quadros: number[], total: number, guardar: boolean) => Promise<Medida[]>;
     paridadeCor: (guardar: boolean) => Promise<Medida[]>;
+    paridadeEfeitos: (guardar: boolean) => Promise<Medida[]>;
     semGlsl: () => string[];
   }
 }
@@ -128,6 +129,32 @@ window.paridade = async (quadros, total, guardar) => {
         media: (Math.abs(mg[0]! - mf[0]!) + Math.abs(mg[1]! - mf[1]!) + Math.abs(mg[2]! - mf[2]!)) / (n * 3),
         ...(guardar ? { imagem: canvas.toDataURL('image/png') } : {}),
       });
+    }
+  }
+  return medidas;
+};
+
+/**
+ * Efeitos de tela: os mesmos de efeitos.mjs -- do quadro 3 ao 17 de um
+ * vídeo feito com A.png; o FFmpeg salvou os quadros 5, 10 e 16.
+ */
+window.paridadeEfeitos = async (guardar) => {
+  const img = await carregar('A.png');
+  const canvas = document.createElement('canvas');
+  document.body.appendChild(canvas);
+  const c = Compositor.criar(canvas);
+  if (!c) throw new Error('sem WebGL2');
+  const medidas: Medida[] = [];
+  // Máscara sintética dos efeitos de fundo (a mesma do FFmpeg em efeitos.mjs).
+  const m = pixels(await carregar('mascara.png'), 256, 256);
+  const mascara = new Uint8Array(256 * 256);
+  for (let i = 0; i < mascara.length; i += 1) mascara[i] = m[i * 4]!;
+  for (const def of EFEITOS_DE_TELA) {
+    c.definirMascara('usaPessoa' in def && def.usaPessoa ? mascara : null);
+    for (const [n, q] of [5, 10, 16].entries()) {
+      c.desenharEfeitoNaImagem(img, { tipo: def.id, intensidade: def.id.startsWith('iris') ? 1 : 0.8, j: q - 3, nf: 15 });
+      const ff = pixels(await carregar(`efeitos/${def.id}-${n}.png`), img.width, img.height);
+      medidas.push({ id: def.id, quadro: q, ...comparar(pixels(canvas, img.width, img.height), ff), ...(guardar ? { imagem: canvas.toDataURL('image/png') } : {}) });
     }
   }
   return medidas;

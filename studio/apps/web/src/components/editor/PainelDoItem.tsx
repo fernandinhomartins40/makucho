@@ -13,6 +13,8 @@ import { useEffect, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
   ANIMACOES_DURANTE,
+  CATEGORIAS_DE_EFEITO_DE_TELA,
+  EFEITOS_DE_TELA,
   DURACAO_PADRAO_DA_TRANSICAO,
   ENTRADAS_DE_TEXTO,
   FONTES_DE_VIDEO,
@@ -21,6 +23,7 @@ import {
   SAIDAS_DE_TEXTO,
   TEXTOS_DE_TELA,
   agendaDoPlano,
+  definicaoDoEfeitoDeTela,
   resolverEstiloDoTexto,
 } from '@makucho/studio-contracts';
 import type { AbaDoElemento, ItemDaTimeline } from '../timeline/camadas';
@@ -63,6 +66,7 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'som' && <EfeitoSonoro plan={plan} id={item.id} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
       {item.tipo === 'trilha' && <TrilhaDeFundo plan={plan} onOperacao={onOperacao} onFechar={onFechar} />}
+      {item.tipo === 'efeito' && <EfeitoDeTelaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
     </div>
   );
 }
@@ -73,6 +77,10 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'som') return 'Efeito sonoro';
   if (item.tipo === 'audio') return 'Som do trecho';
   if (item.tipo === 'trilha') return 'Trilha de fundo';
+  if (item.tipo === 'efeito') {
+    const e = plan.screenEffects?.find((x) => x.id === item.id);
+    return e ? `Efeito: ${definicaoDoEfeitoDeTela(e.type)?.rotulo ?? e.type}` : 'Efeito';
+  }
   const o = plan.overlays.find((x) => x.id === item.id);
   return o ? (NOME_DO_ELEMENTO[o.component] ?? o.component) : 'Elemento';
 }
@@ -361,6 +369,81 @@ function EfeitoSonoro({
         }}
       >
         <IconeLixeira size={15} /> Remover efeito sonoro
+      </button>
+    </div>
+  );
+}
+
+// ---------- Efeito de tela ----------
+
+function EfeitoDeTelaDoItem({
+  plan,
+  id,
+  onOperacao,
+  onFechar,
+}: {
+  plan: EditPlanV1;
+  id: string;
+  onOperacao: (op: TimelineOperation) => void;
+  onFechar: () => void;
+}) {
+  const e = plan.screenEffects?.find((x) => x.id === id);
+  if (!e) return <p className="texto-secundario">Este efeito não existe mais.</p>;
+  const def = definicaoDoEfeitoDeTela(e.type);
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      {def && (
+        <p className="campo__ajuda" style={{ marginTop: 0 }}>
+          {def.descricao} {def.quando} Arraste na faixa Efeitos para mover; puxe as bordas para mudar a duração.
+        </p>
+      )}
+      <label className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Trocar o efeito</span>
+        <select
+          className="campo__selecao"
+          value={e.type}
+          onChange={(ev) => onOperacao({ op: 'editar_efeito_de_tela', effectId: id, type: ev.target.value as typeof e.type })}
+        >
+          {Object.entries(CATEGORIAS_DE_EFEITO_DE_TELA).map(([categoria, rotulo]) => (
+            <optgroup key={categoria} label={rotulo}>
+              {EFEITOS_DE_TELA.filter((x) => x.categoria === categoria).map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.rotulo}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <Deslizante
+        rotulo="Intensidade"
+        valor={Math.round(e.intensity * 100)}
+        min={5}
+        max={100}
+        passo={5}
+        unidade="%"
+        onSoltar={(v) => onOperacao({ op: 'editar_efeito_de_tela', effectId: id, intensity: v / 100 })}
+      />
+      <Deslizante
+        rotulo="Duração"
+        valor={e.durationMs}
+        min={200}
+        max={10_000}
+        passo={100}
+        unidade=" ms"
+        onSoltar={(v) => onOperacao({ op: 'editar_efeito_de_tela', effectId: id, durationMs: v })}
+      />
+      {def?.pesado && <p className="campo__ajuda" style={{ marginTop: 0 }}>Este efeito deixa a exportação um pouco mais lenta.</p>}
+      <button
+        type="button"
+        className="botao botao--perigo botao--pequeno"
+        style={{ justifySelf: 'start' }}
+        onClick={() => {
+          onOperacao({ op: 'remover_efeito_de_tela', effectId: id });
+          onFechar();
+        }}
+      >
+        <IconeLixeira size={15} /> Remover efeito
       </button>
     </div>
   );

@@ -91,6 +91,22 @@ tom (`ajustesParaIgualar`). Selo de cor no card do trecho.
 - Efeitos de corpo com a máscara da pessoa: fundo desfocado, fundo de
   cor/imagem, fundo em preto e branco, contorno brilhante.
 
+**Estado: feito (contorno brilhante e fundo de imagem ficam para a
+fase 6, junto das imagens sobrepostas).** 16 efeitos de tela
+(`contracts/src/efeitos-de-tela.ts`), itens da faixa Efeitos com
+começo, duração e intensidade, arrastáveis e com bordas. No render,
+sobre o vídeo montado e antes de logo e textos: filtros nativos com
+`enable` (desfoque, aberração, espelho, grão, tremor/pulso pelo
+`perspective`, glitch pelo `displace` com mapa yuv420p neutro) ou
+camadas geradas postas com `overlay` (vinheta, flash, íris, barras,
+linhas). Efeitos de fundo (desfocado, P&B, escuro) usam a máscara da
+pessoa: o worker gera a máscara também para eles (`janelasDaPessoa`), o
+render divide a máscara entre efeitos e textos atrás; sem modelo, o
+efeito de fundo não entra. Na prévia, um passo de pós-processamento por
+efeito (efeitosGlsl.ts); o gblur é emulado em YUV (croma com o dobro do
+sigma, como no yuv420p). Paridade: 48 medidas dentro da tolerância
+(grão por média; fundo com máscara sintética igual nos dois lados).
+
 ## Fase 5 — Keyframes e animações
 
 - Motor de keyframes nos contratos (posição, escala, rotação,

@@ -25,7 +25,7 @@ import {
   editPlanV1Schema,
   ehEfeitoSonoroEmbutido,
   gerarAss,
-  janelasAtras,
+  janelasDaPessoa,
   chaveDaCor,
   corEhNeutra,
   cubeDaCor,
@@ -137,7 +137,8 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       // Texto atrás da pessoa: a máscara sai antes do render. Qualquer
       // falha aqui vira texto na frente -- o vídeo não deixa de sair.
       let mascara: MascaraGerada | null = null;
-      const temAtras = janelasAtras(plano, duracaoDoResultado(plano, desligados)).length > 0;
+      // A máscara serve aos textos atrás da pessoa e aos efeitos que mudam só o fundo.
+      const temAtras = janelasDaPessoa(plano, duracaoDoResultado(plano, desligados)).length > 0;
       if (temAtras && existsSync(MODELO_DA_PESSOA)) {
         try {
           mascara = await gerarMascaraDaPessoa({
@@ -189,7 +190,8 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         saida: saidaTmp,
         plano,
         legendas,
-        ...(mascara && legendasAtras ? { legendasAtras, mascara } : {}),
+        ...(mascara ? { mascara } : {}),
+        ...(mascara && legendasAtras ? { legendasAtras } : {}),
         pastaDeFontes: existsSync(PASTA_DE_FONTES) ? PASTA_DE_FONTES : undefined,
         imagens: arquivos.imagens,
         musica: arquivos.musica,

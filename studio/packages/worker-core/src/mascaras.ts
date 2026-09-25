@@ -23,7 +23,7 @@ import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, janelasAtras } from '@makucho/studio-contracts';
+import { agendaDoPlano, janelasDaPessoa } from '@makucho/studio-contracts';
 import { montarArgumentos } from './render';
 
 /** Lado da máscara: a entrada do modelo. */
@@ -75,7 +75,7 @@ type Sessao = {
 export async function gerarMascaraDaPessoa(opcoes: OpcoesDaMascara): Promise<MascaraGerada | null> {
   const { plano } = opcoes;
   const agenda = agendaDoPlano(plano, opcoes.clipsDesligados);
-  const janelas = janelasAtras(plano, agenda.duracaoMs);
+  const janelas = janelasDaPessoa(plano, agenda.duracaoMs);
   if (!janelas.length) return null;
 
   const inicioMs = Math.floor((janelas[0]!.inicioMs * FPS) / 1000) * (1000 / FPS);

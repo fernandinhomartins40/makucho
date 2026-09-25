@@ -333,7 +333,7 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   const f = atras[atras.indexOf('-filter_complex') + 1]!;
   t('a máscara entra crua (gray 256x256, 30 fps)', atras.join(' ').includes('-f rawvideo -pix_fmt gray -video_size 256x256 -framerate 30 -i /tmp/m.raw'));
   t('a máscara começa no ponto do texto (2 s de preto antes)', f.includes('tpad=start_duration=2.0000'));
-  t('a máscara vira a transparência da pessoa', f.includes('[vpessoa][mascara]alphamerge[pessoa]'));
+  t('a máscara vira a transparência da pessoa', f.includes('[vpessoa][mascara0]alphamerge[pessoa]'));
   t('o texto de trás é desenhado antes da pessoa', f.includes('[vfundo]subtitles=/tmp/atras.ass[vtras]'));
   t('a pessoa vai por cima, só na janela', f.includes("[vtras][pessoa]overlay=0:0:enable='between(t,2.000,5.000)'[vcomposto]"));
   t('legenda e textos da frente por último', f.includes('[vcomposto]subtitles=/tmp/frente.ass[vlegendado]'));
@@ -384,6 +384,43 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('lut3d trilinear só no trecho com cor', (f.match(/lut3d=/g) ?? []).length === 1 && f.includes('lut3d=file=/tmp/cor-1.cube:interp=trilinear,format=yuv420p'));
   const sem = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano });
   t('sem tabela, sem lut3d', !sem[sem.indexOf('-filter_complex') + 1]!.includes('lut3d'));
+}
+
+// ============================================================
+// Efeitos de tela: sobre o vídeo montado, só nos quadros deles
+// ============================================================
+{
+  const comEfeitos: EditPlanV1 = {
+    ...plano,
+    screenEffects: [
+      { id: 'e1', type: 'vinheta', timelineStartMs: 1000, durationMs: 2000, intensity: 0.5 },
+      { id: 'e2', type: 'tremor', timelineStartMs: 3000, durationMs: 500, intensity: 0.6 },
+      { id: 'e3', type: 'glitch', timelineStartMs: 0, durationMs: 400, intensity: 0.6 },
+    ],
+  };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comEfeitos });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('efeitos encadeados depois do vídeo montado', f.includes('[montado]') && /\[montado\]\[montado_ef0l\]overlay/.test(f));
+  t('vinheta: camada estática (um quadro, repetido) a partir do quadro 30', f.includes('loop=loop=59:size=1') && f.includes('setpts=PTS-STARTPTS+30/(30*TB)'));
+  t('tremor: perspective só nos quadros 90 a 104', f.includes("perspective=") && f.includes("enable='between(n,90,104)'"));
+  t('glitch no quadro 0: mapa sem trecho neutro antes', f.includes('[ef1_ef2xw]null[ef1_ef2x]') && f.includes('displace=edge=smear'));
+  t('logo e textos vêm depois dos efeitos', f.indexOf('[ef2]') > f.indexOf('displace'));
+  const fora = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: { ...plano, screenEffects: [{ id: 'x', type: 'flash', timelineStartMs: 999_000, durationMs: 500, intensity: 1 }] } });
+  t('efeito depois do fim do vídeo não entra', !fora[fora.indexOf('-filter_complex') + 1]!.includes('alphamerge'));
+
+  // Efeitos de fundo: a pessoa volta por cima com a máscara.
+  const comFundo: EditPlanV1 = {
+    ...plano,
+    overlays: [{ id: 't1', component: 'Destaque', text: 'Atrás', timelineStartMs: 1000, durationMs: 2000, style: { atras: true } }] as EditPlanV1['overlays'],
+    screenEffects: [{ id: 'f1', type: 'fundo_pb', timelineStartMs: 2000, durationMs: 1000, intensity: 1 }],
+  };
+  const mascara = { caminho: '/tmp/m.raw', inicioMs: 1000, quadros: 60, lado: 256 };
+  const b = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comFundo, mascara, legendas: '/tmp/f.ass', legendasAtras: '/tmp/a.ass' });
+  const g = b[b.indexOf('-filter_complex') + 1]!;
+  t('fundo P&B: máscara dividida entre o efeito e o texto atrás', g.includes('split=2[mascara0][mascara1]') && (b.join(' ').match(/-f rawvideo/g) ?? []).length === 1);
+  t('fundo P&B: só o fundo perde a cor, a pessoa volta por cima', g.includes("hue=s=0.000000:enable='between(n,60,89)'") && g.includes('[mascara0]alphamerge') && g.includes('[vpessoa][mascara1]alphamerge'));
+  const semMascara = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comFundo });
+  t('sem máscara (modelo ausente), o efeito de fundo não entra', !semMascara[semMascara.indexOf('-filter_complex') + 1]!.includes('hue='));
 }
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);

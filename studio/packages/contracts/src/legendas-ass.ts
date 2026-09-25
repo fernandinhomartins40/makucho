@@ -26,6 +26,7 @@
 // comando, o que fecha a porta para injecao de argumento.
 // ============================================================
 
+import { efeitoUsaPessoa } from './efeitos-de-tela';
 import type { CaptionStyleInput } from './brand';
 import type { EditPlanV1 } from './edit-plan';
 import { eventosDoTextoDeTela } from './textos-de-tela';
@@ -85,9 +86,29 @@ export function ehTextoAtras(o: EditPlanV1['overlays'][number]): boolean {
  * dentro do vídeo: é onde a máscara da pessoa precisa existir.
  */
 export function janelasAtras(plano: EditPlanV1, duracaoMs: number): Array<{ inicioMs: number; fimMs: number }> {
-  const lista = plano.overlays
-    .filter(ehTextoAtras)
-    .map((o) => ({ inicioMs: Math.max(0, o.timelineStartMs), fimMs: Math.min(duracaoMs, o.timelineStartMs + o.durationMs) }))
+  return unirJanelas(
+    plano.overlays.filter(ehTextoAtras).map((o) => ({ inicioMs: o.timelineStartMs, fimMs: o.timelineStartMs + o.durationMs })),
+    duracaoMs,
+  );
+}
+
+/**
+ * Onde a máscara da pessoa precisa existir: textos atrás dela e efeitos
+ * que mudam só o fundo (efeitos-de-tela.ts), unidos.
+ */
+export function janelasDaPessoa(plano: EditPlanV1, duracaoMs: number): Array<{ inicioMs: number; fimMs: number }> {
+  return unirJanelas(
+    [
+      ...plano.overlays.filter(ehTextoAtras).map((o) => ({ inicioMs: o.timelineStartMs, fimMs: o.timelineStartMs + o.durationMs })),
+      ...(plano.screenEffects ?? []).filter((e) => efeitoUsaPessoa(e.type)).map((e) => ({ inicioMs: e.timelineStartMs, fimMs: e.timelineStartMs + e.durationMs })),
+    ],
+    duracaoMs,
+  );
+}
+
+function unirJanelas(janelas: Array<{ inicioMs: number; fimMs: number }>, duracaoMs: number): Array<{ inicioMs: number; fimMs: number }> {
+  const lista = janelas
+    .map((j) => ({ inicioMs: Math.max(0, j.inicioMs), fimMs: Math.min(duracaoMs, j.fimMs) }))
     .filter((j) => j.fimMs > j.inicioMs)
     .sort((a, b) => a.inicioMs - b.inicioMs);
   const unidas: Array<{ inicioMs: number; fimMs: number }> = [];

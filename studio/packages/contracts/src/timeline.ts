@@ -29,6 +29,7 @@ import {
 } from './edit-plan';
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
+import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
@@ -388,6 +389,32 @@ export const configurarMusicaSchema = z.object({
   duckUnderVoice: z.boolean().optional(),
 });
 
+/** Um efeito de tela novo (vinheta, flash, tremor...) na faixa Efeitos. */
+export const adicionarEfeitoDeTelaSchema = z.object({
+  op: z.literal('adicionar_efeito_de_tela'),
+  /** Id escolhido por quem pede (ver `comIdsNovos`). */
+  id: idSchema.optional(),
+  type: z.enum(TIPOS_DE_EFEITO_DE_TELA),
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(100).max(600_000),
+  intensity: z.number().min(0).max(1).optional(),
+});
+
+/** Move, estica, troca o tipo ou a intensidade de um efeito de tela. */
+export const editarEfeitoDeTelaSchema = z.object({
+  op: z.literal('editar_efeito_de_tela'),
+  effectId: idSchema,
+  type: z.enum(TIPOS_DE_EFEITO_DE_TELA).optional(),
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(100).max(600_000).optional(),
+  intensity: z.number().min(0).max(1).optional(),
+});
+
+export const removerEfeitoDeTelaSchema = z.object({
+  op: z.literal('remover_efeito_de_tela'),
+  effectId: idSchema,
+});
+
 export const removerEfeitoSonoroSchema = z.object({
   op: z.literal('remover_efeito_sonoro'),
   /** Um id, ou `todos` para limpar a faixa de efeitos. */
@@ -421,6 +448,9 @@ export const timelineOperationSchema = z
     definirEfeitoSchema,
     definirCorSchema,
     corEmTodosSchema,
+    adicionarEfeitoDeTelaSchema,
+    editarEfeitoDeTelaSchema,
+    removerEfeitoDeTelaSchema,
     configurarVideoSchema,
     adicionarOverlaySchema,
     editarOverlaySchema,
@@ -973,6 +1003,55 @@ export function aplicarOperacao(
       novo = { ...novo, overlays: novo.overlays.filter((o) => o.id !== operacao.overlayId) };
       break;
 
+    case 'adicionar_efeito_de_tela': {
+      const lista = novo.screenEffects ?? [];
+      if (lista.length >= 40) return { ok: false, erro: 'o video ja tem o maximo de efeitos de tela' };
+      novo = {
+        ...novo,
+        screenEffects: [
+          ...lista,
+          {
+            id: livre(operacao.id, lista, 'ef'),
+            type: operacao.type,
+            timelineStartMs: operacao.timelineStartMs,
+            durationMs: operacao.durationMs,
+            intensity: operacao.intensity ?? definicaoDoEfeitoDeTela(operacao.type)?.intensidadePadrao ?? 0.6,
+          },
+        ],
+      };
+      break;
+    }
+
+    case 'editar_efeito_de_tela': {
+      const lista = novo.screenEffects ?? [];
+      const atual = lista.find((e) => e.id === operacao.effectId);
+      if (!atual) return { ok: false, erro: 'efeito nao encontrado' };
+      novo = {
+        ...novo,
+        screenEffects: lista.map((e) =>
+          e.id === operacao.effectId
+            ? {
+                ...e,
+                ...(operacao.type !== undefined ? { type: operacao.type } : {}),
+                ...(operacao.timelineStartMs !== undefined ? { timelineStartMs: operacao.timelineStartMs } : {}),
+                ...(operacao.durationMs !== undefined ? { durationMs: operacao.durationMs } : {}),
+                ...(operacao.intensity !== undefined ? { intensity: operacao.intensity } : {}),
+              }
+            : e,
+        ),
+      };
+      break;
+    }
+
+    case 'remover_efeito_de_tela': {
+      const lista = novo.screenEffects ?? [];
+      if (!lista.some((e) => e.id === operacao.effectId)) return { ok: false, erro: 'efeito nao encontrado' };
+      const resto = lista.filter((e) => e.id !== operacao.effectId);
+      novo = { ...novo, screenEffects: resto };
+      if (!resto.length) delete novo.screenEffects;
+      break;
+    }
+
     case 'adicionar_efeito_sonoro':
       if (novo.soundEffects.length >= 40) {
         return { ok: false, erro: 'o video ja tem o maximo de efeitos sonoros' };
@@ -1125,6 +1204,8 @@ export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
       return operacao.id ? operacao : { ...operacao, id: novoId('ov') };
     case 'adicionar_efeito_sonoro':
       return operacao.id ? operacao : { ...operacao, id: novoId('sf') };
+    case 'adicionar_efeito_de_tela':
+      return operacao.id ? operacao : { ...operacao, id: novoId('ef') };
     case 'dividir_clipe':
     case 'duplicar_clipe':
     case 'inserir':

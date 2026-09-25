@@ -37,7 +37,8 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, definicaoDaTransicao, ehEfeitoSonoroEmbutido, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
 export interface OpcoesDoRender {
@@ -259,6 +260,39 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
 
   const duracaoTotalS = acumulado / FPS;
 
+  // ---------- Mascara da pessoa ----------
+  // Uma entrada so (cinza, `lado` x `lado`, a partir de `inicioMs`),
+  // completada com preto ate o fim do video e dividida entre quem usa:
+  // os efeitos que mudam so o fundo e os textos atras da pessoa.
+  const efeitosDeTela = plano.screenEffects ?? [];
+  const usamPessoa = opcoes.mascara ? efeitosDeTela.filter((e) => efeitoUsaPessoa(e.type)).length : 0;
+  const usosDaMascara = usamPessoa + (opcoes.legendasAtras && opcoes.mascara ? 1 : 0);
+  const mascaras: string[] = [];
+  if (opcoes.mascara && usosDaMascara > 0) {
+    const m = opcoes.mascara;
+    const indice = proximaEntrada++;
+    entradas.push('-f', 'rawvideo', '-pix_fmt', 'gray', '-video_size', `${m.lado}x${m.lado}`, '-framerate', String(FPS), '-i', m.caminho);
+    const antes = m.inicioMs / 1000;
+    const depois = Math.max(0, duracaoTotalS - antes - m.quadros / FPS);
+    const rotulos = Array.from({ length: usosDaMascara }, (_, k) => `mascara${k}`);
+    partes.push(
+      `[${indice}:v]setpts=PTS-STARTPTS,tpad=start_duration=${antes.toFixed(4)}:stop_duration=${(depois + 1).toFixed(4)}:color=black,` +
+        `trim=end_frame=${acumulado},setpts=PTS-STARTPTS,scale=${W}:${H}:flags=bicubic,format=gray` +
+        (usosDaMascara > 1 ? `,split=${usosDaMascara}${rotulos.map((r) => `[${r}]`).join('')}` : `[${rotulos[0]}]`),
+    );
+    mascaras.push(...rotulos);
+  }
+
+  // ---------- Efeitos de tela (vinheta, flash, tremor...) ----------
+  // Sobre o video montado, na ordem do plano, antes de logo e textos.
+  efeitosDeTela.forEach((e, i) => {
+    const mascara = efeitoUsaPessoa(e.type) ? mascaras.shift() : undefined;
+    const saida = filtroDoEfeitoDeTela(e, video, `ef${i}`, acumulado, W, H, mascara);
+    if (!saida) return;
+    partes.push(...saida);
+    video = `ef${i}`;
+  });
+
   // ---------- Imagens sobre o video (logo, imagem) ----------
   for (const o of plano.overlays) {
     if (o.component !== 'LogoBug' && o.component !== 'ImageOverlay') continue;
@@ -384,19 +418,13 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // Textos ATRAS da pessoa: desenhados no video, e a pessoa recortada
   // (video + mascara como transparencia) posta por cima deles. Fora da
   // janela a mascara e preta: nada muda.
-  if (opcoes.legendasAtras && opcoes.mascara) {
+  if (opcoes.legendasAtras && opcoes.mascara && mascaras.length) {
     const m = opcoes.mascara;
-    const indice = proximaEntrada++;
-    entradas.push('-f', 'rawvideo', '-pix_fmt', 'gray', '-video_size', `${m.lado}x${m.lado}`, '-framerate', String(FPS), '-i', m.caminho);
     const antes = m.inicioMs / 1000;
-    const depois = Math.max(0, duracaoTotalS - antes - m.quadros / FPS);
-    partes.push(
-      `[${indice}:v]setpts=PTS-STARTPTS,tpad=start_duration=${antes.toFixed(4)}:stop_duration=${(depois + 1).toFixed(4)}:color=black,` +
-        `trim=end_frame=${acumulado},setpts=PTS-STARTPTS,scale=${W}:${H}:flags=bicubic,format=gray[mascara]`,
-    );
+    const mascaraDoTexto = mascaras.shift()!;
     partes.push(`[vsaida]split=2[vfundo][vpessoa]`);
     partes.push(`[vfundo]subtitles=${escaparCaminhoDeFiltro(opcoes.legendasAtras)}${fontes}[vtras]`);
-    partes.push(`[vpessoa][mascara]alphamerge[pessoa]`);
+    partes.push(`[vpessoa][${mascaraDoTexto}]alphamerge[pessoa]`);
     partes.push(
       `[vtras][pessoa]overlay=0:0:enable='between(t,${antes.toFixed(3)},${(antes + m.quadros / FPS).toFixed(3)})'[vcomposto]`,
     );
@@ -543,6 +571,170 @@ export function filtroDaTransicao(tipo: string, a: string, b: string, duracao: s
   }
 
   return `${partes.join(';')};[${atual}]format=yuv420p`;
+}
+
+/**
+ * O filtro de um efeito de tela, do rótulo `entrada` ao `saida`, só nos
+ * quadros dele. Dois jeitos, ambos sem tocar no resto do vídeo:
+ *
+ *   - filtro nativo com `enable` (desfoque, aberração, espelho, grão,
+ *     tremor e pulso pelo `perspective`, glitch pelo `displace`);
+ *   - uma CAMADA gerada à parte (preto ou branco com transparência)
+ *     posta por cima com `overlay`: vinheta, flash, íris, barras, linhas.
+ *     A camada começa no quadro do efeito e acaba com ele; fora dela o
+ *     `overlay` só repassa o vídeo.
+ *
+ * A prévia (web/gl/efeitosGlsl.ts) faz as mesmas contas. `j` é o quadro
+ * dentro do efeito (0 no primeiro), `k` a intensidade.
+ */
+export function filtroDoEfeitoDeTela(
+  e: EfeitoDeTela,
+  entrada: string,
+  saida: string,
+  totalQuadros: number,
+  W = 1080,
+  H = 1920,
+  /** Rótulo da máscara da pessoa (cinza, o vídeo todo), para os efeitos de fundo. */
+  mascara?: string,
+): string[] | null {
+  const { inicio: n0, quadros } = janelaDoEfeito(e, FPS);
+  if (n0 >= totalQuadros) return null;
+  const nf = Math.min(quadros, totalQuadros - n0);
+  const n1 = n0 + nf - 1;
+  const k = e.intensity;
+  const S = W / 1080;
+  const f = (x: number) => x.toFixed(6);
+  const dur = `${((nf + 1) / FPS).toFixed(4)}`;
+  const janela = `enable='between(n,${n0},${n1})'`;
+  const r = `${entrada}_${saida}`;
+  /** O quadro dentro do efeito, nas expressões por quadro do `perspective`. */
+  const j = `(in-1-${n0})`;
+
+  /**
+   * Camada de cor `cor` com transparência `alfa` (expressão do `geq` numa
+   * grade `gw` x `gh`, ampliada com `escala`). Estática: um quadro só,
+   * repetido.
+   */
+  const camada = (cor: 'black' | 'white', alfa: string, gw: number, gh: number, escala: 'neighbor' | 'bilinear', estatica: boolean): string[] => {
+    const mascara = estatica
+      ? `color=c=black:s=${gw}x${gh}:r=${FPS}:d=1,trim=end_frame=1,format=gray,geq=lum='${alfa}',scale=${W}:${H}:flags=${escala},loop=loop=${nf - 1}:size=1:start=0,setpts=N/(${FPS}*TB)`
+      : `color=c=black:s=${gw}x${gh}:r=${FPS}:d=${dur},trim=end_frame=${nf},format=gray,geq=lum='${alfa}',scale=${W}:${H}:flags=${escala}`;
+    return [
+      `${mascara}[${r}m]`,
+      `color=c=${cor}:s=${W}x${H}:r=${FPS}:d=${dur},trim=end_frame=${nf},format=yuva420p[${r}c]`,
+      `[${r}c][${r}m]alphamerge,setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}l]`,
+      `[${entrada}][${r}l]overlay=0:0:eof_action=pass:format=yuv420[${saida}]`,
+    ];
+  };
+
+  switch (e.type) {
+    case 'flash':
+      // Clarão que some: k·(1 - j/nf)².
+      return camada('white', `255*${f(k)}*pow(1-N/${nf},2)`, 16, 16, 'neighbor', false);
+    case 'vinheta': {
+      // Raio 0 no centro, 1 no canto; escurece de 0,35 em diante (smoothstep).
+      const raio = `hypot(2*(X+0.5)/270-1,2*(Y+0.5)/480-1)/sqrt(2)`;
+      const s = `clip((${raio}-0.35)/0.65,0,1)`;
+      return camada('black', `255*${f(k * 0.85)}*${s}*${s}*(3-2*${s})`, 270, 480, 'bilinear', true);
+    }
+    case 'cinema': {
+      // Faixas de k·13% da altura; entram e saem em 12 quadros.
+      const e12 = `max(0,min(1,min((N+1)/12,(${nf}-N)/12)))`;
+      const h = `round(${f(k * 0.13)}*H*${e12})`;
+      return camada('black', `255*(lt(Y,${h})+gte(Y,H-${h}))`, 2, H, 'neighbor', false);
+    }
+    case 'iris_abrir':
+    case 'iris_fechar': {
+      // Círculo na grade 540x960; borda de 2 px.
+      const q = `(N/${Math.max(1, nf - 1)})`;
+      const raioMax = f(Math.hypot(270, 480) + 2);
+      const raio = e.type === 'iris_abrir' ? `${raioMax}*(1-pow(1-${q},3))` : `${raioMax}*(1-pow(${q},3))`;
+      return camada('black', `255*${f(k)}*clip((hypot(X-269.5,Y-479.5)-${raio})/2,0,1)`, 540, 960, 'bilinear', false);
+    }
+    case 'linhas':
+      // Duas linhas escuras a cada quatro.
+      return camada('black', `255*${f(k * 0.35)}*lt(mod(Y,4),2)`, 2, H, 'neighbor', true);
+    case 'grao':
+      return [`[${entrada}]noise=c0s=${Math.max(1, Math.round(k * 40))}:c0f=t+u:${janela}[${saida}]`];
+    case 'aberracao': {
+      const d = Math.max(1, Math.round(k * 12 * S));
+      return [`[${entrada}]rgbashift=rh=${d}:bh=${-d}:edge=smear:${janela},format=yuv420p[${saida}]`];
+    }
+    case 'desfoque':
+      return [`[${entrada}]gblur=sigma=${f(Math.max(0.5, k * 18 * S))}:${janela}[${saida}]`];
+    case 'espelho':
+      return [`[${entrada}]hflip=${janela}[${saida}]`];
+    case 'tremor':
+    case 'pulso': {
+      // Zoom centrado + deslocamento, pelo `perspective` (x0..x3 = de onde
+      // vem cada canto). Tremor: zoom fixo e balanço; pulso: zoom que bate
+      // a cada 15 quadros.
+      const z = e.type === 'tremor' ? f(1 + 0.08 * k) : `(1+${f(0.1 * k)}*exp(-mod(${j},15)/4))`;
+      const m = `(1-1/${z})/2`;
+      const a = f(k * 16 * S);
+      const dx = e.type === 'tremor' ? `${a}*(sin(${j}*1.9)+0.6*sin(${j}*3.7+1))` : '0';
+      const dy = e.type === 'tremor' ? `${a}*(sin(${j}*2.3+2)+0.6*sin(${j}*4.1))` : '0';
+      const x0 = `W*${m}+${dx}`;
+      const x1 = `W-W*${m}+${dx}`;
+      const y0 = `H*${m}+${dy}`;
+      const y1 = `H-H*${m}+${dy}`;
+      return [
+        `[${entrada}]perspective=x0='${x0}':y0='${y0}':x1='${x1}':y1='${y0}':x2='${x0}':y2='${y1}':x3='${x1}':y3='${y1}':interpolation=linear:eval=frame:${janela}[${saida}]`,
+      ];
+    }
+    case 'glitch': {
+      // Faixas de 80 px (20 linhas na grade de 480) que pulam a cada 3
+      // quadros; só algumas pulam. O mapa sai em yuv420p pelo `geq`, com o
+      // croma na metade (o plano de croma tem metade da largura) -- nada
+      // de conversão de cor, que mudaria o 128 neutro.
+      const amp = Math.round(Math.min(120, k * 60 * S));
+      const faixa = (y: string) => `floor(${y}/20)`;
+      const deslocamento = (y: string) => {
+        const h1 = `(${faixa(y)}*37+floor(N/3)*101)*0.618034`;
+        const h2 = `(${faixa(y)}*53+floor(N/3)*71)*0.381966`;
+        return `gt(${h2}-floor(${h2}),0.55)*round((${h1}-floor(${h1})-0.5)*2*${amp})`;
+      };
+      const neutro = `color=c=black:s=${W}x${H}:r=${FPS}:d=1,trim=end_frame=1,format=yuv420p,geq=lum=128:cb=128:cr=128`;
+      const partes = [
+        `color=c=black:s=270x480:r=${FPS}:d=${dur},trim=end_frame=${nf},format=yuv420p,` +
+          `geq=lum='128+${deslocamento('Y')}':cb='128+${deslocamento('(Y*2)')}/2':cr='128+${deslocamento('(Y*2)')}/2',scale=${W}:${H}:flags=neighbor[${r}xw]`,
+      ];
+      // Antes do efeito o mapa é neutro; o `displace` só age na janela.
+      if (n0 > 0) {
+        partes.push(`${neutro},loop=loop=${n0 - 1}:size=1:start=0,setpts=N/(${FPS}*TB)[${r}xa]`);
+        partes.push(`[${r}xa][${r}xw]concat=n=2:v=1:a=0[${r}x]`);
+      } else {
+        partes.push(`[${r}xw]null[${r}x]`);
+      }
+      partes.push(`${neutro},loop=loop=${n1}:size=1:start=0,setpts=N/(${FPS}*TB)[${r}y]`);
+      partes.push(`[${entrada}][${r}x][${r}y]displace=edge=smear:${janela}[${saida}]`);
+      return partes;
+    }
+    case 'fundo_desfocado':
+    case 'fundo_pb':
+    case 'fundo_escuro': {
+      // Só o fundo muda: o filtro vale no quadro todo, e a pessoa (o mesmo
+      // quadro, com a máscara como transparência) volta por cima. Sem
+      // máscara (modelo ausente), o efeito não entra -- borrar quem fala
+      // seria pior do que não fazer nada.
+      if (!mascara) return null;
+      const d = f(0.7 * k);
+      const fundo =
+        e.type === 'fundo_desfocado'
+          ? `gblur=sigma=${f(Math.max(0.5, k * 24 * S))}:${janela}`
+          : e.type === 'fundo_pb'
+            ? `hue=s=${f(1 - k)}:${janela}`
+            : `lutyuv=y='val*(1-${d})+16*${d}':u='128+(val-128)*(1-${d})':v='128+(val-128)*(1-${d})':${janela}`;
+      return [
+        `[${entrada}]split=2[${r}f][${r}p]`,
+        `[${r}f]${fundo}[${r}fx]`,
+        `[${r}p][${mascara}]alphamerge[${r}pa]`,
+        `[${r}fx][${r}pa]overlay=0:0:format=yuv420:${janela}[${saida}]`,
+      ];
+    }
+    default:
+      return null;
+  }
 }
 
 /**

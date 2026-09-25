@@ -34,6 +34,7 @@ import {
   FONTES_DE_VIDEO,
   caixaDoTexto,
   ehEfeitoSonoroEmbutido,
+  efeitoUsaPessoa,
   ehTextoAtras,
   larguraDoTexto,
   montarBlocos,
@@ -43,7 +44,7 @@ import {
 } from '@makucho/studio-contracts';
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
-import { estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
+import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
 import { Compositor } from './gl/compositor';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
@@ -188,6 +189,8 @@ export function Palco({
   const compositorRef = useRef<Compositor | null>(null);
   const [comGl, setComGl] = useState(false);
   const ultimoEstado = useRef<EstadoNoInstante | null>(null);
+  /** O instante do último estado (os efeitos de tela dependem do quadro). */
+  const ultimoMs = useRef(0);
   useEffect(() => {
     const canvas = glRef.current;
     if (!canvas || compositorRef.current) return;
@@ -232,9 +235,10 @@ export function Palco({
             ? { indice: INDICE_DA_TRANSICAO[estado.transicao.tipo] ?? 0, progresso: estado.transicao.progresso, quadros: estado.transicao.quadros }
             : null,
         enquadramento,
+        efeitos: efeitosNoQuadro(plan.screenEffects, ultimoMs.current, agenda.duracaoQuadros),
       });
     },
-    [players, enquadramento, agenda],
+    [players, enquadramento, agenda, plan.screenEffects],
   );
 
   const aplicar = useCallback(
@@ -242,6 +246,7 @@ export function Palco({
       if (agenda.trechos.length === 0) return;
       const estado = estadoNoInstante(agenda, ms);
       ultimoEstado.current = estado;
+      ultimoMs.current = ms;
       indiceRef.current = estado.indice;
       const dono = donoRef.current;
 
@@ -597,6 +602,65 @@ export function Palco({
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
   }, [temAtras, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas]);
+
+  // ---------- Máscara para os efeitos que mudam só o fundo ----------
+  // O modelo roda no quadro composto ANTES dos efeitos (o mesmo que o
+  // render usa), reduzido a 256x256 pelo próprio compositor; a máscara
+  // volta como textura e o shader põe a pessoa por cima do fundo mudado.
+  const temEfeitoDePessoa = (plan.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type));
+  useEffect(() => {
+    if (!temEfeitoDePessoa || !comGl) return;
+    let vivo = true;
+    let quadro = 0;
+    let ocupado = false;
+    let alternado = false;
+    let anterior: Uint8Array | null = null;
+    const amostra = document.createElement('canvas');
+    let ativoAntes = false;
+    const passo = () => {
+      quadro = requestAnimationFrame(passo);
+      const c = compositorRef.current;
+      if (!c || ocupado) return;
+      const ativo = efeitosNoQuadro(plan.screenEffects, tempoAoVivo.current, agenda.duracaoQuadros).some((e) => efeitoUsaPessoa(e.tipo));
+      if (!ativo) {
+        if (ativoAntes) c.definirMascara(null);
+        ativoAntes = false;
+        anterior = null;
+        return;
+      }
+      ativoAntes = true;
+      // Tocando, um quadro sim, um não; parado, só quando algo mudou.
+      alternado = !alternado;
+      if (tocando ? !alternado : !precisaRecortar.current) return;
+      if (!c.amostraSemEfeitos(amostra)) return;
+      ocupado = true;
+      precisaRecortar.current = false;
+      void carregarModeloDaPessoa()
+        .then(() => mascaraDoQuadro(amostra))
+        .then((m) => {
+          if (!m || !vivo) return;
+          // A mesma conversão do worker: 0-255, suavizada no tempo.
+          const u8 = new Uint8Array(m.length);
+          for (let i = 0; i < m.length; i += 1) {
+            let v = Math.min(1, Math.max(0, m[i]!));
+            if (anterior) v = 0.65 * v + (0.35 * anterior[i]!) / 255;
+            u8[i] = Math.round(v * 255);
+          }
+          anterior = u8;
+          c.definirMascara(u8);
+          desenharGl(ultimoEstado.current);
+        })
+        .catch((e) => console.warn('[prévia] máscara da pessoa indisponível:', e))
+        .finally(() => {
+          ocupado = false;
+        });
+    };
+    quadro = requestAnimationFrame(passo);
+    return () => {
+      vivo = false;
+      cancelAnimationFrame(quadro);
+    };
+  }, [temEfeitoDePessoa, comGl, tocando, plan.screenEffects, agenda.duracaoQuadros, desenharGl]);
 
   // Textos na tela agora, com a caixa que ocupam (medida pela fonte).
   const textosVisiveis = planoDaPrevia.overlays
