@@ -98,7 +98,9 @@ void main() {
     vec2 d = max(abs(p - uCaixa.zw / 2.0) - (uCaixa.zw / 2.0 - uRaio), 0.0);
     a *= clamp(uRaio - length(d) + 0.5, 0.0, 1.0);
   }
-  cor = vec4(texture(uM, vec2(uv.x, 1.0 - uv.y)).rgb, a);
+  // O alfa da própria mídia (PNG com transparência, como os stickers) conta.
+  vec4 m = texture(uM, vec2(uv.x, 1.0 - uv.y));
+  cor = vec4(m.rgb, a * m.a);
 }`;
 
 const VERTICES = `#version 300 es

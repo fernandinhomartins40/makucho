@@ -32,8 +32,10 @@ import {
   TEXTOS_DE_TELA,
   agendaDoPlano,
   FONTES_DE_VIDEO,
+  arquivoDoSticker,
   caixaDaMidia,
   caixaDoTexto,
+  padraoDaCaixa,
   estadoDoTexto,
   ehEfeitoSonoroEmbutido,
   efeitoUsaPessoa,
@@ -92,6 +94,11 @@ interface Props {
   onMoverDestaque?: (overlayId: string, x: number, y: number) => void;
   /** Puxou o canto: tamanho novo do texto (escala sobre o tamanho base). */
   onRedimensionarTexto?: (overlayId: string, sizeScale: number) => void;
+  /** Camada de mídia (sticker, imagem, vídeo) selecionada: ganha alças. */
+  midiaSelecionada?: string | null;
+  onSelecionarMidia?: (id: string) => void;
+  /** Soltou a camada num ponto novo (centro, 0 a 1) ou com outra largura (0 a 1). */
+  onAjustarMidia?: (id: string, mudanca: { x?: number; y?: number; width?: number }) => void;
   /** Clique duplo no texto da prévia: abre os estilos dele. */
   onAbrirEstilos?: (overlayId: string) => void;
   /** Soltou a legenda num ponto ou num tamanho novo. */
@@ -114,6 +121,9 @@ export function Palco({
   onSelecionarDestaque,
   onMoverDestaque,
   onRedimensionarTexto,
+  midiaSelecionada,
+  onSelecionarMidia,
+  onAjustarMidia,
   onAbrirEstilos,
   onAjustarLegenda,
 }: Props) {
@@ -191,6 +201,8 @@ export function Palco({
   const compositorRef = useRef<Compositor | null>(null);
   const [comGl, setComGl] = useState(false);
   const ultimoEstado = useRef<EstadoNoInstante | null>(null);
+  /** Camada sendo arrastada ou redimensionada: a alça segue o ponteiro até soltar. */
+  const [arrasteDaMidia, setArrasteDaMidia] = useState<{ id: string; x?: number; y?: number; width?: number } | null>(null);
   /** O instante do último estado (os efeitos de tela dependem do quadro). */
   const ultimoMs = useRef(0);
   useEffect(() => {
@@ -231,7 +243,7 @@ export function Palco({
         let e = mapa.get(c.id);
         if (!e) {
           let el: HTMLImageElement | HTMLVideoElement;
-          if (c.kind === 'image') {
+          if (c.kind !== 'video') {
             el = new Image();
             el.onload = () => desenharGlRef.current?.();
           } else {
@@ -243,7 +255,7 @@ export function Palco({
             v.addEventListener('loadeddata', () => desenharGlRef.current?.());
             el = v;
           }
-          el.src = urlDoAsset(c.assetId);
+          el.src = c.kind === 'sticker' ? `/stickers/${arquivoDoSticker(c.assetId)}` : urlDoAsset(c.assetId);
           e = { assetId: c.assetId, el };
           mapa.set(c.id, e);
         }
@@ -1104,6 +1116,91 @@ export function Palco({
               ))}
           </div>
         )}
+
+        {/* Alças das camadas livres e em janela (stickers, imagens, vídeos):
+            arrastar move, o canto muda a largura. A camada em si é do
+            compositor; a alça só acompanha até soltar. */}
+        {!tocando &&
+          onAjustarMidia &&
+          (plan.mediaLayers ?? [])
+            .filter((c) => (c.layout === 'livre' || c.layout === 'pip') && posicaoMs >= c.timelineStartMs && posicaoMs < c.timelineStartMs + c.durationMs)
+            .map((c) => {
+              const el = elementosDasMidias.current.get(c.id)?.el;
+              const w0 = el instanceof HTMLVideoElement ? el.videoWidth : el?.naturalWidth;
+              const h0 = el instanceof HTMLVideoElement ? el.videoHeight : el?.naturalHeight;
+              const proporcao = w0 && h0 ? w0 / h0 : c.kind === 'sticker' ? 1 : 16 / 9;
+              const arraste = arrasteDaMidia?.id === c.id ? arrasteDaMidia : null;
+              const p = padraoDaCaixa(c);
+              const cx = arraste?.x ?? c.x ?? p.x;
+              const cy = arraste?.y ?? c.y ?? p.y;
+              const largura = arraste?.width ?? c.width ?? p.width;
+              const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao);
+              const selecionada = midiaSelecionada === c.id;
+              return (
+                <div
+                  key={c.id}
+                  role="button"
+                  tabIndex={0}
+                  className="palco__alca-destaque palco__alca-midia"
+                  data-selecionado={selecionada || undefined}
+                  style={{ left: `${cx * 100}%`, top: `${cy * 100}%`, width: `${(caixa.w / 1080) * 100}%`, height: `${(caixa.h / 1920) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                  aria-label="Mover a camada"
+                  title="Arraste para mover · canto para mudar o tamanho"
+                  onPointerDown={(e) => {
+                    const ponto = noQuadro();
+                    if (!ponto) return;
+                    e.preventDefault();
+                    onSelecionarMidia?.(c.id);
+                    const inicio = ponto(e);
+                    const limite = (v: number) => Math.min(1, Math.max(0, v));
+                    let ultimo = { x: cx, y: cy };
+                    let moveu = false;
+                    acompanhar(
+                      (ev) => {
+                        const q = ponto(ev);
+                        ultimo = { x: limite(cx + q.x - inicio.x), y: limite(cy + q.y - inicio.y) };
+                        moveu = moveu || Math.abs(q.x - inicio.x) + Math.abs(q.y - inicio.y) > 0.004;
+                        if (moveu) setArrasteDaMidia({ id: c.id, ...ultimo });
+                      },
+                      () => {
+                        if (moveu) onAjustarMidia(c.id, { x: Math.round(ultimo.x * 1000) / 1000, y: Math.round(ultimo.y * 1000) / 1000 });
+                      },
+                      () => setArrasteDaMidia(null),
+                    );
+                  }}
+                >
+                  {selecionada &&
+                    (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
+                      <span
+                        key={canto}
+                        className={`palco__canto palco__canto--${canto}`}
+                        aria-hidden
+                        onPointerDown={(e) => {
+                          const ponto = noQuadro();
+                          const quadro = quadroRef.current;
+                          if (!ponto || !quadro) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const { width, height } = quadro.getBoundingClientRect();
+                          const distancia = (q: { x: number; y: number }) => Math.hypot((q.x - cx) * width, (q.y - cy) * height);
+                          const d0 = Math.max(8, distancia(ponto(e)));
+                          let nova = largura;
+                          acompanhar(
+                            (ev) => {
+                              nova = Math.round(Math.min(1, Math.max(0.05, (largura * distancia(ponto(ev))) / d0)) * 1000) / 1000;
+                              setArrasteDaMidia({ id: c.id, width: nova });
+                            },
+                            () => {
+                              if (nova !== largura) onAjustarMidia(c.id, { width: nova });
+                            },
+                            () => setArrasteDaMidia(null),
+                          );
+                        }}
+                      />
+                    ))}
+                </div>
+              );
+            })}
 
         {/* Alças dos textos de tela: do tamanho do texto de verdade.
             Arrastar move (mouse ou dedo), o canto redimensiona, clique

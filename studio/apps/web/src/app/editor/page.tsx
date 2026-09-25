@@ -988,6 +988,9 @@ function Editor({ projectId }: { projectId: string }) {
               } else executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } });
             }}
             onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
+            midiaSelecionada={itemSelecionado?.tipo === 'midia' ? itemSelecionado.id : null}
+            onSelecionarMidia={(id) => setItemSelecionado({ tipo: 'midia', id })}
+            onAjustarMidia={(id, mudanca) => executar({ op: 'editar_midia', mediaId: id, ...mudanca })}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');

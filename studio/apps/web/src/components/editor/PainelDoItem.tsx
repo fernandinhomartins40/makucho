@@ -25,6 +25,8 @@ import {
   CURVAS_DE_KEYFRAME,
   LAYOUTS_DE_MIDIA,
   NOME_DO_LAYOUT,
+  definicaoDoSticker,
+  padraoDaCaixa,
   comKeyframe,
   estadoDoTexto,
   semKeyframe,
@@ -98,7 +100,7 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'trilha') return 'Trilha de fundo';
   if (item.tipo === 'midia') {
     const m = plan.mediaLayers?.find((x) => x.id === item.id);
-    return m ? (m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
+    return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
   }
   if (item.tipo === 'efeito') {
     const e = plan.screenEffects?.find((x) => x.id === item.id);
@@ -490,14 +492,15 @@ function MidiaDoItem({
   const editar = (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) =>
     onOperacao({ op: 'editar_midia', mediaId: id, ...mudanca });
   const posicionavel = m.layout === 'pip' || m.layout === 'livre';
-  const padrao = m.layout === 'pip' ? { x: 0.72, y: 0.2, width: 0.42 } : { x: 0.5, y: 0.4, width: 0.8 };
+  const padrao = padraoDaCaixa(m);
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       <p className="campo__ajuda" style={{ marginTop: 0 }}>
         Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.
         {m.kind === 'video' ? ' O vídeo entra mudo; suba o volume para ouvir o som dele.' : ''}
       </p>
-      <label className="campo" style={{ marginBottom: 0 }}>
+      {posicionavel && <p className="campo__ajuda" style={{ marginTop: 0 }}>Na prévia: arraste para mover, puxe um canto para o tamanho.</p>}
+      <label className="campo" style={{ marginBottom: 0 }} hidden={m.kind === 'sticker'}>
         <span className="campo__rotulo">Lugar na tela</span>
         <select className="campo__selecao" value={m.layout} onChange={(e) => editar({ layout: e.target.value as typeof m.layout })}>
           {LAYOUTS_DE_MIDIA.map((l) => (

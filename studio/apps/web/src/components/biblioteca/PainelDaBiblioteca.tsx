@@ -13,6 +13,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoriaDeEfeitoDeTela, CategoriaDeTransicao, EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
+  CATEGORIAS_DE_STICKER,
+  STICKERS,
+  arquivoDoSticker,
+  type CategoriaDeSticker,
   CATEGORIAS_DE_EFEITO_DE_TELA,
   CATEGORIAS_DE_TRANSICAO,
   DURACAO_PADRAO_DA_TRANSICAO,
@@ -29,10 +33,11 @@ import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
-export type CategoriaDaBiblioteca = 'textos' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
+export type CategoriaDaBiblioteca = 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
 
 const CATEGORIAS: ReadonlyArray<readonly [CategoriaDaBiblioteca, string]> = [
   ['textos', 'Textos'],
+  ['stickers', 'Stickers'],
   ['midia', 'Mídia'],
   ['transicoes', 'Transições'],
   ['efeitos', 'Efeitos'],
@@ -84,6 +89,7 @@ export function PainelDaBiblioteca(props: Props) {
       </div>
       <div className="biblioteca__corpo">
         {categoria === 'textos' && <Textos {...props} />}
+        {categoria === 'stickers' && <Stickers {...props} />}
         {categoria === 'midia' && <PainelDeMidias {...props} />}
         {categoria === 'transicoes' && <Transicoes {...props} />}
         {categoria === 'efeitos' && <Efeitos {...props} />}
@@ -154,6 +160,56 @@ function Textos({ plan, posicaoMs, marca, onOperacao, onSelecionarItem, itemSele
           )
         }
       />
+    </>
+  );
+}
+
+// ---------- Stickers ----------
+
+function Stickers({ plan, posicaoMs, onOperacao, onSelecionarItem }: Props) {
+  const [grupo, setGrupo] = useState<CategoriaDeSticker | 'todos'>('todos');
+  const duracaoTotal = useMemo(() => agendaDoPlano(plan).duracaoMs, [plan]);
+  const noCursor = Math.min(Math.max(0, Math.round(posicaoMs)), Math.max(0, duracaoTotal - 300));
+  return (
+    <>
+      <Alvo>Entra no cursor ({tempo(noCursor)}). Na prévia, arraste para pôr no lugar e puxe o canto para o tamanho.</Alvo>
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Tipo de sticker">
+        {([['todos', 'Todos'], ...Object.entries(CATEGORIAS_DE_STICKER)] as Array<[CategoriaDeSticker | 'todos', string]>).map(([id, rotulo]) => (
+          <button key={id} type="button" role="radio" aria-checked={grupo === id} className="biblioteca__chip" onClick={() => setGrupo(id)}>
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      <div className="grade-de-stickers">
+        {STICKERS.filter((s) => grupo === 'todos' || s.categoria === grupo).map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className="sticker-cartao"
+            title={s.rotulo}
+            aria-label={`Pôr o sticker ${s.rotulo}`}
+            onClick={() => {
+              const id = `md${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+              onOperacao({
+                op: 'adicionar_midia',
+                id,
+                assetId: s.id,
+                kind: 'sticker',
+                layout: 'livre',
+                timelineStartMs: noCursor,
+                durationMs: Math.max(300, Math.min(2500, duracaoTotal - noCursor)),
+                // Sem fade de entrada: o sticker aparece já no quadro em que foi posto.
+                fadeOutMs: 120,
+              });
+              onSelecionarItem({ tipo: 'midia', id });
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/stickers/${arquivoDoSticker(s.id)}`} alt="" loading="lazy" draggable={false} />
+          </button>
+        ))}
+      </div>
+      <p className="campo__ajuda">Emoji: Noto Emoji (Google, Apache 2.0). Os demais foram desenhados para o Studio.</p>
     </>
   );
 }

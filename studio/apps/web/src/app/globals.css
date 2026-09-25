@@ -4503,6 +4503,39 @@ button {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* Biblioteca > Stickers. */
+.grade-de-stickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+}
+
+.sticker-cartao {
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--transicao), transform var(--transicao);
+}
+
+.sticker-cartao:hover {
+  border-color: var(--primary);
+  transform: scale(1.04);
+}
+
+.sticker-cartao img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Alça da camada de mídia na prévia: tracejada, para não parecer texto. */
+.palco__alca-midia {
+  border-style: dashed;
+}
+
 /* Biblioteca > Mídia: imagens e vídeos do workspace. */
 .grade-de-midias {
   display: grid;

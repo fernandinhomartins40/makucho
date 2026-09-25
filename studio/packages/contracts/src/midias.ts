@@ -27,7 +27,8 @@ export const camadaDeMidiaSchema = z
   .object({
     id: idSchema,
     assetId: idSchema,
-    kind: z.enum(['image', 'video']),
+    /** `sticker`: o `assetId` é o id do sticker embutido (stickers.ts). */
+    kind: z.enum(['image', 'video', 'sticker']),
     timelineStartMs: z.number().int().nonnegative(),
     durationMs: z.number().int().min(100).max(600_000),
     layout: z.enum(LAYOUTS_DE_MIDIA),
@@ -49,6 +50,12 @@ export const camadaDeMidiaSchema = z
 
 export type CamadaDeMidia = z.infer<typeof camadaDeMidiaSchema>;
 
+/** Centro e largura quando a camada não os define. */
+export function padraoDaCaixa(c: { layout: LayoutDeMidia; kind?: CamadaDeMidia['kind'] }): { x: number; y: number; width: number } {
+  if (c.kind === 'sticker') return { x: 0.5, y: 0.35, width: 0.3 };
+  return c.layout === 'pip' ? { x: 0.72, y: 0.2, width: 0.42 } : { x: 0.5, y: 0.4, width: 0.8 };
+}
+
 /** Caixa da camada em pixels do quadro (canto superior esquerdo). */
 export interface CaixaDaMidia {
   x: number;
@@ -66,7 +73,12 @@ const par = (v: number) => Math.max(2, Math.round(v / 2) * 2);
  * mede com o ffprobe; a prévia, pelo elemento). Dimensões pares: o
  * yuv420p não aceita metade de pixel de croma.
  */
-export function caixaDaMidia(c: Pick<CamadaDeMidia, 'layout' | 'x' | 'y' | 'width'>, proporcao: number, W = 1080, H = 1920): CaixaDaMidia {
+export function caixaDaMidia(
+  c: Pick<CamadaDeMidia, 'layout' | 'x' | 'y' | 'width'> & { kind?: CamadaDeMidia['kind'] },
+  proporcao: number,
+  W = 1080,
+  H = 1920,
+): CaixaDaMidia {
   const p = proporcao > 0 && Number.isFinite(proporcao) ? proporcao : 16 / 9;
   switch (c.layout) {
     case 'tela_cheia':
@@ -76,7 +88,7 @@ export function caixaDaMidia(c: Pick<CamadaDeMidia, 'layout' | 'x' | 'y' | 'widt
     case 'dividir_baixo':
       return { x: 0, y: H - par(H / 2), w: W, h: par(H / 2), modo: 'cobrir' };
     default: {
-      const padrao = c.layout === 'pip' ? { x: 0.72, y: 0.2, width: 0.42 } : { x: 0.5, y: 0.4, width: 0.8 };
+      const padrao = padraoDaCaixa(c);
       const w = par((c.width ?? padrao.width) * W);
       const h = par(w / p);
       const cx = (c.x ?? padrao.x) * W;

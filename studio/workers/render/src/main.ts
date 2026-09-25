@@ -26,8 +26,10 @@ import {
   ehEfeitoSonoroEmbutido,
   gerarAss,
   janelasDaPessoa,
+  arquivoDoSticker,
   chaveDaCor,
   corEhNeutra,
+  definicaoDoSticker,
   cubeDaCor,
   planoPrecisaDeAss,
   presetDaLegenda,
@@ -48,7 +50,7 @@ import {
 import type { MascaraGerada, RuntimeOnnx } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
-import { dirname, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
 
@@ -58,6 +60,8 @@ const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/m
  * tipografia que ninguem escolheu -- por isso o aviso no log.
  */
 const PASTA_DE_FONTES = resolve(process.env.STUDIO_FONTS_DIR ?? '/app/fonts');
+/** Stickers embutidos (PNG 512x512), copiados de studio/assets/stickers. */
+const PASTA_DE_STICKERS = resolve(process.env.STUDIO_STICKERS_DIR ?? '/app/stickers');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
 
 /**
@@ -410,7 +414,7 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
 
   const ids = new Set<string>();
   for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
-  for (const m of plano.mediaLayers ?? []) ids.add(m.assetId);
+  for (const m of plano.mediaLayers ?? []) if (m.kind !== 'sticker') ids.add(m.assetId);
   for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
   if (plano.music) ids.add(plano.music.assetId);
   if (ids.size === 0) return { imagens, sons, musica };
@@ -445,7 +449,14 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
  */
 async function midiasDoPlano(plano: EditPlanV1, arquivos: Record<string, string>) {
   const midias: Record<string, { caminho: string; proporcao: number; temAudio: boolean }> = {};
-  for (const id of new Set((plano.mediaLayers ?? []).map((m) => m.assetId))) {
+  for (const s of new Set((plano.mediaLayers ?? []).filter((m) => m.kind === 'sticker').map((m) => m.assetId))) {
+    // O id vira nome de arquivo: só o que o catálogo conhece.
+    if (!definicaoDoSticker(s)) continue;
+    const caminho = join(PASTA_DE_STICKERS, arquivoDoSticker(s));
+    if (existsSync(caminho)) midias[s] = { caminho, proporcao: 1, temAudio: false };
+    else console.warn(`[render] sticker ${s} ausente em ${PASTA_DE_STICKERS}`);
+  }
+  for (const id of new Set((plano.mediaLayers ?? []).filter((m) => m.kind !== 'sticker').map((m) => m.assetId))) {
     const caminho = arquivos[id];
     if (!caminho) continue;
     try {

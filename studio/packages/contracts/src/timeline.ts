@@ -439,7 +439,7 @@ export const adicionarMidiaSchema = z.object({
   /** Id escolhido por quem pede (ver `comIdsNovos`). */
   id: idSchema.optional(),
   assetId: idSchema,
-  kind: z.enum(['image', 'video']),
+  kind: z.enum(['image', 'video', 'sticker']),
   ...mudancasDaMidia,
   timelineStartMs: msSchema,
   durationMs: z.number().int().min(100).max(600_000),

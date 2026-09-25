@@ -89,6 +89,8 @@ COPY --from=builder --chown=worker:nodejs /app/studio/packages/worker-core/dist 
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 
 COPY --chown=worker:nodejs studio/assets/fonts /app/fonts
+# Stickers embutidos (PNG): desenhados no projeto e emoji do Noto (Apache 2.0).
+COPY --chown=worker:nodejs studio/assets/stickers /app/stickers
 # Modelo da pessoa (MediaPipe Selfie Segmentation, Apache 2.0): o que
 # poe um texto ATRAS de quem fala. 600 KB; roda em WebAssembly.
 COPY --chown=worker:nodejs studio/assets/modelos /app/modelos

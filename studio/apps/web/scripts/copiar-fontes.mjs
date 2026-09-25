@@ -25,6 +25,13 @@ const arquivos = readdirSync(origem).filter((f) => f.endsWith('.ttf'));
 for (const f of arquivos) cpSync(join(origem, f), join(destino, f));
 console.log(`${arquivos.length} fontes copiadas para ${destino}`);
 
+// ---------- Stickers embutidos ----------
+// Os MESMOS PNG que o render usa (studio/assets/stickers).
+const stickers = join(process.cwd(), '..', '..', 'assets', 'stickers');
+const destinoDosStickers = join(process.cwd(), 'public', 'stickers');
+mkdirSync(destinoDosStickers, { recursive: true });
+for (const f of readdirSync(stickers).filter((f) => f.endsWith('.png'))) cpSync(join(stickers, f), join(destinoDosStickers, f));
+
 // ---------- Modelo da pessoa e runtime ONNX (texto atrás da pessoa) ----------
 //
 // A prévia recorta a pessoa com o MESMO modelo e a mesma biblioteca do

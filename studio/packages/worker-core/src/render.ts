@@ -311,7 +311,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     const nf = Math.min(Math.max(1, Math.round((c.durationMs * FPS) / 1000)), acumulado - n0);
     const d = nf / FPS;
     const indice = proximaEntrada++;
-    if (c.kind === 'image') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
+    if (c.kind !== 'video') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
     else entradas.push('-ss', ((c.sourceStartMs ?? 0) / 1000).toFixed(3), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
 
     const cx = caixaDaMidia(c, m.proporcao, W, H);
