@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -328,7 +328,19 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     // Vídeo mais curto que a camada: o último quadro fica.
     let cadeia =
       `[${indice}:v]fps=${FPS},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(d + 1).toFixed(3)},` +
-      `trim=end_frame=${nf},${escala},setsar=1,format=yuva420p`;
+      `trim=end_frame=${nf},${escala},setsar=1`;
+    // Ken Burns: zoom e deslizamento lentos na caixa, pelo `perspective`
+    // (subpixel, como o shader). O quadro da camada é (in-1)/30.
+    if (c.kenBurns && c.kenBurns !== 'nenhum' && cx.modo === 'cobrir') {
+      const kb = kenBurnsExpressao(c.kenBurns, `((in-1)/${FPS})`, (nf * 1000) / FPS);
+      const m = `((1-1/${kb.z})/2)`;
+      const x0 = `W*${m}+${kb.dx}*W`;
+      const x1 = `W-W*${m}+${kb.dx}*W`;
+      cadeia +=
+        `,format=yuv420p,perspective=x0='${x0}':y0='H*${m}':x1='${x1}':y1='H*${m}':x2='${x0}':y2='H-H*${m}':x3='${x1}':y3='H-H*${m}'` +
+        `:interpolation=linear:eval=frame`;
+    }
+    cadeia += ',format=yuva420p';
     const raio = Math.round((c.radius ?? 0) * Math.min(cx.w, cx.h));
     if (raio > 0) {
       // Cantos: máscara estática (um quadro, repetido), com 1 px de borda suave.
@@ -340,6 +352,15 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       );
       partes.push(`${cadeia}[${r}s]`);
       cadeia = `[${r}s][${r}m]alphamerge`;
+    }
+    // Cortina (antes e depois): a camada aparece de um lado ao outro. Só
+    // enquanto a borda anda; depois, o alfa fica como estava.
+    if (c.reveal && c.reveal !== 'nenhuma') {
+      const rs = ((c.revealMs ?? 800) / 1000).toFixed(4);
+      const u = `clip(T/${rs},0,1)`;
+      const borda = `(${u}*${u}*(3-2*${u}))`;
+      const dentro = c.reveal === 'da_esquerda' ? `lt(X,${borda}*W)` : `gte(X,(1-${borda})*W)`;
+      cadeia += `,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*${dentro}':enable='lte(t,${rs})'`;
     }
     if (c.fadeInMs) cadeia += `,fade=t=in:st=0:d=${(c.fadeInMs / 1000).toFixed(3)}:alpha=1`;
     if (c.fadeOutMs) cadeia += `,fade=t=out:st=${Math.max(0, d - c.fadeOutMs / 1000).toFixed(3)}:d=${(c.fadeOutMs / 1000).toFixed(3)}:alpha=1`;

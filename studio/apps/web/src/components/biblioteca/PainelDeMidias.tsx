@@ -10,8 +10,9 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1, LayoutDeMidia, TimelineOperation } from '@makucho/studio-contracts';
-import { agendaDoPlano } from '@makucho/studio-contracts';
+import type { EditPlanV1, KenBurns, LayoutDeMidia, TimelineOperation } from '@makucho/studio-contracts';
+import { agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
+import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
 import { assets as apiAssets, bancoDeMidia, type Asset, type ResultadoDoBanco, type Transcricao } from '../../lib/api';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
@@ -21,10 +22,15 @@ interface Props {
   plan: EditPlanV1;
   posicaoMs: number;
   onOperacao: (op: TimelineOperation) => void;
+  onOperacoes: (ops: TimelineOperation[]) => void;
   onSelecionarItem: (item: ItemDaTimeline) => void;
   urlDoAsset: (id: string) => string;
   transcricao?: Transcricao | null;
 }
+
+/** Os Ken Burns do slideshow, em sequência: cada foto com um movimento. */
+const MOVIMENTOS: readonly KenBurns[] = ['aproximar', 'para_esquerda', 'afastar', 'para_direita'];
+const novoId = () => `md${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const PALAVRAS_VAZIAS = new Set(
   (
@@ -59,7 +65,7 @@ const LAYOUTS: ReadonlyArray<readonly [LayoutDeMidia, string, string]> = [
   ['dividir_baixo', 'Dividir', 'Metade de baixo da tela'],
 ];
 
-export function PainelDeMidias({ plan, posicaoMs, onOperacao, onSelecionarItem, urlDoAsset, transcricao }: Props) {
+export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao }: Props) {
   const [lista, setLista] = useState<Asset[] | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -124,6 +130,72 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onSelecionarItem, 
     } finally {
       setTrazendo(null);
     }
+  };
+
+  // ---------- Montagens com várias fotos ----------
+  const [escolhidas, setEscolhidas] = useState<string[]>([]);
+  const [montando, setMontando] = useState(false);
+  const [avisoDaMontagem, setAvisoDaMontagem] = useState<string | null>(null);
+  const alternar = (id: string) => setEscolhidas((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]));
+  const camada = (assetId: string, layout: LayoutDeMidia, inicio: number, dur: number, extra: Record<string, unknown> = {}) =>
+    ({ op: 'adicionar_midia', id: novoId(), assetId, kind: 'image', layout, timelineStartMs: Math.round(inicio), durationMs: Math.max(300, Math.round(dur)), ...extra }) as TimelineOperation;
+  const resto = Math.max(300, duracaoTotal - noCursor);
+
+  /** Slideshow: cada foto em tela cheia até a próxima batida da trilha (ou a cada 2 s). */
+  const slideshow = async () => {
+    setMontando(true);
+    setAvisoDaMontagem(null);
+    try {
+      let cortes: number[];
+      let texto: string;
+      if (plan.music) {
+        const { batidas, duracaoS } = await batidasDaTrilha(urlDoAsset(plan.music.assetId));
+        cortes = cortesDoSlideshow(batidas, escolhidas.length, noCursor / 1000, 1.2, duracaoS);
+        texto = batidas.bpm ? `no ritmo da trilha (${batidas.bpm} BPM)` : 'a cada 1,2 s (a trilha não tem batida clara)';
+      } else {
+        cortes = cortesDoSlideshow({ bpm: 0, tempos: [] }, escolhidas.length, noCursor / 1000, 2);
+        texto = 'a cada 2 s (sem trilha no vídeo)';
+      }
+      const ops = escolhidas.map((id, i) =>
+        camada(id, 'tela_cheia', cortes[i]! * 1000, Math.min((cortes[i + 1]! - cortes[i]!) * 1000, duracaoTotal - cortes[i]! * 1000), {
+          kenBurns: MOVIMENTOS[i % MOVIMENTOS.length],
+          fadeInMs: 120,
+        }),
+      ).filter((op) => (op as { timelineStartMs: number }).timelineStartMs < duracaoTotal);
+      onOperacoes(ops);
+      setAvisoDaMontagem(`${ops.length} fotos, ${texto}. Cada uma é um item da faixa Mídia.`);
+      setEscolhidas([]);
+    } catch (e) {
+      setAvisoDaMontagem(e instanceof Error ? e.message : 'não foi possível montar o slideshow.');
+    } finally {
+      setMontando(false);
+    }
+  };
+
+  const colagem = () => {
+    const lugares: Record<number, LayoutDeMidia[]> = {
+      2: ['dividir_cima', 'dividir_baixo'],
+      3: ['terco_cima', 'terco_meio', 'terco_baixo'],
+      4: ['quadrante_1', 'quadrante_2', 'quadrante_3', 'quadrante_4'],
+    };
+    const l = lugares[escolhidas.length];
+    if (!l) return;
+    onOperacoes(escolhidas.map((id, i) => camada(id, l[i]!, noCursor, Math.min(3000, resto), { fadeInMs: 120 + i * 80 })));
+    setAvisoDaMontagem(`Colagem de ${escolhidas.length} fotos no cursor.`);
+    setEscolhidas([]);
+  };
+
+  const antesEDepois = (modo: 'lado' | 'cortina') => {
+    if (escolhidas.length !== 2) return;
+    const [antes, depois] = escolhidas as [string, string];
+    const dur = Math.min(4000, resto);
+    onOperacoes(
+      modo === 'lado'
+        ? [camada(antes, 'esquerda', noCursor, dur), camada(depois, 'direita', noCursor, dur)]
+        : [camada(antes, 'tela_cheia', noCursor, dur), camada(depois, 'tela_cheia', noCursor, dur, { reveal: 'da_esquerda', revealMs: Math.min(1500, dur / 2) })],
+    );
+    setAvisoDaMontagem(modo === 'lado' ? 'Antes à esquerda, depois à direita.' : 'O depois se revela da esquerda sobre o antes.');
+    setEscolhidas([]);
   };
 
   const adicionar = (a: Asset, layout: LayoutDeMidia) => {
@@ -244,6 +316,33 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onSelecionarItem, 
       <span className="campo__rotulo" style={{ marginTop: 'var(--e3)', display: 'block' }}>
         Do workspace
       </span>
+      {escolhidas.length > 0 && (
+        <div className="montagens" role="group" aria-label="Montagens com as fotos escolhidas">
+          <strong style={{ fontSize: 13 }}>{escolhidas.length} foto(s) escolhida(s), na ordem em que foram marcadas</strong>
+          <div className="linha" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button type="button" className="botao botao--primario botao--pequeno" disabled={montando || escolhidas.length < 2} onClick={() => void slideshow()}>
+              {montando ? 'Medindo a trilha…' : 'Slideshow no ritmo'}
+            </button>
+            <button type="button" className="botao botao--secundario botao--pequeno" disabled={escolhidas.length < 2 || escolhidas.length > 4} onClick={colagem}>
+              Colagem
+            </button>
+            <button type="button" className="botao botao--secundario botao--pequeno" disabled={escolhidas.length !== 2} onClick={() => antesEDepois('lado')}>
+              Antes e depois
+            </button>
+            <button type="button" className="botao botao--secundario botao--pequeno" disabled={escolhidas.length !== 2} onClick={() => antesEDepois('cortina')}>
+              Antes e depois (cortina)
+            </button>
+            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setEscolhidas([])}>
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
+      {avisoDaMontagem && (
+        <p className="biblioteca__alvo" role="status">
+          {avisoDaMontagem}
+        </p>
+      )}
       {lista === null ? (
         <p className="texto-secundario">Carregando…</p>
       ) : lista.length === 0 ? (
@@ -260,6 +359,12 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onSelecionarItem, 
                   <img src={urlDoAsset(a.id)} alt="" loading="lazy" />
                 )}
                 {a.kind === 'VIDEO' && <span className="midia-cartao__selo">vídeo</span>}
+                {a.kind === 'IMAGE' && (
+                  <label className="midia-cartao__marcar" title="Escolher para slideshow, colagem ou antes e depois">
+                    <input type="checkbox" checked={escolhidas.includes(a.id)} onChange={() => alternar(a.id)} aria-label={`Escolher ${a.originalName}`} />
+                    {escolhidas.includes(a.id) && <span>{escolhidas.indexOf(a.id) + 1}</span>}
+                  </label>
+                )}
               </div>
               <span className="midia-cartao__nome" title={a.originalName}>
                 {a.originalName}

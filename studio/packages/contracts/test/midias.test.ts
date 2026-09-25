@@ -2,7 +2,7 @@
 // Mídia sobreposta: a caixa de cada layout e as operações.
 // ============================================================
 
-import { aplicarOperacao, caixaDaMidia, comIdsNovos, editPlanV1Schema, timelineOperationSchema } from '../src/index';
+import { KEN_BURNS, aplicarOperacao, bordaDaCortina, caixaDaMidia, comIdsNovos, editPlanV1Schema, kenBurnsExpressao, kenBurnsNoInstante, timelineOperationSchema } from '../src/index';
 import type { EditPlanV1 } from '../src/index';
 
 let ok = 0,
@@ -23,6 +23,27 @@ const livre = caixaDaMidia({ layout: 'livre', x: 0.5, y: 0.5, width: 0.5 }, 1);
 t('livre: centro e largura escolhidos', livre.w === 540 && livre.h === 540 && livre.x === 270 && livre.y === 690);
 t('dimensões sempre pares (yuv420p)', [cheia, baixo, pip, livre, caixaDaMidia({ layout: 'livre', width: 0.333 }, 1.37)].every((c) => c.w % 2 === 0 && c.h % 2 === 0));
 t('proporção inválida cai em 16:9', caixaDaMidia({ layout: 'pip' }, 0).h === 256);
+
+// ---------- Colagem, Ken Burns e cortina ----------
+const q4 = caixaDaMidia({ layout: 'quadrante_4' }, 1);
+t('quadrante 4: canto de baixo à direita', q4.x === 540 && q4.y === 960 && q4.w === 540 && q4.h === 960);
+const t3 = caixaDaMidia({ layout: 'terco_baixo' }, 1);
+t('terço de baixo encosta no pé do quadro', t3.y + t3.h === 1920 && t3.h === 640);
+t('metade direita', caixaDaMidia({ layout: 'direita' }, 1).x === 540);
+const avaliarKb = (e: string, T: number) =>
+  // eslint-disable-next-line no-new-func
+  new Function('T', `const clip=(x,a,b)=>Math.min(b,Math.max(a,x));return ${e};`)(T) as number;
+let piorKb = 0;
+for (const tipo of KEN_BURNS) {
+  const e = kenBurnsExpressao(tipo, 'T', 3000);
+  for (let ms = 0; ms <= 3000; ms += 100) {
+    const v = kenBurnsNoInstante(tipo, ms, 3000);
+    piorKb = Math.max(piorKb, Math.abs(avaliarKb(e.z, ms / 1000) - v.z), Math.abs(avaliarKb(e.dx, ms / 1000) - v.dx));
+  }
+}
+t(`Ken Burns: expressão do render = conta da prévia (pior ${piorKb.toExponential(1)})`, piorKb < 1e-6);
+t('Ken Burns deslizando nunca passa da folga do zoom', [0, 1500, 3000].every((ms) => Math.abs(kenBurnsNoInstante('para_esquerda', ms, 3000).dx) <= (1 - 1 / 1.15) / 2 + 1e-9));
+t('cortina: 0 no começo, 1 depois do tempo dela', bordaDaCortina({ reveal: 'da_esquerda', revealMs: 1000 }, 0) === 0 && bordaDaCortina({ reveal: 'da_esquerda', revealMs: 1000 }, 1200) === 1);
 
 // ---------- Operações ----------
 const plano: EditPlanV1 = {

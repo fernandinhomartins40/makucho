@@ -30,7 +30,7 @@ import {
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
-import { LAYOUTS_DE_MIDIA } from './midias';
+import { KEN_BURNS, LAYOUTS_DE_MIDIA, REVELACOES } from './midias';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
@@ -436,6 +436,9 @@ const mudancasDaMidia = {
   animLoop: z.enum(LOOPS_DE_MIDIA).optional(),
   animOut: z.enum(SAIDAS_DE_MIDIA).optional(),
   followPerson: z.boolean().optional(),
+  kenBurns: z.enum(KEN_BURNS).optional(),
+  reveal: z.enum(REVELACOES).optional(),
+  revealMs: z.number().int().min(100).max(10_000).optional(),
   /** Troca a lista inteira; `null` tira os keyframes. */
   keyframes: z.array(keyframeDaMidiaSchema).max(24).nullable().optional(),
 };

@@ -33,6 +33,8 @@ import {
   agendaDoPlano,
   FONTES_DE_VIDEO,
   arquivoDoSticker,
+  bordaDaCortina,
+  kenBurnsNoInstante,
   cabecaDaMascara,
   caixaDaMidia,
   estadoDaMidia,
@@ -300,9 +302,16 @@ export function Palco({
         if (c.fadeInMs) fade *= Math.min(1, t / (c.fadeInMs / 1000));
         if (c.fadeOutMs) fade *= Math.min(1, Math.max(0, (d - t) / (c.fadeOutMs / 1000)));
         const raio = (c.radius ?? 0) * Math.min(base.w, base.h);
+        // Ken Burns e cortina: as contas de midias.ts (as mesmas do render).
+        const extras: Pick<MidiaNoQuadro, 'kenBurns' | 'cortina'> = {
+          ...(c.kenBurns && c.kenBurns !== 'nenhum' && base.modo === 'cobrir' ? { kenBurns: kenBurnsNoInstante(c.kenBurns, (j * 1000) / 30, (nf * 1000) / 30) } : {}),
+          ...(c.reveal && c.reveal !== 'nenhuma'
+            ? { cortina: { borda: bordaDaCortina(c, (j * 1000) / 30), lado: c.reveal === 'da_esquerda' ? ('esquerda' as const) : ('direita' as const) } }
+            : {}),
+        };
         const seguir = Boolean(c.followPerson && cabecaRef.current);
         if (!midiaEstaAnimada(c) && !seguir) {
-          lista.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade });
+          lista.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras });
           continue;
         }
         // Animada: a mesma função que gera as expressões do render.
@@ -320,6 +329,7 @@ export function Palco({
           raio: raio * est.scale,
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
           giro: est.rotation,
+          ...extras,
         });
       }
       return lista;

@@ -11,7 +11,23 @@
 import { z } from 'zod';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 
-export const LAYOUTS_DE_MIDIA = ['tela_cheia', 'pip', 'dividir_cima', 'dividir_baixo', 'livre'] as const;
+export const LAYOUTS_DE_MIDIA = [
+  'tela_cheia',
+  'pip',
+  'dividir_cima',
+  'dividir_baixo',
+  'livre',
+  // Colagem: metades lado a lado, terços e quadrantes.
+  'esquerda',
+  'direita',
+  'terco_cima',
+  'terco_meio',
+  'terco_baixo',
+  'quadrante_1',
+  'quadrante_2',
+  'quadrante_3',
+  'quadrante_4',
+] as const;
 export type LayoutDeMidia = (typeof LAYOUTS_DE_MIDIA)[number];
 
 export const NOME_DO_LAYOUT: Record<LayoutDeMidia, string> = {
@@ -20,7 +36,30 @@ export const NOME_DO_LAYOUT: Record<LayoutDeMidia, string> = {
   dividir_cima: 'Dividir: em cima',
   dividir_baixo: 'Dividir: embaixo',
   livre: 'Livre',
+  esquerda: 'Metade esquerda',
+  direita: 'Metade direita',
+  terco_cima: 'Terço de cima',
+  terco_meio: 'Terço do meio',
+  terco_baixo: 'Terço de baixo',
+  quadrante_1: 'Quadrante de cima, à esquerda',
+  quadrante_2: 'Quadrante de cima, à direita',
+  quadrante_3: 'Quadrante de baixo, à esquerda',
+  quadrante_4: 'Quadrante de baixo, à direita',
 };
+
+export const KEN_BURNS = ['nenhum', 'aproximar', 'afastar', 'para_esquerda', 'para_direita'] as const;
+export type KenBurns = (typeof KEN_BURNS)[number];
+export const NOME_DO_KEN_BURNS: Record<KenBurns, string> = {
+  nenhum: 'Parada',
+  aproximar: 'Aproximar devagar',
+  afastar: 'Afastar devagar',
+  para_esquerda: 'Deslizar para a esquerda',
+  para_direita: 'Deslizar para a direita',
+};
+
+/** Cortina: a camada se revela de um lado ao outro no começo. */
+export const REVELACOES = ['nenhuma', 'da_esquerda', 'da_direita'] as const;
+export type Revelacao = (typeof REVELACOES)[number];
 
 const idSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
@@ -56,6 +95,11 @@ export const camadaDeMidiaSchema = z
      * posição EM RELAÇÃO à cabeça (0,5/0,5 = em cima dela).
      */
     followPerson: z.boolean().optional(),
+    /** Movimento lento de câmera sobre a foto (layouts que cobrem a caixa). */
+    kenBurns: z.enum(KEN_BURNS).optional(),
+    /** Cortina de "antes e depois": revela a camada nos primeiros `revealMs`. */
+    reveal: z.enum(REVELACOES).optional(),
+    revealMs: z.number().int().min(100).max(10_000).optional(),
   })
   .strict();
 
@@ -98,6 +142,26 @@ export function caixaDaMidia(
       return { x: 0, y: 0, w: W, h: par(H / 2), modo: 'cobrir' };
     case 'dividir_baixo':
       return { x: 0, y: H - par(H / 2), w: W, h: par(H / 2), modo: 'cobrir' };
+    case 'esquerda':
+      return { x: 0, y: 0, w: par(W / 2), h: H, modo: 'cobrir' };
+    case 'direita':
+      return { x: W - par(W / 2), y: 0, w: par(W / 2), h: H, modo: 'cobrir' };
+    case 'terco_cima':
+    case 'terco_meio':
+    case 'terco_baixo': {
+      const h = par(H / 3);
+      const y = c.layout === 'terco_cima' ? 0 : c.layout === 'terco_meio' ? par((H - h) / 2) : H - h;
+      return { x: 0, y, w: W, h, modo: 'cobrir' };
+    }
+    case 'quadrante_1':
+    case 'quadrante_2':
+    case 'quadrante_3':
+    case 'quadrante_4': {
+      const w = par(W / 2);
+      const h = par(H / 2);
+      const i = Number(c.layout.slice(-1)) - 1;
+      return { x: i % 2 ? W - w : 0, y: i >= 2 ? H - h : 0, w, h, modo: 'cobrir' };
+    }
     default: {
       const padrao = padraoDaCaixa(c);
       const w = par((c.width ?? padrao.width) * W);
@@ -107,4 +171,55 @@ export function caixaDaMidia(
       return { x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, modo: 'conter' };
     }
   }
+}
+
+/**
+ * Ken Burns no instante `t` de `durMs`: zoom `z` (>= 1) e deslocamento do
+ * centro, em fração da caixa, dentro da folga do zoom. Linear no tempo,
+ * como a câmera lenta de um documentário. Render (`perspective`) e prévia
+ * (uv no shader) usam estes números.
+ */
+export function kenBurnsNoInstante(tipo: KenBurns | undefined, t: number, durMs: number): { z: number; dx: number; dy: number } {
+  const q = Math.min(1, Math.max(0, t / Math.max(1, durMs)));
+  const Z = 1.18;
+  switch (tipo) {
+    case 'aproximar':
+      return { z: 1 + (Z - 1) * q, dx: 0, dy: 0 };
+    case 'afastar':
+      return { z: Z - (Z - 1) * q, dx: 0, dy: 0 };
+    case 'para_esquerda':
+    case 'para_direita': {
+      const folga = (1 - 1 / 1.15) / 2;
+      const d = folga * (1 - 2 * q);
+      return { z: 1.15, dx: tipo === 'para_esquerda' ? d : -d, dy: 0 };
+    }
+    default:
+      return { z: 1, dx: 0, dy: 0 };
+  }
+}
+
+/** A mesma conta como expressão do FFmpeg em `T` (segundos). */
+export function kenBurnsExpressao(tipo: KenBurns | undefined, T: string, durMs: number): { z: string; dx: string } {
+  const q = `clip(${T}/${(Math.max(1, durMs) / 1000).toFixed(4)},0,1)`;
+  const folga = ((1 - 1 / 1.15) / 2).toFixed(6);
+  switch (tipo) {
+    case 'aproximar':
+      return { z: `(1+0.18*${q})`, dx: '0' };
+    case 'afastar':
+      return { z: `(1.18-0.18*${q})`, dx: '0' };
+    case 'para_esquerda':
+      return { z: '1.15', dx: `(${folga}*(1-2*${q}))` };
+    case 'para_direita':
+      return { z: '1.15', dx: `(-${folga}*(1-2*${q}))` };
+    default:
+      return { z: '1', dx: '0' };
+  }
+}
+
+/** Onde está a borda da cortina (0 a 1 da largura da caixa) no instante. */
+export function bordaDaCortina(c: { reveal?: Revelacao; revealMs?: number }, t: number): number {
+  if (!c.reveal || c.reveal === 'nenhuma') return 1;
+  const u = Math.min(1, Math.max(0, t / (c.revealMs ?? 800)));
+  const e = u * u * (3 - 2 * u);
+  return e;
 }

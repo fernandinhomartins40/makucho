@@ -181,6 +181,19 @@ livres e em janela (com pontos, gravam o ponto no cursor).
   colagem (2, 3, 4) com `xstack`; antes e depois (divisão e cortina);
   modelos com espaços para trocar mídia.
 
+**Estado: feito (sem `xstack`: a colagem são camadas nos lugares
+novos, o que mantém a paridade com a prévia).** Lugares novos na tela
+(metades, terços, quadrantes); Ken Burns (aproximar, afastar, deslizar)
+pelo `perspective` no render e pelo uv no shader, com a mesma conta em
+`midias.ts` e teste de igualdade; cortina de antes e depois (alfa no
+`geq` só enquanto a borda anda; `discard` no shader). Slideshow no
+ritmo: `batidas.ts` mede o andamento e a grade da trilha no navegador
+(WebAudio), e cada foto troca numa batida com pelo menos 1,2 s e um
+Ken Burns diferente. Montagens na Biblioteca > Mídia: escolher fotos na
+ordem e montar slideshow, colagem de 2/3/4 ou antes e depois. Os
+"modelos com espaços" são essas montagens: cada foto vira um item que se
+troca no painel.
+
 ## Fase 9 — Sons
 
 - Categorias (transição, impacto, humor, suspense, interface, reação);

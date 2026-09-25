@@ -25,6 +25,8 @@ import {
   CURVAS_DE_KEYFRAME,
   LAYOUTS_DE_MIDIA,
   NOME_DO_LAYOUT,
+  KEN_BURNS,
+  NOME_DO_KEN_BURNS,
   ENTRADAS_DE_MIDIA,
   LOOPS_DE_MIDIA,
   SAIDAS_DE_MIDIA,
@@ -535,6 +537,28 @@ function MidiaDoItem({
         </>
       )}
       <Deslizante rotulo="Opacidade" valor={Math.round((m.opacity ?? 1) * 100)} min={5} max={100} passo={5} unidade="%" onSoltar={(v) => editar({ opacity: v / 100 })} />
+      {!posicionavel && m.kind !== 'sticker' && (
+        <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+          <label className="campo crescer" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">Câmera lenta (Ken Burns)</span>
+            <select className="campo__selecao" value={m.kenBurns ?? 'nenhum'} onChange={(e) => editar({ kenBurns: e.target.value as typeof m.kenBurns })}>
+              {KEN_BURNS.map((k) => (
+                <option key={k} value={k}>
+                  {NOME_DO_KEN_BURNS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="campo crescer" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">Cortina (revelar)</span>
+            <select className="campo__selecao" value={m.reveal ?? 'nenhuma'} onChange={(e) => editar({ reveal: e.target.value as typeof m.reveal })}>
+              <option value="nenhuma">Sem cortina</option>
+              <option value="da_esquerda">Da esquerda</option>
+              <option value="da_direita">Da direita</option>
+            </select>
+          </label>
+        </div>
+      )}
       <Deslizante rotulo="Cantos arredondados" valor={Math.round((m.radius ?? 0) * 100)} min={0} max={50} passo={1} unidade="%" onSoltar={(v) => editar({ radius: v / 100 })} />
       <div className="linha" style={{ gap: 'var(--e3)' }}>
         <div className="crescer">

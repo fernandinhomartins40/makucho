@@ -38,6 +38,7 @@ export * from './midias';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';
+export * from './batidas';
 export * from './pausas';
 export * from './acabamento';
 export * from './retomadas';

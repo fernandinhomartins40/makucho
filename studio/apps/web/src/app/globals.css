@@ -4599,6 +4599,32 @@ button {
   aspect-ratio: 9 / 12;
 }
 
+.midia-cartao__marcar {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.montagens {
+  display: grid;
+  gap: 6px;
+  margin-top: var(--e3);
+  padding: 8px;
+  border: 1px solid var(--primary);
+  border-radius: var(--r-controle);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface-2));
+}
+
 .midia-cartao__acoes {
   display: flex;
   flex-wrap: wrap;
@@ -4932,11 +4958,11 @@ button {
 
 .biblioteca__abas {
   display: flex;
+  /* Oito categorias: quebram linha em vez de sumir numa rolagem sem barra. */
+  flex-wrap: wrap;
   gap: 2px;
   padding: var(--e2) var(--e3) 0;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-  scrollbar-width: none;
   flex-shrink: 0;
 }
 

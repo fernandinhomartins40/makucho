@@ -56,6 +56,10 @@ export interface MidiaNoQuadro {
   alfa: number;
   /** Giro em graus, no sentido horário (como o `rotate` do render). */
   giro?: number;
+  /** Ken Burns: zoom e deslocamento (fração da caixa) sobre a caixa. */
+  kenBurns?: { z: number; dx: number };
+  /** Cortina: até onde (0 a 1 da caixa) a camada aparece, e de que lado. */
+  cortina?: { borda: number; lado: 'esquerda' | 'direita' };
 }
 
 export interface QuadroParaDesenhar {
@@ -85,6 +89,8 @@ uniform float uCobrir;
 uniform float uRaio;
 uniform float uAlfa;
 uniform float uGiro;
+uniform vec2 uKb;
+uniform vec2 uCortina;
 out vec4 cor;
 void main() {
   float X = floor(gl_FragCoord.x);
@@ -96,6 +102,10 @@ void main() {
   vec2 p = vec2(cs * d.x + sn * d.y, -sn * d.x + cs * d.y) + uCaixa.zw / 2.0;
   if (p.x < 0.0 || p.y < 0.0 || p.x > uCaixa.z || p.y > uCaixa.w) discard;
   vec2 uv = p / uCaixa.zw;
+  // Cortina: fora da parte já revelada, nada (lado 1 = da esquerda, 2 = da direita).
+  if (uCortina.y > 0.5 && (uCortina.y < 1.5 ? uv.x >= uCortina.x : uv.x < 1.0 - uCortina.x)) discard;
+  // Ken Burns (o perspective do render): zoom no centro e deslocamento.
+  uv = 0.5 + (uv - 0.5) / uKb.x + vec2(uKb.y, 0.0);
   if (uCobrir > 0.5) {
     // Cobrir: amplia até encher e corta o que sobra, centrado.
     float s = uProporcao / (uCaixa.z / uCaixa.w);
@@ -212,7 +222,7 @@ export class Compositor {
     this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
-    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -499,6 +509,8 @@ export class Compositor {
       gl.uniform1f(p.uniforms.uRaio!, m.raio);
       gl.uniform1f(p.uniforms.uAlfa!, m.alfa);
       gl.uniform1f(p.uniforms.uGiro!, ((m.giro ?? 0) * Math.PI) / 180);
+      gl.uniform2f(p.uniforms.uKb!, m.kenBurns?.z ?? 1, m.kenBurns?.dx ?? 0);
+      gl.uniform2f(p.uniforms.uCortina!, m.cortina?.borda ?? 1, m.cortina ? (m.cortina.lado === 'esquerda' ? 1 : 2) : 0);
       this.desenharRetangulo();
     }
     gl.disable(gl.BLEND);
