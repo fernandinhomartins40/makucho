@@ -6625,3 +6625,230 @@ button.recursos-do-trecho__item:hover {
 .legendas__correcoes li .botao {
   margin-left: auto;
 }
+
+/* =====================================================================
+   Densidade pela ALTURA (notebooks de verdade).
+   Medido: com a barra do navegador e a escala do Windows (125%/150%),
+   notebooks entregam de 520 a 730 px úteis (1366x768 -> ~1366x650;
+   1536x864 -> ~1536x730; 1280x720; 1520x700). Nessa faixa o topo, a
+   barra da timeline e os controles do vídeo ficam mais baixos, as
+   faixas da timeline compactas (Timeline.tsx, mesma regra) e a divisa
+   entre vídeo e timeline pode ser arrastada.
+   ===================================================================== */
+
+.editor__timeline {
+  position: relative;
+}
+
+/* ---------- Divisor arrastável ---------- */
+.divisor-da-timeline {
+  /* Dentro da borda de cima da timeline: fora dela seria cortado pelo
+     overflow da seção e o clique cairia no fundo do editor. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.divisor-da-timeline__pega {
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-secondary) 40%, transparent);
+  transition: background var(--transicao), width var(--transicao);
+}
+
+.divisor-da-timeline:hover .divisor-da-timeline__pega,
+.divisor-da-timeline:focus-visible .divisor-da-timeline__pega {
+  width: 72px;
+  background: var(--accent);
+}
+
+body[data-redimensionando],
+body[data-redimensionando] * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 899px) {
+  .divisor-da-timeline {
+    display: none;
+  }
+}
+
+/* A escolha da pessoa vale sobre as proporções automáticas. */
+@media (min-width: 900px) {
+  .editor[data-timeline-manual] {
+    grid-template-rows: minmax(0, 1fr) var(--altura-timeline) !important;
+  }
+}
+
+/* ---------- Até 860 px de altura (1536x864 com navegador, 1440x900) ---------- */
+@media (min-width: 900px) and (max-height: 860px) {
+  :root {
+    --topbar: 56px;
+  }
+  .editor {
+    gap: var(--e2);
+    padding: 0 var(--e2) var(--e2) 0;
+    grid-template-rows: minmax(0, 1fr) minmax(210px, 38%);
+  }
+  .editor__ia,
+  .editor__inspector {
+    margin-top: var(--e2);
+  }
+  .topbar--editor .botao {
+    min-height: 38px;
+    padding-block: 6px;
+  }
+  .timeline__barra {
+    padding: 6px var(--e3);
+  }
+  .timeline__barra .botao {
+    min-height: 32px;
+    padding-block: 4px;
+  }
+}
+
+/* ---------- Até 780 px (1366x768 e 1280x800 com navegador, 125%) ---------- */
+@media (min-width: 900px) and (max-height: 780px) {
+  :root {
+    --topbar: 50px;
+  }
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(190px, 40%);
+  }
+  .topbar--editor .botao {
+    min-height: 34px;
+    font-size: 13px;
+  }
+  .topbar--editor .botao-icone {
+    width: 34px;
+    height: 34px;
+  }
+  .timeline__barra {
+    padding: 4px var(--e3);
+    gap: 4px;
+  }
+  .timeline__barra .botao {
+    min-height: 30px;
+    font-size: 12.5px;
+  }
+  .timeline__rolagem {
+    --rotulo-da-faixa: 112px;
+  }
+  .timeline__faixa {
+    font-size: 12px;
+  }
+  .editor__palco {
+    gap: 6px;
+    padding: 6px 0;
+  }
+  .palco__play {
+    width: 40px;
+    height: 40px;
+  }
+  .palco__controles .botao-icone {
+    width: 34px;
+    height: 34px;
+  }
+  .ferramenta {
+    padding: 6px 4px;
+    gap: 2px;
+  }
+}
+
+/* ---------- Até 640 px (150% de escala, janela não maximizada) ---------- */
+@media (min-width: 900px) and (max-height: 640px) {
+  :root {
+    --topbar: 46px;
+  }
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(170px, 42%);
+  }
+  .editor__palco {
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .palco__play {
+    width: 36px;
+    height: 36px;
+  }
+  .ferramenta__rotulo {
+    font-size: 10.5px;
+  }
+}
+
+/* Trecho na faixa de vídeo compacta: nome e selos cabem em 44 px. */
+@media (min-width: 900px) and (max-height: 780px) {
+  .clipe.clipe--trecho {
+    padding: 3px 5px;
+  }
+  .clipe--trecho .clipe__chip {
+    padding: 1px 6px;
+    font-size: 10.5px;
+  }
+  .clipe--trecho .clipe__selos .selo {
+    padding: 0 4px;
+    font-size: 9.5px;
+    line-height: 14px;
+  }
+}
+
+/* A barra da timeline começa abaixo da faixa do divisor: arrastar a
+   divisa nunca rouba o clique de um botão. */
+@media (min-width: 900px) {
+  .editor__timeline > .timeline__barra {
+    padding-top: 9px !important;
+  }
+}
+
+/* ---------- Barra lateral em tela baixa ----------
+   O menu, o armazenamento e o rodapé não cabiam em 520-700 px e o
+   cartão de armazenamento cobria "Gravar", "Editor" e "Marca". Agora a
+   barra rola inteira (nada fica por baixo de nada) e fica mais densa. */
+@media (min-width: 900px) {
+  .sidebar {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .sidebar__nav {
+    flex: 1 0 auto;
+    overflow: visible;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 780px) {
+  .sidebar__marca {
+    padding: var(--e3) var(--e4) var(--e2);
+  }
+  .sidebar__tagline {
+    display: none;
+  }
+  .sidebar .nav-item {
+    min-height: 38px;
+    padding-block: 6px;
+  }
+  .sidebar__rodape {
+    padding: var(--e2) var(--e3);
+    gap: 2px;
+  }
+  .sidebar__armazenamento {
+    padding: var(--e2) var(--e3);
+  }
+}
+
+@media (min-width: 900px) and (max-height: 640px) {
+  /* O armazenamento completo está em Configurações; aqui só atrapalhava. */
+  .sidebar__armazenamento {
+    display: none;
+  }
+}

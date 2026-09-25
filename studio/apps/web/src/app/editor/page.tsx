@@ -52,6 +52,7 @@ import { PedirAIa, type RespostaDaIa } from '../../components/editor/PedirAIa';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
 import { MarcaNoEditor } from '../../components/marca/MarcaNoEditor';
+import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { tempo } from '../../components/editor/funcoes';
 import {
   planos as apiPlanos,
@@ -134,6 +135,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [aviso, setAviso] = useState<string | null>(null);
   /** Picos do áudio do original (100/s): a forma de onda da faixa Áudio. */
   const [onda, setOnda] = useState<Uint8Array | null>(null);
+  // A grade do editor: o divisor arrastável grava nela a altura da timeline.
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const [transcricao, setTranscricao] = useState<Transcricao | null>(null);
   const [carregandoTranscricao, setCarregandoTranscricao] = useState(false);
@@ -858,7 +861,7 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" data-folha={folha ?? undefined}>
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined}>
         <RailDeFerramentas
           aba={aba}
           onTrocar={(nova) => {
@@ -1060,6 +1063,7 @@ function Editor({ projectId }: { projectId: string }) {
         )}
 
         <section className="editor__timeline" aria-label="Linha do tempo">
+          <DivisorDaTimeline editorRef={editorRef} />
           <Timeline
             plan={plano}
             posicaoMs={posicaoMs}

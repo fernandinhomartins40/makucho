@@ -73,19 +73,38 @@ import type { Icon } from '@phosphor-icons/react';
 
 type Faixa = 'video' | 'midia' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
 
-const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number }> = [
-  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64 },
-  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia, altura: 36 },
-  { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52 },
-  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40 },
-  { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40 },
-  { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36 },
-  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 56 },
-  { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36 },
-  { id: 'trilha', rotulo: 'Trilha', Icone: IconeTrilha, altura: 40 },
+// `compacta`: a altura em tela baixa (notebook com a barra do navegador
+// e a escala do Windows: 520 a 730 px úteis). Com as normais, só a faixa
+// de vídeo cabia; com estas, três a quatro faixas ficam à vista.
+const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number; compacta: number }> = [
+  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64, compacta: 52 },
+  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia, altura: 36, compacta: 28 },
+  { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52, compacta: 38 },
+  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40, compacta: 30 },
+  { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40, compacta: 30 },
+  { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36, compacta: 28 },
+  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 56, compacta: 42 },
+  { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36, compacta: 28 },
+  { id: 'trilha', rotulo: 'Trilha', Icone: IconeTrilha, altura: 40, compacta: 30 },
 ];
 
 const ALTURA_REGUA = 28;
+const ALTURA_REGUA_COMPACTA = 22;
+
+/** Tela baixa (mesma regra do CSS): faixas e régua mais baixas. */
+const TELA_BAIXA = '(min-width: 900px) and (max-height: 780px)';
+
+function useTelaBaixa(): boolean {
+  const [baixa, setBaixa] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(TELA_BAIXA);
+    const atualizar = () => setBaixa(mq.matches);
+    atualizar();
+    mq.addEventListener('change', atualizar);
+    return () => mq.removeEventListener('change', atualizar);
+  }, []);
+  return baixa;
+}
 
 interface Props {
   plan: EditPlanV1;
@@ -139,6 +158,7 @@ export function Timeline({
   onMostrarAtalhos,
 }: Props) {
   const [zoom, setZoom] = useState(1);
+  const telaBaixa = useTelaBaixa();
   const [arrastando, setArrastando] = useState<string | null>(null);
   const rolagemRef = useRef<HTMLDivElement>(null);
   const arrasteRef = useRef<Arraste | null>(null);
@@ -444,14 +464,16 @@ export function Timeline({
       >
         <div className="timeline__conteudo" style={{ width: `calc(var(--rotulo-da-faixa) + ${larguraPx + 40}px)` }}>
           {/* Régua presa no topo; o canto, preso nos dois. */}
-          <div className="timeline__linha timeline__linha--regua" style={{ height: ALTURA_REGUA }}>
+          <div className="timeline__linha timeline__linha--regua" style={{ height: telaBaixa ? ALTURA_REGUA_COMPACTA : ALTURA_REGUA }}>
             <div className="timeline__canto" />
             <div className="timeline__pista" style={{ width: larguraPx + 40 }}>
               <TimelineRuler duracaoMs={duracaoMs} zoom={zoom} onSeek={onSeek} />
             </div>
           </div>
 
-          {FAIXAS.map(({ id, rotulo, Icone, altura }) => (
+          {FAIXAS.map(({ id, rotulo, Icone, altura: normal, compacta }) => {
+            const altura = telaBaixa ? compacta : normal;
+            return (
             <div key={id} className={`timeline__linha timeline__linha--${id}`} style={{ height: altura }}>
               {/* Nome da faixa, preso à esquerda durante a rolagem. */}
               <div className="timeline__faixa" title={rotulo}>
@@ -765,7 +787,8 @@ export function Timeline({
                   ))}
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {/* Playhead. */}
           <div className="timeline__playhead" aria-hidden style={{ left: `calc(var(--rotulo-da-faixa) + ${msParaPx(posicaoMs, zoom)}px)` }} />
