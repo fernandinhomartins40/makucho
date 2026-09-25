@@ -53,12 +53,14 @@ import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
 import { MarcaNoEditor } from '../../components/marca/MarcaNoEditor';
 import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
+import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
+import { useExportacoes } from '../../lib/exportacao/tarefas';
+import type { OpcoesDeExportacao } from '../../lib/exportacao/opcoes';
 import { tempo } from '../../components/editor/funcoes';
 import {
   planos as apiPlanos,
   projetos as apiProjetos,
   ia as apiIa,
-  renders as apiRenders,
   transcricao as apiTranscricao,
   marca as apiMarca,
   assets as apiAssets,
@@ -66,7 +68,6 @@ import {
   type PerfilDeMarca,
   type Projeto,
   type ProjetoDetalhado,
-  type SituacaoDoRender,
   type Transcricao,
 } from '../../lib/api';
 import { useDados } from '../../lib/useDados';
@@ -144,8 +145,10 @@ function Editor({ projectId }: { projectId: string }) {
   const [analisando, setAnalisando] = useState(false);
   const [avisosDaIa, setAvisosDaIa] = useState<string[]>([]);
 
-  const [exportando, setExportando] = useState(false);
-  const [render, setRender] = useState<SituacaoDoRender | null>(null);
+  // Exportação no navegador (lib/exportacao): a janela e a tarefa deste projeto.
+  const [exportarAberto, setExportarAberto] = useState(false);
+  const tarefaDeExportacao = useExportacoes((s) => [...s.tarefas].reverse().find((t) => t.projectId === projectId));
+  const iniciarExportacao = useExportacoes((s) => s.iniciar);
 
   // Trechos desligados continuam na lista (a seção 13 exige poder
   // restaurar o que foi descartado). Ficam guardados por projeto: um
@@ -203,12 +206,6 @@ function Editor({ projectId }: { projectId: string }) {
       .then(setTranscricao)
       .catch(() => setTranscricao({ existe: false, segmentos: [] }))
       .finally(() => setCarregandoTranscricao(false));
-
-    // Quem pediu a exportação e fechou a aba encontra o arquivo ao voltar.
-    void apiRenders
-      .situacao(projectId)
-      .then((r) => r.existe && setRender(r))
-      .catch(() => undefined);
   }, [projectId]);
 
   const carregarProjeto = useCallback(async () => {
@@ -499,38 +496,25 @@ function Editor({ projectId }: { projectId: string }) {
   }, [analisando, projectId, carregarPlano, carregarProjeto]);
 
   // ---------- Exportar ----------
-  const exportar = useCallback(async () => {
-    if (exportando) return;
-    setExportando(true);
-    setErro(null);
-    try {
-      await apiRenders.exportar(projectId, [...desligados]);
-      setRender({ existe: true, estado: 'na_fila' });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : 'não foi possível exportar.');
-      setExportando(false);
-    }
-  }, [projectId, exportando, desligados]);
-
-  useEffect(() => {
-    if (!render?.existe) return;
-    if (render.estado !== 'na_fila' && render.estado !== 'processando') {
-      setExportando(false);
-      return;
-    }
-    const id = setInterval(() => {
-      void apiRenders.situacao(projectId).then(setRender).catch(() => undefined);
-    }, 5000);
-    return () => clearInterval(id);
-  }, [projectId, render?.existe, render?.estado]);
-
-  // Um ajuste depois da exportação deixa o arquivo pronto desatualizado.
-  const planoExportado = useRef<EditPlanV1 | null>(null);
-  useEffect(() => {
-    if (render?.estado === 'pronto' && !planoExportado.current) planoExportado.current = plano;
-  }, [render?.estado, plano]);
-  const exportacaoDesatualizada =
-    render?.estado === 'pronto' && planoExportado.current !== null && planoExportado.current !== plano;
+  // No navegador, não na VPS: o pedido leva o plano, a transcrição (para
+  // as legendas e para a trilha abaixar na fala) e onde estão os arquivos.
+  const exportar = useCallback(
+    (opcoes: OpcoesDeExportacao) => {
+      if (!plano) return;
+      iniciarExportacao(projectId, {
+        titulo: titulo || projeto?.title || 'Vídeo',
+        plano,
+        desligados: [...desligados],
+        palavras: (transcricao?.segmentos ?? []).flatMap((s) => s.palavras).map((p) => ({ id: p.id, startMs: p.startMs, endMs: p.endMs, word: p.texto })),
+        marca: marcaDoVideo,
+        opcoes,
+        urlDoOriginal: `/api/projects/${projectId}/original`,
+        urlDoProxy: urlDoVideo(projectId),
+        urlDoAsset: apiAssets.url,
+      });
+    },
+    [plano, projectId, titulo, projeto?.title, desligados, transcricao, marcaDoVideo, iniciarExportacao],
+  );
 
   const alternarTrecho = useCallback((clipId: string) => {
     setDesligados((atual) => {
@@ -763,37 +747,19 @@ function Editor({ projectId }: { projectId: string }) {
             <span className="so-largo">Pré-visualizar</span>
           </button>
 
-          {render?.estado === 'pronto' && !exportacaoDesatualizada ? (
-            <a className="botao" href={apiRenders.urlDeDownload(projectId)} download>
-              <IconeExportar size={16} />
-              <span className="so-largo">Baixar vídeo</span>
-              <span className="so-celular">Baixar</span>
-              {render.tamanhoBytes ? (
-                <span className="so-largo" style={{ opacity: 0.75, fontSize: 12 }}>{(render.tamanhoBytes / 1024 / 1024).toFixed(1)} MB</span>
-              ) : null}
-            </a>
-          ) : (
-            <button
-              type="button"
-              className="botao"
-              disabled={exportando || render?.estado === 'na_fila' || render?.estado === 'processando'}
-              onClick={() => void exportar()}
-            >
-              <IconeExportar size={16} />
-              <span className="so-largo">
-                {render?.estado === 'processando'
-                  ? 'Exportando…'
-                  : render?.estado === 'na_fila'
-                    ? 'Na fila…'
-                    : exportacaoDesatualizada
-                      ? 'Exportar de novo'
-                      : 'Exportar vídeo'}
-              </span>
-              <span className="so-celular">
-                {render?.estado === 'processando' || render?.estado === 'na_fila' ? 'Gerando' : 'Exportar'}
-              </span>
-            </button>
-          )}
+          <button type="button" className="botao" onClick={() => setExportarAberto(true)}>
+            <IconeExportar size={16} />
+            <span className="so-largo">
+              {tarefaDeExportacao?.estado === 'rodando'
+                ? `Exportando… ${Math.round(tarefaDeExportacao.progresso.fracao * 100)}%`
+                : tarefaDeExportacao?.estado === 'pronta'
+                  ? 'Vídeo pronto'
+                  : 'Exportar vídeo'}
+            </span>
+            <span className="so-celular">
+              {tarefaDeExportacao?.estado === 'rodando' ? `${Math.round(tarefaDeExportacao.progresso.fracao * 100)}%` : 'Exportar'}
+            </span>
+          </button>
         </>
       )}
     </header>
@@ -826,23 +792,16 @@ function Editor({ projectId }: { projectId: string }) {
     <>
       {cabecalho}
 
-      {render?.estado === 'falhou' && (
-        <div role="alert" className="aviso aviso--erro" style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}>
-          <IconeAviso size={16} />
-          <span>{render.erro ?? 'A exportação falhou.'} Você pode tentar de novo.</span>
-        </div>
-      )}
-
-      {(render?.estado === 'na_fila' || render?.estado === 'processando') && (
-        <div role="status" className="aviso aviso--info" style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}>
-          <IconeSalvando size={16} />
-          <span className="so-largo">
-            Gerando o vídeo final. Leva alguns minutos — pode continuar editando ou fechar a aba; o
-            arquivo fica disponível aqui.
-          </span>
-          {/* No celular, uma linha: o espaço vertical é do preview. */}
-          <span className="so-celular">Gerando o vídeo final… pode continuar editando.</span>
-        </div>
+      {plano && (
+        <DialogoDeExportacao
+          aberto={exportarAberto}
+          aoFechar={() => setExportarAberto(false)}
+          projectId={projectId}
+          titulo={titulo || projeto?.title || 'video'}
+          plano={plano}
+          desligados={desligados}
+          aoExportar={exportar}
+        />
       )}
 
       {erro && (

@@ -26,6 +26,7 @@ import { Sidebar } from './Sidebar';
 import { BarraInferior } from './BarraInferior';
 import { BannerDeInstalacao } from '../pwa/GuiaDeInstalacao';
 import { aoExpirarSessao } from '../../lib/api';
+import { ExportacoesEmAndamento } from '../exportacao/ExportacoesEmAndamento';
 
 /** Telas de foco: ocupam a largura toda, sem sidebar. */
 const TELAS_DE_FOCO = ['/editor'];
@@ -74,7 +75,12 @@ export function Moldura({ children }: { children: React.ReactNode }) {
   const foco = TELAS_DE_FOCO.some((rota) => caminho.startsWith(rota));
 
   if (foco) {
-    return <div className="principal principal--foco">{children}</div>;
+    return (
+      <>
+        <div className="principal principal--foco">{children}</div>
+        <ExportacoesEmAndamento />
+      </>
+    );
   }
 
   return (
@@ -83,6 +89,8 @@ export function Moldura({ children }: { children: React.ReactNode }) {
       <div className="principal">{children}</div>
       <BarraInferior />
       <BannerDeInstalacao />
+      {/* A exportação roda no navegador: o progresso acompanha em qualquer página. */}
+      <ExportacoesEmAndamento />
     </div>
   );
 }

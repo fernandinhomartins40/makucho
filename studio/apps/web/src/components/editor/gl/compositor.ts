@@ -23,8 +23,30 @@ import { INDICE_DO_EFEITO, SHADER_DE_EFEITO } from './efeitosGlsl';
 
 export type Enquadramento = 'ajustar' | 'preencher' | 'desfoque';
 
+/**
+ * Um quadro que não vem de um <video> tocando: o quadro decodificado da
+ * exportação (lib/exportacao). Quem o preenche aumenta a `versao` a cada
+ * imagem nova -- é por ela que o compositor sabe que precisa subir a
+ * textura de novo.
+ */
+export class QuadroExterno {
+  imagem: TexImageSource | null = null;
+  largura = 0;
+  altura = 0;
+  versao = 0;
+
+  atualizar(imagem: TexImageSource, largura: number, altura: number): void {
+    this.imagem = imagem;
+    this.largura = largura;
+    this.altura = altura;
+    this.versao += 1;
+  }
+}
+
+type FonteDeVideo = HTMLVideoElement | QuadroExterno;
+
 export interface CamadaDoQuadro {
-  fonte: HTMLVideoElement | null;
+  fonte: FonteDeVideo | null;
   /** Zoom do trecho (punch_in, zoom_lento), sobre o quadro já montado. */
   zoom: number;
   /** Tabela de cor do trecho (`tabelaDeCor`), com a chave dela. */
@@ -47,7 +69,7 @@ export interface EfeitoNoQuadro {
 
 /** Uma camada de mídia (B-roll, PiP) no quadro, em pixels do canvas. */
 export interface MidiaNoQuadro {
-  fonte: HTMLImageElement | HTMLVideoElement;
+  fonte: HTMLImageElement | HTMLVideoElement | QuadroExterno;
   /** Canto superior esquerdo e tamanho (`caixaDaMidia` no tamanho do canvas). */
   caixa: { x: number; y: number; w: number; h: number; modo: 'cobrir' | 'conter' };
   /** Raio dos cantos, em pixels do canvas. */
@@ -188,10 +210,10 @@ export class Compositor {
   private efeito: Programa;
   private camada: Programa;
   /** Textura de cada imagem/vídeo sobreposto (a imagem sobe uma vez só). */
-  private texDaMidia = new Map<HTMLImageElement | HTMLVideoElement, { tex: WebGLTexture; t: number }>();
+  private texDaMidia = new Map<HTMLImageElement | HTMLVideoElement | QuadroExterno, { tex: WebGLTexture; t: number }>();
   private texVideo: WebGLTexture[] = [];
   /** A textura de cada player: guarda o último quadro bom dele. */
-  private texDoPlayer = new Map<HTMLVideoElement, { tex: WebGLTexture; w: number; h: number; t: number }>();
+  private texDoPlayer = new Map<FonteDeVideo, { tex: WebGLTexture; w: number; h: number; t: number }>();
   private fbos: Array<{ fb: WebGLFramebuffer; tex: WebGLTexture }> = [];
   private largura = 0;
   private altura = 0;
@@ -399,7 +421,7 @@ export class Compositor {
    * e for novo. Chamado também para o player que só espera o próximo
    * trecho: quando a transição começa, o quadro dele já está guardado.
    */
-  guardarQuadro(v: HTMLVideoElement) {
+  guardarQuadro(v: FonteDeVideo) {
     const gl = this.gl;
     let guardada = this.texDoPlayer.get(v);
     if (!guardada) {
@@ -407,6 +429,19 @@ export class Compositor {
       if (!livre) return undefined;
       guardada = { tex: livre, w: 0, h: 0, t: -1 };
       this.texDoPlayer.set(v, guardada);
+    }
+    if (v instanceof QuadroExterno) {
+      if (v.imagem && v.largura > 0 && v.versao !== guardada.t) {
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, guardada.tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v.imagem);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        guardada.w = v.largura;
+        guardada.h = v.altura;
+        guardada.t = v.versao;
+      }
+      return guardada;
     }
     if (v.readyState >= 2 && v.videoWidth > 0 && !v.seeking && (v.currentTime !== guardada.t || !v.paused)) {
       gl.activeTexture(gl.TEXTURE0);
@@ -479,9 +514,10 @@ export class Compositor {
     gl.uniform1i(p.uniforms.uM!, 0);
     for (const m of midias) {
       const f = m.fonte;
-      const largura = f instanceof HTMLVideoElement ? f.videoWidth : f.naturalWidth;
-      const altura = f instanceof HTMLVideoElement ? f.videoHeight : f.naturalHeight;
-      const pronta = f instanceof HTMLVideoElement ? f.readyState >= 2 : f.complete;
+      const externo = f instanceof QuadroExterno;
+      const largura = externo ? f.largura : f instanceof HTMLVideoElement ? f.videoWidth : f.naturalWidth;
+      const altura = externo ? f.altura : f instanceof HTMLVideoElement ? f.videoHeight : f.naturalHeight;
+      const pronta = externo ? Boolean(f.imagem) : f instanceof HTMLVideoElement ? f.readyState >= 2 : f.complete;
       if (!largura || !altura) continue;
       let g = this.texDaMidia.get(f);
       if (!g) {
@@ -495,10 +531,10 @@ export class Compositor {
       }
       gl.bindTexture(gl.TEXTURE_2D, g.tex);
       // Imagem: sobe uma vez; vídeo: a cada quadro novo (buscando, fica o último).
-      const agora = f instanceof HTMLVideoElement ? f.currentTime : 0;
-      if (pronta && (g.t < 0 || (f instanceof HTMLVideoElement && !f.seeking && agora !== g.t))) {
+      const agora = externo ? f.versao : f instanceof HTMLVideoElement ? f.currentTime : 0;
+      if (pronta && (g.t < 0 || (externo && agora !== g.t) || (f instanceof HTMLVideoElement && !f.seeking && agora !== g.t))) {
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, externo ? f.imagem! : f);
         g.t = agora;
       }
       if (g.t < 0) continue;
@@ -517,7 +553,7 @@ export class Compositor {
   }
 
   /** Esquece a textura de uma mídia que saiu do plano. */
-  esquecerMidia(f: HTMLImageElement | HTMLVideoElement): void {
+  esquecerMidia(f: HTMLImageElement | HTMLVideoElement | QuadroExterno): void {
     const g = this.texDaMidia.get(f);
     if (g) this.gl.deleteTexture(g.tex);
     this.texDaMidia.delete(f);

@@ -158,36 +158,60 @@ export class MediaController {
     // O PROXY, nunca o original: o contexto mestre (secao 18) e
     // explicito de que o arquivo de 500 MB nao vira midia do editor.
     const arquivo = await this.media.arquivoDoProjeto(tenant, projectId, 'PROXY');
-    const intervalo = lerIntervalo(req.headers.range, arquivo.tamanho);
-
-    res.set({
-      'Content-Type': arquivo.mimeType,
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'private, max-age=3600',
-    });
-
-    // O player pede pedacos (Range) para pular de um trecho a outro.
-    // Responder 200 com o arquivo inteiro a um pedido de Range faz o
-    // Chrome desistir da busca e voltar ao zero -- era por isso que o
-    // preview nao conseguia saltar entre os cortes.
-    if (intervalo === 'invalido') {
-      res.status(416).set('Content-Range', `bytes */${arquivo.tamanho}`);
-      return undefined;
-    }
-
-    if (intervalo) {
-      res.status(206).set({
-        'Content-Range': `bytes ${intervalo.inicio}-${intervalo.fim}/${arquivo.tamanho}`,
-        'Content-Length': String(intervalo.fim - intervalo.inicio + 1),
-      });
-      return new StreamableFile(
-        createReadStream(arquivo.caminho, { start: intervalo.inicio, end: intervalo.fim }),
-      );
-    }
-
-    res.set('Content-Length', String(arquivo.tamanho));
-    return new StreamableFile(createReadStream(arquivo.caminho));
+    return servirComIntervalo(arquivo, req, res);
   }
+
+  /**
+   * O ORIGINAL, só para a exportação no navegador.
+   *
+   * A exportação roda no computador de quem edita (não na VPS), e
+   * exportar do proxy de 720p deixaria o vídeo final borrado. O editor
+   * continua tocando o proxy: esta rota só é lida do começo ao fim,
+   * quadro a quadro, quando alguém exporta.
+   */
+  @Get('projects/:id/original')
+  async original(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') projectId: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const arquivo = await this.media.arquivoDoProjeto(tenant, projectId, 'ORIGINAL');
+    return servirComIntervalo(arquivo, req, res);
+  }
+}
+
+/** Serve um arquivo aceitando Range (o player e o leitor da exportação pedem pedaços). */
+function servirComIntervalo(arquivo: { caminho: string; tamanho: number; mimeType: string }, req: Request, res: Response) {
+  const intervalo = lerIntervalo(req.headers.range, arquivo.tamanho);
+
+  res.set({
+    'Content-Type': arquivo.mimeType,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=3600',
+  });
+
+  // O player pede pedacos (Range) para pular de um trecho a outro.
+  // Responder 200 com o arquivo inteiro a um pedido de Range faz o
+  // Chrome desistir da busca e voltar ao zero -- era por isso que o
+  // preview nao conseguia saltar entre os cortes.
+  if (intervalo === 'invalido') {
+    res.status(416).set('Content-Range', `bytes */${arquivo.tamanho}`);
+    return undefined;
+  }
+
+  if (intervalo) {
+    res.status(206).set({
+      'Content-Range': `bytes ${intervalo.inicio}-${intervalo.fim}/${arquivo.tamanho}`,
+      'Content-Length': String(intervalo.fim - intervalo.inicio + 1),
+    });
+    return new StreamableFile(
+      createReadStream(arquivo.caminho, { start: intervalo.inicio, end: intervalo.fim }),
+    );
+  }
+
+  res.set('Content-Length', String(arquivo.tamanho));
+  return new StreamableFile(createReadStream(arquivo.caminho));
 }
 
 /**
