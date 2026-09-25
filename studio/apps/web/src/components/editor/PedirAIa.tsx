@@ -16,10 +16,10 @@ import { useState } from 'react';
 import { IconeIA } from '../icones';
 
 const EXEMPLOS = [
+  'Deixa os textos mais bonitos',
+  'Mais dinâmico, estilo TikTok',
   'Legenda estilo Hormozi, maior e no meio',
-  'Zoom só nos trechos mais fortes',
-  'Põe um título de abertura chamativo',
-  'Transição suave entre os cortes',
+  'Cor de cinema no vídeo todo',
   'Tira a música e os efeitos sonoros',
 ];
 
@@ -29,21 +29,27 @@ export interface RespostaDaIa {
   aplicadas: number;
 }
 
-export function PedirAIa({ onEnviar }: { onEnviar: (texto: string) => Promise<RespostaDaIa | null> }) {
+type Envio = (texto: string, anterior?: { pedido: string; resposta: string }) => Promise<RespostaDaIa | null>;
+
+export function PedirAIa({ onEnviar }: { onEnviar: Envio }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resposta, setResposta] = useState<RespostaDaIa | null>(null);
+  // A última troca vai junto do próximo pedido: é o que deixa responder
+  // "sim", "todos" ou "o primeiro" a uma pergunta da IA.
+  const [anterior, setAnterior] = useState<{ pedido: string; resposta: string } | null>(null);
 
   const enviar = async (pedido: string) => {
     const limpo = pedido.trim();
-    if (limpo.length < 3 || enviando) return;
+    if (limpo.length < 2 || enviando) return;
     setEnviando(true);
     setResposta(null);
     try {
-      const r = await onEnviar(limpo);
+      const r = await onEnviar(limpo, anterior ?? undefined);
       if (r) {
         setResposta(r);
-        if (r.aplicadas > 0) setTexto('');
+        setAnterior({ pedido: limpo.slice(0, 500), resposta: r.texto.slice(0, 600) });
+        setTexto('');
       }
     } finally {
       setEnviando(false);
@@ -68,11 +74,11 @@ export function PedirAIa({ onEnviar }: { onEnviar: (texto: string) => Promise<Re
           className="campo__entrada"
           value={texto}
           maxLength={500}
-          placeholder="Ex.: legenda amarela e zoom nas partes fortes"
+          placeholder={anterior ? 'Responda ou peça outra coisa…' : 'Ex.: deixa os textos mais chamativos'}
           onChange={(e) => setTexto(e.target.value)}
           disabled={enviando}
         />
-        <button type="submit" className="botao botao--pequeno" disabled={enviando || texto.trim().length < 3}>
+        <button type="submit" className="botao botao--pequeno" disabled={enviando || texto.trim().length < 2}>
           {enviando ? 'Fazendo…' : 'Aplicar'}
         </button>
       </form>

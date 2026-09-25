@@ -29,7 +29,7 @@ export class AcabamentoController {
   @Post('projects/:id/command')
   comandar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() body: unknown) {
     assertCanWrite(tenant);
-    const { texto } = pedidoDeComandoSchema.parse(body);
-    return this.acabamento.comandar(tenant, id, texto);
+    const { texto, contexto } = pedidoDeComandoSchema.parse(body);
+    return this.acabamento.comandar(tenant, id, texto, contexto);
   }
 }

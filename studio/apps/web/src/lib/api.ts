@@ -11,7 +11,7 @@
 //   - 401 tratado uma vez só.
 // ============================================================
 
-import type { PreferenciasDeVideo } from '@makucho/studio-contracts';
+import type { ContextoDoComando, PreferenciasDeVideo } from '@makucho/studio-contracts';
 
 export class ErroDaApi extends Error {
   constructor(
@@ -383,8 +383,8 @@ export const planos = {
   refazerAcabamento: (projectId: string) =>
     api<VersaoDoPlano>(`/projects/${projectId}/finishing`, { metodo: 'POST' }),
   /** Pedido em linguagem natural: a IA devolve operações da timeline. */
-  comando: (projectId: string, texto: string) =>
-    api<ResultadoDoComando>(`/projects/${projectId}/command`, { metodo: 'POST', corpo: { texto } }),
+  comando: (projectId: string, texto: string, contexto?: ContextoDoComando) =>
+    api<ResultadoDoComando>(`/projects/${projectId}/command`, { metodo: 'POST', corpo: { texto, ...(contexto ? { contexto } : {}) } }),
   atual: (projectId: string) =>
     api<VersaoDoPlano>(`/projects/${projectId}/edit-plans`),
   historico: (projectId: string) =>

@@ -18,13 +18,14 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   aplicarAcabamento,
-  aplicarOperacao,
-  catalogoDeEstilosParaIa,
+  aplicarComando,
+  catalogoDoStudioParaIa,
+  palavrasNaTimeline,
   parseComando,
   preferenciasDeVideoSchema,
   resumoDoPlanoParaIa,
 } from '@makucho/studio-contracts';
-import type { ContextoDoAcabamento, EditPlanV1 } from '@makucho/studio-contracts';
+import type { ContextoDoAcabamento, ContextoDoComando, EditPlanV1, IntervaloDeFala } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
@@ -35,9 +36,10 @@ import { PromptsService } from './prompts.service';
  * Teto da resposta do comando.
  *
  * Trinta operações cabem em ~900 tokens; um comando razoável usa
- * três ou quatro. O teto é o que impede um laço de gerar o máximo.
+ * três ou quatro (os atalhos `estilo_de_texto` e `aplicar_pacote`
+ * valem por dezenas). O teto é o que impede um laço de gerar o máximo.
  */
-const MAX_TOKENS_DO_COMANDO = 1200;
+const MAX_TOKENS_DO_COMANDO = 1500;
 
 @Injectable()
 export class AcabamentoService {
@@ -117,24 +119,30 @@ export class AcabamentoService {
    * pedido inteiro por uma operação ruim gastaria outra chamada para
    * obter as mesmas boas. O que ficou de fora volta na resposta.
    */
-  async comandar(tenant: TenantContext, projectId: string, pedido: string) {
+  async comandar(tenant: TenantContext, projectId: string, pedido: string, doEditor?: ContextoDoComando) {
     const atual = await this.planos.atual(tenant, projectId);
     const plano = atual.document;
-    const [contexto, falas] = await Promise.all([
+    const [contexto, falas, cores] = await Promise.all([
       this.contexto(tenant.workspaceId),
       this.falasDosTrechos(projectId, plano),
+      this.coresDaMarca(tenant.workspaceId),
     ]);
+    const pacotesSalvos = contexto.preferencias?.estilosSalvos ?? [];
 
     const { texto: instrucoes, versao } = this.prompts.obter('comandar_edicao');
-    // O catálogo de estilos vem do código, e não do arquivo do prompt:
-    // um estilo novo aparece para a IA sem ninguém editar texto. Como é
-    // o mesmo a cada chamada, o prefixo continua idêntico — e cacheável.
-    const sistema = `${instrucoes}\n\n## Estilos de legenda (styleId: descrição)\n${catalogoDeEstilosParaIa()}`;
+    // O catálogo (estilos, efeitos, filtros, sons, stickers...) vem do
+    // código, e não do arquivo do prompt: um item novo aparece para a IA
+    // sem ninguém editar texto. Como é o mesmo a cada chamada, o prefixo
+    // continua idêntico — e cacheável. Tudo o que varia vai no usuário.
+    const sistema = `${instrucoes}\n\n${catalogoDoStudioParaIa()}`;
 
     const usuario = [
       resumoDoPlanoParaIa(plano, falas, {
         logoAssetId: contexto.logoAssetId,
         musicaAssetId: contexto.musicaAssetId,
+        coresDaMarca: cores,
+        pacotesSalvos,
+        contexto: doEditor,
       }),
       '',
       `Pedido: ${pedido.trim()}`,
@@ -157,19 +165,13 @@ export class AcabamentoService {
       throw new BadRequestException('A IA não conseguiu interpretar o pedido. Tente dizer de outro jeito.');
     }
 
-    let novo: EditPlanV1 = plano;
-    const ignoradas = [...lido.ignoradas];
-    let aplicadas = 0;
-
-    for (const operacao of lido.operacoes) {
-      const r = aplicarOperacao(novo, operacao);
-      if (r.ok && r.plan) {
-        novo = r.plan;
-        aplicadas += 1;
-      } else {
-        ignoradas.push(`${operacao.op}: ${r.erro ?? 'não se aplica a este vídeo'}`);
-      }
-    }
+    // A fala na timeline só é buscada se um pacote vai pôr sons: é dela
+    // que os sons desviam, e nos outros pedidos seria consulta à toa.
+    const fala = lido.operacoes.some((o) => o.op === 'aplicar_pacote') ? await this.falaNaTimeline(projectId, plano) : [];
+    const resultado = aplicarComando(plano, lido.operacoes, { fala, pacotesSalvos });
+    const novo: EditPlanV1 = resultado.plan;
+    const ignoradas = [...lido.ignoradas, ...resultado.ignoradas];
+    const aplicadas = resultado.aplicadas;
 
     await this.ai.concluirAnalise(projectId, true);
 
@@ -181,6 +183,29 @@ export class AcabamentoService {
     // referencia do aproveitamento, e um comando nao pode passar por ele.
     const salvo = await this.planos.salvar(tenant, projectId, novo, 'ai-comando');
     return { aplicadas, resposta: lido.resposta, ignoradas, plano: salvo, custoCentavos: resposta.custoCentavos };
+  }
+
+  /** As cores do Kit de marca ativo (primária, destaque...). */
+  private async coresDaMarca(workspaceId: string): Promise<Record<string, string>> {
+    const perfil = await this.prisma.brandProfile.findFirst({
+      where: { workspaceId, isActive: true },
+      orderBy: { version: 'desc' },
+      select: { colors: true },
+    });
+    const cores = perfil?.colors;
+    if (!cores || typeof cores !== 'object' || Array.isArray(cores)) return {};
+    return Object.fromEntries(
+      Object.entries(cores as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string' && /^#[0-9a-fA-F]{6}$/.test(e[1])),
+    );
+  }
+
+  /** As palavras faladas, no tempo da timeline (para os sons desviarem). */
+  private async falaNaTimeline(projectId: string, plano: EditPlanV1): Promise<IntervaloDeFala[]> {
+    const palavras = await this.prisma.transcriptWord.findMany({
+      where: { segment: { transcription: { projectId } } },
+      select: { startMs: true, endMs: true },
+    });
+    return palavrasNaTimeline(plano, palavras);
   }
 
   /**

@@ -21,10 +21,21 @@
 // ============================================================
 
 import { z } from 'zod';
-import type { EditPlanV1 } from './edit-plan';
-import { PRESETS_DE_LEGENDA } from './estilos-de-legenda';
-import { timelineOperationSchema } from './timeline';
+import type { EditPlanV1, EstiloDoTexto } from './edit-plan';
+import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA } from './estilos-de-legenda';
+import { aplicarOperacao, timelineOperationSchema } from './timeline';
 import type { TimelineOperation } from './timeline';
+import { ANIMACOES_DURANTE, ENTRADAS_DE_TEXTO, PRESETS_DE_TEXTO, SAIDAS_DE_TEXTO, TEXTOS_DE_TELA } from './textos-de-tela';
+import { PACOTES_DE_ESTILO, operacoesDoPacote } from './pacotes';
+import type { PacoteSalvo } from './pacotes';
+import { STICKERS, definicaoDoSticker } from './stickers';
+import { EFEITOS_DE_TELA } from './efeitos-de-tela';
+import { APARENCIAS } from './cor';
+import { SONS_EMBUTIDOS } from './sons';
+import { LAYOUTS_DE_MIDIA } from './midias';
+import { TRANSICOES_DO_CATALOGO } from './transicoes';
+import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA } from './animacao-da-midia';
+import type { IntervaloDeFala } from './protecao-da-fala';
 
 /**
  * Operacoes que o comando pode pedir.
@@ -55,11 +66,91 @@ export const OPERACOES_DO_COMANDO = [
   'remover_overlay',
   'adicionar_efeito_sonoro',
   'remover_efeito_sonoro',
+  // Cor, efeitos de tela, stickers e legendas escritas à mão: tudo o que
+  // a pessoa faz por clique, a IA pode fazer por pedido.
+  'definir_cor',
+  'cor_em_todos',
+  'adicionar_efeito_de_tela',
+  'editar_efeito_de_tela',
+  'remover_efeito_de_tela',
+  'adicionar_midia',
+  'editar_midia',
+  'remover_midia',
+  'adicionar_legenda',
+  'editar_legenda_manual',
+  'remover_legenda_manual',
 ] as const;
+
+// ---------- Atalhos (macros) ----------
+//
+// Operações que o SERVIDOR expande em várias da timeline. Existem por
+// economia e por qualidade: em vez de a IA escrever um estilo inteiro
+// (20 campos, fácil de errar) para cada texto, ela diz "estilo pronto X
+// nos textos" e o código aplica exatamente o que o botão aplicaria.
+
+/** Um estilo pronto de texto (PRESETS_DE_TEXTO) num texto, num tipo ou em todos. */
+export const macroEstiloDeTextoSchema = z
+  .object({
+    op: z.literal('estilo_de_texto'),
+    /** Id de um elemento, um componente (HookTitle, CTA...) ou "todos". */
+    alvo: z.string().min(1).max(64),
+    preset: z.string().min(1).max(40),
+    /** Por cima do estilo pronto (ex.: a cor da marca no fundo). */
+    ajustes: z
+      .object({
+        color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        bgColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        outlineColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+        fontId: z.string().max(40).optional(),
+        sizeScale: z.number().min(0.4).max(3).optional(),
+        uppercase: z.boolean().optional(),
+        entrada: z.enum(ENTRADAS_DE_TEXTO).optional(),
+        saida: z.enum(SAIDAS_DE_TEXTO).optional(),
+        durante: z.enum(ANIMACOES_DURANTE).optional(),
+        atras: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+/** Um pacote de estilo inteiro (legenda, transições, zoom, cor, efeitos, sons). */
+export const macroAplicarPacoteSchema = z
+  .object({
+    op: z.literal('aplicar_pacote'),
+    id: z.string().min(1).max(64),
+  })
+  .strict();
+
+export const macroDoComandoSchema = z.discriminatedUnion('op', [macroEstiloDeTextoSchema, macroAplicarPacoteSchema]);
+export type MacroDoComando = z.infer<typeof macroDoComandoSchema>;
+export type OperacaoDoComando = TimelineOperation | MacroDoComando;
+
+const ehMacro = (o: OperacaoDoComando): o is MacroDoComando => o.op === 'estilo_de_texto' || o.op === 'aplicar_pacote';
+
+/** O que a pessoa está vendo no editor: dá sentido a "isso", "aqui", "agora". */
+export const contextoDoComandoSchema = z
+  .object({
+    selecionado: z
+      .object({ tipo: z.string().max(20), id: z.string().max(64) })
+      .strict()
+      .optional(),
+    cursorMs: z.number().int().min(0).max(3_600_000).optional(),
+    /** A troca anterior: permite responder "sim", "todos", "o primeiro". */
+    anterior: z
+      .object({ pedido: z.string().max(500), resposta: z.string().max(600) })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export type ContextoDoComando = z.infer<typeof contextoDoComandoSchema>;
 
 export const pedidoDeComandoSchema = z
   .object({
-    texto: z.string().trim().min(3).max(500),
+    texto: z.string().trim().min(2).max(500),
+    contexto: contextoDoComandoSchema.optional(),
   })
   .strict();
 
@@ -68,13 +159,13 @@ export const respostaDoComandoSchema = z
     schemaVersion: z.literal('1.0'),
     // Desconhecidas aqui: cada uma e validada sozinha logo abaixo, e a
     // invalida sai sem derrubar as outras.
-    operations: z.array(z.unknown()).max(30),
-    reply: z.string().max(400),
+    operations: z.array(z.unknown()).max(40),
+    reply: z.string().max(600),
   })
   .strict();
 
 export type LeituraDoComando =
-  | { ok: true; operacoes: TimelineOperation[]; resposta: string; ignoradas: string[] }
+  | { ok: true; operacoes: OperacaoDoComando[]; resposta: string; ignoradas: string[] }
   | { ok: false; erro: string; recuperavel: boolean };
 
 /** Le a resposta do modelo, operacao por operacao. */
@@ -102,10 +193,15 @@ export function parseComando(bruto: string): LeituraDoComando {
   }
 
   const permitidas = new Set<string>(OPERACOES_DO_COMANDO);
-  const operacoes: TimelineOperation[] = [];
+  const operacoes: OperacaoDoComando[] = [];
   const ignoradas: string[] = [];
 
   for (const bruta of lido.data.operations) {
+    const macro = macroDoComandoSchema.safeParse(bruta);
+    if (macro.success) {
+      operacoes.push(macro.data);
+      continue;
+    }
     const op = timelineOperationSchema.safeParse(bruta);
     if (!op.success) {
       ignoradas.push(descrever(bruta, op.error.issues[0]?.message ?? 'formato inválido'));
@@ -113,6 +209,13 @@ export function parseComando(bruto: string): LeituraDoComando {
     }
     if (!permitidas.has(op.data.op)) {
       ignoradas.push(`${op.data.op}: não pode ser pedido por comando`);
+      continue;
+    }
+    // Imagem e vídeo do workspace entram pela Biblioteca: o resumo não
+    // lista os arquivos, e um id inventado quebraria o render. Por
+    // comando, só os stickers embutidos.
+    if (op.data.op === 'adicionar_midia' && (op.data.kind !== 'sticker' || !definicaoDoSticker(op.data.assetId))) {
+      ignoradas.push('adicionar_midia: por pedido só entram stickers; fotos e vídeos se adicionam pela Biblioteca');
       continue;
     }
     operacoes.push(op.data);
@@ -148,30 +251,81 @@ function somDoTrecho(a: EditPlanV1['clips'][number]['audio']): string {
   return partes.join(' ') || '-';
 }
 
+export interface RecursosDoResumo {
+  temLogo?: boolean;
+  temMusica?: boolean;
+  logoAssetId?: string | null;
+  musicaAssetId?: string | null;
+  /** Estilos que a pessoa salvou no Kit de marca. */
+  pacotesSalvos?: readonly PacoteSalvo[];
+  /** Cores da marca (primária, destaque...), para textos coerentes. */
+  coresDaMarca?: Readonly<Record<string, string>>;
+  contexto?: ContextoDoComando;
+}
+
+/** O estilo de um texto de tela em poucas letras. */
+function estiloCurto(e: EstiloDoTexto | undefined): string {
+  if (!e) return 'padrão';
+  const partes = [
+    e.preset ? `preset=${e.preset}` : '',
+    e.fontId ? `fonte=${e.fontId}` : '',
+    e.color ? `cor=${e.color}` : '',
+    e.bgShape && e.bgShape !== 'nenhum' ? `fundo=${e.bgShape}${e.bgColor ?? ''}` : '',
+    e.outlineWidth ? `contorno=${e.outlineWidth}` : '',
+    e.sizeScale && e.sizeScale !== 1 ? `tam=${e.sizeScale}` : '',
+    e.entrada && e.entrada !== 'nenhuma' ? `entra=${e.entrada}` : '',
+    e.durante && e.durante !== 'nenhuma' ? `durante=${e.durante}` : '',
+    e.saida && e.saida !== 'nenhuma' ? `sai=${e.saida}` : '',
+    e.atras ? 'atrás' : '',
+    e.x !== undefined || e.y !== undefined ? `pos=${(e.x ?? 0.5).toFixed(2)},${(e.y ?? 0.5).toFixed(2)}` : '',
+    e.keyframes?.length ? `keyframes=${e.keyframes.length}` : '',
+  ].filter(Boolean);
+  return partes.join(' ') || 'padrão';
+}
+
+const curto = (t: string, n: number) => {
+  const limpo = t.replace(/\s+/g, ' ').trim();
+  return limpo.length > n ? `${limpo.slice(0, n - 1)}…` : limpo;
+};
+
 export function resumoDoPlanoParaIa(
   plano: EditPlanV1,
   falas: Readonly<Record<string, string>> = {},
-  recursos: { temLogo?: boolean; temMusica?: boolean; logoAssetId?: string | null; musicaAssetId?: string | null } = {},
+  recursos: RecursosDoResumo = {},
 ): string {
   const seg = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
   const total = plano.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
   const transicaoAntes = new Map(plano.transitions.map((t) => [t.beforeClipIndex, t.type]));
   const c = plano.captions;
+  const extrasDaLegenda = [
+    c.fontId ? `fonte=${c.fontId}` : '',
+    c.color ? `cor=${c.color}` : '',
+    c.highlightColor ? `cor_destaque=${c.highlightColor}` : '',
+    c.blockEntrance ? `entrada=${c.blockEntrance}` : '',
+    c.y !== undefined ? `y=${c.y}` : '',
+    c.manual?.length ? `${c.manual.length} escritas à mão` : '',
+    c.hiddenWordIds?.length ? `${c.hiddenWordIds.length} palavras ocultas` : '',
+  ].filter(Boolean);
 
   const linhas = [
-    `Duração: ${seg(total)} | original ${seg(plano.sourceDurationMs)}`,
-    `Legenda: ${c.enabled ? 'ligada' : 'desligada'}, estilo=${c.styleId}, ${c.wordsPerBlock} palavras/bloco, posição=${c.position}, destaque=${c.highlightActiveWord ? 'sim' : 'não'}, tamanho=${c.sizeScale ?? 1}`,
+    `Duração: ${seg(total)} | original ${seg(plano.sourceDurationMs)} | formato ${plano.canvas.aspectRatio}`,
+    `Legenda (da fala): ${c.enabled ? 'ligada' : 'desligada'}, estilo=${c.styleId}, ${c.wordsPerBlock} palavras/bloco, posição=${c.position}, destaque=${c.highlightActiveWord ? 'sim' : 'não'}, tamanho=${c.sizeScale ?? 1}${extrasDaLegenda.length ? `, ${extrasDaLegenda.join(', ')}` : ''}`,
     `Vídeo: enquadramento=${plano.render.fit ?? 'ajustar'}, voz_limpa=${plano.render.voiceEnhance ? 'sim' : 'não'}`,
     `Música: ${plano.music ? `sim (${plano.music.gainDb}dB, assetId=${plano.music.assetId})` : 'não'}${recursos.musicaAssetId ? ` | trilha da marca: assetId=${recursos.musicaAssetId}` : ' | a marca não tem trilha'}`,
     `Logo da marca: ${recursos.logoAssetId ? `assetId=${recursos.logoAssetId}` : 'não cadastrado'}`,
-    '',
-    'Trechos (id|papel|início na timeline|duração|origem no bruto|efeito|transição antes|som|fala):',
   ];
+  if (recursos.coresDaMarca && Object.keys(recursos.coresDaMarca).length) {
+    linhas.push(`Cores da marca: ${Object.entries(recursos.coresDaMarca).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  }
+  if (recursos.pacotesSalvos?.length) {
+    linhas.push(`Estilos salvos da pessoa (aplicar_pacote): ${recursos.pacotesSalvos.map((p) => `${p.id}="${p.rotulo}"`).join(', ')}`);
+  }
 
+  linhas.push('', 'Trechos (id|papel|início|duração|origem no bruto|zoom|transição antes|cor|som|fala):');
   let inicio = 0;
   plano.clips.forEach((clip, i) => {
     const duracao = clip.sourceEndMs - clip.sourceStartMs;
-    const fala = (falas[clip.id] ?? '').replace(/\s+/g, ' ').trim();
+    const cor = clip.color ? `${clip.color.look ?? 'ajuste'}${clip.color.intensity !== undefined ? `:${clip.color.intensity}` : ''}` : '-';
     linhas.push(
       [
         clip.id,
@@ -181,22 +335,53 @@ export function resumoDoPlanoParaIa(
         `${clip.sourceStartMs}-${clip.sourceEndMs}ms`,
         clip.effect ?? '-',
         transicaoAntes.get(i) ?? '-',
+        cor,
         somDoTrecho(clip.audio),
-        `"${fala.length > 90 ? `${fala.slice(0, 89)}…` : fala}"`,
+        `"${curto(falas[clip.id] ?? '', 90)}"`,
       ].join('|'),
     );
     inicio += duracao;
   });
 
   if (plano.overlays.length) {
-    linhas.push('', 'Elementos (id|tipo|início|duração|texto):');
+    linhas.push('', 'Elementos na tela (id|tipo|início|duração|texto|estilo):');
     for (const o of plano.overlays) {
-      linhas.push([o.id, o.component, seg(o.timelineStartMs), seg(o.durationMs), o.text ?? o.variant ?? ''].join('|'));
+      const ehTexto = (TEXTOS_DE_TELA as readonly string[]).includes(o.component);
+      linhas.push(
+        [o.id, o.component, seg(o.timelineStartMs), seg(o.durationMs), `"${curto(o.text ?? o.variant ?? '', 60)}"`, ehTexto ? estiloCurto(o.style) : '-'].join('|'),
+      );
     }
+  } else {
+    linhas.push('', 'Elementos na tela: nenhum');
   }
 
+  if (plano.screenEffects?.length) {
+    linhas.push(
+      '',
+      `Efeitos de tela (id|tipo|início|duração|intensidade): ${plano.screenEffects.map((e) => `${e.id}|${e.type}|${seg(e.timelineStartMs)}|${seg(e.durationMs)}|${e.intensity ?? '-'}`).join('; ')}`,
+    );
+  }
+  if (plano.mediaLayers?.length) {
+    linhas.push(
+      '',
+      `Mídias e stickers (id|tipo:asset|layout|início|duração): ${plano.mediaLayers.map((m) => `${m.id}|${m.kind}:${m.assetId}|${m.layout}|${seg(m.timelineStartMs)}|${seg(m.durationMs)}`).join('; ')}`,
+    );
+  }
   if (plano.soundEffects.length) {
-    linhas.push('', `Efeitos sonoros: ${plano.soundEffects.map((s) => `${s.id}@${seg(s.timelineStartMs)}`).join(', ')}`);
+    linhas.push('', `Efeitos sonoros (id|som|início|dB): ${plano.soundEffects.map((s) => `${s.id}|${s.assetId}|${seg(s.timelineStartMs)}|${s.gainDb}`).join('; ')}`);
+  }
+  if (c.manual?.length) {
+    linhas.push('', `Legendas escritas à mão (id|início|texto): ${c.manual.slice(0, 12).map((m) => `${m.id}|${seg(m.timelineStartMs)}|"${curto(m.text, 40)}"`).join('; ')}`);
+  }
+
+  const ctx = recursos.contexto;
+  if (ctx?.selecionado || ctx?.cursorMs !== undefined) {
+    linhas.push('');
+    if (ctx.selecionado) linhas.push(`Selecionado na timeline: ${ctx.selecionado.tipo} ${ctx.selecionado.id} ("isso", "esse", "este" = ele)`);
+    if (ctx.cursorMs !== undefined) linhas.push(`Cursor em ${seg(ctx.cursorMs)} ("aqui", "agora", "neste ponto" = este tempo)`);
+  }
+  if (ctx?.anterior) {
+    linhas.push('', `Conversa anterior: pedido "${curto(ctx.anterior.pedido, 200)}" -> você respondeu "${curto(ctx.anterior.resposta, 300)}"`);
   }
 
   return linhas.join('\n');
@@ -205,4 +390,132 @@ export function resumoDoPlanoParaIa(
 /** Os estilos de legenda, em uma linha cada, para o prompt. */
 export function catalogoDeEstilosParaIa(): string {
   return PRESETS_DE_LEGENDA.map((p) => `${p.id}: ${p.descricao}`).join('\n');
+}
+
+/**
+ * Tudo o que o Studio oferece, para o prompt de sistema.
+ *
+ * Gerado do código: um efeito, estilo ou sticker novo aparece para a IA
+ * sem ninguém editar texto. É igual em toda chamada, então o prefixo do
+ * prompt continua idêntico -- e cacheável pelo provedor.
+ */
+export function catalogoDoStudioParaIa(): string {
+  const lista = (itens: readonly string[]) => itens.join('|');
+  return [
+    '## Estilos de legenda (trocar_estilo_legenda styleId: descrição)',
+    catalogoDeEstilosParaIa(),
+    '',
+    '## Estilos prontos de texto (estilo_de_texto preset: descrição)',
+    PRESETS_DE_TEXTO.map((p) => `${p.id}: ${p.descricao}`).join('\n'),
+    '',
+    '## Pacotes de estilo (aplicar_pacote id: descrição)',
+    PACOTES_DE_ESTILO.map((p) => `${p.id}: ${p.descricao}`).join('\n'),
+    '',
+    '## Transições (type: quando usar)',
+    TRANSICOES_DO_CATALOGO.map((t) => `${t.id}: ${t.quando}`).join('\n'),
+    '',
+    '## Efeitos de tela (adicionar_efeito_de_tela type: quando usar)',
+    EFEITOS_DE_TELA.map((e) => `${e.id}: ${e.quando}`).join('\n'),
+    '',
+    '## Filtros de cor (definir_cor/cor_em_todos color.look: descrição)',
+    APARENCIAS.map((a) => `${a.id}: ${a.descricao}`).join('\n'),
+    '',
+    '## Efeitos sonoros (adicionar_efeito_sonoro assetId: quando usar)',
+    SONS_EMBUTIDOS.map((s) => `${s.id}: ${s.quando}`).join('\n'),
+    '',
+    '## Stickers (adicionar_midia kind=sticker, assetId)',
+    STICKERS.map((s) => `${s.id}(${s.rotulo})`).join(', '),
+    '',
+    '## Vocabulário',
+    `fontes (fontId): ${lista(Object.keys(FONTES_DE_VIDEO))}`,
+    `entrada de texto: ${lista(ENTRADAS_DE_TEXTO)}`,
+    `saída de texto: ${lista(SAIDAS_DE_TEXTO)}`,
+    `animação durante o texto: ${lista(ANIMACOES_DURANTE)}`,
+    `layout de mídia: ${lista(LAYOUTS_DE_MIDIA)}`,
+    `animação de mídia: entrada ${lista(ENTRADAS_DE_MIDIA)}; durante ${lista(LOOPS_DE_MIDIA)}; saída ${lista(SAIDAS_DE_MIDIA)}`,
+  ].join('\n');
+}
+
+// ---------- Aplicação ----------
+
+export interface ResultadoDoComando {
+  plan: EditPlanV1;
+  aplicadas: number;
+  ignoradas: string[];
+}
+
+export interface OpcoesDoComando {
+  fala?: readonly IntervaloDeFala[];
+  pacotesSalvos?: readonly PacoteSalvo[];
+}
+
+/** As operações da timeline que um atalho vira, no plano como está. */
+export function operacoesDaMacro(plan: EditPlanV1, macro: MacroDoComando, opcoes: OpcoesDoComando = {}): { ops: TimelineOperation[]; erro?: string } {
+  if (macro.op === 'aplicar_pacote') {
+    const pacote = [...PACOTES_DE_ESTILO, ...(opcoes.pacotesSalvos ?? [])].find((p) => p.id === macro.id);
+    if (!pacote) return { ops: [], erro: `pacote "${macro.id}" não existe` };
+    return { ops: operacoesDoPacote(plan, pacote.ingredientes, opcoes.fala ?? []) };
+  }
+
+  const preset = PRESETS_DE_TEXTO.find((p) => p.id === macro.preset);
+  if (!preset) return { ops: [], erro: `estilo de texto "${macro.preset}" não existe` };
+  const ehTexto = (comp: string) => (TEXTOS_DE_TELA as readonly string[]).includes(comp);
+  const alvos = plan.overlays.filter((o) =>
+    macro.alvo === 'todos' ? ehTexto(o.component) : o.id === macro.alvo || (o.component === macro.alvo && ehTexto(o.component)),
+  );
+  if (!alvos.length) return { ops: [], erro: `nenhum texto em "${macro.alvo}"` };
+  const estilo: EstiloDoTexto = { ...preset.estilo, ...(macro.ajustes ?? {}) };
+  return {
+    ops: alvos.map((o) => ({
+      op: 'editar_overlay' as const,
+      overlayId: o.id,
+      // O estilo pronto troca tudo, menos o lugar e o "atrás da pessoa",
+      // que é escolha de composição, não de estilo.
+      style: { ...estilo, ...(o.style?.atras && macro.ajustes?.atras === undefined ? { atras: true } : {}) },
+      replaceStyle: true,
+    })),
+  };
+}
+
+/**
+ * Aplica o que a IA pediu, em ordem, sobre o plano.
+ *
+ * Operação que não passa é pulada e as outras entram: recusar o pedido
+ * inteiro por uma operação ruim gastaria outra chamada para obter as
+ * mesmas boas. Um atalho conta como uma operação.
+ */
+export function aplicarComando(plan: EditPlanV1, operacoes: readonly OperacaoDoComando[], opcoes: OpcoesDoComando = {}): ResultadoDoComando {
+  let atual = plan;
+  let aplicadas = 0;
+  const ignoradas: string[] = [];
+
+  for (const operacao of operacoes) {
+    if (ehMacro(operacao)) {
+      const { ops, erro } = operacoesDaMacro(atual, operacao, opcoes);
+      if (erro) {
+        ignoradas.push(`${operacao.op}: ${erro}`);
+        continue;
+      }
+      let entrou = false;
+      for (const op of ops) {
+        const r = aplicarOperacao(atual, op);
+        if (r.ok && r.plan) {
+          atual = r.plan;
+          entrou = true;
+        }
+      }
+      if (entrou) aplicadas += 1;
+      else ignoradas.push(`${operacao.op}: não se aplica a este vídeo`);
+      continue;
+    }
+    const r = aplicarOperacao(atual, operacao);
+    if (r.ok && r.plan) {
+      atual = r.plan;
+      aplicadas += 1;
+    } else {
+      ignoradas.push(`${operacao.op}: ${r.erro ?? 'não se aplica a este vídeo'}`);
+    }
+  }
+
+  return { plan: atual, aplicadas, ignoradas };
 }

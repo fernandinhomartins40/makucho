@@ -403,10 +403,16 @@ function Editor({ projectId }: { projectId: string }) {
   }, [aviso]);
 
   const pedirAIa = useCallback(
-    async (texto: string): Promise<RespostaDaIa | null> => {
+    async (texto: string, anterior?: { pedido: string; resposta: string }): Promise<RespostaDaIa | null> => {
       setErro(null);
       try {
-        const r = await apiPlanos.comando(projectId, texto);
+        // O que a pessoa está vendo: dá sentido a "isso", "aqui" e às
+        // respostas curtas ("sim", "todos") da conversa.
+        const r = await apiPlanos.comando(projectId, texto, {
+          ...(itemSelecionado ? { selecionado: { tipo: itemSelecionado.tipo, id: itemSelecionado.id } } : {}),
+          cursorMs: Math.max(0, Math.round(posicaoMs)),
+          ...(anterior ? { anterior } : {}),
+        });
         if (r.aplicadas > 0) receberPlano(r.plano.document as EditPlanV1);
         return { texto: r.resposta, ignoradas: r.ignoradas, aplicadas: r.aplicadas };
       } catch (e) {
@@ -414,7 +420,7 @@ function Editor({ projectId }: { projectId: string }) {
         return null;
       }
     },
-    [projectId, receberPlano],
+    [projectId, receberPlano, itemSelecionado, posicaoMs],
   );
 
   // Desfazer e refazer SALVAM a versão: antes só mudavam a tela, e a
