@@ -580,8 +580,13 @@ function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDe
   const brilho = e.brilho > 0 ? `{\\blur${e.brilho}}` : '';
   const eventos: string[] = [];
 
+  // Entrada de cada bloco (além da animação do estilo): vai nos eventos
+  // que começam junto com o bloco.
+  const entradaDoBloco = entradaDoBlocoDeLegenda(plano, e, animacao);
   for (const bloco of blocos) {
     const palavras = bloco.palavras.map((p) => ({ ...p, texto: escaparAss(p.texto) }));
+    const primeiro = eventos.length;
+    try {
 
     if (animacao === 'nenhuma') {
       eventos.push(dialogo(0, bloco.inicioMs, bloco.fimMs, 'Makucho', brilho + palavras.map((p) => p.texto).join(' ')));
@@ -649,9 +654,47 @@ function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDe
         .join(' ');
       eventos.push(dialogo(0, inicio, fim, 'Makucho', brilho + texto));
     });
+    } finally {
+      if (entradaDoBloco) {
+        for (let k = primeiro; k < eventos.length; k += 1) {
+          if (eventos[k]!.includes(`,${tempoAss(bloco.inicioMs)},`)) eventos[k] = comTagNoComeco(eventos[k]!, entradaDoBloco);
+        }
+      }
+    }
   }
 
   return eventos;
+}
+
+/** As tags da entrada de cada bloco (`captions.blockEntrance`). */
+function entradaDoBlocoDeLegenda(plano: EditPlanV1, e: EstiloResolvido, animacao: string): string {
+  switch (plano.captions.blockEntrance) {
+    case 'surgir':
+      return '{\\fad(150,0)}';
+    case 'pop':
+      return '{\\fscx80\\fscy80\\t(0,120,\\fscx100\\fscy100)}';
+    case 'zoom':
+      return '{\\fad(100,0)\\fscx125\\fscy125\\t(0,160,\\fscx100\\fscy100)}';
+    case 'desfocar':
+      return `{\\fad(120,0)\\blur10\\t(0,200,\\blur${e.brilho})}`;
+    case 'subir': {
+      // O estilo "subir" já sobe; duas subidas brigariam.
+      if (animacao === 'subir') return '';
+      const { x, y } = ancora(plano, e);
+      return `{\\fad(160,0)\\move(${x},${y + 42},${x},${y},0,200)}`;
+    }
+    default:
+      return '';
+  }
+}
+
+/** Põe `tag` antes do texto de uma linha `Dialogue` (depois da 8ª vírgula: o Format tem 9 campos). */
+function comTagNoComeco(evento: string, tag: string): string {
+  let virgulas = 0;
+  for (let i = 0; i < evento.length; i += 1) {
+    if (evento[i] === ',' && ++virgulas === 8) return evento.slice(0, i + 1) + tag + evento.slice(i + 1);
+  }
+  return evento;
 }
 
 // ---------- Textos de tela (overlays) ----------

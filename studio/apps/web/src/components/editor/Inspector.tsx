@@ -90,6 +90,9 @@ interface Props {
   recursos?: RecursosDaMarca;
   onRefazerAcabamento?: () => void;
   refazendoAcabamento?: boolean;
+  /** Onde está o cursor da timeline (keyframes do texto). */
+  posicaoMs?: number;
+  onSeek?: (ms: number) => void;
 }
 
 export function Inspector({
@@ -104,6 +107,8 @@ export function Inspector({
   item,
   onFecharItem,
   onSelecionarItem,
+  posicaoMs = 0,
+  onSeek,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   const clipe = plan.clips.find((c) => c.id === clipId);
@@ -126,6 +131,8 @@ export function Inspector({
             onOperacoes={onOperacoes}
             onFechar={() => onFecharItem?.()}
             marca={marca}
+            posicaoMs={posicaoMs}
+            onSeek={onSeek}
           />
         ) : clipe ? (
           <PropriedadesDoTrecho plan={plan} clipe={clipe} onOperacao={onOperacao} onSelecionarItem={onSelecionarItem} />
@@ -398,6 +405,27 @@ function AbaDeLegendas({
         ligada={c.highlightActiveWord}
         onTrocar={(v) => onOperacao({ op: 'configurar_legenda', highlightActiveWord: v })}
       />
+
+      <div className="campo" style={{ marginTop: 'var(--e3)', marginBottom: 0 }}>
+        <label className="campo__rotulo" htmlFor="entrada-do-bloco">
+          Entrada de cada bloco
+        </label>
+        <select
+          id="entrada-do-bloco"
+          className="campo__selecao"
+          value={c.blockEntrance ?? 'nenhuma'}
+          onChange={(e) =>
+            onOperacao({ op: 'configurar_legenda', blockEntrance: e.target.value === 'nenhuma' ? null : (e.target.value as 'pop') })
+          }
+        >
+          <option value="nenhuma">Sem animação</option>
+          <option value="surgir">Surgir</option>
+          <option value="pop">Pop</option>
+          <option value="subir">Subir</option>
+          <option value="zoom">Zoom</option>
+          <option value="desfocar">Desfocar</option>
+        </select>
+      </div>
 
       <p className="campo__ajuda" style={{ marginTop: 'var(--e3)' }}>
         Clique numa legenda na linha do tempo para reescrever ou excluir, ou use &quot;+ Legenda&quot; para incluir uma.

@@ -632,6 +632,7 @@ export function Timeline({
                             : undefined
                         }
                         dica={(TEXTOS_DE_TELA as readonly string[]).includes(o.component) ? 'Clique duas vezes para personalizar' : undefined}
+                        marcas={o.style?.keyframes?.map((k) => k.t)}
                         onSelecionar={() => tocarNoElemento(o)}
                       />
                     ))}
@@ -852,6 +853,7 @@ function ItemSimples({
   arrastavel,
   dica,
   linha,
+  marcas,
   onSelecionar,
   onIniciarArraste,
   onRedimensionar,
@@ -869,6 +871,8 @@ function ItemSimples({
   dica?: string;
   /** Faixa com duas linhas: 0 em cima, 1 embaixo. */
   linha?: 0 | 1;
+  /** Pontos de movimento (ms desde o começo do item): losangos no item. */
+  marcas?: readonly number[];
   onSelecionar: () => void;
   onIniciarArraste?: (e: React.PointerEvent) => void;
   /** Puxar a borda do começo ou do fim muda o tempo na tela. */
@@ -904,6 +908,9 @@ function ItemSimples({
         <span className="clipe__borda clipe__borda--inicio" aria-hidden onPointerDown={onRedimensionar('inicio')} onClick={(e) => e.stopPropagation()} />
       )}
       <span className="clipe__texto">{rotulo}</span>
+      {marcas?.map((m) => (
+        <span key={m} className="clipe__marca" aria-hidden style={{ left: msParaPx(m, zoom) }} title="Ponto de movimento" />
+      ))}
       {onRedimensionar && (
         <span className="clipe__borda clipe__borda--fim" aria-hidden onPointerDown={onRedimensionar('fim')} onClick={(e) => e.stopPropagation()} />
       )}

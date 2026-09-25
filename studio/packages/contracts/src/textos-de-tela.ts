@@ -16,7 +16,7 @@
 //     eventos separados: dois `\move` não cabem num evento só.
 // ============================================================
 
-import type { EditPlanV1, EstiloDoTexto } from './edit-plan';
+import type { EditPlanV1, EstiloDoTexto, KeyframeDoTexto } from './edit-plan';
 import { FONTES_DE_VIDEO, fonteDaFamilia } from './estilos-de-legenda';
 import type { FonteDeVideo, MarcaDoVideo } from './estilos-de-legenda';
 import { CARACTERES_MEDIDOS, METRICAS_DE_FONTES } from './metricas-de-fontes';
@@ -35,9 +35,14 @@ export const ENTRADAS_DE_TEXTO = [
   'subir',
   'descer',
   'digitar',
+  'desfocar',
+  'quique',
+  'letras',
 ] as const;
-export const SAIDAS_DE_TEXTO = ['nenhuma', 'sumir', 'encolher', 'zoom', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer'] as const;
-export const ANIMACOES_DURANTE = ['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer'] as const;
+export const SAIDAS_DE_TEXTO = ['nenhuma', 'sumir', 'encolher', 'zoom', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer', 'desfocar', 'letras'] as const;
+export const ANIMACOES_DURANTE = ['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer', 'piscar', 'batimento', 'onda', 'flutuar'] as const;
+export const CURVAS_DE_KEYFRAME = ['suave', 'linear', 'acelerar', 'frear'] as const;
+export type CurvaDeKeyframe = (typeof CURVAS_DE_KEYFRAME)[number];
 
 export type FormaDeFundo = (typeof FORMAS_DE_FUNDO)[number];
 export type EntradaDeTexto = (typeof ENTRADAS_DE_TEXTO)[number];
@@ -351,8 +356,18 @@ export function eventosDoTextoDeTela(
         return `\\an5\\move(${px + dx},${py + dy},${px},${py},0,${DURACAO_DA_ENTRADA - 60})\\org(${px},${py})${r.rotacao ? `\\frz${r.rotacao}` : ''}\\fad(160,0)`;
       }
       case 'digitar':
-        // O fundo entra suave; as letras, uma a uma (ver `digitado`).
+      case 'letras':
+        // O fundo entra suave; as letras, uma a uma (ver `porLetra`).
         return `${base(px, py)}${eTexto ? '' : '\\fad(150,0)'}`;
+      case 'desfocar':
+        return `${base(px, py)}\\fad(200,0)\\blur18\\t(0,${DURACAO_DA_ENTRADA},\\blur0)`;
+      case 'quique':
+        // Cai de cima, passa do ponto e volta: três \\move seguidos não
+        // existem, então a queda é \\move e o quique é escala.
+        return (
+          `\\an5\\move(${px},${py - DESLOCAMENTO},${px},${py},0,220)\\org(${px},${py})${r.rotacao ? `\\frz${r.rotacao}` : ''}\\fad(120,0)` +
+          `\\t(220,300,\\fscx112\\fscy84)\\t(300,380,\\fscx96\\fscy106)\\t(380,460,\\fscx100\\fscy100)`
+        );
       default:
         return base(px, py);
     }
@@ -393,6 +408,28 @@ export function eventosDoTextoDeTela(
           passos.push(`\\t(${t + 300},${t + 320},\\frz${r.rotacao})`);
         }
         break;
+      case 'piscar':
+        // Some e volta rápido, de tempos em tempos.
+        for (let t = de; t + 240 <= ate && passos.length < limite; t += 1400) {
+          passos.push(`\\t(${t},${t + 60},\\alpha&HC0&)\\t(${t + 60},${t + 120},\\alpha&H00&)\\t(${t + 120},${t + 180},\\alpha&HC0&)\\t(${t + 180},${t + 240},\\alpha&H00&)`);
+        }
+        break;
+      case 'batimento':
+        // Duas batidas curtas e uma pausa, como um coração.
+        for (let t = de; t + 700 <= ate && passos.length < limite; t += 1100) {
+          passos.push(
+            `\\t(${t},${t + 120},\\fscx110\\fscy110)\\t(${t + 120},${t + 240},\\fscx100\\fscy100)` +
+              `\\t(${t + 300},${t + 420},\\fscx107\\fscy107)\\t(${t + 420},${t + 600},\\fscx100\\fscy100)`,
+          );
+        }
+        break;
+      case 'flutuar':
+        // Balanço lento e leve, como algo boiando.
+        for (let t = de; t + 2400 <= ate && passos.length < limite; t += 2400) {
+          passos.push(`\\t(${t},${t + 1200},\\frz${r.rotacao + 1.5}\\fscx103\\fscy103)\\t(${t + 1200},${t + 2400},\\frz${r.rotacao - 1.5}\\fscx100\\fscy100)`);
+        }
+        passos.push(`\\t(${ate - 1},${ate},\\frz${r.rotacao})`);
+        break;
       default:
         break;
     }
@@ -417,28 +454,216 @@ export function eventosDoTextoDeTela(
         const dy = r.saida === 'subir' ? -DESLOCAMENTO * 0.6 : r.saida === 'descer' ? DESLOCAMENTO * 0.6 : 0;
         return `\\an5\\move(${px},${py},${px + dx},${py + dy},0,${d})\\org(${px},${py})${r.rotacao ? `\\frz${r.rotacao}` : ''}\\fad(0,${d})`;
       }
+      case 'desfocar':
+        return `${base(px, py)}\\fad(0,${d})\\t(0,${d},\\blur18)`;
       default:
         return base(px, py);
     }
   };
 
-  /** Letra a letra: cada uma acende no seu tempo, sem mexer no layout. */
-  const digitado = (): string => {
+  /**
+   * Letra a letra: cada uma com as suas tags, sem mexer no layout (só
+   * \\alpha e \\fscy, que não mudam a largura da linha).
+   *   - digitar: acende no seu tempo;
+   *   - letras: sobe de 0 a 100% de altura, uma depois da outra;
+   *   - onda (durante): cada letra cresce e volta, em sequência;
+   *   - saída "letras": some uma a uma, a partir do fim da exibição.
+   */
+  const porLetra = (modo: 'digitar' | 'letras' | 'onda' | 'sair', duracao = 0): string => {
     const letras = [...linhas.join('\n')];
-    const passo = Math.max(25, Math.min(70, 800 / Math.max(1, letras.length)));
+    const n = Math.max(1, letras.filter((c) => c !== '\n').length);
+    const passo = Math.max(25, Math.min(70, 800 / n));
+    let i = -1;
     return letras
-      .map((c, i) => (c === '\n' ? '\\N' : `{\\alpha&HFF&\\t(${Math.round(80 + i * passo)},${Math.round(81 + i * passo)},\\alpha&H00&)}${escapar(c)}`))
+      .map((c) => {
+        if (c === '\n') return '\\N';
+        i += 1;
+        const a = Math.round(80 + i * passo);
+        if (modo === 'digitar') return `{\\alpha&HFF&\\t(${a},${a + 1},\\alpha&H00&)}${escapar(c)}`;
+        if (modo === 'letras') return `{\\alpha&HFF&\\fscy0\\t(${a},${a + 1},\\alpha&H00&)\\t(${a},${a + 180},\\fscy100)}${escapar(c)}`;
+        if (modo === 'sair') {
+          const s = Math.round(Math.max(0, duracao - 40 - (n - i) * Math.min(passo, duracao / n)));
+          return `{\\t(${s},${s + 1},\\alpha&HFF&)}${escapar(c)}`;
+        }
+        // onda: 600 ms por volta, cada letra 60 ms depois da anterior.
+        const ondas: string[] = [];
+        for (let t = DURACAO_DA_ENTRADA + 60 + i * 60; t + 300 <= duracao && ondas.length < 12; t += 1600) {
+          ondas.push(`\\t(${t},${t + 150},\\fscy125)\\t(${t + 150},${t + 300},\\fscy100)`);
+        }
+        return `{${ondas.join('')}}${escapar(c)}`;
+      })
       .join('');
   };
+
+  if (o.style?.keyframes?.length) return eventosComKeyframes(plano, o, inicio, fim, r, textoAss, doTexto, forma, marca);
 
   const eventos: string[] = [];
   if (r.fundo) {
     eventos.push(dialogo(5, inicio, fimDaExibicao, `{${entrada(xDoFundo, y, false)}${durante(false)}${doFundo}\\p1}${forma}{\\p0}`));
     if (temSaida) eventos.push(dialogo(5, fimDaExibicao, fim, `{${saida(xDoFundo, y)}${doFundo}\\p1}${forma}{\\p0}`));
   }
-  const corpo = r.entrada === 'digitar' ? digitado() : textoAss;
+  const corpo =
+    r.entrada === 'digitar' || r.entrada === 'letras'
+      ? porLetra(r.entrada)
+      : r.durante === 'onda'
+        ? porLetra('onda', fimDaExibicao - inicio)
+        : textoAss;
   eventos.push(dialogo(6, inicio, fimDaExibicao, `{${entrada(x, y, true)}${durante(true)}${doTexto}}${corpo}`));
-  if (temSaida) eventos.push(dialogo(6, fimDaExibicao, fim, `{${saida(x, y)}${doTexto}}${textoAss}`));
+  if (temSaida) eventos.push(dialogo(6, fimDaExibicao, fim, `{${saida(x, y)}${doTexto}}${r.saida === 'letras' ? porLetra('sair', fim - fimDaExibicao) : textoAss}`));
+  return eventos;
+}
+
+// ---------- Keyframes (animação livre) ----------
+
+/** O estado de um texto num instante: posição (0-1), escala, giro e opacidade. */
+export interface EstadoDoTexto {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+}
+
+const PROPRIEDADES = ['x', 'y', 'scale', 'rotation', 'opacity'] as const;
+
+function curva(ease: CurvaDeKeyframe | undefined, u: number): number {
+  switch (ease) {
+    case 'linear':
+      return u;
+    case 'acelerar':
+      return u * u;
+    case 'frear':
+      return 1 - (1 - u) * (1 - u);
+    default:
+      return u * u * (3 - 2 * u);
+  }
+}
+
+/**
+ * Onde o texto está `t` ms depois de começar. Cada propriedade anda entre
+ * os pontos que a definem, pela curva do ponto de onde sai; antes do
+ * primeiro e depois do último, fica parada; sem ponto, vale o estilo.
+ */
+export function estadoDoTexto(
+  o: Pick<EditPlanV1['overlays'][number], 'component' | 'style'>,
+  t: number,
+  marca?: MarcaDoVideo,
+): EstadoDoTexto {
+  const r = resolverEstiloDoTexto(o.component, o.style, marca);
+  const base: EstadoDoTexto = { x: r.x, y: r.y, scale: 1, rotation: r.rotacao, opacity: 1 };
+  const pontos = [...(o.style?.keyframes ?? [])].sort((a, b) => a.t - b.t);
+  const estado = { ...base };
+  for (const p of PROPRIEDADES) {
+    const com = pontos.filter((k) => k[p] !== undefined);
+    if (!com.length) continue;
+    const primeiro = com[0]!;
+    const ultimo = com.at(-1)!;
+    if (t <= primeiro.t) estado[p] = primeiro[p]!;
+    else if (t >= ultimo.t) estado[p] = ultimo[p]!;
+    else {
+      const i = com.findIndex((k) => k.t > t);
+      const a = com[i - 1]!;
+      const b = com[i]!;
+      const u = curva(a.ease, (t - a.t) / (b.t - a.t));
+      estado[p] = a[p]! + (b[p]! - a[p]!) * u;
+    }
+  }
+  return estado;
+}
+
+/**
+ * Os pontos com um novo (ou atualizado) em `t`, alinhado ao quadro. Um
+ * ponto novo nasce com o estado do texto naquele instante -- pôr um ponto
+ * não muda nada até a pessoa mexer.
+ */
+export function comKeyframe(
+  o: Pick<EditPlanV1['overlays'][number], 'component' | 'style'>,
+  t: number,
+  valores: Partial<Omit<KeyframeDoTexto, 't'>>,
+  marca?: MarcaDoVideo,
+): KeyframeDoTexto[] {
+  const quadro = Math.max(0, Math.round((t * 30) / 1000) * (1000 / 30));
+  const tq = Math.round(quadro);
+  const lista = [...(o.style?.keyframes ?? [])];
+  const i = lista.findIndex((k) => Math.abs(k.t - tq) <= 20);
+  const arred = (v: number, casas = 4) => Math.round(v * 10 ** casas) / 10 ** casas;
+  if (i >= 0) {
+    lista[i] = { ...lista[i]!, ...valores };
+  } else {
+    const e = estadoDoTexto(o, tq, marca);
+    lista.push({ t: tq, x: arred(e.x), y: arred(e.y), scale: arred(e.scale), rotation: arred(e.rotation, 2), opacity: arred(e.opacity, 3), ...valores });
+  }
+  return lista.sort((a, b) => a.t - b.t);
+}
+
+/** Os pontos sem o de `t` (±20 ms). */
+export function semKeyframe(o: Pick<EditPlanV1['overlays'][number], 'style'>, t: number): KeyframeDoTexto[] {
+  return (o.style?.keyframes ?? []).filter((k) => Math.abs(k.t - t) > 20);
+}
+
+/**
+ * O texto com keyframes: um evento por pedaço de até 80 ms entre os
+ * pontos, cada um com \\move e \\t lineares do estado do começo ao do
+ * fim -- a curva sai da soma dos pedaços. Onde nada muda, um evento só.
+ * Com pontos, entrada, saída e animação durante ficam desligadas: duas
+ * animações da mesma coisa brigariam.
+ */
+function eventosComKeyframes(
+  plano: EditPlanV1,
+  o: EditPlanV1['overlays'][number],
+  inicio: number,
+  fim: number,
+  r: TextoResolvido,
+  textoAss: string,
+  doTexto: string,
+  forma: string,
+  marca?: MarcaDoVideo,
+): string[] {
+  const { width, height } = plano.canvas;
+  const total = fim - inicio;
+  const cortes = [...new Set([0, total, ...(o.style?.keyframes ?? []).map((k) => k.t).filter((t) => t > 0 && t < total)])].sort((a, b) => a - b);
+  const pedacos: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < cortes.length; i += 1) {
+    const a = cortes[i]!;
+    const b = cortes[i + 1]!;
+    const ea = estadoDoTexto(o, a, marca);
+    const eb = estadoDoTexto(o, b, marca);
+    const muda = PROPRIEDADES.some((p) => Math.abs(ea[p] - eb[p]) > 1e-6);
+    const n = muda ? Math.max(1, Math.min(60, Math.ceil((b - a) / 80))) : 1;
+    for (let k = 0; k < n; k += 1) pedacos.push([a + ((b - a) * k) / n, a + ((b - a) * (k + 1)) / n]);
+  }
+  const eventos: string[] = [];
+  const xDoFundo = (e: EstadoDoTexto) => (r.fundo?.forma === 'faixa' ? Math.round(width / 2) : Math.round(e.x * width));
+  const opFundo = r.fundo?.opacidade ?? 1;
+  for (const [a, b] of pedacos) {
+    const ea = estadoDoTexto(o, a, marca);
+    const eb = estadoDoTexto(o, b, marca);
+    const d = Math.max(1, Math.round(b - a));
+    const pos = (xa: number, ya: number, xb: number, yb: number) =>
+      xa === xb && ya === yb ? `\\an5\\pos(${xa},${ya})\\org(${xa},${ya})` : `\\an5\\move(${xa},${ya},${xb},${yb},0,${d})\\org(${xa},${ya})`;
+    const escala = (e: EstadoDoTexto) => `\\fscx${Math.round(e.scale * 1000) / 10}\\fscy${Math.round(e.scale * 1000) / 10}\\frz${Math.round(e.rotation * 100) / 100}`;
+    const ya = Math.round(ea.y * height);
+    const yb = Math.round(eb.y * height);
+    if (r.fundo) {
+      const fundo = `\\bord0\\shad0\\c${cor(r.fundo.cor)}`;
+      eventos.push(
+        dialogo(
+          5,
+          inicio + a,
+          inicio + b,
+          `{${pos(xDoFundo(ea), ya, xDoFundo(eb), yb)}${fundo}${escala(ea)}\\1a${alfa(opFundo * ea.opacity)}\\t(0,${d},${escala(eb)}\\1a${alfa(opFundo * eb.opacity)})\\p1}${forma}{\\p0}`,
+        ),
+      );
+    }
+    eventos.push(
+      dialogo(
+        6,
+        inicio + a,
+        inicio + b,
+        `{${pos(Math.round(ea.x * width), ya, Math.round(eb.x * width), yb)}${doTexto}${escala(ea)}\\alpha${alfa(ea.opacity)}\\t(0,${d},${escala(eb)}\\alpha${alfa(eb.opacity)})}${textoAss}`,
+      ),
+    );
+  }
   return eventos;
 }
 

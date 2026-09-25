@@ -115,6 +115,19 @@ sigma, como no yuv420p). Paridade: 48 medidas dentro da tolerância
 - Novas animações de texto (flutter, flicker, onda por letra, quique,
   desfoque) e animação por bloco de legenda.
 
+**Estado: feito para os textos (imagens e stickers ganham keyframes nas
+fases 6 e 7, pelo `overlay` do FFmpeg).** `style.keyframes` com tempo,
+posição, tamanho, giro, opacidade e curva (suave, constante, acelerar,
+frear); `estadoDoTexto` interpola e o .ass vira pedaços de até 80 ms
+com `\move` e `\t` lineares -- a prévia (libass no navegador) e o
+render (libass no FFmpeg) desenham o mesmo arquivo. Aba Movimento com
+pontos, edição de cada ponto e movimentos prontos; na prévia, arrastar e
+redimensionar gravam o ponto no cursor; losangos no item da timeline.
+Animações novas: entradas desfocar, quicar e letra a letra; durante
+piscar, batimento, onda nas letras e flutuar; saídas desfocar e letra a
+letra. Legendas: entrada de cada bloco (surgir, pop, subir, zoom,
+desfocar).
+
 ## Fase 6 — Overlays e B-roll
 
 - Faixa de sobreposição: imagem ou vídeo com posição, tamanho,

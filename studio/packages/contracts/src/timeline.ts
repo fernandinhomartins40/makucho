@@ -222,6 +222,8 @@ export const configurarLegendaSchema = z.object({
   fontId: z.string().max(40).nullable().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   highlightColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  /** Como cada bloco entra; `null` tira. */
+  blockEntrance: z.enum(['nenhuma', 'surgir', 'pop', 'subir', 'zoom', 'desfocar']).nullable().optional(),
 });
 
 /** Exclui legendas: as palavras continuam na fala, somem da tela. */

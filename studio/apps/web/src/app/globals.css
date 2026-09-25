@@ -4503,6 +4503,42 @@ button {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* Ponto de movimento (keyframe) de um texto. */
+.clipe__marca {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  background: #fff;
+  border: 1.5px solid rgb(0 0 0 / 55%);
+  transform: translateY(-50%) rotate(45deg);
+  pointer-events: none;
+}
+
+.pontos-de-movimento {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ponto-de-movimento {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.ponto-de-movimento[aria-current='true'] {
+  border-color: var(--primary);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface-2));
+}
+
 .clipe__texto {
   overflow: hidden;
   white-space: nowrap;

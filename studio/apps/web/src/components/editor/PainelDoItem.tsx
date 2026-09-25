@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import type { EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
+import type { CurvaDeKeyframe, EditPlanV1, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
   ANIMACOES_DURANTE,
   CATEGORIAS_DE_EFEITO_DE_TELA,
@@ -22,6 +22,10 @@ import {
   PRESETS_DE_TEXTO,
   SAIDAS_DE_TEXTO,
   TEXTOS_DE_TELA,
+  CURVAS_DE_KEYFRAME,
+  comKeyframe,
+  estadoDoTexto,
+  semKeyframe,
   agendaDoPlano,
   definicaoDoEfeitoDeTela,
   resolverEstiloDoTexto,
@@ -42,6 +46,9 @@ interface Props {
   onOperacoes: (ops: TimelineOperation[]) => void;
   onFechar: () => void;
   marca?: MarcaDoVideo;
+  /** Cursor da timeline: onde os pontos de movimento são postos. */
+  posicaoMs?: number;
+  onSeek?: (ms: number) => void;
 }
 
 export { NOME_DA_TRANSICAO };
@@ -49,7 +56,7 @@ export { NOME_DA_TRANSICAO };
 const segundos = (ms: number) => (ms / 1000).toFixed(1).replace('.', ',');
 const paraMs = (texto: string) => Math.round(Number(texto.replace(',', '.')) * 1000);
 
-export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, marca }: Props) {
+export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, marca, posicaoMs = 0, onSeek }: Props) {
   return (
     <div className="painel-do-item">
       <div className="linha entre" style={{ marginBottom: 'var(--e3)' }}>
@@ -61,7 +68,16 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'legenda' && <Legenda item={item} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'corte' && <Corte plan={plan} clipId={item.clipId} onOperacao={onOperacao} />}
       {item.tipo === 'elemento' && (
-        <Elemento plan={plan} overlayId={item.id} abaPedida={item.aba} marca={marca} onOperacao={onOperacao} onFechar={onFechar} />
+        <Elemento
+          plan={plan}
+          overlayId={item.id}
+          abaPedida={item.aba}
+          marca={marca}
+          onOperacao={onOperacao}
+          onFechar={onFechar}
+          posicaoMs={posicaoMs}
+          onSeek={onSeek}
+        />
       )}
       {item.tipo === 'som' && <EfeitoSonoro plan={plan} id={item.id} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
@@ -510,6 +526,9 @@ const NOME_DA_ENTRADA: Record<string, string> = {
   subir: 'Subir',
   descer: 'Descer',
   digitar: 'Digitar',
+  desfocar: 'Desfocar',
+  quique: 'Quicar',
+  letras: 'Letra a letra',
 };
 
 const NOME_DA_SAIDA: Record<string, string> = {
@@ -521,6 +540,8 @@ const NOME_DA_SAIDA: Record<string, string> = {
   deslizar_direita: 'Para a direita',
   subir: 'Subir',
   descer: 'Descer',
+  desfocar: 'Desfocar',
+  letras: 'Letra a letra',
 };
 
 const NOME_DO_DURANTE: Record<string, string> = {
@@ -529,6 +550,17 @@ const NOME_DO_DURANTE: Record<string, string> = {
   balancar: 'Balançar',
   brilhar: 'Brilhar',
   tremer: 'Tremer',
+  piscar: 'Piscar',
+  batimento: 'Batimento',
+  onda: 'Onda nas letras',
+  flutuar: 'Flutuar',
+};
+
+const NOME_DA_CURVA: Record<CurvaDeKeyframe, string> = {
+  suave: 'Suave',
+  linear: 'Constante',
+  acelerar: 'Acelerar',
+  frear: 'Frear',
 };
 
 const ABAS_DO_ELEMENTO: ReadonlyArray<readonly [AbaDoElemento, string]> = [
@@ -536,6 +568,7 @@ const ABAS_DO_ELEMENTO: ReadonlyArray<readonly [AbaDoElemento, string]> = [
   ['texto', 'Texto'],
   ['fundo', 'Fundo'],
   ['animacao', 'Animação'],
+  ['movimento', 'Movimento'],
 ];
 
 type Estilo = NonNullable<EditPlanV1['overlays'][number]['style']>;
@@ -547,6 +580,8 @@ function Elemento({
   marca,
   onOperacao,
   onFechar,
+  posicaoMs,
+  onSeek,
 }: {
   plan: EditPlanV1;
   overlayId: string;
@@ -554,6 +589,8 @@ function Elemento({
   marca?: MarcaDoVideo;
   onOperacao: (op: TimelineOperation) => void;
   onFechar: () => void;
+  posicaoMs: number;
+  onSeek?: (ms: number) => void;
 }) {
   const o = plan.overlays.find((x) => x.id === overlayId);
   const [texto, setTexto] = useState(o?.text ?? '');
@@ -771,7 +808,25 @@ function Elemento({
               {o.durationMs < 900 && r.saida !== 'nenhuma' && (
                 <p className="campo__ajuda">A saída aparece em elementos com 0,9 s ou mais na tela.</p>
               )}
+              {!!e.keyframes?.length && (
+                <p className="campo__ajuda">Este texto tem movimento livre (aba Movimento): entrada, saída e animação ficam desligadas.</p>
+              )}
             </>
+          )}
+
+          {aba === 'movimento' && (
+            <Movimento
+              o={o}
+              marca={marca}
+              posicaoMs={posicaoMs}
+              onSeek={onSeek}
+              onKeyframes={(keyframes) => {
+                if (keyframes) return estilo({ keyframes });
+                // Mesclar não apaga um campo: sem pontos, o estilo inteiro sem eles.
+                const { keyframes: _k, ...semPontos } = e;
+                aplicar(semPontos);
+              }}
+            />
           )}
         </>
       )}
@@ -787,6 +842,138 @@ function Elemento({
       >
         <IconeLixeira size={15} /> Remover
       </button>
+    </div>
+  );
+}
+
+/**
+ * Movimento livre (keyframes): pontos no tempo com posição, tamanho,
+ * giro e opacidade. Com o cursor sobre um ponto, arrastar ou redimensionar
+ * o texto na prévia muda esse ponto; fora dele, cria um novo.
+ */
+function Movimento({
+  o,
+  marca,
+  posicaoMs,
+  onSeek,
+  onKeyframes,
+}: {
+  o: EditPlanV1['overlays'][number];
+  marca?: MarcaDoVideo;
+  posicaoMs: number;
+  onSeek?: (ms: number) => void;
+  onKeyframes: (k: KeyframeDoTexto[] | undefined) => void;
+}) {
+  const pontos = o.style?.keyframes ?? [];
+  const t = Math.round(posicaoMs - o.timelineStartMs);
+  const dentro = t >= 0 && t < o.durationMs;
+  const atual = pontos.find((k) => Math.abs(k.t - t) <= 20);
+  const estado = estadoDoTexto(o, Math.max(0, Math.min(o.durationMs, t)), marca);
+  const por = (valores: Partial<KeyframeDoTexto>) => onKeyframes(comKeyframe(o, t, valores, marca));
+  const pronto = (lista: KeyframeDoTexto[]) => onKeyframes(lista);
+  const fim = Math.max(0, o.durationMs - 1);
+  const e0 = estadoDoTexto(o, 0, marca);
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Ponha pontos no tempo e mude o texto em cada um: ele anda de um ponto ao outro. Com o cursor sobre um ponto, arrastar ou
+        redimensionar na prévia muda esse ponto.
+      </p>
+      <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+        <button type="button" className="botao botao--secundario botao--pequeno" disabled={!dentro || !!atual} onClick={() => por({})}>
+          ◆ Ponto no cursor
+        </button>
+        {pontos.length > 0 && (
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onKeyframes(undefined)}>
+            Tirar o movimento
+          </button>
+        )}
+      </div>
+      {!dentro && <p className="campo__ajuda">Leve o cursor para dentro do tempo do texto para pôr um ponto.</p>}
+
+      {pontos.length > 0 && (
+        <div className="pontos-de-movimento" role="list" aria-label="Pontos do movimento">
+          {pontos.map((k) => (
+            <button
+              key={k.t}
+              type="button"
+              role="listitem"
+              className="ponto-de-movimento"
+              aria-current={atual?.t === k.t || undefined}
+              onClick={() => onSeek?.(o.timelineStartMs + k.t)}
+              title="Ir até este ponto"
+            >
+              ◆ {(k.t / 1000).toFixed(2).replace('.', ',')} s
+            </button>
+          ))}
+        </div>
+      )}
+
+      {atual ? (
+        <>
+          <strong style={{ fontSize: 13 }}>Ponto em {(atual.t / 1000).toFixed(2).replace('.', ',')} s</strong>
+          <div className="linha" style={{ gap: 'var(--e3)' }}>
+            <div className="crescer">
+              <Deslizante rotulo="Horizontal" valor={Math.round(estado.x * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => por({ x: v / 100 })} />
+            </div>
+            <div className="crescer">
+              <Deslizante rotulo="Vertical" valor={Math.round(estado.y * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => por({ y: v / 100 })} />
+            </div>
+          </div>
+          <Deslizante rotulo="Tamanho" valor={Math.round(estado.scale * 100)} min={10} max={500} passo={5} unidade="%" onSoltar={(v) => por({ scale: v / 100 })} />
+          <Deslizante rotulo="Giro" valor={Math.round(estado.rotation)} min={-180} max={180} passo={1} unidade="°" onSoltar={(v) => por({ rotation: v })} />
+          <Deslizante rotulo="Opacidade" valor={Math.round(estado.opacity * 100)} min={0} max={100} passo={5} unidade="%" onSoltar={(v) => por({ opacity: v / 100 })} />
+          <Segmentado
+            rotulo="Curva até o próximo ponto"
+            valor={atual.ease ?? 'suave'}
+            opcoes={CURVAS_DE_KEYFRAME.map((c) => [c, NOME_DA_CURVA[c]] as const)}
+            onTrocar={(v) => por({ ease: v as CurvaDeKeyframe })}
+          />
+          <button
+            type="button"
+            className="botao botao--fantasma botao--pequeno"
+            style={{ justifySelf: 'start' }}
+            onClick={() => {
+              const resto = semKeyframe(o, atual.t);
+              onKeyframes(resto.length ? resto : undefined);
+            }}
+          >
+            <IconeLixeira size={14} /> Tirar este ponto
+          </button>
+        </>
+      ) : (
+        pontos.length > 0 && <p className="campo__ajuda">Clique num ponto para ir até ele e editar.</p>
+      )}
+
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Movimentos prontos</span>
+        <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+          <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => pronto([{ t: 0, scale: 1 }, { t: fim, scale: 1.35, ease: 'linear' }])}>
+            Aproximar devagar
+          </button>
+          <button
+            type="button"
+            className="botao botao--secundario botao--pequeno"
+            onClick={() => pronto([{ t: 0, x: 0.2, ease: 'linear' }, { t: fim, x: 0.8 }])}
+          >
+            Atravessar a tela
+          </button>
+          <button
+            type="button"
+            className="botao botao--secundario botao--pequeno"
+            onClick={() => pronto([{ t: 0, y: e0.y, opacity: 1 }, { t: Math.round(fim * 0.7), y: e0.y, opacity: 1, ease: 'acelerar' }, { t: fim, y: Math.max(0.05, e0.y - 0.1), opacity: 0 }])}
+          >
+            Subir e sumir
+          </button>
+          <button
+            type="button"
+            className="botao botao--secundario botao--pequeno"
+            onClick={() => pronto([{ t: 0, rotation: -8, scale: 0.6 }, { t: Math.min(fim, 400), rotation: 0, scale: 1, ease: 'frear' }])}
+          >
+            Girar e parar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

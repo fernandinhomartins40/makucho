@@ -201,6 +201,8 @@ export const captionTrackSchema = z
     fontId: z.string().max(40).optional(),
     color: corHexSchema.optional(),
     highlightColor: corHexSchema.optional(),
+    /** Como cada bloco de legenda entra (além da animação do estilo). */
+    blockEntrance: z.enum(['nenhuma', 'surgir', 'pop', 'subir', 'zoom', 'desfocar']).optional(),
     /** Legendas excluídas: as palavras continuam na fala, não na tela. */
     hiddenWordIds: z.array(idSchema).max(3000).optional(),
     /** Legendas incluídas ou reescritas à mão. */
@@ -255,6 +257,27 @@ export const DECORACOES_DE_TEXTO = ['nenhuma', 'contorno', 'caixa', 'sombra', 's
 export const ANIMACOES_DE_TEXTO = ['nenhuma', 'pop', 'surgir', 'deslizar'] as const;
 
 /**
+ * Um ponto de animação livre (keyframe) de um texto de tela: no instante
+ * `t` (ms desde o começo do texto) ele está em `x`/`y`, com `scale`,
+ * `rotation` e `opacity`. Entre dois pontos, o valor anda pela curva
+ * `ease` do ponto de onde sai. Propriedade ausente = o texto segue os
+ * outros pontos (ou o estilo, se nenhum a define).
+ */
+export const keyframeDoTextoSchema = z
+  .object({
+    t: z.number().int().min(0).max(600_000),
+    x: z.number().min(0).max(1).optional(),
+    y: z.number().min(0).max(1).optional(),
+    scale: z.number().min(0.1).max(5).optional(),
+    rotation: z.number().min(-360).max(360).optional(),
+    opacity: z.number().min(0).max(1).optional(),
+    ease: z.enum(['linear', 'suave', 'acelerar', 'frear']).optional(),
+  })
+  .strict();
+
+export type KeyframeDoTexto = z.infer<typeof keyframeDoTextoSchema>;
+
+/**
  * Estilo de um texto de tela (o "Destaque", e opcionalmente os outros).
  *
  * `x`/`y` são a posição do CENTRO do texto, de 0 a 1 do quadro: a
@@ -286,10 +309,28 @@ export const estiloDoTextoSchema = z
     bgPadding: z.number().min(0).max(80).optional(),
     // Animação
     entrada: z
-      .enum(['nenhuma', 'surgir', 'pop', 'zoom', 'elastico', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer', 'digitar'])
+      .enum([
+        'nenhuma',
+        'surgir',
+        'pop',
+        'zoom',
+        'elastico',
+        'deslizar_esquerda',
+        'deslizar_direita',
+        'subir',
+        'descer',
+        'digitar',
+        'desfocar',
+        'quique',
+        'letras',
+      ])
       .optional(),
-    saida: z.enum(['nenhuma', 'sumir', 'encolher', 'zoom', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer']).optional(),
-    durante: z.enum(['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer']).optional(),
+    saida: z
+      .enum(['nenhuma', 'sumir', 'encolher', 'zoom', 'deslizar_esquerda', 'deslizar_direita', 'subir', 'descer', 'desfocar', 'letras'])
+      .optional(),
+    durante: z.enum(['nenhuma', 'pulsar', 'balancar', 'brilhar', 'tremer', 'piscar', 'batimento', 'onda', 'flutuar']).optional(),
+    /** Animação livre: pontos no tempo (ver `keyframeDoTextoSchema`). */
+    keyframes: z.array(keyframeDoTextoSchema).max(24).optional(),
     /** O estilo pronto de onde isto veio (só para marcar o cartão). */
     preset: z.string().max(40).optional(),
     /**

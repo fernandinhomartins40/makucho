@@ -33,6 +33,7 @@ import {
   agendaDoPlano,
   FONTES_DE_VIDEO,
   caixaDoTexto,
+  estadoDoTexto,
   ehEfeitoSonoroEmbutido,
   efeitoUsaPessoa,
   ehTextoAtras,
@@ -671,7 +672,19 @@ export function Palco({
         posicaoMs >= o.timelineStartMs &&
         posicaoMs < o.timelineStartMs + o.durationMs,
     )
-    .map((o) => ({ o, caixa: caixaDoTexto(planoDaPrevia, o, marcaDoVideo) }));
+    .map((o) => {
+      const caixa = caixaDoTexto(planoDaPrevia, o, marcaDoVideo);
+      if (!o.style?.keyframes?.length) return { o, caixa, escala: 1, giro: o.style?.rotation ?? 0 };
+      // Com movimento livre, a alça fica onde o texto está AGORA.
+      const e = estadoDoTexto(o, posicaoMs - o.timelineStartMs, marcaDoVideo);
+      const { width, height } = planoDaPrevia.canvas;
+      return {
+        o,
+        caixa: { cx: e.x * width, cy: e.y * height, largura: caixa.largura * e.scale, altura: caixa.altura * e.scale },
+        escala: e.scale,
+        giro: e.rotation,
+      };
+    });
 
   // A legenda na tela agora: onde está e que tamanho tem (para a alça).
   const caixaDaLegenda = useMemo(() => {
@@ -1002,7 +1015,7 @@ export function Palco({
             Arrastar move (mouse ou dedo), o canto redimensiona, clique
             duplo abre os estilos. O texto em si é o do .ass, acima. */}
         {!tocando &&
-          textosVisiveis.map(({ o, caixa }) => {
+          textosVisiveis.map(({ o, caixa, escala, giro }) => {
             const { width, height } = planoDaPrevia.canvas;
             const cx = caixa.cx / width;
             const cy = caixa.cy / height;
@@ -1019,7 +1032,8 @@ export function Palco({
                   top: `${cy * 100}%`,
                   width: `${Math.min(100, ((caixa.largura + 16) / width) * 100)}%`,
                   height: `${((caixa.altura + 16) / height) * 100}%`,
-                  transform: `translate(-50%, -50%) rotate(${o.style?.rotation ?? 0}deg)`,
+                  // \frz do .ass gira no sentido anti-horário; o rotate do CSS, no horário.
+                  transform: `translate(-50%, -50%) rotate(${-giro}deg)`,
                 }}
                 aria-label={`Mover "${o.text ?? ''}"`}
                 title="Arraste para mover · canto para redimensionar · clique duplo para estilos"
@@ -1035,7 +1049,7 @@ export function Palco({
                       key={canto}
                       className={`palco__canto palco__canto--${canto}`}
                       aria-hidden
-                      onPointerDown={redimensionarTexto(o.id, cx, cy, o.style?.sizeScale ?? 1)}
+                      onPointerDown={redimensionarTexto(o.id, cx, cy, (o.style?.sizeScale ?? 1) * escala)}
                     />
                   ))}
               </div>

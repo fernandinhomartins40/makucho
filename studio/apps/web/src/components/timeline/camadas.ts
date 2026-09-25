@@ -15,7 +15,7 @@ import { corEhNeutra, definicaoDaAparencia, montarBlocos, resolverEstiloDaLegend
 import type { Agenda, EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 
-export type AbaDoElemento = 'estilos' | 'texto' | 'fundo' | 'animacao';
+export type AbaDoElemento = 'estilos' | 'texto' | 'fundo' | 'animacao' | 'movimento';
 
 export type ItemDaTimeline =
   | { tipo: 'legenda'; id: string; wordIds: string[]; manualId?: string; inicioMs: number; fimMs: number; texto: string }

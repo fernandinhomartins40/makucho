@@ -25,6 +25,7 @@ import type { EditPlanV1, MarcaDoVideo, ProjectState, TimelineOperation } from '
 import {
   aplicarOperacao,
   comIdsNovos,
+  comKeyframe,
   aplicarOperacoes,
   CORES_PADRAO_DA_MARCA,
   estaProcessando,
@@ -967,10 +968,25 @@ function Editor({ projectId }: { projectId: string }) {
             onSelecionarDestaque={(id) =>
               setItemSelecionado((atual) => (atual?.tipo === 'elemento' && atual.id === id ? atual : { tipo: 'elemento', id }))
             }
-            onMoverDestaque={(id, x, y) =>
-              executar({ op: 'editar_overlay', overlayId: id, style: { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 } })
-            }
-            onRedimensionarTexto={(id, sizeScale) => executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } })}
+            onMoverDestaque={(id, x, y) => {
+              const px = Math.round(x * 1000) / 1000;
+              const py = Math.round(y * 1000) / 1000;
+              const o = plano.overlays.find((v) => v.id === id);
+              // Com animação livre, mover grava o ponto no cursor.
+              if (o?.style?.keyframes?.length) {
+                const keyframes = comKeyframe(o, posicaoMs - o.timelineStartMs, { x: px, y: py }, marcaDoVideo);
+                executar({ op: 'editar_overlay', overlayId: id, style: { keyframes } });
+              } else executar({ op: 'editar_overlay', overlayId: id, style: { x: px, y: py } });
+            }}
+            onRedimensionarTexto={(id, sizeScale) => {
+              const o = plano.overlays.find((v) => v.id === id);
+              if (o?.style?.keyframes?.length) {
+                // A alça mede o tamanho total; o ponto guarda a escala sobre o tamanho do estilo.
+                const scale = Math.round((sizeScale / (o.style.sizeScale ?? 1)) * 1000) / 1000;
+                const keyframes = comKeyframe(o, posicaoMs - o.timelineStartMs, { scale }, marcaDoVideo);
+                executar({ op: 'editar_overlay', overlayId: id, style: { keyframes } });
+              } else executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } });
+            }}
             onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
@@ -993,6 +1009,8 @@ function Editor({ projectId }: { projectId: string }) {
             item={itemSelecionado}
             onFecharItem={() => setItemSelecionado(null)}
             onSelecionarItem={(item) => setItemSelecionado(item)}
+            posicaoMs={posicaoMs}
+            onSeek={setPosicaoMs}
           />
         </aside>
 
