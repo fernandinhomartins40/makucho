@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -75,6 +75,11 @@ export interface OpcoesDoRender {
    * ajuste, por id do trecho. Trecho sem entrada fica com a cor original.
    */
   luts?: Readonly<Record<string, string>>;
+  /**
+   * Imagens e vídeos das camadas de mídia (`plano.mediaLayers`), por
+   * assetId: o arquivo, a proporção (largura / altura) e se tem som.
+   */
+  midias?: Readonly<Record<string, { caminho: string; proporcao: number; temAudio?: boolean }>>;
   /**
    * Modo da mascara: em vez do video final, os quadros montados (sem
    * texto, sem som) do intervalo, em `lado` x `lado`, RGB cru no stdout.
@@ -293,6 +298,62 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     video = `ef${i}`;
   });
 
+  // ---------- Camadas de mídia (B-roll, PiP, tela dividida) ----------
+  // Cada uma é uma entrada própria, só com os quadros dela, posta por
+  // cima com `overlay` a partir do quadro em que começa. Antes do logo e
+  // dos textos, que ficam sempre por cima.
+  const sonsDasMidias: string[] = [];
+  (plano.mediaLayers ?? []).forEach((c, i) => {
+    const m = opcoes.midias?.[c.assetId];
+    if (!m) return;
+    const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
+    if (n0 >= acumulado) return;
+    const nf = Math.min(Math.max(1, Math.round((c.durationMs * FPS) / 1000)), acumulado - n0);
+    const d = nf / FPS;
+    const indice = proximaEntrada++;
+    if (c.kind === 'image') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
+    else entradas.push('-ss', ((c.sourceStartMs ?? 0) / 1000).toFixed(3), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
+
+    const cx = caixaDaMidia(c, m.proporcao, W, H);
+    const r = `md${i}`;
+    const escala =
+      cx.modo === 'cobrir'
+        ? `scale=${cx.w}:${cx.h}:force_original_aspect_ratio=increase,crop=${cx.w}:${cx.h}`
+        : `scale=${cx.w}:${cx.h}`;
+    // Vídeo mais curto que a camada: o último quadro fica.
+    let cadeia =
+      `[${indice}:v]fps=${FPS},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(d + 1).toFixed(3)},` +
+      `trim=end_frame=${nf},${escala},setsar=1,format=yuva420p`;
+    const raio = Math.round((c.radius ?? 0) * Math.min(cx.w, cx.h));
+    if (raio > 0) {
+      // Cantos: máscara estática (um quadro, repetido), com 1 px de borda suave.
+      const dx = `max(0,abs(X+0.5-${cx.w / 2})-${cx.w / 2 - raio})`;
+      const dy = `max(0,abs(Y+0.5-${cx.h / 2})-${cx.h / 2 - raio})`;
+      partes.push(
+        `color=c=black:s=${cx.w}x${cx.h}:r=${FPS}:d=1,trim=end_frame=1,format=gray,` +
+          `geq=lum='255*clip(${raio}-hypot(${dx},${dy})+0.5,0,1)',loop=loop=${nf - 1}:size=1:start=0,setpts=N/(${FPS}*TB)[${r}m]`,
+      );
+      partes.push(`${cadeia}[${r}s]`);
+      cadeia = `[${r}s][${r}m]alphamerge`;
+    }
+    const opacidade = c.opacity ?? 1;
+    if (opacidade < 1) cadeia += `,lutyuv=a='val*${opacidade.toFixed(4)}'`;
+    if (c.fadeInMs) cadeia += `,fade=t=in:st=0:d=${(c.fadeInMs / 1000).toFixed(3)}:alpha=1`;
+    if (c.fadeOutMs) cadeia += `,fade=t=out:st=${Math.max(0, d - c.fadeOutMs / 1000).toFixed(3)}:d=${(c.fadeOutMs / 1000).toFixed(3)}:alpha=1`;
+    partes.push(`${cadeia},setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}]`);
+    partes.push(`[${video}][${r}]overlay=x=${cx.x}:y=${cx.y}:eof_action=pass:format=yuv420[${r}o]`);
+    video = `${r}o`;
+
+    // O som do vídeo só entra com volume: o B-roll é mudo por padrão.
+    if (c.kind === 'video' && (c.volume ?? 0) > 0 && m.temAudio) {
+      partes.push(
+        `[${indice}:a]atrim=0:${d.toFixed(3)},asetpts=PTS-STARTPTS,volume=${(c.volume ?? 0).toFixed(3)},` +
+          `aformat=sample_rates=48000:channel_layouts=stereo,adelay=delays=${Math.round((n0 * 1000) / FPS)}:all=1[${r}a]`,
+      );
+      sonsDasMidias.push(`[${r}a]`);
+    }
+  });
+
   // ---------- Imagens sobre o video (logo, imagem) ----------
   for (const o of plano.overlays) {
     if (o.component !== 'LogoBug' && o.component !== 'ImageOverlay') continue;
@@ -375,7 +436,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     audio = 'comtrilha';
   }
 
-  const sons: string[] = [];
+  const sons: string[] = [...sonsDasMidias];
   plano.soundEffects.forEach((e, k) => {
     const atraso = Math.round(e.timelineStartMs);
     if (atraso >= duracaoTotalS * 1000) return;

@@ -136,6 +136,19 @@ desfocar).
   continuando; busca no Pexels (chave nas Configurações); IA sugere
   B-roll pela fala.
 
+**Estado: núcleo feito; Pexels e sugestão da IA pendentes.** Camadas de
+mídia (`contracts/src/midias.ts`, `plano.mediaLayers`): imagem ou vídeo
+do workspace em tela cheia (B-roll), janela (PiP), tela dividida ou
+livre, com opacidade, cantos arredondados, fades e, no vídeo, ponto de
+início e volume (mudo por padrão). `caixaDaMidia` é a mesma conta no
+render (`scale`/`crop`, máscara de cantos, `overlay` a partir do quadro)
+e na prévia (camada no compositor WebGL). Biblioteca > Mídia (enviar e
+inserir), faixa Mídia na timeline, painel do item. A API passou a servir
+os arquivos de asset com Range (vídeo com busca na prévia). Pendente:
+busca no Pexels e sugestão de B-roll pela IA (dependem de módulo novo na
+API), modo de mistura (o `blend` do FFmpeg ignora transparência) e
+"atrás da pessoa" para mídia.
+
 ## Fase 7 — Stickers
 
 - Acervo próprio em SVG (setas, círculos, sublinhados, check/X, balões,

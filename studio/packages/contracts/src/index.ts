@@ -34,6 +34,7 @@ export * from './agenda';
 export * from './transicoes';
 export * from './cor';
 export * from './efeitos-de-tela';
+export * from './midias';
 export * from './pausas';
 export * from './acabamento';
 export * from './retomadas';

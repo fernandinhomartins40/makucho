@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { clipRoleSchema, frameworkSchema, semanticRiskSchema } from './vocabulary';
 import { corDoTrechoSchema } from './cor';
 import { efeitoDeTelaSchema } from './efeitos-de-tela';
+import { camadaDeMidiaSchema } from './midias';
 
 // Milissegundos, sempre inteiros e nao negativos. Trabalhar em ms
 // evita o acumulo de erro de ponto flutuante ao somar dezenas de
@@ -526,6 +527,8 @@ export const editPlanV1Schema = z
     soundEffects: z.array(soundEffectSchema).max(40),
     /** Efeitos de tela (efeitos-de-tela.ts), na ordem em que se aplicam. */
     screenEffects: z.array(efeitoDeTelaSchema).max(40).optional(),
+    /** Imagens e vídeos sobrepostos (midias.ts), de baixo para cima. */
+    mediaLayers: z.array(camadaDeMidiaSchema).max(20).optional(),
     transitions: z.array(transitionSchema).max(40),
     intro: componentRefSchema.optional(),
     outro: componentRefSchema.optional(),

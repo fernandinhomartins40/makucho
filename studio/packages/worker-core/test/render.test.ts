@@ -423,5 +423,30 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('sem máscara (modelo ausente), o efeito de fundo não entra', !semMascara[semMascara.indexOf('-filter_complex') + 1]!.includes('hue='));
 }
 
+// ============================================================
+// Camadas de mídia (B-roll, PiP)
+// ============================================================
+{
+  const comMidia: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [
+      { id: 'm1', assetId: 'img', kind: 'image', timelineStartMs: 1000, durationMs: 2000, layout: 'pip', radius: 0.1, opacity: 0.8, fadeInMs: 300 },
+      { id: 'm2', assetId: 'vid', kind: 'video', timelineStartMs: 5000, durationMs: 1000, layout: 'tela_cheia', sourceStartMs: 4000, volume: 0.5 },
+    ],
+  };
+  const midias = { img: { caminho: '/a/img.png', proporcao: 1 }, vid: { caminho: '/a/v.mp4', proporcao: 16 / 9, temAudio: true } };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia, midias });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  const texto = a.join(' ');
+  t('imagem entra em loop, só pelo tempo da camada', texto.includes('-loop 1 -framerate 30 -t 2.500 -i /a/img.png'));
+  t('vídeo entra do ponto escolhido', texto.includes('-ss 4.000 -t 1.500 -i /a/v.mp4'));
+  t('PiP: 454x454, cantos por máscara, opacidade e fade no alfa', f.includes('scale=454:454') && f.includes('alphamerge') && f.includes("lutyuv=a='val*0.8000'") && f.includes('fade=t=in:st=0:d=0.300:alpha=1'));
+  t('tela cheia: cobre e corta', f.includes('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'));
+  t('cada camada começa no seu quadro', f.includes('setpts=PTS-STARTPTS+30/(30*TB)[md0]') && f.includes('setpts=PTS-STARTPTS+150/(30*TB)[md1]'));
+  t('o som do B-roll entra com volume, no instante dele', f.includes('volume=0.500') && f.includes('adelay=delays=5000:all=1[md1a]'));
+  const semMidia = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia });
+  t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
+}
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

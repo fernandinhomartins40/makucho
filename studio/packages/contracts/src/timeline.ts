@@ -30,6 +30,7 @@ import {
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
+import { LAYOUTS_DE_MIDIA } from './midias';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
@@ -417,6 +418,45 @@ export const removerEfeitoDeTelaSchema = z.object({
   effectId: idSchema,
 });
 
+const mudancasDaMidia = {
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(100).max(600_000).optional(),
+  layout: z.enum(LAYOUTS_DE_MIDIA).optional(),
+  x: z.number().min(0).max(1).optional(),
+  y: z.number().min(0).max(1).optional(),
+  width: z.number().min(0.05).max(1).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  radius: z.number().min(0).max(0.5).optional(),
+  fadeInMs: z.number().int().min(0).max(3000).optional(),
+  fadeOutMs: z.number().int().min(0).max(3000).optional(),
+  sourceStartMs: msSchema.optional(),
+  volume: z.number().min(0).max(2).optional(),
+};
+
+/** Uma imagem ou vídeo do workspace por cima do vídeo (B-roll, PiP...). */
+export const adicionarMidiaSchema = z.object({
+  op: z.literal('adicionar_midia'),
+  /** Id escolhido por quem pede (ver `comIdsNovos`). */
+  id: idSchema.optional(),
+  assetId: idSchema,
+  kind: z.enum(['image', 'video']),
+  ...mudancasDaMidia,
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(100).max(600_000),
+  layout: z.enum(LAYOUTS_DE_MIDIA),
+});
+
+export const editarMidiaSchema = z.object({
+  op: z.literal('editar_midia'),
+  mediaId: idSchema,
+  ...mudancasDaMidia,
+});
+
+export const removerMidiaSchema = z.object({
+  op: z.literal('remover_midia'),
+  mediaId: idSchema,
+});
+
 export const removerEfeitoSonoroSchema = z.object({
   op: z.literal('remover_efeito_sonoro'),
   /** Um id, ou `todos` para limpar a faixa de efeitos. */
@@ -453,6 +493,9 @@ export const timelineOperationSchema = z
     adicionarEfeitoDeTelaSchema,
     editarEfeitoDeTelaSchema,
     removerEfeitoDeTelaSchema,
+    adicionarMidiaSchema,
+    editarMidiaSchema,
+    removerMidiaSchema,
     configurarVideoSchema,
     adicionarOverlaySchema,
     editarOverlaySchema,
@@ -1054,6 +1097,32 @@ export function aplicarOperacao(
       break;
     }
 
+    case 'adicionar_midia': {
+      const lista = novo.mediaLayers ?? [];
+      if (lista.length >= 20) return { ok: false, erro: 'o video ja tem o maximo de midias sobrepostas' };
+      const { op: _op, id: pedido, ...campos } = operacao;
+      novo = { ...novo, mediaLayers: [...lista, { ...campos, id: livre(pedido, lista, 'md') }] };
+      break;
+    }
+
+    case 'editar_midia': {
+      const lista = novo.mediaLayers ?? [];
+      if (!lista.some((m) => m.id === operacao.mediaId)) return { ok: false, erro: 'midia nao encontrada' };
+      const { op: _op, mediaId, ...mudancas } = operacao;
+      const definidas = Object.fromEntries(Object.entries(mudancas).filter(([, v]) => v !== undefined));
+      novo = { ...novo, mediaLayers: lista.map((m) => (m.id === mediaId ? { ...m, ...definidas } : m)) };
+      break;
+    }
+
+    case 'remover_midia': {
+      const lista = novo.mediaLayers ?? [];
+      if (!lista.some((m) => m.id === operacao.mediaId)) return { ok: false, erro: 'midia nao encontrada' };
+      const resto = lista.filter((m) => m.id !== operacao.mediaId);
+      novo = { ...novo, mediaLayers: resto };
+      if (!resto.length) delete novo.mediaLayers;
+      break;
+    }
+
     case 'adicionar_efeito_sonoro':
       if (novo.soundEffects.length >= 40) {
         return { ok: false, erro: 'o video ja tem o maximo de efeitos sonoros' };
@@ -1208,6 +1277,8 @@ export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
       return operacao.id ? operacao : { ...operacao, id: novoId('sf') };
     case 'adicionar_efeito_de_tela':
       return operacao.id ? operacao : { ...operacao, id: novoId('ef') };
+    case 'adicionar_midia':
+      return operacao.id ? operacao : { ...operacao, id: novoId('md') };
     case 'dividir_clipe':
     case 'duplicar_clipe':
     case 'inserir':

@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
-import { PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela } from '@makucho/studio-contracts';
+import { NOME_DO_LAYOUT, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela } from '@makucho/studio-contracts';
 import {
   COMPONENTES_DE_TEXTO,
   COR_DO_ELEMENTO,
@@ -71,10 +71,11 @@ import {
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 
-type Faixa = 'video' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
+type Faixa = 'video' | 'midia' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
 
 const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number }> = [
   { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64 },
+  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia, altura: 36 },
   { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52 },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40 },
   { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40 },
@@ -103,12 +104,12 @@ interface Props {
   /** Aperta os cortes na fala (ver contracts/pausas.ts). */
   onTirarPausas?: () => void;
   /** Abre a biblioteca numa categoria (som, trilha, texto...). */
-  onAbrirBiblioteca?: (categoria: 'sons' | 'trilha' | 'textos' | 'transicoes' | 'efeitos') => void;
+  onAbrirBiblioteca?: (categoria: 'sons' | 'trilha' | 'textos' | 'transicoes' | 'efeitos' | 'midia') => void;
   onMostrarAtalhos?: () => void;
 }
 
 type Arraste = {
-  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito';
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia';
   id: string;
   /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
   modo: 'mover' | 'inicio' | 'fim';
@@ -180,6 +181,8 @@ export function Timeline({
         onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
       } else if (arraste.tipo === 'efeito') {
         onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(100, duracao) });
+      } else if (arraste.tipo === 'midia') {
+        onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(100, duracao) });
       } else if (arraste.tipo === 'legenda') {
         onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
       }
@@ -191,6 +194,7 @@ export function Timeline({
     else if (arraste.tipo === 'elemento') onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'som') onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'efeito') onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: destino });
+    else if (arraste.tipo === 'midia') onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: destino });
     else onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
   }, [onOperacao]);
 
@@ -636,6 +640,36 @@ export function Timeline({
                         onSelecionar={() => tocarNoElemento(o)}
                       />
                     ))}
+
+                {/* Mídias sobrepostas: B-roll, janela, tela dividida. */}
+                {id === 'midia' &&
+                  ((plan.mediaLayers ?? []).length
+                    ? (plan.mediaLayers ?? []).map((m) => (
+                        <ItemSimples
+                          key={m.id}
+                          id={`midia-${m.id}`}
+                          inicioMs={m.timelineStartMs}
+                          fimMs={m.timelineStartMs + m.durationMs}
+                          zoom={zoom}
+                          altura={altura}
+                          cor={m.kind === 'video' ? '#0e7490' : '#15803d'}
+                          rotulo={`${m.kind === 'video' ? 'Vídeo' : 'Imagem'} · ${NOME_DO_LAYOUT[m.layout]}`}
+                          selecionado={selecionado('midia', m.id)}
+                          arrastavel={onOperacao !== undefined}
+                          onIniciarArraste={iniciarArraste('midia', m.id, m.timelineStartMs, m.durationMs)}
+                          onRedimensionar={onOperacao !== undefined ? (borda) => iniciarArraste('midia', m.id, m.timelineStartMs, m.durationMs, borda) : undefined}
+                          onSelecionar={() => {
+                            onSelecionar?.(null);
+                            onSelecionarItem?.({ tipo: 'midia', id: m.id });
+                            onSeek?.(m.timelineStartMs + 1);
+                          }}
+                        />
+                      ))
+                    : onAbrirBiblioteca && (
+                        <button type="button" className="timeline__vazio" onClick={() => onAbrirBiblioteca('midia')}>
+                          <IconeMais size={13} /> Adicionar imagem ou vídeo (B-roll)
+                        </button>
+                      ))}
 
                 {/* Efeitos de tela (em cima), com começo e fim livres. */}
                 {id === 'efeitos' &&

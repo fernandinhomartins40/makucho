@@ -26,12 +26,14 @@ import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
 import { EFEITOS_DE_TRECHO, ELEMENTOS, SONS, TRANSICOES } from './catalogo';
 import { PainelDeCor } from './PainelDeCor';
+import { PainelDeMidias } from './PainelDeMidias';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
-export type CategoriaDaBiblioteca = 'textos' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
+export type CategoriaDaBiblioteca = 'textos' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
 
 const CATEGORIAS: ReadonlyArray<readonly [CategoriaDaBiblioteca, string]> = [
   ['textos', 'Textos'],
+  ['midia', 'Mídia'],
   ['transicoes', 'Transições'],
   ['efeitos', 'Efeitos'],
   ['cor', 'Filtros'],
@@ -82,6 +84,7 @@ export function PainelDaBiblioteca(props: Props) {
       </div>
       <div className="biblioteca__corpo">
         {categoria === 'textos' && <Textos {...props} />}
+        {categoria === 'midia' && <PainelDeMidias {...props} />}
         {categoria === 'transicoes' && <Transicoes {...props} />}
         {categoria === 'efeitos' && <Efeitos {...props} />}
         {categoria === 'cor' && <PainelDeCor {...props} />}

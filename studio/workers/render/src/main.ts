@@ -43,6 +43,7 @@ import {
   renderizar,
   verificarLimite,
   limparSeProjetoExcluido,
+  medirMidia,
 } from '@makucho/studio-worker-core';
 import type { MascaraGerada, RuntimeOnnx } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
@@ -197,6 +198,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         musica: arquivos.musica,
         sons: arquivos.sons,
         luts,
+        midias: await midiasDoPlano(plano, arquivos.imagens),
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
           // Renova o lock a cada avanço: um render de dez minutos não
@@ -408,6 +410,7 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
 
   const ids = new Set<string>();
   for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
+  for (const m of plano.mediaLayers ?? []) ids.add(m.assetId);
   for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
   if (plano.music) ids.add(plano.music.assetId);
   if (ids.size === 0) return { imagens, sons, musica };
@@ -434,6 +437,24 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
   }
 
   return { imagens, sons, musica };
+}
+
+/**
+ * As mídias sobrepostas (B-roll, PiP): o arquivo, a proporção e se tem
+ * som, medidos pelo ffprobe. Uma que falhe fica de fora -- o vídeo sai.
+ */
+async function midiasDoPlano(plano: EditPlanV1, arquivos: Record<string, string>) {
+  const midias: Record<string, { caminho: string; proporcao: number; temAudio: boolean }> = {};
+  for (const id of new Set((plano.mediaLayers ?? []).map((m) => m.assetId))) {
+    const caminho = arquivos[id];
+    if (!caminho) continue;
+    try {
+      midias[id] = { caminho, ...(await medirMidia(caminho)) };
+    } catch (e) {
+      console.warn(`[render] mídia ${id} não pôde ser medida; fica de fora:`, e);
+    }
+  }
+  return midias;
 }
 
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */

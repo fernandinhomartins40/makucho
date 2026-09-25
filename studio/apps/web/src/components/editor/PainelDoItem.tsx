@@ -23,6 +23,8 @@ import {
   SAIDAS_DE_TEXTO,
   TEXTOS_DE_TELA,
   CURVAS_DE_KEYFRAME,
+  LAYOUTS_DE_MIDIA,
+  NOME_DO_LAYOUT,
   comKeyframe,
   estadoDoTexto,
   semKeyframe,
@@ -83,6 +85,7 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
       {item.tipo === 'trilha' && <TrilhaDeFundo plan={plan} onOperacao={onOperacao} onFechar={onFechar} />}
       {item.tipo === 'efeito' && <EfeitoDeTelaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
+      {item.tipo === 'midia' && <MidiaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
     </div>
   );
 }
@@ -93,6 +96,10 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'som') return 'Efeito sonoro';
   if (item.tipo === 'audio') return 'Som do trecho';
   if (item.tipo === 'trilha') return 'Trilha de fundo';
+  if (item.tipo === 'midia') {
+    const m = plan.mediaLayers?.find((x) => x.id === item.id);
+    return m ? (m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
+  }
   if (item.tipo === 'efeito') {
     const e = plan.screenEffects?.find((x) => x.id === item.id);
     return e ? `Efeito: ${definicaoDoEfeitoDeTela(e.type)?.rotulo ?? e.type}` : 'Efeito';
@@ -460,6 +467,85 @@ function EfeitoDeTelaDoItem({
         }}
       >
         <IconeLixeira size={15} /> Remover efeito
+      </button>
+    </div>
+  );
+}
+
+// ---------- Mídia sobreposta ----------
+
+function MidiaDoItem({
+  plan,
+  id,
+  onOperacao,
+  onFechar,
+}: {
+  plan: EditPlanV1;
+  id: string;
+  onOperacao: (op: TimelineOperation) => void;
+  onFechar: () => void;
+}) {
+  const m = plan.mediaLayers?.find((x) => x.id === id);
+  if (!m) return <p className="texto-secundario">Esta mídia não existe mais.</p>;
+  const editar = (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) =>
+    onOperacao({ op: 'editar_midia', mediaId: id, ...mudanca });
+  const posicionavel = m.layout === 'pip' || m.layout === 'livre';
+  const padrao = m.layout === 'pip' ? { x: 0.72, y: 0.2, width: 0.42 } : { x: 0.5, y: 0.4, width: 0.8 };
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.
+        {m.kind === 'video' ? ' O vídeo entra mudo; suba o volume para ouvir o som dele.' : ''}
+      </p>
+      <label className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Lugar na tela</span>
+        <select className="campo__selecao" value={m.layout} onChange={(e) => editar({ layout: e.target.value as typeof m.layout })}>
+          {LAYOUTS_DE_MIDIA.map((l) => (
+            <option key={l} value={l}>
+              {NOME_DO_LAYOUT[l]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {posicionavel && (
+        <>
+          <div className="linha" style={{ gap: 'var(--e3)' }}>
+            <div className="crescer">
+              <Deslizante rotulo="Horizontal" valor={Math.round((m.x ?? padrao.x) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => editar({ x: v / 100 })} />
+            </div>
+            <div className="crescer">
+              <Deslizante rotulo="Vertical" valor={Math.round((m.y ?? padrao.y) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => editar({ y: v / 100 })} />
+            </div>
+          </div>
+          <Deslizante rotulo="Largura" valor={Math.round((m.width ?? padrao.width) * 100)} min={5} max={100} passo={1} unidade="%" onSoltar={(v) => editar({ width: v / 100 })} />
+        </>
+      )}
+      <Deslizante rotulo="Opacidade" valor={Math.round((m.opacity ?? 1) * 100)} min={5} max={100} passo={5} unidade="%" onSoltar={(v) => editar({ opacity: v / 100 })} />
+      <Deslizante rotulo="Cantos arredondados" valor={Math.round((m.radius ?? 0) * 100)} min={0} max={50} passo={1} unidade="%" onSoltar={(v) => editar({ radius: v / 100 })} />
+      <div className="linha" style={{ gap: 'var(--e3)' }}>
+        <div className="crescer">
+          <Deslizante rotulo="Entrada suave" valor={m.fadeInMs ?? 0} min={0} max={2000} passo={50} unidade=" ms" onSoltar={(v) => editar({ fadeInMs: v })} />
+        </div>
+        <div className="crescer">
+          <Deslizante rotulo="Saída suave" valor={m.fadeOutMs ?? 0} min={0} max={2000} passo={50} unidade=" ms" onSoltar={(v) => editar({ fadeOutMs: v })} />
+        </div>
+      </div>
+      {m.kind === 'video' && (
+        <>
+          <Deslizante rotulo="Começar o vídeo em" valor={Math.round((m.sourceStartMs ?? 0) / 100) / 10} min={0} max={120} passo={0.5} unidade=" s" onSoltar={(v) => editar({ sourceStartMs: Math.round(v * 1000) })} />
+          <Deslizante rotulo="Volume do vídeo" valor={Math.round((m.volume ?? 0) * 100)} min={0} max={200} passo={5} unidade="%" onSoltar={(v) => editar({ volume: v / 100 })} />
+        </>
+      )}
+      <button
+        type="button"
+        className="botao botao--perigo botao--pequeno"
+        style={{ justifySelf: 'start' }}
+        onClick={() => {
+          onOperacao({ op: 'remover_midia', mediaId: id });
+          onFechar();
+        }}
+      >
+        <IconeLixeira size={15} /> Remover mídia
       </button>
     </div>
   );

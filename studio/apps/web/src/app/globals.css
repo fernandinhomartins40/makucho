@@ -4503,6 +4503,65 @@ button {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* Biblioteca > Mídia: imagens e vídeos do workspace. */
+.grade-de-midias {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--e2);
+  margin-top: var(--e3);
+}
+
+.midia-cartao {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+}
+
+.midia-cartao__previa {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0b1220;
+}
+
+.midia-cartao__previa img,
+.midia-cartao__previa video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.midia-cartao__selo {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.midia-cartao__nome {
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.midia-cartao__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 /* Ponto de movimento (keyframe) de um texto. */
 .clipe__marca {
   position: absolute;

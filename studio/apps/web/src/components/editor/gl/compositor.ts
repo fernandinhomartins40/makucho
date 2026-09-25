@@ -45,13 +45,61 @@ export interface EfeitoNoQuadro {
   nf: number;
 }
 
+/** Uma camada de mídia (B-roll, PiP) no quadro, em pixels do canvas. */
+export interface MidiaNoQuadro {
+  fonte: HTMLImageElement | HTMLVideoElement;
+  /** Canto superior esquerdo e tamanho (`caixaDaMidia` no tamanho do canvas). */
+  caixa: { x: number; y: number; w: number; h: number; modo: 'cobrir' | 'conter' };
+  /** Raio dos cantos, em pixels do canvas. */
+  raio: number;
+  /** Opacidade já com o fade do instante. */
+  alfa: number;
+}
+
 export interface QuadroParaDesenhar {
   camadas: CamadaDoQuadro[];
   /** Transição entre camadas[0] (sai) e camadas[1] (entra). */
   transicao?: { indice: number; progresso: number; quadros: number } | null;
   enquadramento: Enquadramento;
   efeitos?: readonly EfeitoNoQuadro[];
+  /** Camadas de mídia, de baixo para cima, sobre o quadro já com os efeitos. */
+  midias?: readonly MidiaNoQuadro[];
 }
+
+/**
+ * Uma camada de mídia: a textura na caixa (cobrindo com corte, ou
+ * inteira), cantos arredondados com 1 px de borda suave e alfa -- as
+ * mesmas contas do render (`scale`/`crop`, máscara do `geq`, `overlay`).
+ */
+const CAMADA = `#version 300 es
+precision highp float;
+uniform sampler2D uM;
+uniform vec4 uCaixa;
+uniform vec2 uTamanho;
+uniform float uProporcao;
+uniform float uCobrir;
+uniform float uRaio;
+uniform float uAlfa;
+out vec4 cor;
+void main() {
+  float X = floor(gl_FragCoord.x);
+  float Y = uTamanho.y - 1.0 - floor(gl_FragCoord.y);
+  vec2 p = vec2(X, Y) + 0.5 - uCaixa.xy;
+  if (p.x < 0.0 || p.y < 0.0 || p.x > uCaixa.z || p.y > uCaixa.w) discard;
+  vec2 uv = p / uCaixa.zw;
+  if (uCobrir > 0.5) {
+    // Cobrir: amplia até encher e corta o que sobra, centrado.
+    float s = uProporcao / (uCaixa.z / uCaixa.w);
+    if (s > 1.0) uv.x = 0.5 + (uv.x - 0.5) / s;
+    else uv.y = 0.5 + (uv.y - 0.5) * s;
+  }
+  float a = uAlfa;
+  if (uRaio > 0.0) {
+    vec2 d = max(abs(p - uCaixa.zw / 2.0) - (uCaixa.zw / 2.0 - uRaio), 0.0);
+    a *= clamp(uRaio - length(d) + 0.5, 0.0, 1.0);
+  }
+  cor = vec4(texture(uM, vec2(uv.x, 1.0 - uv.y)).rgb, a);
+}`;
 
 const VERTICES = `#version 300 es
 in vec2 aPos;
@@ -117,6 +165,9 @@ export class Compositor {
   private transicao: Programa;
   private copiar: Programa;
   private efeito: Programa;
+  private camada: Programa;
+  /** Textura de cada imagem/vídeo sobreposto (a imagem sobe uma vez só). */
+  private texDaMidia = new Map<HTMLImageElement | HTMLVideoElement, { tex: WebGLTexture; t: number }>();
   private texVideo: WebGLTexture[] = [];
   /** A textura de cada player: guarda o último quadro bom dele. */
   private texDoPlayer = new Map<HTMLVideoElement, { tex: WebGLTexture; w: number; h: number; t: number }>();
@@ -150,6 +201,7 @@ export class Compositor {
     this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -378,6 +430,62 @@ export class Compositor {
     }
     this.desenharRetangulo();
     this.aplicarEfeitos(this.fbos[2]!.tex, passos);
+    this.desenharMidias(quadro.midias ?? []);
+  }
+
+  /** As camadas de mídia, por cima do que já está na tela, com transparência. */
+  private desenharMidias(midias: readonly MidiaNoQuadro[]) {
+    if (!midias.length) return;
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.largura, this.altura);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
+    const p = this.camada;
+    gl.useProgram(p.programa);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(p.uniforms.uM!, 0);
+    for (const m of midias) {
+      const f = m.fonte;
+      const largura = f instanceof HTMLVideoElement ? f.videoWidth : f.naturalWidth;
+      const altura = f instanceof HTMLVideoElement ? f.videoHeight : f.naturalHeight;
+      const pronta = f instanceof HTMLVideoElement ? f.readyState >= 2 : f.complete;
+      if (!largura || !altura) continue;
+      let g = this.texDaMidia.get(f);
+      if (!g) {
+        g = { tex: gl.createTexture()!, t: -1 };
+        gl.bindTexture(gl.TEXTURE_2D, g.tex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        this.texDaMidia.set(f, g);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, g.tex);
+      // Imagem: sobe uma vez; vídeo: a cada quadro novo (buscando, fica o último).
+      const agora = f instanceof HTMLVideoElement ? f.currentTime : 0;
+      if (pronta && (g.t < 0 || (f instanceof HTMLVideoElement && !f.seeking && agora !== g.t))) {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, f);
+        g.t = agora;
+      }
+      if (g.t < 0) continue;
+      gl.uniform4f(p.uniforms.uCaixa!, m.caixa.x, m.caixa.y, m.caixa.w, m.caixa.h);
+      gl.uniform2f(p.uniforms.uTamanho!, this.largura, this.altura);
+      gl.uniform1f(p.uniforms.uProporcao!, largura / altura);
+      gl.uniform1f(p.uniforms.uCobrir!, m.caixa.modo === 'cobrir' ? 1 : 0);
+      gl.uniform1f(p.uniforms.uRaio!, m.raio);
+      gl.uniform1f(p.uniforms.uAlfa!, m.alfa);
+      this.desenharRetangulo();
+    }
+    gl.disable(gl.BLEND);
+  }
+
+  /** Esquece a textura de uma mídia que saiu do plano. */
+  esquecerMidia(f: HTMLImageElement | HTMLVideoElement): void {
+    const g = this.texDaMidia.get(f);
+    if (g) this.gl.deleteTexture(g.tex);
+    this.texDaMidia.delete(f);
   }
 
   /** Cada efeito vira um passo; o desfoque, dois (horizontal e vertical). */

@@ -32,6 +32,7 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 import { AssetsService } from './assets.service';
+import { lerIntervalo } from '../media/media.controller';
 
 /**
  * Teto absoluto do corpo, acima de qualquer tipo.
@@ -99,13 +100,17 @@ export class AssetsController {
   async servir(
     @CurrentTenant() tenant: TenantContext,
     @Param('id') id: string,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const arquivo = await this.assets.arquivo(tenant, id);
+    // Vídeo de sobreposição (B-roll): a prévia pula de um ponto a outro
+    // com Range, como no vídeo do projeto (media.controller).
+    const intervalo = lerIntervalo(req.headers.range, arquivo.tamanho);
 
     res.set({
       'Content-Type': arquivo.mimeType,
-      'Content-Length': String(arquivo.tamanho),
+      'Accept-Ranges': 'bytes',
       // `inline`: um logo e para ser exibido na tela, nao baixado.
       'Content-Disposition': 'inline',
       // Privado: e o arquivo do cliente, e um proxy intermediario nao
@@ -119,6 +124,18 @@ export class AssetsController {
       'X-Content-Type-Options': 'nosniff',
     });
 
+    if (intervalo === 'invalido') {
+      res.status(416).set('Content-Range', `bytes */${arquivo.tamanho}`);
+      return undefined;
+    }
+    if (intervalo) {
+      res.status(206).set({
+        'Content-Range': `bytes ${intervalo.inicio}-${intervalo.fim}/${arquivo.tamanho}`,
+        'Content-Length': String(intervalo.fim - intervalo.inicio + 1),
+      });
+      return new StreamableFile(createReadStream(arquivo.caminho, { start: intervalo.inicio, end: intervalo.fim }));
+    }
+    res.set('Content-Length', String(arquivo.tamanho));
     return new StreamableFile(createReadStream(arquivo.caminho));
   }
 

@@ -138,6 +138,22 @@ async function executar(
 // ---------- ffprobe ----------
 
 /**
+ * Proporção (largura / altura, já com a rotação) e se tem som, de uma
+ * imagem ou vídeo sobreposto. Mais leve e mais tolerante que
+ * `lerMetadados`: uma imagem não tem duração nem codec de áudio.
+ */
+export async function medirMidia(caminho: string): Promise<{ proporcao: number; temAudio: boolean }> {
+  const saida = await executar('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_streams', caminho], { timeoutMs: 30_000 });
+  const dados = JSON.parse(saida) as {
+    streams?: Array<{ codec_type?: string; width?: number; height?: number; tags?: { rotate?: string }; side_data_list?: Array<{ rotation?: number }> }>;
+  };
+  const video = dados.streams?.find((s) => s.codec_type === 'video' && s.width && s.height);
+  const rotacao = Math.abs(Number(video?.tags?.rotate ?? video?.side_data_list?.find((d) => d.rotation !== undefined)?.rotation ?? 0)) % 180;
+  const [w, h] = video ? (rotacao === 90 ? [video.height!, video.width!] : [video.width!, video.height!]) : [16, 9];
+  return { proporcao: w / h, temAudio: Boolean(dados.streams?.some((s) => s.codec_type === 'audio')) };
+}
+
+/**
  * Lê os metadados reais do arquivo.
  *
  * O que o cliente declarou no upload nao vale aqui: o arquivo que

@@ -32,6 +32,7 @@ import {
   TEXTOS_DE_TELA,
   agendaDoPlano,
   FONTES_DE_VIDEO,
+  caixaDaMidia,
   caixaDoTexto,
   estadoDoTexto,
   ehEfeitoSonoroEmbutido,
@@ -47,7 +48,7 @@ import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
-import { Compositor } from './gl/compositor';
+import { Compositor, type MidiaNoQuadro } from './gl/compositor';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
@@ -200,6 +201,95 @@ export function Palco({
     setComGl(Boolean(c));
   }, [proxyUrl]);
 
+  // ---------- Mídias sobrepostas (B-roll, PiP) ----------
+  // Um elemento por camada, fora da tela: a imagem é carregada uma vez;
+  // o vídeo segue o relógio da prévia (mudo, salvo se a camada tem volume).
+  const elementosDasMidias = useRef(new Map<string, { assetId: string; el: HTMLImageElement | HTMLVideoElement }>());
+  const tocandoRef = useRef(false);
+  const midiasNoInstante = useCallback(
+    (ms: number): MidiaNoQuadro[] => {
+      const camadas = plan.mediaLayers ?? [];
+      const canvas = glRef.current;
+      const mapa = elementosDasMidias.current;
+      // Camada que saiu do plano (ou trocou de arquivo): some o elemento.
+      for (const [id, e] of mapa) {
+        if (!camadas.some((c) => c.id === id && c.assetId === e.assetId)) {
+          if (e.el instanceof HTMLVideoElement) {
+            e.el.pause();
+            e.el.removeAttribute('src');
+          }
+          compositorRef.current?.esquecerMidia(e.el);
+          mapa.delete(id);
+        }
+      }
+      if (!canvas || !camadas.length || !urlDoAsset) return [];
+      const W = canvas.width;
+      const H = canvas.height;
+      const quadro = Math.floor((ms * 30) / 1000);
+      const lista: MidiaNoQuadro[] = [];
+      for (const c of camadas) {
+        let e = mapa.get(c.id);
+        if (!e) {
+          let el: HTMLImageElement | HTMLVideoElement;
+          if (c.kind === 'image') {
+            el = new Image();
+            el.onload = () => desenharGlRef.current?.();
+          } else {
+            const v = document.createElement('video');
+            v.preload = 'auto';
+            v.playsInline = true;
+            v.muted = true;
+            v.addEventListener('seeked', () => desenharGlRef.current?.());
+            v.addEventListener('loadeddata', () => desenharGlRef.current?.());
+            el = v;
+          }
+          el.src = urlDoAsset(c.assetId);
+          e = { assetId: c.assetId, el };
+          mapa.set(c.id, e);
+        }
+        const n0 = Math.round((c.timelineStartMs * 30) / 1000);
+        const nf = Math.max(1, Math.round((c.durationMs * 30) / 1000));
+        const j = quadro - n0;
+        const ativa = j >= 0 && j < nf && quadro < agenda.duracaoQuadros;
+        const el = e.el;
+        if (el instanceof HTMLVideoElement) {
+          if (!ativa) {
+            if (!el.paused) el.pause();
+            continue;
+          }
+          const alvo = (c.sourceStartMs ?? 0) / 1000 + j / 30;
+          const fim = Number.isFinite(el.duration) ? el.duration : Infinity;
+          const alvoNoArquivo = Math.min(alvo, Math.max(0, fim - 0.05));
+          const desvio = Math.abs(el.currentTime - alvoNoArquivo);
+          const volume = c.volume ?? 0;
+          el.muted = mudoRef.current || volume <= 0;
+          el.volume = Math.min(1, volume);
+          if (tocandoRef.current && alvo < fim) {
+            if (desvio > 0.2 && !el.seeking) el.currentTime = alvoNoArquivo;
+            if (el.paused) void el.play().catch(() => undefined);
+          } else {
+            if (!el.paused) el.pause();
+            if (desvio > 0.02 && !el.seeking) el.currentTime = alvoNoArquivo;
+          }
+        } else if (!ativa) continue;
+        const largura = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
+        const altura = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
+        if (!largura || !altura) continue;
+        const caixa = caixaDaMidia(c, largura / altura, W, H);
+        // O fade do render: linear, por quadro.
+        const d = nf / 30;
+        const t = j / 30;
+        let alfa = c.opacity ?? 1;
+        if (c.fadeInMs) alfa *= Math.min(1, t / (c.fadeInMs / 1000));
+        if (c.fadeOutMs) alfa *= Math.min(1, Math.max(0, (d - t) / (c.fadeOutMs / 1000)));
+        lista.push({ fonte: el, caixa, raio: (c.radius ?? 0) * Math.min(caixa.w, caixa.h), alfa });
+      }
+      return lista;
+    },
+    [plan.mediaLayers, urlDoAsset, agenda.duracaoQuadros],
+  );
+  const desenharGlRef = useRef<(() => void) | null>(null);
+
   const desenharGl = useCallback(
     (estado: EstadoNoInstante | null) => {
       const c = compositorRef.current;
@@ -237,10 +327,14 @@ export function Palco({
             : null,
         enquadramento,
         efeitos: efeitosNoQuadro(plan.screenEffects, ultimoMs.current, agenda.duracaoQuadros),
+        midias: midiasNoInstante(ultimoMs.current),
       });
     },
-    [players, enquadramento, agenda, plan.screenEffects],
+    [players, enquadramento, agenda, plan.screenEffects, midiasNoInstante],
   );
+
+  tocandoRef.current = tocando;
+  desenharGlRef.current = () => desenharGl(ultimoEstado.current);
 
   const aplicar = useCallback(
     (ms: number, tocandoAgora: boolean) => {
