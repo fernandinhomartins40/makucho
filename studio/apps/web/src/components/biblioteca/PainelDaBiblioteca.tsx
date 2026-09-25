@@ -37,11 +37,13 @@ import { tempo } from '../editor/funcoes';
 import { EFEITOS_DE_TRECHO, ELEMENTOS, NOME_DO_SOM, SONS, TRANSICOES } from './catalogo';
 import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
+import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
-export type CategoriaDaBiblioteca = 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
+export type CategoriaDaBiblioteca = 'estilos' | 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
 
 const CATEGORIAS: ReadonlyArray<readonly [CategoriaDaBiblioteca, string]> = [
+  ['estilos', 'Estilos'],
   ['textos', 'Textos'],
   ['stickers', 'Stickers'],
   ['midia', 'Mídia'],
@@ -65,6 +67,8 @@ interface Props {
   onSelecionarItem: (item: ItemDaTimeline) => void;
   urlDoAsset: (id: string) => string;
   transcricao?: Transcricao | null;
+  /** Pacote de estilo que combina com o vídeo (pacotes.ts). */
+  recomendado?: string;
 }
 
 /**
@@ -94,6 +98,7 @@ export function PainelDaBiblioteca(props: Props) {
         ))}
       </div>
       <div className="biblioteca__corpo">
+        {categoria === 'estilos' && <PainelDeEstilos {...props} />}
         {categoria === 'textos' && <Textos {...props} />}
         {categoria === 'stickers' && <Stickers {...props} />}
         {categoria === 'midia' && <PainelDeMidias {...props} />}

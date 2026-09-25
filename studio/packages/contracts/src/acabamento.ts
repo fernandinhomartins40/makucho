@@ -26,6 +26,7 @@ import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
 import { editPlanV1Schema, tipoDeTransicaoSchema } from './edit-plan';
 import { idDoPresetSchema, presetDaLegenda } from './estilos-de-legenda';
 import { DURACAO_PADRAO_DA_TRANSICAO } from './timeline';
+import { pacoteSalvoSchema } from './pacotes';
 
 // ---------- Preferencias (Kit de marca) ----------
 
@@ -52,6 +53,8 @@ export const preferenciasDeVideoSchema = z
     /** "Whoosh" nas transicoes e "pop" nos textos. */
     efeitosSonoros: z.boolean().optional(),
     barraDeProgresso: z.boolean().optional(),
+    /** "Salvar como meu estilo": pacotes do próprio workspace (pacotes.ts). */
+    estilosSalvos: z.array(pacoteSalvoSchema).max(12).optional(),
   })
   .strict();
 

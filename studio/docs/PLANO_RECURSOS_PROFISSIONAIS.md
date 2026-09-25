@@ -219,6 +219,17 @@ tela ganham o som deles, sem repetir onde já há som.
   filtro, sons, textos). "Salvar como meu estilo" no workspace. A IA
   escolhe o pacote pelo tipo de vídeo.
 
+**Estado: feito.** `contracts/src/pacotes.ts`: 5 pacotes (Podcast limpo,
+Energia TikTok, Tutorial, Cinema, Vendas). Um pacote vira operações
+comuns (estilo e entrada da legenda, transições por corte, zoom por
+trecho, cor, efeitos de tela, sons sugeridos com a fala protegida):
+cada coisa é um item separado, e aplicar duas vezes não duplica.
+"Salvar o estilo deste vídeo" captura os ingredientes do plano e guarda
+em `videoDefaults.estilosSalvos` do Kit de marca (sem migration). A
+recomendação usa o tipo de vídeo que a IA já classificou (framework e
+entendimento): educação → Tutorial, viral → Energia TikTok, história →
+Cinema, venda → Vendas, conversa/entrevista → Podcast limpo.
+
 ## Fora do escopo (e por quê)
 
 - Catálogo "Trending": conteúdo que muda sem parar; o equivalente aqui

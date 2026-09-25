@@ -4503,6 +4503,33 @@ button {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+/* Biblioteca > Estilos (pacotes). */
+.grade-de-pacotes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--e2);
+}
+
+.pacote-cartao {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+}
+
+.pacote-cartao[data-recomendado] {
+  border-color: var(--primary);
+}
+
+.pacote-cartao__texto {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 /* Biblioteca > Stickers. */
 .grade-de-stickers {
   display: grid;

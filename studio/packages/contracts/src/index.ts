@@ -41,6 +41,7 @@ export * from './cabeca';
 export * from './batidas';
 export * from './sons';
 export * from './protecao-da-fala';
+export * from './pacotes';
 export * from './pausas';
 export * from './acabamento';
 export * from './retomadas';

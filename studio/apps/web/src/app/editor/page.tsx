@@ -27,6 +27,7 @@ import {
   comIdsNovos,
   comKeyframe,
   comKeyframeDaMidia,
+  pacoteRecomendado,
   padraoDaCaixa,
   aplicarOperacoes,
   CORES_PADRAO_DA_MARCA,
@@ -945,6 +946,10 @@ function Editor({ projectId }: { projectId: string }) {
               onSelecionarItem={(item) => setItemSelecionado(item)}
               urlDoAsset={apiAssets.url}
               transcricao={transcricao}
+              recomendado={pacoteRecomendado(
+                projeto?.framework,
+                projeto?.entendimentoDaIa ? `${projeto.entendimentoDaIa.topic} ${projeto.entendimentoDaIa.structure} ${projeto.entendimentoDaIa.hookType}` : null,
+              )}
             />
           )}
           {aba === 'midia' && projeto && <PainelDeMidia projeto={projeto} />}

@@ -70,7 +70,7 @@ const CORES_INICIAIS: Cor[] = [
 // O que todo vídeo novo recebe sem ninguém pedir: é o "sem esforço" do
 // produto. Os padrões aqui são os mesmos do acabamento automático
 // (acabamento.ts) — mostrar um valor e aplicar outro seria mentir.
-const PREFERENCIAS_PADRAO: Required<Omit<PreferenciasDeVideo, 'captionPreset'>> = {
+const PREFERENCIAS_PADRAO: Required<Omit<PreferenciasDeVideo, 'captionPreset' | 'estilosSalvos'>> = {
   fit: 'desfoque',
   voiceEnhance: true,
   autoZoom: true,
