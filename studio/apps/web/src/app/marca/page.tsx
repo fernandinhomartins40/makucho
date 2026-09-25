@@ -375,7 +375,7 @@ export default function MarcaPage() {
                       aria-label={`Cor ${cor.rotulo}`}
                       onChange={(e) => mudarCor(cor.id, e.target.value)}
                     />
-                    <p className="texto-secundario" style={{ fontSize: 12, margin: '6px 0 4px' }}>
+                    <p className="texto-secundario" style={{ fontSize: 12, margin: '6px 0 4px' }} title={cor.rotulo}>
                       {cor.rotulo}
                     </p>
                     <input

@@ -5598,3 +5598,226 @@ button.recursos-do-trecho__item:hover {
 .palco__imagem--gl .palco__fundo-desfocado {
   opacity: 0 !important;
 }
+
+/* ============================================================
+   Responsividade fina: notebooks, tablets deitados e celulares
+   pequenos.
+
+   Medido numa matriz de 13 telas (320x568 até 1920x1080): o que sobrava
+   era o editor. Em notebook (1280x720, 1366x768) o palco ficava com
+   ~150 px de largura -- a timeline levava 40% da altura e o rail e o
+   painel da IA eram largos --, a barra da timeline cortava o zoom e os
+   chips do quadro transbordavam. No celular de 320 px o quadro ficava
+   com 99 px e a barra inferior atropelava os rótulos.
+   ============================================================ */
+
+/* Chips do quadro: o grupo é um container; em quadro estreito ficam só
+   com o ícone (o nome continua no title e no aria-label). */
+.palco__chips {
+  container-type: inline-size;
+}
+
+@container (max-width: 210px) {
+  .palco__chips .chip__texto {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .palco__chips .chip {
+    padding: 4px 6px;
+  }
+}
+
+/* A barra da timeline nunca corta: rola na horizontal, sem barra. */
+.timeline__barra {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.timeline__barra::-webkit-scrollbar {
+  display: none;
+}
+
+.timeline__barra > * {
+  flex-shrink: 0;
+}
+
+.editor__duracao {
+  white-space: nowrap;
+}
+
+@media (min-width: 900px) and (max-width: 1440px) {
+  .editor {
+    grid-template-columns: 80px minmax(0, 360px) minmax(0, 1fr);
+  }
+
+  .ferramenta {
+    width: 68px;
+  }
+
+  /* Os atalhos continuam no title e na tela de atalhos (?). */
+  .timeline__tecla {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) and (max-width: 1180px) {
+  .editor {
+    grid-template-columns: 72px minmax(0, 300px) minmax(0, 1fr);
+  }
+
+  .ferramenta {
+    width: 62px;
+  }
+
+  .ferramenta__rotulo {
+    font-size: 11px;
+  }
+
+  .timeline__acao-rotulo {
+    display: none;
+  }
+
+  .timeline__zoom {
+    width: 80px;
+  }
+
+  .topbar--editor .editor__duracao {
+    display: none;
+  }
+}
+
+/* Notebooks e tablets deitados: a altura é o que falta. A timeline
+   cede espaço e o palco perde o respiro, para o vídeo crescer. */
+@media (min-width: 900px) and (max-height: 860px) {
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(190px, 34%);
+  }
+
+  .editor__palco {
+    padding: var(--e2) 0;
+    gap: var(--e2);
+  }
+
+  .palco__play {
+    width: 44px;
+    height: 44px;
+  }
+
+  .editor__rail {
+    padding-top: var(--e2);
+    gap: var(--e1);
+  }
+
+  .ferramenta {
+    padding: var(--e2) 0;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 700px) {
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(170px, 30%);
+  }
+}
+
+/* ---------- Celular: tela baixa (SE, Android compacto) ---------- */
+@media (max-width: 899px) and (max-height: 700px) {
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(136px, 27dvh);
+  }
+
+  .palco__play {
+    width: 40px;
+    height: 40px;
+  }
+
+  .palco__controles {
+    gap: var(--e2);
+  }
+}
+
+/* ---------- Celular estreito (320 a 360 px) ---------- */
+@media (max-width: 360px) {
+  .palco__tempo {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .palco__controles .botao-icone {
+    width: 32px;
+    height: 32px;
+  }
+
+  .ferramenta {
+    min-width: 0;
+  }
+
+  .ferramenta__rotulo {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 10px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .barra-inferior__item {
+    font-size: 10px;
+  }
+}
+
+/* Painel da IA em tela baixa: o corpo (lista de trechos) não pode ser
+   espremido até sumir e vazar por baixo do painel. Ele guarda uma altura
+   mínima e, se não couber, o painel inteiro rola. */
+@media (min-width: 900px) {
+  .editor__ia {
+    overflow-y: auto;
+  }
+  .editor__ia > * {
+    flex-shrink: 0;
+  }
+  .editor__ia > .painel__corpo {
+    flex: 1 1 0;
+    min-height: 220px;
+  }
+}
+
+/* Kit de marca: a prévia 9:16 não precisa ocupar a coluna inteira (em
+   tablet ficava com 600px de altura), e a legenda ampliada (scale 1.35)
+   fica centrada e cabe na largura em vez de ser cortada pela esquerda. */
+.marca__preview {
+  max-width: 340px;
+  margin-inline: auto;
+}
+
+.marca__legenda {
+  text-align: center;
+}
+
+.marca__legenda > * {
+  max-width: calc(100% / 1.35) !important;
+}
+
+/* O hexadecimal (#2F66FF) inteiro no campo, mesmo com 5 cores lado a lado. */
+.marca__cores .campo__entrada {
+  padding-inline: 2px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.marca__cores {
+  gap: var(--e2);
+}
+
+.marca__cores .campo__entrada {
+  font-size: 11px !important;
+}
+
+.marca__cores p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

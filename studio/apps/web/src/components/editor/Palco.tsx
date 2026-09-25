@@ -1013,18 +1013,20 @@ export function Palco({
     <>
       <div className="palco__quadro" ref={quadroRef}>
         <div className="palco__chips">
-          <span className="chip">
+          <span className="chip" title="Formato 9:16">
             <IconeCelular size={14} />
-            9:16
+            <span className="chip__texto">9:16</span>
           </span>
           <button
             type="button"
             className="chip chip--acionavel"
             aria-pressed={zonasSeguras}
+            aria-label="Zonas seguras"
+            title="Zonas seguras"
             onClick={() => setZonasSeguras((v) => !v)}
           >
             <IconeZonaSegura size={14} />
-            Zonas seguras
+            <span className="chip__texto">Zonas seguras</span>
           </button>
         </div>
 

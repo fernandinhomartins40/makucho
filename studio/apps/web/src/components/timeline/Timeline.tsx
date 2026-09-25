@@ -804,6 +804,8 @@ function Acao({
       className="botao botao--fantasma botao--pequeno"
       disabled={desabilitado}
       onClick={onClick}
+      // O rótulo some em telas estreitas (só o ícone): o nome continua aqui.
+      aria-label={rotulo}
       title={[dica ?? rotulo, atalho ? `(${atalho})` : ''].filter(Boolean).join(' ')}
     >
       <Icone size={16} />
