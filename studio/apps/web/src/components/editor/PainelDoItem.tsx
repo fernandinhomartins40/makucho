@@ -740,7 +740,7 @@ function Opcoes({
  * Deslizante que só grava ao soltar: arrastar não cria uma versão do
  * plano por pixel. O número ao lado acompanha o dedo.
  */
-function Deslizante({
+export function Deslizante({
   rotulo,
   valor,
   min,

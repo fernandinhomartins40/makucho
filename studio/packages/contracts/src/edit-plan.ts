@@ -12,6 +12,7 @@
 
 import { z } from 'zod';
 import { clipRoleSchema, frameworkSchema, semanticRiskSchema } from './vocabulary';
+import { corDoTrechoSchema } from './cor';
 
 // Milissegundos, sempre inteiros e nao negativos. Trabalhar em ms
 // evita o acumulo de erro de ponto flutuante ao somar dezenas de
@@ -86,6 +87,8 @@ export const clipSchema = z
     // Opcional: planos anteriores aos efeitos continuam validos.
     effect: efeitoDeTrechoSchema.optional(),
     audio: audioDoTrechoSchema.optional(),
+    /** Filtro e ajustes de cor do trecho (cor.ts). */
+    color: corDoTrechoSchema.optional(),
   })
   .refine((clip) => clip.sourceEndMs > clip.sourceStartMs, {
     message: 'sourceEndMs deve ser maior que sourceStartMs',

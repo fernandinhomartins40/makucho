@@ -22,6 +22,7 @@
 
 import {
   CaretUp,
+  Palette,
   FolderOpen,
   Article,
   Record,
@@ -178,6 +179,7 @@ export const IconeFechar = X;
 export const IconeMudo = SpeakerSlash;
 export const IconeOnda = Waveform;
 export const IconeEfeito = Lightning;
+export const IconeCor = Palette;
 export const IconeTeclado = Keyboard;
 export const IconeBiblioteca = Books;
 export const IconeElementos = Shapes;

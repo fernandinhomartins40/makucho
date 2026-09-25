@@ -375,5 +375,16 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('receita encadeada no render, no segmento de 12 quadros', f.includes('rgbashift=') && /format=yuv420p,[^;]*trim=end_frame=12/.test(f));
 }
 
+// ============================================================
+// Cor do trecho: a tabela entra no fim do trecho, trilinear
+// ============================================================
+{
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano, luts: { [plano.clips[1]!.id]: '/tmp/cor-1.cube' } });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('lut3d trilinear só no trecho com cor', (f.match(/lut3d=/g) ?? []).length === 1 && f.includes('lut3d=file=/tmp/cor-1.cube:interp=trilinear,format=yuv420p'));
+  const sem = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano });
+  t('sem tabela, sem lut3d', !sem[sem.indexOf('-filter_complex') + 1]!.includes('lut3d'));
+}
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

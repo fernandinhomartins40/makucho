@@ -47,6 +47,7 @@ import { estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from 
 import type { EstadoNoInstante } from './motorDaPrevia';
 import { Compositor } from './gl/compositor';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
+import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
 import { tempo } from './funcoes';
 import {
@@ -221,7 +222,11 @@ export function Palco({
         if (v && !estado.camadas.some((x) => fonte(x.indice) === v)) c.guardarQuadro(v);
       }
       c.desenhar({
-        camadas: estado.camadas.map((x) => ({ fonte: fonte(x.indice), zoom: x.zoom })),
+        camadas: estado.camadas.map((x) => ({
+          fonte: fonte(x.indice),
+          zoom: x.zoom,
+          cor: tabelaDaPrevia(agenda.trechos[x.indice]?.clip.color),
+        })),
         transicao:
           estado.transicao && saindo && entrando
             ? { indice: INDICE_DA_TRANSICAO[estado.transicao.tipo] ?? 0, progresso: estado.transicao.progresso, quadros: estado.transicao.quadros }
@@ -229,7 +234,7 @@ export function Palco({
         enquadramento,
       });
     },
-    [players, enquadramento],
+    [players, enquadramento, agenda],
   );
 
   const aplicar = useCallback(

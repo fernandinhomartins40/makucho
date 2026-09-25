@@ -70,6 +70,11 @@ export interface OpcoesDoRender {
   legendasAtras?: string;
   mascara?: { caminho: string; inicioMs: number; quadros: number; lado: number };
   /**
+   * A tabela de cor (.cube, de `cubeDaCor`) de cada trecho com filtro ou
+   * ajuste, por id do trecho. Trecho sem entrada fica com a cor original.
+   */
+  luts?: Readonly<Record<string, string>>;
+  /**
    * Modo da mascara: em vez do video final, os quadros montados (sem
    * texto, sem som) do intervalo, em `lado` x `lado`, RGB cru no stdout.
    */
@@ -164,7 +169,11 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     partes.push(...enquadrar(base, quadroVertical, rotulo, enquadramento, W, H));
     // O zoom lento continua de onde o pedaco anterior parou.
     const efeito = efeitoDoTrecho(clip.effect, W, H, quadros, de);
-    partes.push(`[${quadroVertical}]${efeito}format=yuv420p,setsar=1[${rotulo}]`);
+    // A cor vem por último, no quadro já montado: a prévia aplica a mesma
+    // tabela no fim do enquadramento. Trilinear, como a textura 3D.
+    const lut = opcoes.luts?.[clip.id];
+    const cor = lut ? `lut3d=file=${escaparCaminhoDeFiltro(lut)}:interp=trilinear,` : '';
+    partes.push(`[${quadroVertical}]${efeito}${cor}format=yuv420p,setsar=1[${rotulo}]`);
   };
 
   // ---------- Video: trechos e janelas de transicao ----------

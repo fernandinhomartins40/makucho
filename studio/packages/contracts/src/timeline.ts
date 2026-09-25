@@ -28,6 +28,7 @@ import {
   tipoDeTransicaoSchema,
 } from './edit-plan';
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
+import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
@@ -284,6 +285,19 @@ export const definirEfeitoSchema = z.object({
   effect: z.union([efeitoDeTrechoSchema, z.literal('nenhum')]),
 });
 
+/** Filtro e ajustes de cor de um trecho; `null` volta à cor original. */
+export const definirCorSchema = z.object({
+  op: z.literal('definir_cor'),
+  clipId: idSchema,
+  color: corDoTrechoSchema.nullable(),
+});
+
+/** A mesma cor em todos os trechos (ou nenhuma). */
+export const corEmTodosSchema = z.object({
+  op: z.literal('cor_em_todos'),
+  color: corDoTrechoSchema.nullable(),
+});
+
 /** Enquadramento e limpeza de voz. */
 export const configurarVideoSchema = z.object({
   op: z.literal('configurar_video'),
@@ -405,6 +419,8 @@ export const timelineOperationSchema = z
     definirTransicaoSchema,
     transicaoEmTodosSchema,
     definirEfeitoSchema,
+    definirCorSchema,
+    corEmTodosSchema,
     configurarVideoSchema,
     adicionarOverlaySchema,
     editarOverlaySchema,
@@ -852,6 +868,21 @@ export function aplicarOperacao(
       else clip.effect = operacao.effect;
       break;
     }
+
+    case 'definir_cor': {
+      const clip = clips.find((c) => c.id === operacao.clipId);
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+      if (!operacao.color || corEhNeutra(operacao.color)) delete clip.color;
+      else clip.color = operacao.color;
+      break;
+    }
+
+    case 'cor_em_todos':
+      for (const clip of clips) {
+        if (!operacao.color || corEhNeutra(operacao.color)) delete clip.color;
+        else clip.color = operacao.color;
+      }
+      break;
 
     case 'configurar_video':
       novo = {

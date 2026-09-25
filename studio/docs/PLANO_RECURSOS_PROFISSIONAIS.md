@@ -72,6 +72,16 @@ palavra partida pela transcrição.
   MESMA tabela como textura 3D. Paridade por construção.
 - "Igualar cor": mede o brilho e a cor média de cada trecho e compensa.
 
+**Estado: feito.** `contracts/src/cor.ts`: 22 filtros em 5 categorias,
+7 ajustes (brilho, contraste, saturação, temperatura, tom, realces,
+sombras) e intensidade. A tabela é gerada em bytes e o `.cube` sai dos
+mesmos bytes; o render aplica `lut3d` trilinear no fim do trecho, e a
+prévia, a textura 3D no fim do enquadramento. Paridade: 48 medidas com
+diferença média ≤ 0,75 (0-255). Biblioteca > Filtros com miniaturas
+pintadas num quadro do próprio trecho; "Igualar os outros trechos a
+este" mede três quadros de cada trecho e compensa brilho, temperatura e
+tom (`ajustesParaIgualar`). Selo de cor no card do trecho.
+
 ## Fase 4 — Efeitos de trecho e efeitos de corpo
 
 - Itens na faixa Efeitos com início, fim e intensidade: vinheta,

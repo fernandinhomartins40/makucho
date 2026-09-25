@@ -10,7 +10,8 @@
 //     ponto, mas a proporção e a cor sim).
 // ============================================================
 
-import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
+import { APARENCIAS, TRANSICOES_DO_CATALOGO, type CorDoTrecho } from '@makucho/studio-contracts';
+import { tabelaDaPrevia } from '../../src/components/editor/gl/cores';
 import { Compositor } from '../../src/components/editor/gl/compositor';
 import { INDICE_DA_TRANSICAO, transicoesSemGlsl } from '../../src/components/editor/gl/transicoesGlsl';
 
@@ -25,6 +26,7 @@ export interface Medida {
 declare global {
   interface Window {
     paridade: (quadros: number[], total: number, guardar: boolean) => Promise<Medida[]>;
+    paridadeCor: (guardar: boolean) => Promise<Medida[]>;
     semGlsl: () => string[];
   }
 }
@@ -48,6 +50,47 @@ function pixels(fonte: CanvasImageSource, w: number, h: number): Uint8ClampedArr
 }
 
 window.semGlsl = transicoesSemGlsl;
+
+/** As cores testadas: cada filtro, e ajustes finos fortes (os mesmos de cores.mjs). */
+export const CORES_DE_TESTE: Array<[string, CorDoTrecho]> = [
+  ...APARENCIAS.map((a) => [a.id, { look: a.id }] as [string, CorDoTrecho]),
+  ['ajustes', { adjust: { brilho: 0.4, contraste: 0.5, saturacao: -0.4, temperatura: 0.6, tom: -0.5, realces: -0.6, sombras: 0.7 } }],
+  ['misto', { look: 'cinema', intensity: 0.6, adjust: { brilho: -0.3, saturacao: 0.5 } }],
+];
+
+function comparar(gl: Uint8ClampedArray, ff: Uint8ClampedArray) {
+  let soma = 0;
+  const mg = [0, 0, 0];
+  const mf = [0, 0, 0];
+  for (let i = 0; i < gl.length; i += 4) {
+    for (let ch = 0; ch < 3; ch += 1) {
+      soma += Math.abs(gl[i + ch]! - ff[i + ch]!);
+      mg[ch]! += gl[i + ch]!;
+      mf[ch]! += ff[i + ch]!;
+    }
+  }
+  const n = gl.length / 4;
+  return { pixel: soma / (n * 3), media: (Math.abs(mg[0]! - mf[0]!) + Math.abs(mg[1]! - mf[1]!) + Math.abs(mg[2]! - mf[2]!)) / (n * 3) };
+}
+
+window.paridadeCor = async (guardar) => {
+  const imagens = await Promise.all([carregar('A.png'), carregar('B.png')]);
+  const canvas = document.createElement('canvas');
+  document.body.appendChild(canvas);
+  const c = Compositor.criar(canvas);
+  if (!c) throw new Error('sem WebGL2');
+  const medidas: Medida[] = [];
+  for (const [id, cor] of CORES_DE_TESTE) {
+    for (const [k, img] of imagens.entries()) {
+      c.desenharImagemComCor(img, tabelaDaPrevia(cor));
+      const w = img.width;
+      const h = img.height;
+      const ff = pixels(await carregar(`cor/${id}-${k}.png`), w, h);
+      medidas.push({ id, quadro: k, ...comparar(pixels(canvas, w, h), ff), ...(guardar ? { imagem: canvas.toDataURL('image/png') } : {}) });
+    }
+  }
+  return medidas;
+};
 
 window.paridade = async (quadros, total, guardar) => {
   const [a, b] = await Promise.all([carregar('A.png'), carregar('B.png')]);

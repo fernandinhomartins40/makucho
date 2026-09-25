@@ -4884,6 +4884,40 @@ button {
   accent-color: var(--primary);
 }
 
+/* Filtros: miniatura vertical com um quadro do próprio vídeo. */
+.demos.demos--filtros {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
+.demo-cartao.demo-cartao--filtro {
+  padding: 4px;
+  text-align: center;
+}
+
+.demo.demo--filtro {
+  aspect-ratio: 9 / 16;
+}
+
+.demo--filtro img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.biblioteca__subtitulo {
+  margin: var(--e4) 0 var(--e2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.biblioteca__ajustes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--e2) var(--e3);
+}
+
 /* Miniatura desenhada pelo shader da prévia (gl/miniaturas.ts). */
 .demo--gl img {
   display: block;

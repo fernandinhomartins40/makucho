@@ -61,6 +61,7 @@ import {
   IconeMais,
   IconeOnda,
   IconeEfeito,
+  IconeCor,
   IconeSom,
   IconeTrilha,
   IconeTransicao,
@@ -915,6 +916,7 @@ function ClipeNaFaixa({
   const selos: Array<{ chave: string; Icone: Icon; texto: string; dica: string }> = [];
   if (recursos?.transicao) selos.push({ chave: 'tr', Icone: IconeTransicao, texto: recursos.transicao, dica: `Entra com transição: ${recursos.transicao}` });
   if (recursos?.efeito) selos.push({ chave: 'fx', Icone: IconeEfeito, texto: recursos.efeito, dica: `Efeito: ${recursos.efeito}` });
+  if (recursos?.cor) selos.push({ chave: 'cr', Icone: IconeCor, texto: recursos.cor, dica: `Cor: ${recursos.cor}` });
   if (recursos?.legendas) selos.push({ chave: 'lg', Icone: IconeLegenda, texto: String(recursos.legendas), dica: `${recursos.legendas} legendas` });
   if (recursos?.textos) selos.push({ chave: 'tx', Icone: IconeTexto, texto: String(recursos.textos), dica: `${recursos.textos} textos na tela` });
   if (recursos?.elementos) selos.push({ chave: 'el', Icone: IconeMidia, texto: String(recursos.elementos), dica: `${recursos.elementos} elementos (logo, imagem, barra)` });

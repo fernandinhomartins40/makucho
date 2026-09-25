@@ -26,6 +26,9 @@ import {
   ehEfeitoSonoroEmbutido,
   gerarAss,
   janelasAtras,
+  chaveDaCor,
+  corEhNeutra,
+  cubeDaCor,
   planoPrecisaDeAss,
   presetDaLegenda,
   resolverEstiloDaLegenda,
@@ -165,6 +168,22 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 
       const arquivos = await arquivosDoPlano(plano, workspaceId);
 
+      // Filtro e ajustes de cor: uma tabela (.cube) por cor diferente,
+      // gerada pela mesma função que a prévia usa (contracts/cor.ts).
+      const luts: Record<string, string> = {};
+      const tabelas = new Map<string, string>();
+      for (const clip of plano.clips) {
+        if (!clip.color || corEhNeutra(clip.color)) continue;
+        const chave = chaveDaCor(clip.color);
+        let caminho = tabelas.get(chave);
+        if (!caminho) {
+          caminho = espaco.arquivo(`cor-${tabelas.size}.cube`);
+          await writeFile(caminho, cubeDaCor(clip.color), 'utf8');
+          tabelas.set(chave, caminho);
+        }
+        luts[clip.id] = caminho;
+      }
+
       await renderizar({
         entrada,
         saida: saidaTmp,
@@ -175,6 +194,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         imagens: arquivos.imagens,
         musica: arquivos.musica,
         sons: arquivos.sons,
+        luts,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
           // Renova o lock a cada avanço: um render de dez minutos não

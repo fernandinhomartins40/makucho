@@ -9,6 +9,9 @@
 //      (transicoesGlsl.ts);
 //   3. o resultado vai para a tela.
 //
+// A cor do trecho (filtro + ajustes) é a tabela 3D de contracts/cor.ts,
+// aplicada no fim do passo 1 -- como o `lut3d` no fim do trecho no render.
+//
 // Os <video> continuam existindo (tocam o som e são a fonte das
 // texturas), mas quem aparece é este canvas.
 // ============================================================
@@ -21,6 +24,14 @@ export interface CamadaDoQuadro {
   fonte: HTMLVideoElement | null;
   /** Zoom do trecho (punch_in, zoom_lento), sobre o quadro já montado. */
   zoom: number;
+  /** Tabela de cor do trecho (`tabelaDeCor`), com a chave dela. */
+  cor?: TabelaDeCor | null;
+}
+
+export interface TabelaDeCor {
+  chave: string;
+  lado: number;
+  dados: Uint8Array;
 }
 
 export interface QuadroParaDesenhar {
@@ -48,6 +59,8 @@ uniform vec2 uVideoTam;
 uniform vec2 uQuadroTam;
 uniform int uModo;
 uniform float uZoom;
+uniform highp sampler3D uLut;
+uniform float uLado;
 in vec2 vUv;
 out vec4 cor;
 vec3 video(vec2 uv, float escala, float lod) {
@@ -57,19 +70,21 @@ vec3 video(vec2 uv, float escala, float lod) {
   if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return vec3(-1.0);
   return textureLod(uVideo, p, lod).rgb;
 }
-void main() {
+vec3 montar() {
   vec2 uv = 0.5 + (vUv - 0.5) / uZoom;
   float cabe = min(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
   float cobre = max(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
-  if (uModo == 1) { cor = vec4(max(video(uv, cobre, 0.0), 0.0), 1.0); return; }
+  if (uModo == 1) return max(video(uv, cobre, 0.0), 0.0);
   vec3 frente = video(uv, cabe, 0.0);
-  if (frente.r >= 0.0) { cor = vec4(frente, 1.0); return; }
-  if (uModo == 2) {
-    vec3 fundo = max(video(uv, cobre, 5.0), 0.0);
-    cor = vec4(clamp(fundo - 0.06, 0.0, 1.0), 1.0);
-    return;
-  }
-  cor = vec4(0.0, 0.0, 0.0, 1.0);
+  if (frente.r >= 0.0) return frente;
+  if (uModo == 2) return clamp(max(video(uv, cobre, 5.0), 0.0) - 0.06, 0.0, 1.0);
+  return vec3(0.0);
+}
+void main() {
+  vec3 c = montar();
+  // Tabela 3D: o valor v cai entre os pontos v*(lado-1), como no lut3d.
+  if (uLado > 1.0) c = texture(uLut, c * (uLado - 1.0) / uLado + 0.5 / uLado).rgb;
+  cor = vec4(c, 1.0);
 }`;
 
 const COPIAR = `#version 300 es
@@ -95,6 +110,8 @@ export class Compositor {
   private fbos: Array<{ fb: WebGLFramebuffer; tex: WebGLTexture }> = [];
   private largura = 0;
   private altura = 0;
+  /** Tabelas de cor já na placa, por chave (as mais recentes). */
+  private luts = new Map<string, WebGLTexture>();
 
   static criar(canvas: HTMLCanvasElement): Compositor | null {
     const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false });
@@ -112,9 +129,13 @@ export class Compositor {
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom']);
+    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado']);
     this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
+    // A tabela de cor mora sempre na unidade 2: um sampler3D na unidade 0,
+    // onde fica a textura 2D do vídeo, faria a placa recusar o desenho.
+    gl.useProgram(this.enquadrar.programa);
+    gl.uniform1i(this.enquadrar.uniforms.uLut!, 2);
     for (let i = 0; i < 2; i += 1) {
       const t = gl.createTexture()!;
       gl.bindTexture(gl.TEXTURE_2D, t);
@@ -202,8 +223,80 @@ export class Compositor {
     gl.uniform2f(p.uniforms.uQuadroTam!, this.largura, this.altura);
     gl.uniform1i(p.uniforms.uModo!, enquadramento === 'preencher' ? 1 : enquadramento === 'desfoque' ? 2 : 0);
     gl.uniform1f(p.uniforms.uZoom!, c.zoom);
+    this.usarCor(c.cor);
     this.desenharRetangulo();
     return true;
+  }
+
+  /** Liga a tabela de cor (unidade 2) ou desliga (`uLado` = 0). */
+  private usarCor(cor: TabelaDeCor | null | undefined) {
+    const gl = this.gl;
+    const p = this.enquadrar;
+    if (!cor) {
+      gl.uniform1f(p.uniforms.uLado!, 0);
+      return;
+    }
+    let tex = this.luts.get(cor.chave);
+    if (!tex) {
+      tex = gl.createTexture()!;
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_3D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, cor.lado, cor.lado, cor.lado, 0, gl.RGBA, gl.UNSIGNED_BYTE, cor.dados);
+      for (const eixo of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, eixo, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      this.luts.set(cor.chave, tex);
+      // Guarda só as 16 mais recentes.
+      if (this.luts.size > 16) {
+        const [velha, t] = this.luts.entries().next().value!;
+        gl.deleteTexture(t);
+        this.luts.delete(velha);
+      }
+    } else {
+      // Recente de novo: vai para o fim da fila.
+      this.luts.delete(cor.chave);
+      this.luts.set(cor.chave, tex);
+    }
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_3D, tex);
+    gl.uniform1i(p.uniforms.uLut!, 2);
+    gl.uniform1f(p.uniforms.uLado!, cor.lado);
+    gl.activeTexture(gl.TEXTURE0);
+  }
+
+  /**
+   * Uma imagem com a cor aplicada, sem enquadrar (banco de paridade e
+   * miniaturas dos filtros). O canvas fica do tamanho da imagem.
+   */
+  desenharImagemComCor(img: HTMLImageElement | HTMLCanvasElement, cor: TabelaDeCor | null): void {
+    const gl = this.gl;
+    const canvas = gl.canvas as HTMLCanvasElement;
+    const w = img.width;
+    const h = img.height;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const tex = this.texVideo[this.texVideo.length - 1]!;
+    // A textura deixa de ser de um player: ele sobe o quadro de novo.
+    for (const [v, g] of this.texDoPlayer) if (g.tex === tex) this.texDoPlayer.delete(v);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    const p = this.enquadrar;
+    gl.useProgram(p.programa);
+    gl.uniform1i(p.uniforms.uVideo!, 0);
+    gl.uniform2f(p.uniforms.uVideoTam!, w, h);
+    gl.uniform2f(p.uniforms.uQuadroTam!, w, h);
+    gl.uniform1i(p.uniforms.uModo!, 1);
+    gl.uniform1f(p.uniforms.uZoom!, 1);
+    this.usarCor(cor);
+    this.desenharRetangulo();
   }
 
   /**

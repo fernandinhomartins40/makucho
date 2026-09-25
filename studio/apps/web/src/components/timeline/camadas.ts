@@ -11,7 +11,7 @@
 //   efeitos    o zoom de cada trecho e os efeitos sonoros.
 // ============================================================
 
-import { montarBlocos, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
+import { corEhNeutra, definicaoDaAparencia, montarBlocos, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
 import type { Agenda, EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 
@@ -130,6 +130,8 @@ export const COMPONENTES_DE_TEXTO = new Set(['HookTitle', 'CTA', 'Destaque', 'Lo
 
 export interface RecursosDoTrecho {
   efeito: string | null;
+  /** Filtro de cor (ou "Cor" quando só há ajustes). */
+  cor: string | null;
   transicao: string | null;
   legendas: number;
   textos: number;
@@ -168,6 +170,7 @@ export function recursosPorTrecho(
           .join(' ') || null;
     mapa.set(t.clip.id, {
       efeito: t.clip.effect ? (NOME_DO_EFEITO[t.clip.effect] ?? t.clip.effect) : null,
+      cor: t.clip.color && !corEhNeutra(t.clip.color) ? (definicaoDaAparencia(t.clip.color.look)?.rotulo ?? 'Cor') : null,
       transicao: tr && tr.type !== 'cut' ? (NOME_DA_TRANSICAO[tr.type] ?? tr.type) : null,
       legendas: blocos.filter((b) => cruza(ini, fim, b.inicioMs, b.fimMs)).length,
       textos: plan.overlays.filter((o) => COMPONENTES_DE_TEXTO.has(o.component) && cruza(ini, fim, o.timelineStartMs, o.timelineStartMs + o.durationMs)).length,
