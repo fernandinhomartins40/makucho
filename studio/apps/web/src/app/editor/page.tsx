@@ -873,8 +873,12 @@ function Editor({ projectId }: { projectId: string }) {
 
         <section className="editor__ia" aria-label="Painel de conteúdo">
           <CabecalhoDaFolha titulo={ROTULO_DA_ABA[aba]} aoFechar={() => setFolha(null)} />
+          {/* Aba IA, na ordem do que a pessoa quer fazer: (1) pedir um
+              ajuste, (2) conferir os trechos, (3) o que a IA entendeu e
+              refazer a análise -- recolhido, porque é consulta. Uma só
+              rolagem: duas barras no mesmo painel confundiam. */}
           {aba === 'ia' && (
-            <div style={{ padding: 'var(--e4)', borderBottom: '1px solid var(--border)', display: 'grid', gap: 'var(--e3)' }}>
+            <div className="ia-secao ia-secao--topo">
               {semIa && (
                 <div className="aviso aviso--atencao">
                   <IconeAviso size={15} />
@@ -895,13 +899,15 @@ function Editor({ projectId }: { projectId: string }) {
                   </span>
                 </div>
               )}
-              <button type="button" className="botao botao--secundario" style={{ width: '100%' }} disabled={analisando} onClick={() => void analisar()}>
-                <IconeIA size={16} weight="fill" />
-                {analisando ? 'Analisando a gravação…' : semIa ? 'Analisar com IA' : 'Refazer a análise com IA'}
-              </button>
+              {semIa && (
+                <button type="button" className="botao botao--primario" style={{ width: '100%' }} disabled={analisando} onClick={() => void analisar()}>
+                  <IconeIA size={16} weight="fill" />
+                  {analisando ? 'Analisando a gravação…' : 'Analisar com IA'}
+                </button>
+              )}
               {analisando && (
                 <p className="texto-secundario" style={{ fontSize: 12 }} role="status" aria-live="polite">
-                  Leva de alguns segundos a poucos minutos. A proposta atual continua salva.
+                  Analisando a gravação. Leva de alguns segundos a poucos minutos; a edição atual continua salva.
                 </p>
               )}
               {avisosDaIa.map((a) => (
@@ -910,34 +916,38 @@ function Editor({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12 }}>{a}</span>
                 </div>
               ))}
-              {!semIa && projeto?.entendimentoDaIa && <EntendimentoDaIa e={projeto.entendimentoDaIa} />}
               {!semIa && <PedirAIa onEnviar={pedirAIa} />}
             </div>
           )}
 
           {aba === 'ia' && (
-            <PainelDaIA
-              plan={plano}
-              selecionado={selecionado}
-              desligados={desligados}
-              onSelecionar={(id) => {
-                setSelecionado(id);
-                // Selecionar um trecho leva o preview até ele.
-                if (id) {
-                  let acumulado = 0;
-                  for (const c of plano.clips) {
-                    if (desligados.has(c.id)) continue;
-                    if (c.id === id) break;
-                    acumulado += c.sourceEndMs - c.sourceStartMs;
+            <div className="ia-secao">
+              <PainelDaIA
+                plan={plano}
+                selecionado={selecionado}
+                desligados={desligados}
+                onSelecionar={(id) => {
+                  setSelecionado(id);
+                  // Selecionar um trecho leva o preview até ele.
+                  if (id) {
+                    let acumulado = 0;
+                    for (const c of plano.clips) {
+                      if (desligados.has(c.id)) continue;
+                      if (c.id === id) break;
+                      acumulado += c.sourceEndMs - c.sourceStartMs;
+                    }
+                    setPosicaoMs(acumulado);
                   }
-                  setPosicaoMs(acumulado);
-                }
-              }}
-              onAlternar={alternarTrecho}
-              onOperacao={executar}
-            />
+                }}
+                onAlternar={alternarTrecho}
+                onOperacao={executar}
+              />
+              <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />
+            </div>
           )}
-          {aba === 'ia' && <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />}
+          {aba === 'ia' && !semIa && (
+            <SobreOVideo entendimento={projeto?.entendimentoDaIa ?? null} analisando={analisando} onRefazer={() => void analisar()} />
+          )}
           {aba === 'biblioteca' && (
             <PainelDaBiblioteca
               plan={plano}
@@ -1106,28 +1116,54 @@ const GANCHO: Record<string, string> = {
  * promessa estiverem errados, os cortes também estarão -- e a pessoa
  * vê isso num relance, sem precisar assistir tudo.
  */
-function EntendimentoDaIa({ e }: { e: NonNullable<ProjetoDetalhado['entendimentoDaIa']> }) {
+/**
+ * "Sobre este vídeo": o que a IA entendeu e o botão de refazer a
+ * análise. Fica recolhido no fim do painel -- é consulta, não o que a
+ * pessoa vai fazer agora -- e refazer a análise, que troca a seleção
+ * de trechos, fica longe do caminho de quem só quer ajustar.
+ */
+function SobreOVideo({
+  entendimento: e,
+  analisando,
+  onRefazer,
+}: {
+  entendimento: ProjetoDetalhado['entendimentoDaIa'] | null;
+  analisando: boolean;
+  onRefazer: () => void;
+}) {
   return (
-    <details className="entendimento" open>
+    <details className="ia-sobre">
       <summary>
-        <IconeIA size={14} weight="fill" /> O que a IA entendeu
+        <span className="linha" style={{ gap: 6 }}>
+          <IconeIA size={14} weight="fill" color="var(--accent)" />
+          O que a IA entendeu do vídeo
+        </span>
       </summary>
-      <dl>
-        <dt>Assunto</dt>
-        <dd>{e.topic}</dd>
-        {e.audience && (
-          <>
-            <dt>Para quem</dt>
-            <dd>{e.audience}</dd>
-          </>
-        )}
-        <dt>Promessa</dt>
-        <dd>{e.promise}</dd>
-        <dt>Estrutura</dt>
-        <dd>
-          {ESTRUTURA[e.structure] ?? e.structure} · gancho de {GANCHO[e.hookType] ?? e.hookType}
-        </dd>
-      </dl>
+      {e && (
+        <dl>
+          <dt>Assunto</dt>
+          <dd>{e.topic}</dd>
+          {e.audience && (
+            <>
+              <dt>Para quem</dt>
+              <dd>{e.audience}</dd>
+            </>
+          )}
+          <dt>Promessa</dt>
+          <dd>{e.promise}</dd>
+          <dt>Estrutura</dt>
+          <dd>
+            {ESTRUTURA[e.structure] ?? e.structure} · gancho de {GANCHO[e.hookType] ?? e.hookType}
+          </dd>
+        </dl>
+      )}
+      <div className="ia-sobre__refazer">
+        <p>Não ficou bom? A IA pode analisar a gravação de novo e escolher outros trechos. A edição atual continua salva.</p>
+        <button type="button" className="botao botao--secundario botao--pequeno" disabled={analisando} onClick={onRefazer}>
+          <IconeIA size={14} weight="fill" />
+          {analisando ? 'Analisando…' : 'Refazer a análise'}
+        </button>
+      </div>
     </details>
   );
 }

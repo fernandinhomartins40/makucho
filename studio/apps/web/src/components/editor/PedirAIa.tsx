@@ -15,13 +15,9 @@
 import { useState } from 'react';
 import { IconeIA } from '../icones';
 
-const EXEMPLOS = [
-  'Deixa os textos mais bonitos',
-  'Mais dinâmico, estilo TikTok',
-  'Legenda estilo Hormozi, maior e no meio',
-  'Cor de cinema no vídeo todo',
-  'Tira a música e os efeitos sonoros',
-];
+// Três, e não mais: uma nuvem de sugestões compete com o campo e faz
+// o painel parecer um cardápio.
+const EXEMPLOS = ['Deixa os textos mais bonitos', 'Mais dinâmico, estilo TikTok', 'Cor de cinema no vídeo todo'];
 
 export interface RespostaDaIa {
   texto: string;
@@ -58,10 +54,13 @@ export function PedirAIa({ onEnviar }: { onEnviar: Envio }) {
 
   return (
     <div className="pedir-ia">
-      <label htmlFor="pedido-ia" className="campo__rotulo linha" style={{ gap: 6 }}>
-        <IconeIA size={14} weight="fill" color="var(--accent)" />
-        Peça à IA
-      </label>
+      <div>
+        <label htmlFor="pedido-ia" className="ia-secao__titulo linha" style={{ gap: 6 }}>
+          <IconeIA size={16} weight="fill" color="var(--accent)" />
+          Peça à IA
+        </label>
+        <p className="ia-secao__ajuda">Escreva do seu jeito o que quer mudar no vídeo. Ela ajusta a edição para você.</p>
+      </div>
       <form
         className="pedir-ia__linha"
         onSubmit={(e) => {

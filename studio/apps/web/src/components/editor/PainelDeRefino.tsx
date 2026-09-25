@@ -105,7 +105,32 @@ export function PainelDeRefino({ projectId, plan, onOperacao }: Props) {
   };
 
   return (
-    <div style={{ display: 'grid', gap: 'var(--e4)', padding: 'var(--e3)' }}>
+    <div className="refino">
+      {/* As duas ações lado a lado e compactas: são complementos da lista
+          de trechos logo acima, não o assunto principal do painel. */}
+      <div className="refino__acoes">
+        <button
+          type="button"
+          className="botao botao--fantasma botao--pequeno"
+          disabled={!projectId || carregando !== null}
+          onClick={() => void buscarCandidatos()}
+          title="A IA procura na gravação um trecho bom que ficou de fora"
+        >
+          <IconeMais size={14} />
+          {carregando === 'candidatos' ? 'Procurando…' : 'Trecho esquecido'}
+        </button>
+        <button
+          type="button"
+          className="botao botao--fantasma botao--pequeno"
+          disabled={!projectId || carregando !== null}
+          onClick={() => void buscarRefino()}
+          title="A IA confere se cada corte começa e termina no ponto certo da fala"
+        >
+          <IconeIA size={14} />
+          {carregando === 'refino' ? 'Analisando…' : 'Aprimorar cortes'}
+        </button>
+      </div>
+
       {erro && (
         <p className="linha" style={{ gap: 'var(--e2)', fontSize: 12, color: 'var(--danger)' }}>
           <IconeAviso size={13} />
@@ -115,16 +140,6 @@ export function PainelDeRefino({ projectId, plan, onOperacao }: Props) {
 
       {/* ---------- #4: adicionar trecho ---------- */}
       <div>
-        <button
-          type="button"
-          className="botao botao--secundario botao--largo"
-          disabled={!projectId || carregando !== null}
-          onClick={() => void buscarCandidatos()}
-        >
-          <IconeMais size={15} />
-          {carregando === 'candidatos' ? 'Procurando…' : 'Adicionar trecho com IA'}
-        </button>
-
         {candidatos !== null && candidatos.length === 0 && (
           <p className="texto-secundario" style={{ fontSize: 12, marginTop: 'var(--e2)' }}>
             Nenhum trecho que valha a pena acrescentar — o corte já pegou o que
@@ -181,17 +196,7 @@ export function PainelDeRefino({ projectId, plan, onOperacao }: Props) {
       </div>
 
       {/* ---------- #6: aprimorar cortes ---------- */}
-      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--e3)' }}>
-        <button
-          type="button"
-          className="botao botao--secundario botao--largo"
-          disabled={!projectId || carregando !== null}
-          onClick={() => void buscarRefino()}
-        >
-          <IconeIA size={15} />
-          {carregando === 'refino' ? 'Analisando…' : 'Aprimorar cortes'}
-        </button>
-
+      <div>
         {silencios > 0 && (
           /* Os silêncios vêm de MEDIÇÃO, não do modelo: já foram
              detectados na transcrição, pelo FFmpeg. Dizer isso evita

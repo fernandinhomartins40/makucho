@@ -5821,3 +5821,193 @@ button.recursos-do-trecho__item:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- Aba IA: pedir, trechos e "sobre o vídeo" ----------
+   Uma só rolagem (a do painel): a lista de trechos não rola por dentro.
+   Três seções separadas por uma linha, cada uma com título e uma frase
+   que diz para que serve -- o painel se explica para quem é leigo. */
+.editor__ia > .ia-secao,
+.editor__ia > .ia-sobre {
+  flex-shrink: 0;
+}
+
+.ia-secao {
+  display: grid;
+  gap: var(--e3);
+  padding: var(--e4);
+}
+
+.ia-secao + .ia-secao,
+.ia-secao + .ia-sobre {
+  border-top: 1px solid var(--border);
+}
+
+.ia-secao .painel__corpo {
+  overflow: visible;
+  min-height: auto;
+  padding: 0;
+  gap: var(--e2);
+}
+
+.ia-secao__cabecalho {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--e2);
+  flex-wrap: wrap;
+}
+
+.ia-secao__titulo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.ia-secao__meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ia-secao__ajuda {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin: 2px 0 0;
+}
+
+/* O pedido é o assunto do topo: sem a linha de cima do layout antigo. */
+.ia-secao--topo .pedir-ia {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* Trecho mais enxuto: miniatura menor, sem a alça (não arrastava). */
+.ia-secao .trecho {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: var(--e3);
+  padding: var(--e2) var(--e3);
+}
+
+.ia-secao .trecho__miniatura {
+  width: 48px;
+}
+
+.ia-secao .trecho__motivo {
+  font-size: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ia-secao .trecho[data-ativo] .trecho__motivo {
+  -webkit-line-clamp: unset;
+}
+
+.ia-secao .trecho__origem {
+  margin-top: var(--e1);
+}
+
+/* Achar trecho esquecido / Aprimorar cortes: complementos da lista. */
+.refino {
+  display: grid;
+  gap: var(--e3);
+}
+
+.refino > div:empty {
+  display: none;
+}
+
+.refino__acoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--e2);
+}
+
+.refino__acoes .botao {
+  width: 100%;
+  border: 1px dashed var(--border-forte);
+}
+
+/* Sobre o vídeo: recolhido no fim. */
+.ia-sobre {
+  padding: var(--e3) var(--e4) var(--e4);
+  font-size: 12px;
+}
+
+.ia-sobre summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: var(--e1) 0;
+}
+
+.ia-sobre summary::-webkit-details-marker {
+  display: none;
+}
+
+.ia-sobre summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(45deg);
+  transition: transform var(--transicao);
+  flex-shrink: 0;
+}
+
+.ia-sobre[open] summary::after {
+  transform: rotate(225deg);
+}
+
+.ia-sobre dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px var(--e3);
+  margin: var(--e3) 0 0;
+}
+
+.ia-sobre dt {
+  color: var(--text-secondary);
+}
+
+.ia-sobre dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.ia-sobre__refazer {
+  display: grid;
+  gap: var(--e2);
+  justify-items: start;
+  margin-top: var(--e3);
+  padding-top: var(--e3);
+  border-top: 1px solid var(--border);
+}
+
+.ia-sobre__refazer p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* O quadro 9:16 cresce pela ALTURA; numa tela alta e estreita (1440x1500,
+   monitor em pé) ele ficava mais largo que a coluna e invadia o painel da
+   IA. A altura agora também respeita a largura disponível. */
+.editor__palco {
+  container-type: size;
+}
+
+.palco__quadro {
+  height: min(100%, calc(100cqw * 16 / 9));
+  max-width: 100%;
+}

@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================
-// Painel "Seleção da IA".
+// Painel "Trechos do vídeo" (a seleção da IA).
 //
 // O contexto mestre (seção 13) proíbe caixa preta: cada trecho vem
 // com o motivo da escolha e com o ponto exato do original de onde
@@ -15,7 +15,7 @@
 import { useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { corDaFuncao, nomeDaFuncao, tempo } from './funcoes';
-import { IconeIA, IconeAviso, IconeArrastar, IconeMenu } from '../icones';
+import { IconeAviso, IconeMenu } from '../icones';
 
 interface Props {
   plan: EditPlanV1;
@@ -27,22 +27,6 @@ interface Props {
   onOperacao: (op: TimelineOperation) => void;
 }
 
-/**
- * Confiança da proposta.
- *
- * Deriva do risco semântico dos trechos: é a informação que o modelo
- * realmente produz. Um número inventado aqui seria pior que nenhum —
- * daria autoridade a um palpite.
- */
-function confianca(plan: EditPlanV1): number {
-  const peso = { low: 1, medium: 0.7, high: 0.35 } as const;
-  const soma = plan.clips.reduce(
-    (t, c) => t + (peso[c.semanticRisk as keyof typeof peso] ?? 0.5),
-    0,
-  );
-  return Math.round((soma / Math.max(1, plan.clips.length)) * 100);
-}
-
 export function PainelDaIA({
   plan,
   selecionado,
@@ -52,29 +36,21 @@ export function PainelDaIA({
   onOperacao,
 }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
-  const minutos = Math.round(plan.sourceDurationMs / 60_000);
-  const pct = confianca(plan);
+  const minutos = Math.max(1, Math.round(plan.sourceDurationMs / 60_000));
+  const ligados = plan.clips.filter((c) => !desligados.has(c.id)).length;
 
+  // Sem "% de confiança": para quem não edita vídeo o número não diz o
+  // que fazer. O que precisa de atenção aparece no próprio trecho
+  // ("Revisar sentido").
   return (
     <>
-      <header className="painel__cabecalho">
-        <span className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeIA size={20} weight="fill" color="var(--accent)" />
-          <strong style={{ fontSize: 17 }}>Seleção da IA</strong>
-        </span>
-
-        <span className="selo selo--sucesso">
-          <span className="selo__ponto" aria-hidden />
-          {pct}% de confiança
+      <header className="ia-secao__cabecalho">
+        <h2 className="ia-secao__titulo">Trechos do vídeo</h2>
+        <span className="ia-secao__meta">
+          {ligados === plan.clips.length ? `${plan.clips.length} trechos` : `${ligados} de ${plan.clips.length} no vídeo`} · de {minutos} min gravados
         </span>
       </header>
-
-      <p
-        className="texto-secundario"
-        style={{ padding: '0 var(--e4) var(--e3)', fontSize: 13, flexShrink: 0 }}
-      >
-        {plan.clips.length} trechos selecionados de {minutos} min de gravação
-      </p>
+      <p className="ia-secao__ajuda">Toque num trecho para vê-lo. A chave tira ou devolve o trecho ao vídeo.</p>
 
       <div className="painel__corpo pilha">
         {plan.clips.map((clipe, i) => {
@@ -90,13 +66,6 @@ export function PainelDaIA({
               data-desligado={!ligado || undefined}
               style={{ ['--cor-funcao' as string]: corDaFuncao(clipe.role) }}
             >
-              {/* A reordenação por arraste entra junto com o arraste
-                  na timeline; por ora a alça é o ponto de agarre
-                  visual e a ordem muda pelo inspector. */}
-              <span className="trecho__alca" aria-hidden>
-                <IconeArrastar size={16} />
-              </span>
-
               {/* Miniatura: o quadro do meio do trecho. Enquanto o
                   proxy não existe, o gradiente da função ocupa o
                   lugar sem fingir um frame que não temos. */}
@@ -123,11 +92,11 @@ export function PainelDaIA({
                 </strong>
                 <p className="trecho__motivo">{clipe.reason}</p>
 
-                {/* De onde saiu no bruto: a promessa de integridade
+                {/* De onde saiu na gravação: a promessa de integridade
                     editorial só é verificável se a origem estiver à
                     vista. */}
                 <span className="trecho__origem">
-                  {tempo(clipe.sourceStartMs)} – {tempo(clipe.sourceEndMs)} no original
+                  Da gravação: {tempo(clipe.sourceStartMs)} – {tempo(clipe.sourceEndMs)}
                 </span>
 
                 {clipe.semanticRisk === 'high' && (
