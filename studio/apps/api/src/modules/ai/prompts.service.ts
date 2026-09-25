@@ -41,7 +41,10 @@ export const VERSAO_DO_PROMPT = {
   // de tela, stickers, pacotes), glossário para pedidos vagos, contexto
   // do editor (selecionado, cursor, conversa) e atalhos expandidos no
   // servidor -- a IA age em vez de perguntar.
-  comandar_edicao: 'comando-v3',
+  // v4: biblioteca da marca (logos, trilhas, sons, vinhetas, imagens e
+  // vídeos com "para que serve") e as vinhetas de abertura/encerramento.
+  comandar_edicao: 'comando-v4',
+  configurar_marca: 'marca-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

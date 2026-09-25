@@ -42,6 +42,7 @@ import {
   comEspacoDeTrabalho,
   comLockGlobal,
   duracaoDoResultado,
+  duracaoComVinhetas,
   gerarMascaraDaPessoa,
   lerMetadados,
   renderizar,
@@ -129,6 +130,8 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   const prefixo = dirname(original.storageKey);
   const chaveDaSaida = `${prefixo}/render-${registro.id}.mp4`;
 
+  // As vinhetas que entraram: a duração esperada do arquivo conta com elas.
+  let vinhetas: Awaited<ReturnType<typeof vinhetasDoPlano>> = {};
   await comLockGlobal(redis, async (renovar) => {
     await comEspacoDeTrabalho(async (espaco) => {
       const saidaTmp = espaco.arquivo('render.mp4');
@@ -175,6 +178,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         : undefined;
 
       const arquivos = await arquivosDoPlano(plano, workspaceId);
+      vinhetas = await vinhetasDoPlano(arquivos);
 
       // Filtro e ajustes de cor: uma tabela (.cube) por cor diferente,
       // gerada pela mesma função que a prévia usa (contracts/cor.ts).
@@ -206,6 +210,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         sons: arquivos.sons,
         luts,
         midias: await midiasDoPlano(plano, arquivos.imagens),
+        ...vinhetas,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
           // Renova o lock a cada avanço: um render de dez minutos não
@@ -228,7 +233,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   const info = await stat(destino);
   const medido = await lerMetadados(destino);
 
-  const esperadoMs = duracaoDoResultado(plano, job.data.clipsDesligados ?? []);
+  const esperadoMs = duracaoComVinhetas(plano, job.data.clipsDesligados ?? [], vinhetas);
   // Um segundo de tolerância: o FFmpeg fecha o arquivo no keyframe
   // seguinte, e a diferença é normal.
   const divergencia = Math.abs(medido.durationMs - esperadoMs);
@@ -412,15 +417,19 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
   const imagens: Record<string, string> = {};
   const sons: Record<string, string> = {};
   let musica: string | undefined;
+  let abertura: string | undefined;
+  let encerramento: string | undefined;
 
-  if (!workspaceId) return { imagens, sons, musica };
+  if (!workspaceId) return { imagens, sons, musica, abertura, encerramento };
 
   const ids = new Set<string>();
   for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
   for (const m of plano.mediaLayers ?? []) if (m.kind !== 'sticker') ids.add(m.assetId);
   for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
   if (plano.music) ids.add(plano.music.assetId);
-  if (ids.size === 0) return { imagens, sons, musica };
+  if (plano.intro) ids.add(plano.intro.assetId);
+  if (plano.outro) ids.add(plano.outro.assetId);
+  if (ids.size === 0) return { imagens, sons, musica, abertura, encerramento };
 
   const assets = await prisma.asset.findMany({
     where: { id: { in: [...ids] }, workspaceId },
@@ -440,10 +449,32 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
     }
     if (a.kind === 'MUSIC' && plano.music?.assetId === a.id) musica = caminho;
     else if (a.kind === 'SOUND_EFFECT') sons[a.id] = caminho;
+    else if (a.kind === 'INTRO' && plano.intro?.assetId === a.id) abertura = caminho;
+    else if (a.kind === 'OUTRO' && plano.outro?.assetId === a.id) encerramento = caminho;
     else imagens[a.id] = caminho;
   }
 
-  return { imagens, sons, musica };
+  return { imagens, sons, musica, abertura, encerramento };
+}
+
+/**
+ * As vinhetas de abertura e encerramento, com o "tem som?" medido: sem
+ * áudio, o render põe silêncio no lugar (o `concat` exige áudio em todo
+ * pedaço). Uma que não pode ser medida fica de fora -- o vídeo sai.
+ */
+async function vinhetasDoPlano(arquivos: { abertura?: string; encerramento?: string }) {
+  const medir = async (caminho: string | undefined) => {
+    if (!caminho) return undefined;
+    try {
+      const m = await medirMidia(caminho);
+      return { caminho, temAudio: m.temAudio };
+    } catch (e) {
+      console.warn('[render] vinheta não pôde ser medida; fica de fora:', e);
+      return undefined;
+    }
+  };
+  const [abertura, encerramento] = await Promise.all([medir(arquivos.abertura), medir(arquivos.encerramento)]);
+  return { ...(abertura ? { abertura } : {}), ...(encerramento ? { encerramento } : {}) };
 }
 
 /**

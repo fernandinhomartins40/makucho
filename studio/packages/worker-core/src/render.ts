@@ -90,6 +90,13 @@ export interface OpcoesDoRender {
    * texto, sem som) do intervalo, em `lado` x `lado`, RGB cru no stdout.
    */
   quadrosParaMascara?: { inicioMs: number; fimMs: number; lado: number };
+  /**
+   * Vinhetas da marca (`plano.intro` / `plano.outro`), já resolvidas em
+   * arquivo. Entram inteiras antes/depois do vídeo, cortadas na duração
+   * do plano; sem arquivo, o vídeo sai sem elas.
+   */
+  abertura?: { caminho: string; temAudio: boolean };
+  encerramento?: { caminho: string; temAudio: boolean };
   aoProgredir?: (fracao: number) => void;
   sinal?: AbortSignal;
 }
@@ -554,15 +561,56 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     partes.push(`[${base}]subtitles=${escaparCaminhoDeFiltro(opcoes.legendas!)}${fontes}[vlegendado]`);
   }
 
+  // ---------- Vinhetas da marca ----------
+  //
+  // Depois de tudo (legenda, textos, loudnorm): a vinheta é um arquivo
+  // pronto, e nada do vídeo pode cair em cima dela. O `concat` exige a
+  // mesma resolução, proporção de pixel e formato de áudio nos pedaços:
+  // a vinheta é encaixada no quadro (sem distorcer) e o áudio dela (ou
+  // silêncio, se não tiver) vai para 48 kHz estéreo.
+  let mapaDeVideo = saidaDeVideo;
+  let mapaDeAudio = '[asaida]';
+  const vinhetas = [
+    plano.intro && opcoes.abertura ? { ...opcoes.abertura, ms: plano.intro.durationMs, nome: 'abertura' } : null,
+    plano.outro && opcoes.encerramento ? { ...opcoes.encerramento, ms: plano.outro.durationMs, nome: 'encerramento' } : null,
+  ];
+  if (vinhetas.some(Boolean)) {
+    const W = plano.canvas.width;
+    const H = plano.canvas.height;
+    const preparar = (v: { caminho: string; temAudio: boolean; ms: number; nome: string }) => {
+      const i = proximaEntrada++;
+      entradas.push('-i', v.caminho);
+      const d = (v.ms / 1000).toFixed(3);
+      partes.push(
+        `[${i}:v]trim=0:${d},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black,fps=${FPS},format=yuv420p,setsar=1[v${v.nome}]`,
+      );
+      partes.push(
+        v.temAudio
+          ? `[${i}:a]atrim=0:${d},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a${v.nome}]`
+          : `anullsrc=r=48000:cl=stereo,atrim=0:${d}[a${v.nome}]`,
+      );
+      return `[v${v.nome}][a${v.nome}]`;
+    };
+    const pedacos: string[] = [];
+    if (vinhetas[0]) pedacos.push(preparar(vinhetas[0]));
+    partes.push(`${saidaDeVideo}format=yuv420p,setsar=1[vprincipal]`);
+    partes.push(`[asaida]aformat=sample_rates=48000:channel_layouts=stereo[aprincipal]`);
+    pedacos.push('[vprincipal][aprincipal]');
+    if (vinhetas[1]) pedacos.push(preparar(vinhetas[1]));
+    partes.push(`${pedacos.join('')}concat=n=${pedacos.length}:v=1:a=1[vfinal][afinal]`);
+    mapaDeVideo = '[vfinal]';
+    mapaDeAudio = '[afinal]';
+  }
+
   return [
     '-y',
     ...entradas,
     '-filter_complex',
     partes.join(';'),
     '-map',
-    saidaDeVideo,
+    mapaDeVideo,
     '-map',
-    '[asaida]',
+    mapaDeAudio,
     '-c:v',
     'libx264',
     // `medium` e nao `ultrafast`: este arquivo e o entregavel, e o
@@ -976,12 +1024,25 @@ export function duracaoDoResultado(plano: EditPlanV1, clipsDesligados: readonly 
   return Math.round(agendaDoPlano(plano, clipsDesligados).duracaoMs);
 }
 
+/** A duração do arquivo final: o vídeo mais as vinhetas que entraram. */
+export function duracaoComVinhetas(
+  plano: EditPlanV1,
+  clipsDesligados: readonly string[] = [],
+  vinhetas: { abertura?: unknown; encerramento?: unknown } = {},
+): number {
+  return (
+    duracaoDoResultado(plano, clipsDesligados) +
+    (plano.intro && vinhetas.abertura ? plano.intro.durationMs : 0) +
+    (plano.outro && vinhetas.encerramento ? plano.outro.durationMs : 0)
+  );
+}
+
 /** Executa o render. */
 export async function renderizar(opcoes: OpcoesDoRender): Promise<void> {
   const argumentos = montarArgumentos(opcoes);
 
   await executarBinario('ffmpeg', argumentos, {
-    duracaoTotalMs: duracaoDoResultado(opcoes.plano, opcoes.clipsDesligados),
+    duracaoTotalMs: duracaoComVinhetas(opcoes.plano, opcoes.clipsDesligados, opcoes),
     aoProgredir: opcoes.aoProgredir,
     sinal: opcoes.sinal,
     timeoutMs: TIMEOUT_MS,

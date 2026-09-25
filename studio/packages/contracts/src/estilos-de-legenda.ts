@@ -132,6 +132,38 @@ const FONTE_POR_FAMILIA: Record<string, IdDaFonte> = {
   'abril fatface': 'abril',
 };
 
+/**
+ * As famílias que o Kit de marca oferece: exatamente as da tabela acima,
+ * com o nome como a pessoa o reconhece. Escolher fora daqui cairia na
+ * Montserrat sem aviso.
+ */
+export const FAMILIAS_DE_FONTE = [
+  'Poppins',
+  'Inter',
+  'Montserrat',
+  'Archivo',
+  'Roboto',
+  'Open Sans',
+  'Source Sans 3',
+  'Anton',
+  'Bebas Neue',
+  'Bangers',
+  'Playfair Display',
+  'Oswald',
+  'Raleway',
+  'Nunito',
+  'Rubik',
+  'Lato',
+  'Kanit',
+  'Space Grotesk',
+  'Barlow Condensed',
+  'Lobster',
+  'Pacifico',
+  'Righteous',
+  'DM Serif Display',
+  'Abril Fatface',
+] as const;
+
 export function fonteDaFamilia(familia: string | null | undefined, reserva: IdDaFonte = 'montserrat'): FonteDeVideo {
   const id = familia ? FONTE_POR_FAMILIA[familia.trim().toLowerCase()] : undefined;
   return FONTES_DE_VIDEO[id ?? reserva];

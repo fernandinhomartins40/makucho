@@ -121,10 +121,12 @@ export const MIME_POR_TIPO: Readonly<Record<AssetKind, readonly string[]>> = {
  * ocupado por upload distraido ou malicioso.
  */
 export const TAMANHO_MAXIMO: Readonly<Record<AssetKind, number>> = {
-  LOGO: 2 * 1024 * 1024,
-  LOGO_NEGATIVE: 2 * 1024 * 1024,
-  LOGO_COMPACT: 1 * 1024 * 1024,
-  WATERMARK: 2 * 1024 * 1024,
+  // 5 MB: logo em PNG de alta resolução (o que as agências entregam)
+  // passa de 2 MB com facilidade, e 2 MB recusava arquivos legítimos.
+  LOGO: 5 * 1024 * 1024,
+  LOGO_NEGATIVE: 5 * 1024 * 1024,
+  LOGO_COMPACT: 5 * 1024 * 1024,
+  WATERMARK: 5 * 1024 * 1024,
   FONT: 5 * 1024 * 1024,
   IMAGE: 10 * 1024 * 1024,
   VIDEO: 100 * 1024 * 1024,

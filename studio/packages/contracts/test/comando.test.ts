@@ -67,8 +67,9 @@ const resposta = JSON.stringify({
 const lido = parseComando(resposta);
 t('o comando v3 é lido', lido.ok);
 if (lido.ok) {
-  t('foto/vídeo inventado e sticker fora do catálogo ficam de fora', lido.ignoradas.filter((i) => i.startsWith('adicionar_midia')).length === 2);
+  t('sticker fora do catálogo fica de fora já na leitura', lido.ignoradas.filter((i) => i.startsWith('adicionar_midia')).length === 1);
   const r = aplicarComando(plano, lido.operacoes);
+  t('foto inventada (fora da biblioteca da marca) fica de fora', r.ignoradas.some((i) => i.startsWith('adicionar_midia') && i.includes('biblioteca')));
   const p = r.plan;
   t('4 operações entram (atalho conta como uma)', r.aplicadas === 4);
   t('preset inexistente volta explicado', r.ignoradas.some((i) => i.includes('nao_existe')));
@@ -93,6 +94,40 @@ if (lido.ok) {
   const salvo = { id: 'meu1', rotulo: 'Meu podcast', ingredientes: { legenda: { styleId: 'podcast' } } };
   const r2 = aplicarComando(plano, [{ op: 'aplicar_pacote', id: 'meu1' }], { pacotesSalvos: [salvo] });
   t('aplicar_pacote aceita estilo salvo da pessoa', r2.plan.captions.styleId === 'podcast');
+}
+
+// ---------- Biblioteca da marca ----------
+{
+  const biblioteca = [
+    { assetId: 'intro1', tipo: 'INTRO', nome: 'Vinheta curta', uso: 'abertura de todo vídeo', duracaoMs: 2400 },
+    { assetId: 'outro1', tipo: 'OUTRO', nome: 'Encerramento', duracaoMs: 3000 },
+    { assetId: 'som1', tipo: 'SOUND_EFFECT', nome: 'Plim da marca', uso: 'quando aparece uma dica' },
+    { assetId: 'trilha1', tipo: 'MUSIC', nome: 'Trilha animada' },
+    { assetId: 'logoesc', tipo: 'LOGO_NEGATIVE', nome: 'Logo branca' },
+    { assetId: 'foto1', tipo: 'IMAGE', nome: 'Fachada da loja' },
+  ];
+  const r = aplicarComando(
+    plano,
+    [
+      { op: 'definir_abertura', assetId: 'intro1' },
+      { op: 'definir_encerramento', assetId: 'outro1' },
+      { op: 'adicionar_efeito_sonoro', assetId: 'som1', timelineStartMs: 2000, gainDb: -10 },
+      { op: 'trocar_musica', assetId: 'trilha1', gainDb: -20 },
+      { op: 'adicionar_overlay', component: 'LogoBug', assetId: 'logoesc', variant: 'sd', timelineStartMs: 0, durationMs: 12000 },
+      { op: 'adicionar_midia', kind: 'image', assetId: 'foto1', layout: 'pip', timelineStartMs: 1000, durationMs: 2000 },
+      { op: 'definir_abertura', assetId: 'som1' },
+      { op: 'trocar_musica', assetId: 'inventada' },
+    ],
+    { biblioteca },
+  );
+  t('vinhetas da marca entram com a duração do arquivo', r.plan.intro?.assetId === 'intro1' && r.plan.intro.durationMs === 2400 && r.plan.outro?.durationMs === 3000);
+  t('som, trilha, logo para fundo escuro e foto da marca entram', r.aplicadas === 6 && r.plan.music?.assetId === 'trilha1' && r.plan.mediaLayers?.[0]?.assetId === 'foto1');
+  t('tipo errado (som como abertura) e id inventado ficam de fora', r.ignoradas.length === 2);
+  t('o plano com vinhetas segue válido', editPlanV1Schema.safeParse(r.plan).success);
+  const sem = aplicarComando(r.plan, [{ op: 'definir_abertura', assetId: null }]);
+  t('tirar a abertura', !sem.plan.intro && !!sem.plan.outro);
+  const resumoComBiblioteca = resumoDoPlanoParaIa(r.plan, {}, { biblioteca });
+  t('o resumo lista a biblioteca com o uso', resumoComBiblioteca.includes('intro1|vinheta de abertura|"Vinheta curta"|"abertura de todo vídeo"|2.4s') && resumoComBiblioteca.includes('Vinhetas no vídeo: abertura=intro1'));
 }
 
 // ---------- Contexto do editor ----------

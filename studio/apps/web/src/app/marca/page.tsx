@@ -13,8 +13,12 @@
 
 import { dolares } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
-import type { PreferenciasDeVideo, TipoDeTransicao } from '@makucho/studio-contracts';
-import { PRESETS_DE_LEGENDA, presetDaLegenda } from '@makucho/studio-contracts';
+import type { PreferenciasDeVideo, SugestaoDeMarca, TipoDeTransicao } from '@makucho/studio-contracts';
+import { FAMILIAS_DE_FONTE, PRESETS_DE_LEGENDA, PRESETS_DE_TEXTO, presetDaLegenda } from '@makucho/studio-contracts';
+import { ConfigurarComIa } from '../../components/marca/ConfigurarComIa';
+import { LogosDaMarca, VARIANTES_DA_LOGO } from '../../components/marca/LogosDaMarca';
+import { BibliotecaDaMarca } from '../../components/marca/BibliotecaDaMarca';
+import { medirDuracao } from '../../lib/paleta';
 import { Topbar } from '../../components/shell/Topbar';
 import { AmostraDeEstilo } from '../../components/editor/AmostraDeEstilo';
 import { OpcoesDeTransicao } from '../../components/editor/Inspector';
@@ -26,14 +30,7 @@ import {
   type Asset,
   type ConsumoDeIa,
 } from '../../lib/api';
-import {
-  IconeAviso,
-  IconeEnviar,
-  IconeAudio,
-  IconeLixeira,
-  IconeSalvo,
-  IconeCelular,
-} from '../../components/icones';
+import { IconeAviso, IconeSalvo, IconeCelular } from '../../components/icones';
 
 // ---------- Armazenamento ----------
 
@@ -70,7 +67,10 @@ const CORES_INICIAIS: Cor[] = [
 // O que todo vídeo novo recebe sem ninguém pedir: é o "sem esforço" do
 // produto. Os padrões aqui são os mesmos do acabamento automático
 // (acabamento.ts) — mostrar um valor e aplicar outro seria mentir.
-const PREFERENCIAS_PADRAO: Required<Omit<PreferenciasDeVideo, 'captionPreset' | 'estilosSalvos'>> = {
+type Opcionais = 'captionPreset' | 'estilosSalvos' | 'textoPreset' | 'abertura' | 'encerramento' | 'itensDaMarca';
+type Preferencias = Required<Omit<PreferenciasDeVideo, Opcionais>> & Pick<PreferenciasDeVideo, Exclude<Opcionais, 'captionPreset'>>;
+
+const PREFERENCIAS_PADRAO: Preferencias = {
   fit: 'desfoque',
   voiceEnhance: true,
   autoZoom: true,
@@ -81,8 +81,11 @@ const PREFERENCIAS_PADRAO: Required<Omit<PreferenciasDeVideo, 'captionPreset' | 
   barraDeProgresso: false,
 };
 
-const FONTES_TITULO = ['Poppins', 'Inter', 'Montserrat', 'Archivo'];
-const FONTES_CORPO = ['Inter', 'Roboto', 'Open Sans', 'Source Sans 3'];
+// As mesmas famílias que o render conhece (estilos-de-legenda.ts): uma
+// fonte escolhida aqui e ausente no render cairia na Montserrat calada.
+const FONTES_TITULO = FAMILIAS_DE_FONTE;
+const FONTES_CORPO = FAMILIAS_DE_FONTE;
+const TIPOS_DE_LOGO = VARIANTES_DA_LOGO.map((v) => v.kind as string);
 
 export default function MarcaPage() {
   const [uso, setUso] = useState<Armazenamento | null>(null);
@@ -92,10 +95,9 @@ export default function MarcaPage() {
   const [prefs, setPrefs] = useState(PREFERENCIAS_PADRAO);
   const [fonteTitulo, setFonteTitulo] = useState('Poppins');
   const [fonteCorpo, setFonteCorpo] = useState('Inter');
-  // O logo vem do servidor, nao de um estado ficticio: `temLogo` era
-  // `useState(true)` e a moldura desenhava um "M" em CSS.
-  const [logo, setLogo] = useState<Asset | null>(null);
-  const [trilha, setTrilha] = useState<Asset | null>(null);
+  // Tudo o que a marca guarda (logos e biblioteca), do servidor.
+  const [arquivos, setArquivos] = useState<Asset[]>([]);
+  const [nome, setNome] = useState('');
   const [enviando, setEnviando] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -124,6 +126,7 @@ export default function MarcaPage() {
           { id: 'texto', rotulo: 'Texto', valor: perfil.colors.textLight },
         ]);
 
+        if (perfil.name && perfil.name !== 'Kit de marca') setNome(perfil.name);
         if (perfil.fontPrimary) setFonteTitulo(perfil.fontPrimary);
         if (perfil.fontSecond) setFonteCorpo(perfil.fontSecond);
         const salvas = perfil.videoDefaults ?? {};
@@ -144,13 +147,11 @@ export default function MarcaPage() {
    * desativada, para que um video antigo continue explicavel.
    */
   const carregarAssets = async () => {
-    const [logos, trilhas] = await Promise.all([
-      apiAssets.listar('LOGO').catch(() => []),
-      apiAssets.listar('MUSIC').catch(() => []),
-    ]);
-    setLogo(logos[0] ?? null);
-    setTrilha(trilhas[0] ?? null);
+    setArquivos(await apiAssets.listar().catch(() => []));
   };
+
+  const logo = arquivos.find((a) => a.kind === 'LOGO') ?? null;
+  const trilha = arquivos.find((a) => a.kind === 'MUSIC') ?? null;
 
   /**
    * Envia um arquivo e recarrega a lista.
@@ -160,12 +161,22 @@ export default function MarcaPage() {
    * tempo, e a que vale e a do servidor. A tela so mostra o motivo da
    * recusa.
    */
-  const enviarAsset = async (kind: string, arquivo: File) => {
+  const enviarAsset = async (kind: string, lista: File | File[]) => {
     setEnviando(kind);
     setAviso(null);
 
     try {
-      await apiAssets.enviar(kind, arquivo);
+      for (const arquivo of Array.isArray(lista) ? lista : [lista]) {
+        // A duração (áudio e vídeo) é medida aqui: a API não tem ffprobe,
+        // e a vinheta precisa dela para entrar no vídeo.
+        const enviado = await apiAssets.enviar(kind, arquivo, await medirDuracao(arquivo));
+        // Cada variação de logo tem UMA versão valendo: a anterior sai da
+        // tela (desativada, não apagada -- um vídeo antigo continua
+        // explicável).
+        if (TIPOS_DE_LOGO.includes(kind)) {
+          for (const antiga of arquivos.filter((a) => a.kind === kind && a.id !== enviado.id)) await apiAssets.remover(antiga.id).catch(() => undefined);
+        }
+      }
       await carregarAssets();
       // O armazenamento muda com o upload: recarregar mantem o painel
       // de cota honesto.
@@ -193,7 +204,7 @@ export default function MarcaPage() {
 
     try {
       await apiMarca.salvar({
-        name: 'Kit de marca',
+        name: nome.trim() || 'Kit de marca',
         colors: {
           primary: corDe('primaria'),
           secondary: corDe('secundaria'),
@@ -240,6 +251,27 @@ export default function MarcaPage() {
     setSujo(true);
   };
 
+  /** A sugestão da IA vira o formulário; quem salva é a pessoa. */
+  const aplicarSugestao = (s: SugestaoDeMarca) => {
+    setCores([
+      { id: 'primaria', rotulo: 'Primária', valor: s.cores.primary },
+      { id: 'secundaria', rotulo: 'Secundária', valor: s.cores.secondary },
+      { id: 'fundo', rotulo: 'Fundo', valor: s.cores.textDark },
+      { id: 'superficie', rotulo: 'Superfície', valor: s.cores.accent },
+      { id: 'texto', rotulo: 'Texto', valor: s.cores.textLight },
+    ]);
+    setFonteTitulo(s.fonteTitulo);
+    setFonteCorpo(s.fonteCorpo);
+    setEstilo(presetDaLegenda(s.captionPreset)?.id ?? estilo);
+    setPrefs((atual) => ({ ...atual, textoPreset: s.textoPreset, transicaoPadrao: s.transicaoPadrao as TipoDeTransicao }));
+    setSujo(true);
+    setAviso('Kit aplicado. Confira a prévia e clique em "Salvar alterações" para valer nos próximos vídeos.');
+  };
+
+  const itensDaMarca = prefs.itensDaMarca ?? [];
+  const temAbertura = arquivos.some((a) => a.kind === 'INTRO');
+  const temEncerramento = arquivos.some((a) => a.kind === 'OUTRO');
+
   return (
     <>
       <Topbar
@@ -271,89 +303,30 @@ export default function MarcaPage() {
           </div>
         )}
 
+        <ConfigurarComIa
+          logos={arquivos.filter((a) => TIPOS_DE_LOGO.includes(a.kind))}
+          nome={nome}
+          onNome={(v) => {
+            setNome(v);
+            setSujo(true);
+          }}
+          onAplicar={aplicarSugestao}
+        />
+
         <div className="marca">
           {/* ---------- Identidade ---------- */}
           <div className="pilha">
             <section className="cartao">
-              <h2>Logotipo</h2>
+              <h2>Logos</h2>
               <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
-                Seu logotipo será exibido nos vídeos, capas e outros materiais.
+                Envie as versões da sua logo. A IA usa a certa em cada vídeo: a clara sobre imagem escura, o ícone em espaço pequeno.
               </p>
-
-              <div className="marca__logo">
-                <div className="marca__moldura">
-                  {logo ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={apiAssets.url(logo.id)}
-                      alt={logo.originalName}
-                      style={{ maxWidth: '100%', maxHeight: 88, objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <p className="texto-secundario" style={{ fontSize: 13 }}>
-                      Nenhum logotipo enviado
-                    </p>
-                  )}
-                </div>
-
-                <div className="pilha">
-                  <label
-                    className="botao botao--secundario botao--largo"
-                    style={{ cursor: enviando === 'LOGO' ? 'progress' : 'pointer' }}
-                  >
-                    <IconeEnviar size={16} />
-                    {enviando === 'LOGO'
-                      ? 'Enviando…'
-                      : logo
-                        ? 'Substituir logotipo'
-                        : 'Enviar logotipo'}
-                    {/* O input fica escondido atras do label porque
-                        `input[type=file]` nao aceita estilo. O
-                        `accept` e conveniencia do seletor de arquivos,
-                        nao validacao: o servidor confere os BYTES. */}
-                    <input
-                      type="file"
-                      accept="image/png,image/svg+xml,image/webp"
-                      hidden
-                      disabled={enviando !== null}
-                      onChange={(e) => {
-                        const arquivo = e.target.files?.[0];
-                        // Limpa o valor para que escolher o MESMO
-                        // arquivo de novo dispare o onChange -- sem
-                        // isto, reenviar apos um erro nao faz nada.
-                        e.target.value = '';
-                        if (arquivo) void enviarAsset('LOGO', arquivo);
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="botao botao--secundario botao--largo"
-                    disabled={!logo || enviando !== null}
-                    onClick={() => logo && void removerAsset(logo.id)}
-                  >
-                    <IconeLixeira size={16} />
-                    Remover
-                  </button>
-                  <p className="campo__ajuda">
-                    {/* 2 MB e o teto real do contrato para LOGO; a
-                        tela dizia 5 MB, e o upload seria recusado por
-                        um limite que ela mesma anunciou como aceito. */}
-                    PNG, SVG ou WebP. Máximo de 2 MB.
-                    <br />
-                    Recomendado: fundo transparente.
-                  </p>
-                  {logo && !logo.hasAlpha && logo.mimeType === 'image/png' && (
-                    /* Logo opaca ganha um retangulo branco quando
-                       sobreposta ao video. Vale avisar aqui, nao
-                       depois de o usuario ver no resultado. */
-                    <p className="campo__ajuda" style={{ color: 'var(--warning)' }}>
-                      Este PNG não tem fundo transparente: ele aparecerá com um
-                      retângulo sobre o vídeo.
-                    </p>
-                  )}
-                </div>
-              </div>
+              <LogosDaMarca
+                assets={arquivos}
+                enviando={enviando}
+                onEnviar={(kind, arquivo) => void enviarAsset(kind, arquivo)}
+                onRemover={(id) => void removerAsset(id)}
+              />
             </section>
 
             <section className="cartao">
@@ -575,6 +548,39 @@ export default function MarcaPage() {
                 </div>
               )}
 
+              <div className="campo">
+                <label className="campo__rotulo" htmlFor="texto-padrao">
+                  Estilo dos textos na tela
+                </label>
+                <select
+                  id="texto-padrao"
+                  className="campo__selecao"
+                  value={prefs.textoPreset ?? ''}
+                  onChange={(e) => mudarPrefs({ textoPreset: e.target.value || undefined })}
+                >
+                  <option value="">Padrão de cada texto</option>
+                  {PRESETS_DE_TEXTO.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.rotulo}: {p.descricao}
+                    </option>
+                  ))}
+                </select>
+                <p className="campo__ajuda">Vale para o título de abertura e a chamada final que a IA escreve.</p>
+              </div>
+
+              <Interruptor
+                rotulo="Vinheta de abertura"
+                ajuda={temAbertura ? 'Entra antes de todo vídeo novo (a padrão da Biblioteca da marca).' : 'Envie uma abertura na Biblioteca da marca, abaixo.'}
+                ligado={Boolean(prefs.abertura?.usar)}
+                onTrocar={(v) => mudarPrefs({ abertura: { ...prefs.abertura, usar: v } })}
+              />
+              <Interruptor
+                rotulo="Vinheta de encerramento"
+                ajuda={temEncerramento ? 'Entra depois de todo vídeo novo.' : 'Envie um encerramento na Biblioteca da marca, abaixo.'}
+                ligado={Boolean(prefs.encerramento?.usar)}
+                onTrocar={(v) => mudarPrefs({ encerramento: { ...prefs.encerramento, usar: v } })}
+              />
+
               <Interruptor
                 rotulo="Zoom automático"
                 ajuda="Aproximação lenta na abertura e zoom seco em cortes alternados."
@@ -628,94 +634,6 @@ export default function MarcaPage() {
                   <option value="preencher">Preencher a tela (corta as laterais)</option>
                   <option value="ajustar">Inteira, com faixas pretas</option>
                 </select>
-              </div>
-            </section>
-
-            <section className="cartao">
-              <h2>Trilha padrão</h2>
-              <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
-                Essa música será usada como padrão nos seus novos vídeos.
-              </p>
-
-              {trilha ? (
-                <div className="faixa">
-                  <span className="faixa__capa" aria-hidden>
-                    <IconeAudio size={20} />
-                  </span>
-
-                  <span style={{ minWidth: 0 }}>
-                    <strong
-                      style={{
-                        fontSize: 14,
-                        display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {trilha.originalName}
-                    </strong>
-                    <span className="texto-secundario" style={{ fontSize: 12 }}>
-                      {(trilha.sizeBytes / 1024 / 1024).toFixed(1)} MB
-                    </span>
-                  </span>
-
-                  {/* Player do navegador, em vez de um botao de play
-                      que nao toca nada: o <audio> ja traz controle,
-                      duracao e posicao, e reescrever isso seria
-                      trabalho para chegar no mesmo lugar. */}
-                  <audio
-                    controls
-                    preload="metadata"
-                    src={apiAssets.url(trilha.id)}
-                    style={{ height: 32, maxWidth: 220 }}
-                  />
-
-                  <button
-                    type="button"
-                    className="botao-icone botao-icone--pequeno"
-                    aria-label={`Remover ${trilha.originalName}`}
-                    disabled={enviando !== null}
-                    onClick={() => void removerAsset(trilha.id)}
-                  >
-                    <IconeLixeira size={16} />
-                  </button>
-                </div>
-              ) : (
-                <p className="texto-secundario" style={{ fontSize: 13 }}>
-                  Nenhuma trilha enviada. Sem ela, os vídeos saem apenas com o
-                  áudio da gravação.
-                </p>
-              )}
-
-              <div className="linha entre" style={{ marginTop: 'var(--e4)', gap: 'var(--e3)' }}>
-                <label
-                  className="botao botao--secundario botao--pequeno"
-                  style={{ cursor: enviando === 'MUSIC' ? 'progress' : 'pointer' }}
-                >
-                  <IconeEnviar size={15} />
-                  {enviando === 'MUSIC'
-                    ? 'Enviando…'
-                    : trilha
-                      ? 'Substituir trilha'
-                      : 'Enviar trilha'}
-                  <input
-                    type="file"
-                    accept="audio/mpeg,audio/wav,audio/ogg"
-                    hidden
-                    disabled={enviando !== null}
-                    onChange={(e) => {
-                      const arquivo = e.target.files?.[0];
-                      e.target.value = '';
-                      if (arquivo) void enviarAsset('MUSIC', arquivo);
-                    }}
-                  />
-                </label>
-                <span className="campo__ajuda" style={{ textAlign: 'right' }}>
-                  MP3, WAV ou OGG.
-                  <br />
-                  Use música que você tem direito de usar.
-                </span>
               </div>
             </section>
 
@@ -808,6 +726,32 @@ export default function MarcaPage() {
             )}
           </div>
         </div>
+
+        <section className="cartao" style={{ marginTop: 'var(--e5)' }}>
+          <h2>Biblioteca da marca</h2>
+          <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
+            Tudo o que é da sua marca, pronto para os vídeos: trilhas, sons, aberturas, encerramentos, imagens e vídeos. Diga em uma frase
+            para que serve cada um: é o que a IA lê para usar o arquivo certo quando você pede.
+          </p>
+          <BibliotecaDaMarca
+            assets={arquivos}
+            itens={itensDaMarca}
+            onItens={(itens) => mudarPrefs({ itensDaMarca: itens })}
+            padroes={{ MUSIC: prefs.musica.assetId, INTRO: prefs.abertura?.assetId, OUTRO: prefs.encerramento?.assetId }}
+            onPadrao={(kind, id) =>
+              mudarPrefs(
+                kind === 'MUSIC'
+                  ? { musica: { ...prefs.musica, assetId: id } }
+                  : kind === 'INTRO'
+                    ? { abertura: { usar: prefs.abertura?.usar ?? true, assetId: id } }
+                    : { encerramento: { usar: prefs.encerramento?.usar ?? true, assetId: id } },
+              )
+            }
+            enviando={enviando}
+            onEnviar={(kind, lista) => void enviarAsset(kind, lista)}
+            onRemover={(id) => void removerAsset(id)}
+          />
+        </section>
       </div>
     </>
   );

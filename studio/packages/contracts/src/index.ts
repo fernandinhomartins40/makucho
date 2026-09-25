@@ -48,3 +48,4 @@ export * from './retomadas';
 export * from './progresso';
 export * from './fechamento';
 export * from './ai-comando';
+export * from './ai-marca';

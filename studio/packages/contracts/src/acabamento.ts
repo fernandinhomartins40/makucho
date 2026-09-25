@@ -27,6 +27,7 @@ import { editPlanV1Schema, tipoDeTransicaoSchema } from './edit-plan';
 import { idDoPresetSchema, presetDaLegenda } from './estilos-de-legenda';
 import { DURACAO_PADRAO_DA_TRANSICAO } from './timeline';
 import { pacoteSalvoSchema } from './pacotes';
+import { PRESETS_DE_TEXTO } from './textos-de-tela';
 
 // ---------- Preferencias (Kit de marca) ----------
 
@@ -47,8 +48,36 @@ export const preferenciasDeVideoSchema = z
       .strict()
       .optional(),
     musica: z
-      .object({ usar: z.boolean(), volumeDb: z.number().min(-40).max(0) })
+      .object({
+        usar: z.boolean(),
+        volumeDb: z.number().min(-40).max(0),
+        /** Qual das trilhas da marca; ausente, a mais recente. */
+        assetId: z.string().max(64).optional(),
+      })
       .strict()
+      .optional(),
+    /** Vinheta de abertura (asset INTRO) antes de todo vídeo novo. */
+    abertura: z.object({ usar: z.boolean(), assetId: z.string().max(64).optional() }).strict().optional(),
+    /** Vinheta de encerramento (asset OUTRO) depois de todo vídeo novo. */
+    encerramento: z.object({ usar: z.boolean(), assetId: z.string().max(64).optional() }).strict().optional(),
+    /** Estilo pronto (PRESETS_DE_TEXTO) do título e da chamada. */
+    textoPreset: z.string().max(40).optional(),
+    /**
+     * Os itens da biblioteca da marca com nome e PARA QUE servem: é o que
+     * deixa a IA do editor escolher "o som da marca" ou "a vinheta curta"
+     * sem ouvir nem ver o arquivo.
+     */
+    itensDaMarca: z
+      .array(
+        z
+          .object({
+            assetId: z.string().min(1).max(64),
+            nome: z.string().trim().max(60).optional(),
+            uso: z.string().trim().max(160).optional(),
+          })
+          .strict(),
+      )
+      .max(120)
       .optional(),
     /** "Whoosh" nas transicoes e "pop" nos textos. */
     efeitosSonoros: z.boolean().optional(),
@@ -67,6 +96,9 @@ export interface ContextoDoAcabamento {
   logoAssetId?: string | null;
   /** A trilha padrao do Kit de marca, se houver. */
   musicaAssetId?: string | null;
+  /** Vinhetas da marca (com a duração medida no envio). */
+  abertura?: { assetId: string; durationMs: number } | null;
+  encerramento?: { assetId: string; durationMs: number } | null;
 }
 
 // ---------- Dicas da IA ----------
@@ -193,6 +225,10 @@ export function aplicarAcabamento(
   const titulo = limparTexto(dicas.hookTitle, 70);
   const chamada = limparTexto(dicas.cta, 60);
 
+  // O estilo de texto da marca (quando escolhido) vale para o título e
+  // a chamada: é o que faz todo vídeo sair com a mesma cara.
+  const estiloDaMarca = PRESETS_DE_TEXTO.find((p) => p.id === prefs.textoPreset)?.estilo;
+
   if (titulo && total >= 4000) {
     overlays.push({
       id: 'ov-titulo',
@@ -200,6 +236,7 @@ export function aplicarAcabamento(
       text: titulo,
       timelineStartMs: 0,
       durationMs: Math.min(DURACAO_DO_TITULO_MS, total),
+      ...(estiloDaMarca ? { style: estiloDaMarca } : {}),
     });
   }
 
@@ -211,6 +248,7 @@ export function aplicarAcabamento(
       text: chamada,
       timelineStartMs: total - duracao,
       durationMs: duracao,
+      ...(estiloDaMarca ? { style: estiloDaMarca } : {}),
     });
   }
 
@@ -260,7 +298,11 @@ export function aplicarAcabamento(
 
   // ---------- Trilha ----------
   const usarMusica = Boolean(contexto.musicaAssetId) && prefs.musica?.usar !== false;
-  const { music: _trilhaAnterior, ...semTrilha } = plano;
+  const { music: _trilhaAnterior, intro: _introAnterior, outro: _outroAnterior, ...semTrilha } = plano;
+  // Vinhetas: só com o arquivo E a preferência ligada. Refazer o
+  // acabamento de um vídeo que já tinha vinheta mantém a dele.
+  const intro = prefs.abertura?.usar && contexto.abertura ? contexto.abertura : plano.intro;
+  const outro = prefs.encerramento?.usar && contexto.encerramento ? contexto.encerramento : plano.outro;
 
   const acabado = {
     ...semTrilha,
@@ -269,6 +311,8 @@ export function aplicarAcabamento(
     transitions,
     overlays,
     soundEffects: soundEffects.slice(0, 40),
+    ...(intro ? { intro } : {}),
+    ...(outro ? { outro } : {}),
     ...(usarMusica
       ? {
           music: {

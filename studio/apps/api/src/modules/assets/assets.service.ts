@@ -71,6 +71,20 @@ const EXTENSAO_POR_MIME: Readonly<Record<string, string>> = {
   'application/json': 'json',
 };
 
+/** O tipo como a pessoa o chama, nas mensagens de erro. */
+const NOME_DO_TIPO: Partial<Record<string, string>> = {
+  LOGO: 'O logo',
+  LOGO_NEGATIVE: 'O logo para fundo escuro',
+  LOGO_COMPACT: 'O ícone',
+  WATERMARK: "A marca d'água",
+  IMAGE: 'A imagem',
+  VIDEO: 'O vídeo',
+  MUSIC: 'A trilha',
+  SOUND_EFFECT: 'O som',
+  INTRO: 'A vinheta de abertura',
+  OUTRO: 'A vinheta de encerramento',
+};
+
 @Injectable()
 export class AssetsService {
   private readonly log = new Logger(AssetsService.name);
@@ -133,6 +147,7 @@ export class AssetsService {
       mimeDeclarado: string;
       conteudo: Buffer;
       license?: unknown;
+      durationMs?: number;
     },
   ) {
     const tipo = assetKindSchema.safeParse(dados.kind);
@@ -147,9 +162,11 @@ export class AssetsService {
 
     const teto = TAMANHO_MAXIMO[kind];
     if (dados.conteudo.byteLength > teto) {
+      // Com uma casa decimal: "aceita até 2 MB; este tem 2 MB" (2,3
+      // arredondado) parecia um erro sem sentido.
+      const mb = (b: number) => (b / 1024 / 1024).toFixed(1).replace('.', ',').replace(',0', '');
       throw new PayloadTooLargeException(
-        `${kind} aceita até ${Math.round(teto / 1024 / 1024)} MB; ` +
-          `este arquivo tem ${Math.round(dados.conteudo.byteLength / 1024 / 1024)} MB`,
+        `${NOME_DO_TIPO[kind] ?? kind} aceita até ${mb(teto)} MB; este arquivo tem ${mb(dados.conteudo.byteLength)} MB`,
       );
     }
 
@@ -212,6 +229,9 @@ export class AssetsService {
           data: { isActive: true },
         });
       }
+      if (!existente.durationMs && dados.durationMs && dados.durationMs > 0 && dados.durationMs <= 30 * 60_000) {
+        await this.prisma.asset.update({ where: { id: existente.id }, data: { durationMs: dados.durationMs } });
+      }
       return { id: existente.id, kind: existente.kind, jaExistia: true };
     }
 
@@ -232,6 +252,8 @@ export class AssetsService {
         widthPx: dimensoes?.largura ?? null,
         heightPx: dimensoes?.altura ?? null,
         hasAlpha: dimensoes?.alfa ?? false,
+        durationMs:
+          dados.durationMs !== undefined && dados.durationMs > 0 && dados.durationMs <= 30 * 60_000 ? dados.durationMs : null,
         license: (dados.license as never) ?? null,
       },
     });

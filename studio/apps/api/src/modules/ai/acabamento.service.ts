@@ -19,13 +19,26 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   aplicarAcabamento,
   aplicarComando,
+  catalogoDaMarcaParaIa,
   catalogoDoStudioParaIa,
+  descricaoDaMarcaParaIa,
+  lerSugestaoDaMarca,
+  sugestaoPorRegra,
   palavrasNaTimeline,
   parseComando,
   preferenciasDeVideoSchema,
   resumoDoPlanoParaIa,
 } from '@makucho/studio-contracts';
-import type { ContextoDoAcabamento, ContextoDoComando, EditPlanV1, IntervaloDeFala } from '@makucho/studio-contracts';
+import type {
+  ContextoDoAcabamento,
+  ContextoDoComando,
+  EditPlanV1,
+  EntradaDaMarca,
+  IntervaloDeFala,
+  ItemDaBibliotecaDaMarca,
+  PreferenciasDeVideo,
+  SugestaoDeMarca,
+} from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
@@ -40,6 +53,12 @@ import { PromptsService } from './prompts.service';
  * valem por dezenas). O teto é o que impede um laço de gerar o máximo.
  */
 const MAX_TOKENS_DO_COMANDO = 1500;
+
+/** O kit da marca cabe em ~300 tokens de resposta. */
+const MAX_TOKENS_DA_MARCA = 600;
+
+/** Os tipos de arquivo que formam a biblioteca da marca. */
+const TIPOS_DA_BIBLIOTECA = ['LOGO', 'LOGO_NEGATIVE', 'LOGO_COMPACT', 'WATERMARK', 'IMAGE', 'VIDEO', 'MUSIC', 'SOUND_EFFECT', 'INTRO', 'OUTRO'] as const;
 
 @Injectable()
 export class AcabamentoService {
@@ -61,32 +80,93 @@ export class AcabamentoService {
    * acabamento padrão.
    */
   async contexto(workspaceId: string): Promise<ContextoDoAcabamento> {
-    const [perfil, logo, musica] = await Promise.all([
-      this.prisma.brandProfile.findFirst({
-        where: { workspaceId, isActive: true },
-        orderBy: { version: 'desc' },
-        select: { videoDefaults: true },
-      }),
-      this.assetAtivo(workspaceId, 'LOGO'),
-      this.assetAtivo(workspaceId, 'MUSIC'),
-    ]);
+    const perfil = await this.prisma.brandProfile.findFirst({
+      where: { workspaceId, isActive: true },
+      orderBy: { version: 'desc' },
+      select: { videoDefaults: true },
+    });
+    const lidas = preferenciasDeVideoSchema.safeParse(perfil?.videoDefaults ?? {});
+    const prefs: PreferenciasDeVideo = lidas.success ? lidas.data : {};
 
-    const prefs = preferenciasDeVideoSchema.safeParse(perfil?.videoDefaults ?? {});
+    // O escolhido no Kit de marca, se ainda ativo; senão o mais recente.
+    const [logo, musica, abertura, encerramento] = await Promise.all([
+      this.assetAtivo(workspaceId, 'LOGO'),
+      this.assetAtivo(workspaceId, 'MUSIC', prefs.musica?.assetId),
+      this.assetAtivo(workspaceId, 'INTRO', prefs.abertura?.assetId),
+      this.assetAtivo(workspaceId, 'OUTRO', prefs.encerramento?.assetId),
+    ]);
+    const vinheta = (a: { id: string; durationMs: number | null } | null) =>
+      a?.durationMs ? { assetId: a.id, durationMs: Math.min(30_000, Math.max(200, a.durationMs)) } : null;
 
     return {
-      preferencias: prefs.success ? prefs.data : {},
-      logoAssetId: logo,
-      musicaAssetId: musica,
+      preferencias: prefs,
+      logoAssetId: logo?.id ?? null,
+      musicaAssetId: musica?.id ?? null,
+      abertura: vinheta(abertura),
+      encerramento: vinheta(encerramento),
     };
   }
 
-  private async assetAtivo(workspaceId: string, kind: 'LOGO' | 'MUSIC'): Promise<string | null> {
-    const asset = await this.prisma.asset.findFirst({
-      where: { workspaceId, kind, isActive: true },
+  private async assetAtivo(workspaceId: string, kind: 'LOGO' | 'MUSIC' | 'INTRO' | 'OUTRO', preferido?: string) {
+    const select = { id: true, durationMs: true } as const;
+    if (preferido) {
+      const escolhido = await this.prisma.asset.findFirst({ where: { id: preferido, workspaceId, kind, isActive: true }, select });
+      if (escolhido) return escolhido;
+    }
+    return this.prisma.asset.findFirst({ where: { workspaceId, kind, isActive: true }, orderBy: { createdAt: 'desc' }, select });
+  }
+
+  /**
+   * A biblioteca da marca como a IA a vê: tipo, nome e para que serve
+   * (o que a pessoa escreveu no Kit de marca), e a duração das vinhetas.
+   */
+  async biblioteca(workspaceId: string, prefs: PreferenciasDeVideo | null | undefined): Promise<ItemDaBibliotecaDaMarca[]> {
+    const assets = await this.prisma.asset.findMany({
+      where: { workspaceId, isActive: true, kind: { in: [...TIPOS_DA_BIBLIOTECA] } },
       orderBy: { createdAt: 'desc' },
-      select: { id: true },
+      take: 60,
+      select: { id: true, kind: true, originalName: true, durationMs: true },
     });
-    return asset?.id ?? null;
+    const notas = new Map((prefs?.itensDaMarca ?? []).map((i) => [i.assetId, i]));
+    return assets.map((a) => {
+      const nota = notas.get(a.id);
+      return {
+        assetId: a.id,
+        tipo: a.kind,
+        nome: nota?.nome || a.originalName.replace(/\.[a-z0-9]{2,5}$/i, ''),
+        ...(nota?.uso ? { uso: nota.uso } : {}),
+        duracaoMs: a.durationMs,
+      };
+    });
+  }
+
+  /**
+   * "Configurar com IA" do Kit de marca: a paleta medida nas logos vira
+   * o kit inteiro. Sem IA (sem chave, sem crédito, resposta ruim), a
+   * regra monta um kit coerente -- o botão nunca volta vazio.
+   */
+  async configurarMarca(tenant: TenantContext, entrada: EntradaDaMarca): Promise<SugestaoDeMarca & { aviso?: string }> {
+    const { texto: instrucoes, versao } = this.prompts.obter('configurar_marca');
+    try {
+      const resposta = await this.ai.chamar({
+        workspaceId: tenant.workspaceId,
+        chamada: 'configurar_marca',
+        sistema: `${instrucoes}\n\n${catalogoDaMarcaParaIa()}`,
+        usuario: descricaoDaMarcaParaIa(entrada),
+        maxTokens: MAX_TOKENS_DA_MARCA,
+        promptVersion: versao,
+      });
+      const lida = lerSugestaoDaMarca(resposta.texto, entrada);
+      if (lida) return lida;
+      this.log.warn('configurar_marca: resposta ilegível; usando a regra');
+      return { ...sugestaoPorRegra(entrada), aviso: 'A IA respondeu fora do formato; montamos o kit pelas cores das suas logos.' };
+    } catch (e) {
+      this.log.warn(`configurar_marca sem IA: ${e instanceof Error ? e.message : e}`);
+      return {
+        ...sugestaoPorRegra(entrada),
+        aviso: `Sem a IA agora (${e instanceof Error ? e.message : 'indisponível'}). Montamos o kit pelas cores das suas logos.`,
+      };
+    }
   }
 
   /**
@@ -128,6 +208,7 @@ export class AcabamentoService {
       this.coresDaMarca(tenant.workspaceId),
     ]);
     const pacotesSalvos = contexto.preferencias?.estilosSalvos ?? [];
+    const biblioteca = await this.biblioteca(tenant.workspaceId, contexto.preferencias);
 
     const { texto: instrucoes, versao } = this.prompts.obter('comandar_edicao');
     // O catálogo (estilos, efeitos, filtros, sons, stickers...) vem do
@@ -142,6 +223,7 @@ export class AcabamentoService {
         musicaAssetId: contexto.musicaAssetId,
         coresDaMarca: cores,
         pacotesSalvos,
+        biblioteca,
         contexto: doEditor,
       }),
       '',
@@ -168,7 +250,7 @@ export class AcabamentoService {
     // A fala na timeline só é buscada se um pacote vai pôr sons: é dela
     // que os sons desviam, e nos outros pedidos seria consulta à toa.
     const fala = lido.operacoes.some((o) => o.op === 'aplicar_pacote') ? await this.falaNaTimeline(projectId, plano) : [];
-    const resultado = aplicarComando(plano, lido.operacoes, { fala, pacotesSalvos });
+    const resultado = aplicarComando(plano, lido.operacoes, { fala, pacotesSalvos, biblioteca });
     const novo: EditPlanV1 = resultado.plan;
     const ignoradas = [...lido.ignoradas, ...resultado.ignoradas];
     const aplicadas = resultado.aplicadas;

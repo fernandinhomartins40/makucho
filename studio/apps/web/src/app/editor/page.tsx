@@ -51,6 +51,7 @@ import { Inspector, type RecursosDaMarca } from '../../components/editor/Inspect
 import { PedirAIa, type RespostaDaIa } from '../../components/editor/PedirAIa';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
+import { MarcaNoEditor } from '../../components/marca/MarcaNoEditor';
 import { tempo } from '../../components/editor/funcoes';
 import {
   planos as apiPlanos,
@@ -972,7 +973,7 @@ function Editor({ projectId }: { projectId: string }) {
           {aba === 'legendas' && (
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} />
           )}
-          {aba === 'marca' && <PainelDeMarca />}
+          {aba === 'marca' && <MarcaNoEditor plan={plano} posicaoMs={posicaoMs} onOperacao={executar} />}
         </section>
 
         <main className="editor__palco">
@@ -1422,53 +1423,6 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
         <Link href={`/gravar?projeto=${projeto.id}`} className="botao botao--secundario">
           <IconeEnviar size={16} />
           Substituir o vídeo
-        </Link>
-      </div>
-    </>
-  );
-}
-
-function PainelDeMarca() {
-  const { dados: perfil, carregando } = useDados<PerfilDeMarca | null>(() => apiMarca.obter());
-
-  return (
-    <>
-      <header className="painel__cabecalho">
-        <span className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeMarca size={20} />
-          <strong style={{ fontSize: 17 }}>Kit de marca</strong>
-        </span>
-      </header>
-      <div style={{ padding: 'var(--e4)', display: 'grid', gap: 'var(--e4)' }}>
-        {carregando ? (
-          <span className="esqueleto" style={{ height: 60 }} />
-        ) : perfil ? (
-          <>
-            <strong>{perfil.name}</strong>
-            <div className="linha" style={{ gap: 6 }}>
-              {Object.entries(perfil.colors).map(([nome, cor]) => (
-                <span
-                  key={nome}
-                  title={`${nome}: ${cor}`}
-                  style={{ width: 28, height: 28, borderRadius: 6, background: cor, border: '1px solid var(--border-forte)' }}
-                />
-              ))}
-            </div>
-            {perfil.fontPrimary && (
-              <p className="texto-secundario" style={{ fontSize: 13 }}>
-                Fonte: {perfil.fontPrimary}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="texto-secundario">Nenhum kit de marca cadastrado ainda.</p>
-        )}
-        <p className="texto-secundario" style={{ fontSize: 12 }}>
-          Cores, fontes, logo e trilha do kit entram no vídeo exportado. O estilo de legenda e o
-          acabamento padrão dos vídeos novos também são definidos no kit.
-        </p>
-        <Link href="/marca" className="botao botao--secundario">
-          Editar kit de marca
         </Link>
       </div>
     </>

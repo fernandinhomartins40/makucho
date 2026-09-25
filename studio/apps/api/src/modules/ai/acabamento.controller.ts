@@ -9,7 +9,7 @@
 
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { pedidoDeComandoSchema } from '@makucho/studio-contracts';
+import { entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -24,6 +24,13 @@ export class AcabamentoController {
   refazer(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     assertCanWrite(tenant);
     return this.acabamento.refazer(tenant, id);
+  }
+
+  /** "Configurar com IA" no Kit de marca. Devolve a sugestão; quem salva é a pessoa. */
+  @Post('brand-profile/ai-setup')
+  configurarMarca(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    return this.acabamento.configurarMarca(tenant, entradaDaMarcaSchema.parse(body));
   }
 
   @Post('projects/:id/command')

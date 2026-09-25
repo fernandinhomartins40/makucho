@@ -11,7 +11,7 @@
 //   - 401 tratado uma vez só.
 // ============================================================
 
-import type { ContextoDoComando, PreferenciasDeVideo } from '@makucho/studio-contracts';
+import type { ContextoDoComando, EntradaDaMarca, PreferenciasDeVideo, SugestaoDeMarca } from '@makucho/studio-contracts';
 
 export class ErroDaApi extends Error {
   constructor(
@@ -356,6 +356,9 @@ export const marca = {
   // permite saber com que marca um video antigo foi gerado.
   salvar: (dados: MarcaParaSalvar) =>
     api<PerfilDeMarca>('/brand-profile', { metodo: 'POST', corpo: dados }),
+  /** "Configurar com IA": a paleta medida nas logos vira o kit. Não salva. */
+  configurarComIa: (entrada: EntradaDaMarca) =>
+    api<SugestaoDeMarca & { aviso?: string }>('/brand-profile/ai-setup', { metodo: 'POST', corpo: entrada }),
 };
 
 // ============================================================
@@ -446,7 +449,8 @@ export const assets = {
 
   cota: () => api<CotaDeAssets>('/assets/quota'),
 
-  async enviar(kind: string, arquivo: File): Promise<{ id: string; jaExistia: boolean }> {
+  /** `durationMs`: medida pelo navegador (áudio e vídeo), para as vinhetas. */
+  async enviar(kind: string, arquivo: File, durationMs?: number): Promise<{ id: string; jaExistia: boolean }> {
     const resposta = await fetch('/api/assets', {
       method: 'POST',
       credentials: 'include',
@@ -459,6 +463,7 @@ export const assets = {
         // Codificado porque header não aceita acento nem espaço, e
         // nome de arquivo tem os dois.
         'x-asset-name': encodeURIComponent(arquivo.name),
+        ...(durationMs && Number.isFinite(durationMs) ? { 'x-asset-duration-ms': String(Math.round(durationMs)) } : {}),
       },
       body: arquivo,
     });

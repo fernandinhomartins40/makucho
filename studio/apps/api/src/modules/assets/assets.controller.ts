@@ -71,6 +71,7 @@ export class AssetsController {
     @Headers('x-asset-kind') kind: string,
     @Headers('x-asset-name') nome: string,
     @Headers('content-type') mime: string,
+    @Headers('x-asset-duration-ms') duracao: string | undefined,
     @Req() req: Request,
   ) {
     assertCanWrite(tenant);
@@ -93,6 +94,10 @@ export class AssetsController {
       originalName: decodeURIComponent(nome || 'arquivo'),
       mimeDeclarado: mime.split(';')[0]!.trim(),
       conteudo,
+      // Medida pelo navegador (o <audio>/<video> já carregou o arquivo
+      // para a prévia): a API não tem ffprobe. É informativa -- a
+      // vinheta no render é cortada nela, nunca esticada.
+      durationMs: Number.isFinite(Number(duracao)) ? Math.round(Number(duracao)) : undefined,
     });
   }
 

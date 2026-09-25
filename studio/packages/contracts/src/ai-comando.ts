@@ -36,6 +36,7 @@ import { LAYOUTS_DE_MIDIA } from './midias';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA } from './animacao-da-midia';
 import type { IntervaloDeFala } from './protecao-da-fala';
+import { ehEfeitoSonoroEmbutido } from './edit-plan';
 
 /**
  * Operacoes que o comando pode pedir.
@@ -79,6 +80,9 @@ export const OPERACOES_DO_COMANDO = [
   'adicionar_legenda',
   'editar_legenda_manual',
   'remover_legenda_manual',
+  // Vinhetas da biblioteca da marca.
+  'definir_abertura',
+  'definir_encerramento',
 ] as const;
 
 // ---------- Atalhos (macros) ----------
@@ -211,11 +215,11 @@ export function parseComando(bruto: string): LeituraDoComando {
       ignoradas.push(`${op.data.op}: não pode ser pedido por comando`);
       continue;
     }
-    // Imagem e vídeo do workspace entram pela Biblioteca: o resumo não
-    // lista os arquivos, e um id inventado quebraria o render. Por
-    // comando, só os stickers embutidos.
-    if (op.data.op === 'adicionar_midia' && (op.data.kind !== 'sticker' || !definicaoDoSticker(op.data.assetId))) {
-      ignoradas.push('adicionar_midia: por pedido só entram stickers; fotos e vídeos se adicionam pela Biblioteca');
+    // Sticker só do catálogo: o id vira nome de arquivo no render. Os
+    // arquivos do workspace (fotos, vídeos, sons, vinhetas) são
+    // conferidos contra a biblioteca da marca em `aplicarComando`.
+    if (op.data.op === 'adicionar_midia' && op.data.kind === 'sticker' && !definicaoDoSticker(op.data.assetId)) {
+      ignoradas.push(`adicionar_midia: o sticker "${op.data.assetId}" não existe`);
       continue;
     }
     operacoes.push(op.data);
@@ -251,7 +255,36 @@ function somDoTrecho(a: EditPlanV1['clips'][number]['audio']): string {
   return partes.join(' ') || '-';
 }
 
+/**
+ * Um arquivo da biblioteca da marca, como a IA o vê: tipo, nome e para
+ * que serve (escrito pela pessoa no Kit de marca). Sem o arquivo em si
+ * -- a IA escolhe pela descrição, e o servidor confere o id.
+ */
+export interface ItemDaBibliotecaDaMarca {
+  assetId: string;
+  /** AssetKind: LOGO, LOGO_NEGATIVE, MUSIC, SOUND_EFFECT, INTRO... */
+  tipo: string;
+  nome: string;
+  uso?: string;
+  duracaoMs?: number | null;
+}
+
+const NOME_DO_TIPO: Record<string, string> = {
+  LOGO: 'logo principal',
+  LOGO_NEGATIVE: 'logo para fundo escuro',
+  LOGO_COMPACT: 'ícone da marca',
+  WATERMARK: "marca d'água",
+  IMAGE: 'imagem',
+  VIDEO: 'vídeo',
+  MUSIC: 'trilha',
+  SOUND_EFFECT: 'som',
+  INTRO: 'vinheta de abertura',
+  OUTRO: 'vinheta de encerramento',
+};
+
 export interface RecursosDoResumo {
+  /** O que a marca guarda para a IA usar. */
+  biblioteca?: readonly ItemDaBibliotecaDaMarca[];
   temLogo?: boolean;
   temMusica?: boolean;
   logoAssetId?: string | null;
@@ -316,6 +349,17 @@ export function resumoDoPlanoParaIa(
   ];
   if (recursos.coresDaMarca && Object.keys(recursos.coresDaMarca).length) {
     linhas.push(`Cores da marca: ${Object.entries(recursos.coresDaMarca).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  }
+  if (recursos.biblioteca?.length) {
+    linhas.push('', 'Biblioteca da marca (assetId|tipo|nome|para que serve|duração):');
+    for (const b of recursos.biblioteca.slice(0, 60)) {
+      linhas.push(
+        [b.assetId, NOME_DO_TIPO[b.tipo] ?? b.tipo, `"${curto(b.nome, 40)}"`, b.uso ? `"${curto(b.uso, 100)}"` : '-', b.duracaoMs ? seg(b.duracaoMs) : '-'].join('|'),
+      );
+    }
+    if (plano.intro || plano.outro) {
+      linhas.push(`Vinhetas no vídeo: abertura=${plano.intro?.assetId ?? 'nenhuma'}, encerramento=${plano.outro?.assetId ?? 'nenhum'}`);
+    }
   }
   if (recursos.pacotesSalvos?.length) {
     linhas.push(`Estilos salvos da pessoa (aplicar_pacote): ${recursos.pacotesSalvos.map((p) => `${p.id}="${p.rotulo}"`).join(', ')}`);
@@ -447,6 +491,47 @@ export interface ResultadoDoComando {
 export interface OpcoesDoComando {
   fala?: readonly IntervaloDeFala[];
   pacotesSalvos?: readonly PacoteSalvo[];
+  /**
+   * A biblioteca da marca: todo arquivo do workspace que a IA citar tem
+   * de estar aqui, com o tipo certo. Um id inventado quebraria o render.
+   */
+  biblioteca?: readonly ItemDaBibliotecaDaMarca[];
+}
+
+const IMAGENS_DA_MARCA = ['LOGO', 'LOGO_NEGATIVE', 'LOGO_COMPACT', 'WATERMARK', 'IMAGE'];
+
+/**
+ * Confere os arquivos do workspace que a operação cita e completa o que
+ * falta (a duração da vinheta vem da biblioteca). Devolve o erro para a
+ * pessoa, ou a operação pronta.
+ */
+function conferirArquivos(op: TimelineOperation, biblioteca: readonly ItemDaBibliotecaDaMarca[] | undefined): { op?: TimelineOperation; erro?: string } {
+  const achar = (id: string, tipos: readonly string[]) => biblioteca?.find((b) => b.assetId === id && tipos.includes(b.tipo));
+  const semBiblioteca = 'esse arquivo não está na biblioteca da marca';
+  switch (op.op) {
+    case 'adicionar_midia':
+      if (op.kind === 'sticker') return { op };
+      return achar(op.assetId, op.kind === 'video' ? ['VIDEO'] : IMAGENS_DA_MARCA) ? { op } : { erro: semBiblioteca };
+    case 'adicionar_overlay':
+      if (!op.assetId) return { op };
+      return achar(op.assetId, IMAGENS_DA_MARCA) ? { op } : { erro: semBiblioteca };
+    case 'adicionar_efeito_sonoro':
+      if (ehEfeitoSonoroEmbutido(op.assetId) || !biblioteca) return { op };
+      return achar(op.assetId, ['SOUND_EFFECT']) ? { op } : { erro: semBiblioteca };
+    case 'trocar_musica':
+      if (op.assetId === null || !biblioteca) return { op };
+      return achar(op.assetId, ['MUSIC']) ? { op } : { erro: semBiblioteca };
+    case 'definir_abertura':
+    case 'definir_encerramento': {
+      if (op.assetId === null) return { op };
+      const item = achar(op.assetId, [op.op === 'definir_abertura' ? 'INTRO' : 'OUTRO']);
+      if (!item) return { erro: semBiblioteca };
+      const durationMs = op.durationMs ?? (item.duracaoMs ? Math.min(30_000, Math.max(200, Math.round(item.duracaoMs))) : undefined);
+      return { op: { ...op, ...(durationMs ? { durationMs } : {}) } };
+    }
+    default:
+      return { op };
+  }
 }
 
 /** As operações da timeline que um atalho vira, no plano como está. */
@@ -508,7 +593,12 @@ export function aplicarComando(plan: EditPlanV1, operacoes: readonly OperacaoDoC
       else ignoradas.push(`${operacao.op}: não se aplica a este vídeo`);
       continue;
     }
-    const r = aplicarOperacao(atual, operacao);
+    const conferida = conferirArquivos(operacao, opcoes.biblioteca);
+    if (!conferida.op) {
+      ignoradas.push(`${operacao.op}: ${conferida.erro}`);
+      continue;
+    }
+    const r = aplicarOperacao(atual, conferida.op);
     if (r.ok && r.plan) {
       atual = r.plan;
       aplicadas += 1;

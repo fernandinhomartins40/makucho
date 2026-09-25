@@ -303,6 +303,23 @@ export const corEmTodosSchema = z.object({
   color: corDoTrechoSchema.nullable(),
 });
 
+/**
+ * Vinheta de abertura/encerramento da marca (asset INTRO/OUTRO): entra
+ * inteira antes/depois do vídeo. `null` tira. A duração é a do arquivo,
+ * medida no envio -- quem pede informa, o render corta nela.
+ */
+export const definirAberturaSchema = z.object({
+  op: z.literal('definir_abertura'),
+  assetId: idSchema.nullable(),
+  durationMs: z.number().int().min(200).max(30_000).optional(),
+});
+
+export const definirEncerramentoSchema = z.object({
+  op: z.literal('definir_encerramento'),
+  assetId: idSchema.nullable(),
+  durationMs: z.number().int().min(200).max(30_000).optional(),
+});
+
 /** Enquadramento e limpeza de voz. */
 export const configurarVideoSchema = z.object({
   op: z.literal('configurar_video'),
@@ -507,6 +524,8 @@ export const timelineOperationSchema = z
     editarMidiaSchema,
     removerMidiaSchema,
     configurarVideoSchema,
+    definirAberturaSchema,
+    definirEncerramentoSchema,
     adicionarOverlaySchema,
     editarOverlaySchema,
     removerOverlaySchema,
@@ -968,6 +987,21 @@ export function aplicarOperacao(
         else clip.color = operacao.color;
       }
       break;
+
+    case 'definir_abertura':
+    case 'definir_encerramento': {
+      const campo = operacao.op === 'definir_abertura' ? 'intro' : 'outro';
+      if (operacao.assetId === null) {
+        const { [campo]: _fora, ...resto } = novo;
+        novo = resto as EditPlanV1;
+        break;
+      }
+      const atual = novo[campo];
+      const durationMs = operacao.durationMs ?? (atual?.assetId === operacao.assetId ? atual.durationMs : undefined);
+      if (!durationMs) return { ok: false, erro: 'a vinheta precisa da duração' };
+      novo = { ...novo, [campo]: { assetId: operacao.assetId, durationMs } };
+      break;
+    }
 
     case 'configurar_video':
       novo = {
