@@ -29,6 +29,7 @@ import {
 } from './edit-plan';
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { presetDaLegenda } from './estilos-de-legenda';
+import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
 
 // ---------- Tracks ----------
@@ -1044,20 +1045,9 @@ function recomporTimeline<T extends { timelineStartMs: number; sourceStartMs: nu
 }
 
 /** Duracao padrao de cada transicao: rapida o bastante para video falado. */
-export const DURACAO_PADRAO_DA_TRANSICAO: Readonly<Record<TipoDeTransicao, number>> = {
-  cut: 0,
-  fade: 400,
-  dissolve: 450,
-  fadeblack: 500,
-  slide: 350,
-  slideup: 350,
-  wipe: 350,
-  smooth: 400,
-  zoom: 350,
-  circle: 450,
-  blur: 350,
-  pixelize: 400,
-};
+export const DURACAO_PADRAO_DA_TRANSICAO: Readonly<Record<TipoDeTransicao, number>> = Object.fromEntries(
+  TRANSICOES_DO_CATALOGO.map((t) => [t.id, t.duracaoPadraoMs]),
+) as Record<TipoDeTransicao, number>;
 
 function definirTransicao(
   mapa: Map<string, EditPlanV1['transitions'][number]>,

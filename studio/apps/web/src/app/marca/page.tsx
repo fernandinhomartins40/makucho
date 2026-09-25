@@ -14,10 +14,10 @@
 import { dolares } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
 import type { PreferenciasDeVideo, TipoDeTransicao } from '@makucho/studio-contracts';
-import { PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, presetDaLegenda } from '@makucho/studio-contracts';
+import { PRESETS_DE_LEGENDA, presetDaLegenda } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
 import { AmostraDeEstilo } from '../../components/editor/AmostraDeEstilo';
-import { NOME_DA_TRANSICAO } from '../../components/editor/Inspector';
+import { OpcoesDeTransicao } from '../../components/editor/Inspector';
 import {
   marca as apiMarca,
   armazenamento as apiArmazenamento,
@@ -610,11 +610,7 @@ export default function MarcaPage() {
                   value={prefs.transicaoPadrao}
                   onChange={(e) => mudarPrefs({ transicaoPadrao: e.target.value as TipoDeTransicao })}
                 >
-                  {TIPOS_DE_TRANSICAO.map((t) => (
-                    <option key={t} value={t}>
-                      {NOME_DA_TRANSICAO[t]}
-                    </option>
-                  ))}
+                  <OpcoesDeTransicao />
                 </select>
               </div>
 

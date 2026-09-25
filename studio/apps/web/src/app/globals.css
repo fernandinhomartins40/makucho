@@ -4857,6 +4857,52 @@ button {
   color: var(--text-primary);
 }
 
+.biblioteca__aviso {
+  margin: 0 0 var(--e3);
+  padding: 8px 10px;
+  border-left: 3px solid var(--warning, #f59e0b);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 12%, var(--surface-2));
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.biblioteca__opcao {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: var(--e3);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.biblioteca__opcao input {
+  margin-top: 1px;
+  accent-color: var(--primary);
+}
+
+/* Miniatura desenhada pelo shader da prévia (gl/miniaturas.ts). */
+.demo--gl img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.demo-cartao__selo {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning, #f59e0b) 20%, transparent);
+  color: var(--text-secondary);
+  font-size: 9.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
 .biblioteca__cartao-texto {
   display: grid;
   gap: 4px;
@@ -5306,4 +5352,24 @@ button.recursos-do-trecho__item:hover {
   z-index: 6;
   transform: translateX(-50%);
   white-space: nowrap;
+}
+
+/* Compositor WebGL da prévia: o canvas mostra o quadro montado; os
+   players tocam o som e servem de textura (continuam no DOM, invisíveis). */
+.palco__gl {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  display: none;
+}
+
+.palco__imagem--gl .palco__gl {
+  display: block;
+}
+
+.palco__imagem--gl .palco__player,
+.palco__imagem--gl .palco__fundo-desfocado {
+  opacity: 0 !important;
 }

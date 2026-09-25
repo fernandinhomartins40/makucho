@@ -941,6 +941,7 @@ function Editor({ projectId }: { projectId: string }) {
               onOperacoes={executarVarias}
               onSelecionarItem={(item) => setItemSelecionado(item)}
               urlDoAsset={apiAssets.url}
+              transcricao={transcricao}
             />
           )}
           {aba === 'midia' && projeto && <PainelDeMidia projeto={projeto} />}

@@ -7,7 +7,8 @@
 // escolhe pelo efeito que quer causar, não pelo nome técnico.
 // ============================================================
 
-import type { EfeitoSonoroEmbutido, TipoDeTransicao } from '@makucho/studio-contracts';
+import type { CategoriaDeTransicao, EfeitoSonoroEmbutido, TipoDeTransicao } from '@makucho/studio-contracts';
+import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
 
 export interface ItemDaBiblioteca<T extends string = string> {
   id: T;
@@ -17,20 +18,17 @@ export interface ItemDaBiblioteca<T extends string = string> {
   quando: string;
 }
 
-export const TRANSICOES: ReadonlyArray<ItemDaBiblioteca<TipoDeTransicao>> = [
-  { id: 'cut', rotulo: 'Corte seco', descricao: 'Troca direta, sem efeito.', quando: 'O padrão em vídeo falado: rápido e natural.' },
-  { id: 'fade', rotulo: 'Esmaecer', descricao: 'Uma imagem some enquanto a outra aparece.', quando: 'Mudança suave de assunto.' },
-  { id: 'dissolve', rotulo: 'Dissolver', descricao: 'Mistura granulada entre as duas imagens.', quando: 'Passagem de tempo, lembrança.' },
-  { id: 'fadeblack', rotulo: 'Pelo preto', descricao: 'Escurece e volta na próxima imagem.', quando: 'Fim de um bloco, pausa dramática.' },
-  { id: 'slide', rotulo: 'Deslizar', descricao: 'A nova imagem entra empurrando da direita.', quando: 'Lista, próximo item, "e tem mais".' },
-  { id: 'slideup', rotulo: 'Subir', descricao: 'A nova imagem sobe de baixo.', quando: 'Virada, revelação, "olha isso".' },
-  { id: 'wipe', rotulo: 'Cortina', descricao: 'Uma linha varre a tela revelando a próxima.', quando: 'Antes e depois, comparação.' },
-  { id: 'smooth', rotulo: 'Suave', descricao: 'Deslize com esmaecer, sem tranco.', quando: 'Troca de ângulo ou de cenário.' },
-  { id: 'zoom', rotulo: 'Zoom', descricao: 'A próxima imagem chega aproximando.', quando: 'Energia, o momento mais forte.' },
-  { id: 'circle', rotulo: 'Círculo', descricao: 'Um círculo abre do centro.', quando: 'Revelar o resultado, o "tcharam".' },
-  { id: 'blur', rotulo: 'Desfoque', descricao: 'A imagem desfoca e foca na próxima.', quando: 'Sonho, pensamento, transição leve.' },
-  { id: 'pixelize', rotulo: 'Pixels', descricao: 'A imagem vira pixels e volta.', quando: 'Tecnologia, jogo, humor.' },
-];
+/** As transições vêm do catálogo único (contracts/transicoes.ts). */
+export const TRANSICOES: ReadonlyArray<ItemDaBiblioteca<TipoDeTransicao> & { categoria: CategoriaDeTransicao; somSugerido?: string; pesada?: boolean }> =
+  TRANSICOES_DO_CATALOGO.map((t) => ({
+    id: t.id as TipoDeTransicao,
+    rotulo: t.rotulo,
+    descricao: t.descricao,
+    quando: t.quando,
+    categoria: t.categoria,
+    somSugerido: t.somSugerido,
+    pesada: t.pesada,
+  }));
 
 export const NOME_DA_TRANSICAO: Record<string, string> = Object.fromEntries(TRANSICOES.map((t) => [t.id, t.rotulo]));
 

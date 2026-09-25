@@ -29,6 +29,8 @@ export interface CamadaNoInstante {
   recorte: string;
   /** Camada de cima (o trecho que entra numa transição). */
   frente: boolean;
+  /** Zoom do trecho (o compositor aplica; o CSS é só a reserva). */
+  zoom: number;
 }
 
 export interface EstadoNoInstante {
@@ -39,6 +41,12 @@ export interface EstadoNoInstante {
   volumes: Map<number, number>;
   /** Trechos que precisam de um player tocando agora. */
   necessarios: number[];
+  /**
+   * A transição no instante, no formato do `xfade`: `progresso` vai de 1
+   * (primeiro quadro) até perto de 0, em passos de um quadro -- o mesmo
+   * valor que o render usa no quadro correspondente.
+   */
+  transicao: { tipo: string; progresso: number; quadros: number } | null;
 }
 
 /** O trecho que contém o instante (o último, se passou do fim). */
@@ -124,6 +132,7 @@ export function estadoNoInstante(agenda: Agenda, ms: number): EstadoNoInstante {
       recorte: '',
       frente: false,
       ...resto,
+      zoom,
       transformacao: `${resto.transformacao ?? ''} scale(${zoom})`.trim(),
     };
   };
@@ -154,7 +163,13 @@ export function estadoNoInstante(agenda: Agenda, ms: number): EstadoNoInstante {
 
   // No máximo dois players: as camadas primeiro, depois o som (J/L-cut).
   const necessarios = [...new Set([...camadas.map((c) => c.indice), ...volumes.keys()])].slice(0, 2);
-  return { indice, camadas, volumes, necessarios };
+  let transicao: EstadoNoInstante['transicao'] = null;
+  if (janela) {
+    const total = janela.depois + janela.antes;
+    const k = Math.min(total - 1, Math.max(0, Math.floor(((ms - janela.inicioMs) * 30) / 1000)));
+    transicao = { tipo: janela.tipo, progresso: 1 - k / total, quadros: total };
+  }
+  return { indice, camadas, volumes, necessarios, transicao };
 }
 
 /** Onde cada trecho começa a precisar de player (transição ou som antes). */

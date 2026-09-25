@@ -358,42 +358,65 @@ export const soundEffectSchema = z.object({
 /**
  * Transicoes entre trechos.
  *
- * Cada uma tem um equivalente nativo no filtro `xfade` do FFmpeg
- * (tabela `XFADE_DA_TRANSICAO`), conferido na imagem de render: o
- * FFmpeg 5.1 do Debian traz as 46 do filtro. `cut` e a ausencia de
- * transicao -- existe no enum para a IA poder dize-lo explicitamente.
+ * A definicao de cada uma (xfade nativo ou expressao propria, categoria,
+ * som sugerido) esta no catalogo (transicoes.ts); aqui so os ids aceitos
+ * no plano. `cut` e a ausencia de transicao -- existe no enum para a IA
+ * poder dize-lo explicitamente.
  */
 export const TIPOS_DE_TRANSICAO = [
   'cut',
   'fade',
   'dissolve',
   'fadeblack',
+  'fadewhite',
+  'fadegrays',
+  'distance',
   'slide',
+  'slideright',
   'slideup',
-  'wipe',
+  'slidedown',
   'smooth',
-  'zoom',
+  'smoothright',
+  'smoothup',
+  'smoothdown',
+  'squeezeh',
+  'squeezev',
+  'wipe',
+  'wiperight',
+  'wipeup',
+  'wipedown',
+  'wipetl',
+  'wipebr',
+  'diagtl',
+  'diagbr',
   'circle',
-  'blur',
+  'circleclose',
+  'circlecrop',
+  'rectcrop',
+  'vertopen',
+  'vertclose',
+  'horzopen',
+  'horzclose',
+  'radial',
+  'hlslice',
+  'hrslice',
+  'vuslice',
+  'vdslice',
+  'zoom',
+  'chicote',
+  'zoom_desfoque',
+  'giro',
+  'pulo',
+  'flash',
+  'luz',
+  'glitch',
+  'rgb',
+  'ondas',
   'pixelize',
+  'blur',
 ] as const;
 export const tipoDeTransicaoSchema = z.enum(TIPOS_DE_TRANSICAO);
 export type TipoDeTransicao = z.infer<typeof tipoDeTransicaoSchema>;
-
-/** O nome do efeito no `xfade`. `cut` nao passa pelo filtro. */
-export const XFADE_DA_TRANSICAO: Readonly<Record<Exclude<TipoDeTransicao, 'cut'>, string>> = {
-  fade: 'fade',
-  dissolve: 'dissolve',
-  fadeblack: 'fadeblack',
-  slide: 'slideleft',
-  slideup: 'slideup',
-  wipe: 'wipeleft',
-  smooth: 'smoothleft',
-  zoom: 'zoomin',
-  circle: 'circleopen',
-  blur: 'hblur',
-  pixelize: 'pixelize',
-};
 
 export const transitionSchema = z.object({
   id: idSchema,

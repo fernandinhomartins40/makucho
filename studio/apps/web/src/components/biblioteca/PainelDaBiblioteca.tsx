@@ -11,9 +11,10 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
-import { DURACAO_PADRAO_DA_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
-import { assets as apiAssets, type Asset } from '../../lib/api';
+import type { CategoriaDeTransicao, EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
+import { CATEGORIAS_DE_TRANSICAO, DURACAO_PADRAO_DA_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
+import { QUADROS_DA_MINIATURA, quadrosDaTransicao } from '../editor/gl/miniaturas';
+import { assets as apiAssets, type Asset, type Transcricao } from '../../lib/api';
 import { EstilosDeTexto } from '../editor/EstilosDeTexto';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
@@ -42,6 +43,22 @@ interface Props {
   onOperacoes: (ops: TimelineOperation[]) => void;
   onSelecionarItem: (item: ItemDaTimeline) => void;
   urlDoAsset: (id: string) => string;
+  transcricao?: Transcricao | null;
+}
+
+/**
+ * A palavra que o corte parte ao meio, no fim do trecho que sai ou no
+ * começo do que entra. Com transição o pulo fica ainda mais visível.
+ */
+export function palavraPartida(plan: EditPlanV1, clipId: string, transcricao?: Transcricao | null): string | null {
+  const palavras = transcricao?.segmentos.flatMap((s) => s.palavras) ?? [];
+  const ligados = agendaDoPlano(plan).trechos.map((t) => t.clip);
+  const i = ligados.findIndex((c) => c.id === clipId);
+  if (i <= 0 || !palavras.length) return null;
+  const margem = 60;
+  const dentro = (ms: number) => palavras.find((p) => ms > p.startMs + margem && ms < p.endMs - margem);
+  const p = dentro(ligados[i - 1]!.sourceEndMs) ?? dentro(ligados[i]!.sourceStartMs);
+  return p ? p.texto.trim() : null;
 }
 
 export function PainelDaBiblioteca(props: Props) {
@@ -131,8 +148,71 @@ function Textos({ plan, posicaoMs, marca, onOperacao, onSelecionarItem, itemSele
 
 // ---------- Transições ----------
 
-function Transicoes({ plan, posicaoMs, itemSelecionado, onOperacao }: Props) {
+/**
+ * A miniatura da transição desenhada pelo shader da prévia: o quadro do
+ * meio parado e, com o mouse ou o foco no cartão, a transição inteira em
+ * loop. Os quadros só são gerados quando o cartão aparece na tela.
+ */
+function MiniaturaDaTransicao({ id, ativo }: { id: string; ativo: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [quadros, setQuadros] = useState<string[] | null | undefined>(undefined);
+  const [k, setK] = useState(Math.floor(QUADROS_DA_MINIATURA / 2));
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || id === 'cut') return;
+    let cancelado = false;
+    const obs = new IntersectionObserver((entradas) => {
+      if (!entradas.some((e) => e.isIntersecting)) return;
+      obs.disconnect();
+      const gerar = () => !cancelado && setQuadros(quadrosDaTransicao(id));
+      if ('requestIdleCallback' in window) window.requestIdleCallback(gerar, { timeout: 800 });
+      else setTimeout(gerar, 0);
+    });
+    obs.observe(el);
+    return () => {
+      cancelado = true;
+      obs.disconnect();
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!ativo || !quadros || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setK(Math.floor(QUADROS_DA_MINIATURA / 2));
+      return;
+    }
+    // Entra, segura em B, volta a A: 14 quadros + 10 de pausa em cada ponta.
+    let passo = 0;
+    const ciclo = QUADROS_DA_MINIATURA + 10;
+    const t = setInterval(() => {
+      passo = (passo + 1) % (ciclo * 2);
+      const f = passo < ciclo ? passo - 5 : ciclo * 2 - passo - 5;
+      setK(Math.max(0, Math.min(QUADROS_DA_MINIATURA, f)));
+    }, 1000 / 30);
+    return () => clearInterval(t);
+  }, [ativo, quadros]);
+
+  // Sem WebGL2 (ou corte seco): a animação em CSS de antes.
+  if (quadros === null || id === 'cut') {
+    return (
+      <span ref={ref} className={`demo demo--transicao demo--${id}`} aria-hidden>
+        <span className="demo__a">A</span>
+        <span className="demo__b">B</span>
+      </span>
+    );
+  }
+  return (
+    <span ref={ref} className="demo demo--gl" aria-hidden>
+      {quadros && <img src={quadros[k]} alt="" draggable={false} />}
+    </span>
+  );
+}
+
+function Transicoes({ plan, posicaoMs, itemSelecionado, onOperacao, onOperacoes, transcricao }: Props) {
   const agenda = useMemo(() => agendaDoPlano(plan), [plan]);
+  const [grupo, setGrupo] = useState<CategoriaDeTransicao | 'todas'>('todas');
+  const [comSom, setComSom] = useState(true);
+  const [sobre, setSobre] = useState<string | null>(null);
   const cortes = agenda.trechos.slice(1).map((t) => ({ clipId: t.clip.id, ms: t.inicioMs }));
   const alvo =
     itemSelecionado?.tipo === 'corte'
@@ -148,8 +228,25 @@ function Transicoes({ plan, posicaoMs, itemSelecionado, onOperacao }: Props) {
         Aplica no corte {itemSelecionado?.tipo === 'corte' ? 'selecionado' : 'mais perto do cursor'} ({tempo(alvo!.ms)}). A transição usa
         o movimento real dos dois trechos — nada congela — e o som cruza junto.
       </Alvo>
+      {alvo && palavraPartida(plan, alvo.clipId, transcricao) && (
+        <p className="biblioteca__aviso" role="status">
+          Este corte cai no meio de “{palavraPartida(plan, alvo.clipId, transcricao)}”. Uma transição chama atenção para o pulo: ajuste a
+          borda do trecho até a pausa, ou prefira o corte seco.
+        </p>
+      )}
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Tipo de transição">
+        {([['todas', 'Todas'], ...Object.entries(CATEGORIAS_DE_TRANSICAO)] as Array<[CategoriaDeTransicao | 'todas', string]>).map(([id, rotulo]) => (
+          <button key={id} type="button" role="radio" aria-checked={grupo === id} className="biblioteca__chip" onClick={() => setGrupo(id)}>
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      <label className="biblioteca__opcao">
+        <input type="checkbox" checked={comSom} onChange={(e) => setComSom(e.target.checked)} /> Pôr o som sugerido junto (fica na faixa Sons, dá
+        para mover ou apagar)
+      </label>
       <div className="demos" role="radiogroup" aria-label="Transições">
-        {TRANSICOES.map((t) => (
+        {TRANSICOES.filter((t) => grupo === 'todas' || t.categoria === grupo || t.id === 'cut').map((t) => (
           <button
             key={t.id}
             type="button"
@@ -157,21 +254,33 @@ function Transicoes({ plan, posicaoMs, itemSelecionado, onOperacao }: Props) {
             aria-checked={atual === t.id}
             className="demo-cartao"
             title={`${t.descricao} ${t.quando}`}
-            onClick={() =>
-              alvo &&
-              onOperacao({
-                op: 'definir_transicao',
-                clipId: alvo.clipId,
-                type: t.id,
-                ...(t.id !== 'cut' ? { durationMs: DURACAO_PADRAO_DA_TRANSICAO[t.id] } : {}),
-              })
-            }
+            onMouseEnter={() => setSobre(t.id)}
+            onMouseLeave={() => setSobre((s) => (s === t.id ? null : s))}
+            onFocus={() => setSobre(t.id)}
+            onBlur={() => setSobre((s) => (s === t.id ? null : s))}
+            onClick={() => {
+              if (!alvo) return;
+              const durationMs = t.id !== 'cut' ? DURACAO_PADRAO_DA_TRANSICAO[t.id] : undefined;
+              const ops: TimelineOperation[] = [
+                { op: 'definir_transicao', clipId: alvo.clipId, type: t.id, ...(durationMs ? { durationMs } : {}) },
+              ];
+              // O som sugerido começa um pouco antes do corte, como o "whoosh" de quem edita.
+              if (comSom && t.somSugerido && durationMs) {
+                ops.push({
+                  op: 'adicionar_efeito_sonoro',
+                  assetId: t.somSugerido,
+                  timelineStartMs: Math.max(0, Math.round(alvo.ms - durationMs / 2)),
+                  gainDb: -12,
+                });
+              }
+              onOperacoes(ops);
+            }}
           >
-            <span className={`demo demo--transicao demo--${t.id}`} aria-hidden>
-              <span className="demo__a">A</span>
-              <span className="demo__b">B</span>
+            <MiniaturaDaTransicao id={t.id} ativo={sobre === t.id} />
+            <span className="demo-cartao__nome">
+              {t.rotulo}
+              {t.pesada && <span className="demo-cartao__selo" title="Mais lenta para exportar">pesada</span>}
             </span>
-            <span className="demo-cartao__nome">{t.rotulo}</span>
             <span className="demo-cartao__quando">{t.quando}</span>
           </button>
         ))}

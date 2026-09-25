@@ -7,7 +7,8 @@
 // assistir ao resultado, e não precisa do binário instalado.
 // ============================================================
 
-import { montarArgumentos, duracaoDoResultado } from '../src/render';
+import { montarArgumentos, duracaoDoResultado, filtroDaTransicao } from '../src/render';
+import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
 
 let ok = 0,
@@ -259,7 +260,7 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
 
   // Efeitos por trecho.
   t('zoom lento cresce a cada quadro (perspective, eval=frame)', f.includes('perspective=') && f.includes('eval=frame'));
-  t('zoom lento centrado: os quatro cantos andam juntos para dentro', f.includes("x0='W*(1-1/(1+0.08*in/240))/2'") && f.includes("x3='W-W*(1-1/(1+0.08*in/240))/2'"));
+  t('zoom lento centrado: os quatro cantos andam juntos para dentro', f.includes("x0='W*(1-1/(1+0.08*max(0,in-1)/240))/2'") && f.includes("x3='W-W*(1-1/(1+0.08*max(0,in-1)/240))/2'"));
   t('punch-in recorta 1/1.12 e volta ao quadro', f.includes('crop=964:1714,scale=1080:1920'));
 
   // Transição: centrada no corte, SEM congelar. O trecho que sai
@@ -277,7 +278,7 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('o áudio cruza pela janela inteira da transição (400 ms)', f.includes('afade=t=in:d=0.400') && f.includes('d=0.400,adelay'));
   t('nenhum xfade recebe a saída de outro xfade', !/\[t\d+\]xfade/.test(f) && (f.match(/xfade=/g) ?? []).length === 1);
   t('nenhum trecho é repartido com split (só o desfoque divide o quadro)', !/\[c\d+\]split/.test(f));
-  t('o zoom lento não recomeça no meio do trecho (sem deslocamento zero)', !f.includes('in+0)'));
+  t('o zoom lento não recomeça no meio do trecho (sem deslocamento zero)', !f.includes('in+0)') && f.includes('max(0,in-1)'));
 
   // Logo.
   t('o logo é uma entrada', a.includes('/storage/logo.png'));
@@ -341,6 +342,37 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   const fq = quadros[quadros.indexOf('-filter_complex') + 1]!;
   t('modo máscara: só os quadros do intervalo, 256x256 RGB no stdout', fq.includes('trim=start=1.0000:end=4.0000') && fq.includes('scale=256:256,format=rgb24[mq]') && quadros.at(-1) === 'pipe:1');
   t('modo máscara: sem som', !fq.includes('amix') && !fq.includes('[0:a]') && !/\[\d+:a\]/.test(fq));
+}
+
+// ============================================================
+// Catálogo de transições: nativas e receitas
+// ============================================================
+{
+  t('nativa: o xfade pelo nome', filtroDaTransicao('circle', 'a', 'b', '0.4000') === '[a][b]xfade=transition=circleopen:duration=0.4000:offset=0');
+  t('flash é o fadewhite nativo', filtroDaTransicao('flash', 'a', 'b', '0.3000').includes('transition=fadewhite'));
+  t('id desconhecido cai no fade', filtroDaTransicao('nao_existe', 'a', 'b', '0.3000').includes('transition=fade:'));
+
+  const zoom = filtroDaTransicao('zoom_desfoque', 'a', 'b', '0.4000', 12);
+  t('receita: zoom por perspective, com o quadro a partir de zero (in-1)', zoom.includes('perspective=') && zoom.includes('(in-1)/12'));
+  t('receita: desfoque com sigmaV > 0 (sigmaV=0 dá preto)', zoom.includes('gblur=sigma=10.000000:sigmaV=0.3'));
+  t('receita: termina sem rótulo, em yuv420p', zoom.endsWith('format=yuv420p'));
+
+  const giro = filtroDaTransicao('giro', 'a', 'b', '0.4000', 12);
+  t('giro: rotate nos dois lados e troca no meio (6 quadros)', (giro.match(/rotate=/g) ?? []).length === 2 && giro.includes('trim=end_frame=6') && giro.includes('trim=start_frame=6'));
+
+  const glitch = filtroDaTransicao('glitch', 'a', 'b', '0.4000', 12, 1080, 1920);
+  t('glitch: mapa de faixas pequeno, ampliado sem interpolar', glitch.includes('s=270x480') && glitch.includes('scale=1080:1920:flags=neighbor') && glitch.includes('displace=edge=smear'));
+  t('glitch: separação RGB', glitch.includes('rgbashift=rh=10:bh=-10'));
+  t('luz: faixa em modo tela', filtroDaTransicao('luz', 'a', 'b', '0.4000').includes('blend=all_mode=screen'));
+
+  // Todo o catálogo gera filtro, e nenhum usa o xfade custom (lento e instável entre threads).
+  const todos = TRANSICOES_DO_CATALOGO.filter((d) => d.id !== 'cut').map((d) => filtroDaTransicao(d.id, 'a', 'b', '0.4000'));
+  t('todo o catálogo gera filtro sem xfade custom', todos.every((f) => f.length > 0 && !f.includes('transition=custom')));
+
+  const comReceita: EditPlanV1 = { ...plano, transitions: [{ id: 't1', type: 'glitch', beforeClipIndex: 1, durationMs: 400 }] };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comReceita });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('receita encadeada no render, no segmento de 12 quadros', f.includes('rgbashift=') && /format=yuv420p,[^;]*trim=end_frame=12/.test(f));
 }
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);

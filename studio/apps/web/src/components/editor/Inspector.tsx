@@ -23,7 +23,7 @@ import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useMemo, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TIPOS_DE_TRANSICAO, agendaDoPlano } from '@makucho/studio-contracts';
+import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
@@ -49,21 +49,25 @@ const NOME_DO_FRAMEWORK: Record<string, string> = {
   sales: 'Venda',
 };
 
-/** O nome de cada transição na tela. */
-export const NOME_DA_TRANSICAO: Record<TipoDeTransicao, string> = {
-  cut: 'Corte seco',
-  fade: 'Esmaecer',
-  dissolve: 'Dissolver',
-  fadeblack: 'Passar pelo preto',
-  slide: 'Deslizar',
-  slideup: 'Subir',
-  wipe: 'Varrer',
-  smooth: 'Varrer suave',
-  zoom: 'Zoom',
-  circle: 'Círculo',
-  blur: 'Desfoque',
-  pixelize: 'Pixelizar',
-};
+/** O nome de cada transição na tela (do catálogo único). */
+export const NOME_DA_TRANSICAO = Object.fromEntries(TRANSICOES_DO_CATALOGO.map((t) => [t.id, t.rotulo])) as Record<TipoDeTransicao, string>;
+
+/** As opções de um <select> de transição, agrupadas como na biblioteca. */
+export function OpcoesDeTransicao() {
+  return (
+    <>
+      {Object.entries(CATEGORIAS_DE_TRANSICAO).map(([categoria, rotulo]) => (
+        <optgroup key={categoria} label={rotulo}>
+          {TRANSICOES_DO_CATALOGO.filter((t) => t.categoria === categoria).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.rotulo}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  );
+}
 
 /** Recursos do Kit de marca que os controles oferecem. */
 export interface RecursosDaMarca {
@@ -444,11 +448,7 @@ function AbaDeEfeitos({
           onChange={(e) => onOperacao({ op: 'transicao_em_todos', type: e.target.value as TipoDeTransicao })}
         >
           {transicaoAtual === 'misto' && <option value="misto">Cada corte com a sua</option>}
-          {TIPOS_DE_TRANSICAO.map((t) => (
-            <option key={t} value={t}>
-              {NOME_DA_TRANSICAO[t]}
-            </option>
-          ))}
+          <OpcoesDeTransicao />
         </select>
         <p className="campo__ajuda">Vídeo falado costuma funcionar melhor com corte seco. Para um corte só, selecione o trecho.</p>
       </div>
@@ -812,11 +812,7 @@ function PropriedadesDoTrecho({
               onOperacao({ op: 'definir_transicao', clipId: clipe.id, type: e.target.value as TipoDeTransicao })
             }
           >
-            {TIPOS_DE_TRANSICAO.map((t) => (
-              <option key={t} value={t}>
-                {NOME_DA_TRANSICAO[t]}
-              </option>
-            ))}
+            <OpcoesDeTransicao />
           </select>
         </div>
       )}

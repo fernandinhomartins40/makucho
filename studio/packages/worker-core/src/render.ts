@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { XFADE_DA_TRANSICAO, agendaDoPlano, ehEfeitoSonoroEmbutido, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, definicaoDaTransicao, ehEfeitoSonoroEmbutido, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
 export interface OpcoesDoRender {
@@ -200,7 +200,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
         // O segmento sai com o numero EXATO de quadros: o `tpad`
         // completa se o `xfade` entregar um a menos, e o `trim` corta o
         // que passar.
-        `[sa${i}][en${i}]xfade=transition=${XFADE_DA_TRANSICAO[janela.tipo] ?? 'fade'}:duration=${s(n)}:offset=0,` +
+        `${filtroDaTransicao(janela.tipo, `sa${i}`, `en${i}`, s(n), n, W, H)},` +
           `tpad=stop_mode=clone:stop=2,trim=end_frame=${n},setpts=PTS-STARTPTS[t${i}]`,
       );
       segmentos.push(`[t${i}]`);
@@ -435,6 +435,107 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   ];
 }
 
+/** Lado do mapa de faixas/ondas/luz: 1/4 do quadro, ampliado depois. */
+const MAPA_L = 270;
+const MAPA_A = 480;
+
+/**
+ * O filtro de uma transicao do catalogo (contracts/transicoes.ts) entre
+ * as janelas `a` (sai) e `b` (entra), de `n` quadros. Termina sem rotulo:
+ * quem chama encadeia o `tpad`/`trim`.
+ *
+ * As nativas vao pelo nome do `xfade`. As receitas sao filtros nativos e
+ * rapidos, na ordem: zoom/giro de cada lado -> mistura -> faixas/ondas
+ * (displace) -> separacao RGB -> desfoque -> luz. O shader da previa
+ * (web/components/editor/gl) faz as mesmas contas, na mesma ordem.
+ */
+export function filtroDaTransicao(tipo: string, a: string, b: string, duracao: string, n = 12, W = 1080, H = 1920): string {
+  const def = definicaoDaTransicao(tipo);
+  const r = def?.receita;
+  if (!r) return `[${a}][${b}]xfade=transition=${def?.xfade ?? 'fade'}:duration=${duracao}:offset=0`;
+
+  const partes: string[] = [];
+  const k = (x: number) => x.toFixed(6);
+  /** Zoom (perspective) e giro (rotate) de um lado; `in`/`n` = quadro. */
+  const deformar = (entrada: string, saida: string, zoom?: readonly [number, number], giro?: readonly [number, number]) => {
+    const filtros: string[] = [];
+    if (zoom && (zoom[0] !== 1 || zoom[1] !== 1)) {
+      // `in` do perspective começa em 1 no FFmpeg 5.1: o quadro k é in-1.
+      const z = `(${k(zoom[0])}+${k(zoom[1] - zoom[0])}*(in-1)/${n})`;
+      const m = `(1-1/${z})/2`;
+      filtros.push(
+        `perspective=x0='W*${m}':y0='H*${m}':x1='W-W*${m}':y1='H*${m}':x2='W*${m}':y2='H-H*${m}':x3='W-W*${m}':y3='H-H*${m}':interpolation=linear:eval=frame`,
+      );
+    }
+    if (giro && (giro[0] !== 0 || giro[1] !== 0)) {
+      filtros.push(`rotate=a='${k(giro[0])}+${k(giro[1] - giro[0])}*n/${n}':c=black:ow=iw:oh=ih`);
+    }
+    partes.push(`[${entrada}]${filtros.length ? filtros.join(',') : 'null'}[${saida}]`);
+  };
+  deformar(a, `${a}w`, r.zoomA, r.giroA);
+  deformar(b, `${b}w`, r.zoomB, r.giroB);
+
+  // ---------- Mistura ----------
+  const mx = `${a}mx`;
+  if (r.mistura === 'metade') {
+    const meio = Math.floor(n / 2);
+    partes.push(`[${a}w]trim=end_frame=${meio}[${a}m1]`);
+    partes.push(`[${b}w]trim=start_frame=${meio},setpts=PTS-STARTPTS[${b}m2]`);
+    partes.push(`[${a}m1][${b}m2]concat=n=2:v=1:a=0,format=gbrp[${mx}]`);
+  } else {
+    partes.push(`[${a}w][${b}w]xfade=transition=${r.mistura}:duration=${duracao}:offset=0,format=gbrp[${mx}]`);
+  }
+  let atual = mx;
+
+  // ---------- Faixas e ondas: deslocamento horizontal por linha ----------
+  // O mapa sai de uma expressao em 270x480 (barata) e e ampliado sem
+  // interpolar: cada linha do mapa vale 4 linhas do quadro.
+  const q = `(N/${n})`;
+  const e = `(1-abs(1-2*${q}))`;
+  let desloc = '';
+  if (r.faixas) {
+    // Embaralhamento que dá o MESMO valor em CPU (double) e GPU (float):
+    // inteiros pequenos vezes a razão áurea (um `sin` de número grande
+    // diverge entre os dois).
+    const bruto = `((floor(Y/${MAPA_A / 24})*37+floor(${q}*12)*101)*0.618034)`;
+    desloc = `round((${bruto}-floor(${bruto})-0.5)*2*${k(r.faixas)}*${e})`;
+  } else if (r.ondas) {
+    desloc = `round(${k(r.ondas)}*${e}*sin(Y/${MAPA_A}*20+${q}*10))`;
+  }
+  if (desloc) {
+    const v = `clip(128+${desloc},0,255)`;
+    partes.push(
+      `color=c=black:s=${MAPA_L}x${MAPA_A}:r=30:d=${duracao},trim=end_frame=${n},format=gbrp,` +
+        `geq=r='${v}':g='${v}':b='${v}',scale=${W}:${H}:flags=neighbor[${a}xm]`,
+    );
+    partes.push(`color=c=0x808080:s=${W}x${H}:r=30:d=${duracao},trim=end_frame=${n},format=gbrp[${a}ym]`);
+    partes.push(`[${atual}][${a}xm][${a}ym]displace=edge=smear[${a}dp]`);
+    atual = `${a}dp`;
+  }
+
+  // ---------- Separacao RGB e desfoque ----------
+  const depois: string[] = [];
+  if (r.rgb) depois.push(`rgbashift=rh=${Math.round(r.rgb)}:bh=${-Math.round(r.rgb)}:edge=smear`);
+  if (r.desfoque) depois.push(`gblur=sigma=${k(r.desfoque)}:sigmaV=0.3`);
+  if (depois.length) {
+    partes.push(`[${atual}]${depois.join(',')}[${a}pf]`);
+    atual = `${a}pf`;
+  }
+
+  // ---------- Luz: uma faixa quente atravessa a tela (mistura "tela") ----------
+  if (r.luz) {
+    const l = `(max(0,1-abs((X/${MAPA_L}+Y/${MAPA_A}*0.3)-(2.2*${q}-0.6))*2.5)*${e})`;
+    partes.push(
+      `color=c=black:s=${MAPA_L}x${MAPA_A}:r=30:d=${duracao},trim=end_frame=${n},format=gbrp,` +
+        `geq=r='255*${l}':g='170*${l}':b='80*${l}',scale=${W}:${H}:flags=bilinear[${a}lz]`,
+    );
+    partes.push(`[${atual}][${a}lz]blend=all_mode=screen[${a}bl]`);
+    atual = `${a}bl`;
+  }
+
+  return `${partes.join(';')};[${atual}]format=yuv420p`;
+}
+
 /**
  * Leva o trecho ao quadro vertical.
  *
@@ -497,7 +598,9 @@ function efeitoDoTrecho(
     // `scale` com eval=frame + `crop`: o crop ficava preso no tamanho
     // do primeiro quadro e o zoom "andava" para o canto (medido: o
     // centro saia de 540,960 para 581,1034 em 4 s).
-    const quadro = deslocamento ? `max(0,in${deslocamento > 0 ? '+' : ''}${deslocamento})` : 'in';
+    // `in` do perspective começa em 1 no FFmpeg 5.1: o quadro do trecho é in-1.
+    const d = deslocamento - 1;
+    const quadro = `max(0,in${d >= 0 ? '+' : ''}${d})`;
     const m = `(1-1/(1+${ZOOM_LENTO}*${quadro}/${quadros}))/2`;
     return (
       `perspective=x0='W*${m}':y0='H*${m}':x1='W-W*${m}':y1='H*${m}':` +

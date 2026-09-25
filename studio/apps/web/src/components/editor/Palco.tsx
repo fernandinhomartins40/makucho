@@ -44,6 +44,9 @@ import {
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
+import type { EstadoNoInstante } from './motorDaPrevia';
+import { Compositor } from './gl/compositor';
+import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
 import { tempo } from './funcoes';
 import {
@@ -175,10 +178,65 @@ export function Palco({
    * (transição, zoom). Chamado a cada quadro tocando, e a cada mudança
    * de posição parado.
    */
+  // ---------- Compositor (WebGL2) ----------
+  //
+  // Os players tocam o som e são a fonte das texturas; quem aparece é o
+  // canvas, montado com as mesmas contas do render (gl/compositor.ts).
+  // Sem WebGL2, a prévia continua no modo antigo (CSS nas camadas).
+  const glRef = useRef<HTMLCanvasElement>(null);
+  const compositorRef = useRef<Compositor | null>(null);
+  const [comGl, setComGl] = useState(false);
+  const ultimoEstado = useRef<EstadoNoInstante | null>(null);
+  useEffect(() => {
+    const canvas = glRef.current;
+    if (!canvas || compositorRef.current) return;
+    const c = Compositor.criar(canvas);
+    compositorRef.current = c;
+    setComGl(Boolean(c));
+  }, [proxyUrl]);
+
+  const desenharGl = useCallback(
+    (estado: EstadoNoInstante | null) => {
+      const c = compositorRef.current;
+      const canvas = glRef.current;
+      if (!c || !canvas || !estado) return;
+      // O canvas desenha na resolução em que aparece (até o 1080x1920).
+      const escala = Math.min(2, window.devicePixelRatio || 1);
+      const w = Math.min(1080, Math.round(canvas.clientWidth * escala));
+      const h = Math.min(1920, Math.round(canvas.clientHeight * escala));
+      if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      const fonte = (indice: number) => {
+        const p = donoRef.current.indexOf(indice);
+        return p >= 0 ? players[p]!.current : null;
+      };
+      const saindo = estado.camadas[0];
+      const entrando = estado.camadas[1];
+      // O player que espera o próximo trecho já guarda o quadro dele: na
+      // transição, o lado que entra aparece mesmo se ainda estiver buscando.
+      for (const p of players) {
+        const v = p.current;
+        if (v && !estado.camadas.some((x) => fonte(x.indice) === v)) c.guardarQuadro(v);
+      }
+      c.desenhar({
+        camadas: estado.camadas.map((x) => ({ fonte: fonte(x.indice), zoom: x.zoom })),
+        transicao:
+          estado.transicao && saindo && entrando
+            ? { indice: INDICE_DA_TRANSICAO[estado.transicao.tipo] ?? 0, progresso: estado.transicao.progresso, quadros: estado.transicao.quadros }
+            : null,
+        enquadramento,
+      });
+    },
+    [players, enquadramento],
+  );
+
   const aplicar = useCallback(
     (ms: number, tocandoAgora: boolean) => {
       if (agenda.trechos.length === 0) return;
       const estado = estadoNoInstante(agenda, ms);
+      ultimoEstado.current = estado;
       indiceRef.current = estado.indice;
       const dono = donoRef.current;
 
@@ -230,8 +288,9 @@ export function Palco({
         camada.style.clipPath = c?.recorte ?? '';
         camada.style.zIndex = c?.frente ? '2' : '1';
       }
+      desenharGl(estado);
     },
-    [agenda, players, camadas],
+    [agenda, players, camadas, desenharGl],
   );
 
   // ---------- Posição vinda de fora (timeline, trechos) ----------
@@ -507,7 +566,12 @@ export function Palco({
         quadroDoRecorte.current.height = 960;
       }
       const q = quadroDoRecorte.current;
-      if (!desenharQuadro(video, q, enquadramento === 'preencher')) return;
+      const gl = glRef.current;
+      if (compositorRef.current && gl && gl.width > 0) {
+        q.getContext('2d')?.drawImage(gl, 0, 0, q.width, q.height);
+      } else if (!desenharQuadro(video, q, enquadramento === 'preencher')) {
+        return;
+      }
       ocupado = true;
       precisaRecortar.current = false;
       void mascaraDoQuadro(q)
@@ -518,7 +582,7 @@ export function Palco({
           destino.dataset.limpo = '0';
           // O recorte acompanha o zoom e a transição da camada visível.
           const camada = camadas[Math.max(0, donoRef.current.indexOf(indiceRef.current))]?.current;
-          destino.style.transform = camada?.style.transform ?? '';
+          destino.style.transform = compositorRef.current ? '' : (camada?.style.transform ?? '');
         })
         .catch(() => undefined)
         .finally(() => {
@@ -731,7 +795,8 @@ export function Palco({
         </div>
 
         {proxyUrl && !erroDoVideo ? (
-          <div ref={imagemRef} className="palco__imagem">
+          <div ref={imagemRef} className={`palco__imagem${comGl ? ' palco__imagem--gl' : ''}`}>
+            <canvas ref={glRef} className="palco__gl" aria-hidden />
             {enquadramento === 'desfoque' && (
               <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
             )}
@@ -747,7 +812,11 @@ export function Palco({
                   style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
                   // Primeiro quadro no ponto certo, antes de qualquer play.
                   onLoadedMetadata={() => aplicar(relogioRef.current.ms, false)}
-                  onSeeked={desenharFundo}
+                  onSeeked={() => {
+                    desenharFundo();
+                    // Parado, o quadro novo só existe depois da busca.
+                    desenharGl(ultimoEstado.current);
+                  }}
                   onLoadedData={desenharFundo}
                   onError={() => setErroDoVideo(true)}
                 />
