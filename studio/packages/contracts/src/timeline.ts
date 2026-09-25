@@ -31,6 +31,7 @@ import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
 import { LAYOUTS_DE_MIDIA } from './midias';
+import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
@@ -431,6 +432,12 @@ const mudancasDaMidia = {
   fadeOutMs: z.number().int().min(0).max(3000).optional(),
   sourceStartMs: msSchema.optional(),
   volume: z.number().min(0).max(2).optional(),
+  animIn: z.enum(ENTRADAS_DE_MIDIA).optional(),
+  animLoop: z.enum(LOOPS_DE_MIDIA).optional(),
+  animOut: z.enum(SAIDAS_DE_MIDIA).optional(),
+  followPerson: z.boolean().optional(),
+  /** Troca a lista inteira; `null` tira os keyframes. */
+  keyframes: z.array(keyframeDaMidiaSchema).max(24).nullable().optional(),
 };
 
 /** Uma imagem ou vídeo do workspace por cima do vídeo (B-roll, PiP...). */
@@ -1100,8 +1107,8 @@ export function aplicarOperacao(
     case 'adicionar_midia': {
       const lista = novo.mediaLayers ?? [];
       if (lista.length >= 20) return { ok: false, erro: 'o video ja tem o maximo de midias sobrepostas' };
-      const { op: _op, id: pedido, ...campos } = operacao;
-      novo = { ...novo, mediaLayers: [...lista, { ...campos, id: livre(pedido, lista, 'md') }] };
+      const { op: _op, id: pedido, keyframes, ...campos } = operacao;
+      novo = { ...novo, mediaLayers: [...lista, { ...campos, ...(keyframes?.length ? { keyframes } : {}), id: livre(pedido, lista, 'md') }] };
       break;
     }
 
@@ -1110,7 +1117,16 @@ export function aplicarOperacao(
       if (!lista.some((m) => m.id === operacao.mediaId)) return { ok: false, erro: 'midia nao encontrada' };
       const { op: _op, mediaId, ...mudancas } = operacao;
       const definidas = Object.fromEntries(Object.entries(mudancas).filter(([, v]) => v !== undefined));
-      novo = { ...novo, mediaLayers: lista.map((m) => (m.id === mediaId ? { ...m, ...definidas } : m)) };
+      novo = {
+        ...novo,
+        mediaLayers: lista.map((m) => {
+          if (m.id !== mediaId) return m;
+          const nova = { ...m, ...definidas } as typeof m & { keyframes?: unknown };
+          // `null` tira os keyframes; lista vazia também.
+          if (!nova.keyframes || (Array.isArray(nova.keyframes) && !nova.keyframes.length)) delete nova.keyframes;
+          return nova as typeof m;
+        }),
+      };
       break;
     }
 

@@ -33,7 +33,10 @@ import {
   agendaDoPlano,
   FONTES_DE_VIDEO,
   arquivoDoSticker,
+  cabecaDaMascara,
   caixaDaMidia,
+  estadoDaMidia,
+  midiaEstaAnimada,
   caixaDoTexto,
   padraoDaCaixa,
   estadoDoTexto,
@@ -217,6 +220,8 @@ export function Palco({
   // Um elemento por camada, fora da tela: a imagem é carregada uma vez;
   // o vídeo segue o relógio da prévia (mudo, salvo se a camada tem volume).
   const elementosDasMidias = useRef(new Map<string, { assetId: string; el: HTMLImageElement | HTMLVideoElement }>());
+  /** Onde está a cabeça agora (pela máscara da prévia), para as camadas que a acompanham. */
+  const cabecaRef = useRef<{ x: number; y: number } | null>(null);
   const tocandoRef = useRef(false);
   const midiasNoInstante = useCallback(
     (ms: number): MidiaNoQuadro[] => {
@@ -287,14 +292,35 @@ export function Palco({
         const largura = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
         const altura = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
         if (!largura || !altura) continue;
-        const caixa = caixaDaMidia(c, largura / altura, W, H);
+        const base = caixaDaMidia(c, largura / altura, W, H);
         // O fade do render: linear, por quadro.
         const d = nf / 30;
         const t = j / 30;
-        let alfa = c.opacity ?? 1;
-        if (c.fadeInMs) alfa *= Math.min(1, t / (c.fadeInMs / 1000));
-        if (c.fadeOutMs) alfa *= Math.min(1, Math.max(0, (d - t) / (c.fadeOutMs / 1000)));
-        lista.push({ fonte: el, caixa, raio: (c.radius ?? 0) * Math.min(caixa.w, caixa.h), alfa });
+        let fade = 1;
+        if (c.fadeInMs) fade *= Math.min(1, t / (c.fadeInMs / 1000));
+        if (c.fadeOutMs) fade *= Math.min(1, Math.max(0, (d - t) / (c.fadeOutMs / 1000)));
+        const raio = (c.radius ?? 0) * Math.min(base.w, base.h);
+        const seguir = Boolean(c.followPerson && cabecaRef.current);
+        if (!midiaEstaAnimada(c) && !seguir) {
+          lista.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade });
+          continue;
+        }
+        // Animada: a mesma função que gera as expressões do render.
+        const est = estadoDaMidia(c, (j * 1000) / 30, { x: (base.x + base.w / 2) / W, y: (base.y + base.h / 2) / H });
+        // Acompanhando: a cabeça mais a posição da camada (0,5/0,5 = em cima dela).
+        if (seguir) {
+          est.x += cabecaRef.current!.x - 0.5;
+          est.y += cabecaRef.current!.y - 0.5;
+        }
+        const w = Math.max(2, base.w * est.scale);
+        const h = Math.max(2, base.h * est.scale);
+        lista.push({
+          fonte: el,
+          caixa: { x: est.x * W - w / 2, y: est.y * H - h / 2, w, h, modo: base.modo },
+          raio: raio * est.scale,
+          alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
+          giro: est.rotation,
+        });
       }
       return lista;
     },
@@ -340,6 +366,7 @@ export function Palco({
         enquadramento,
         efeitos: efeitosNoQuadro(plan.screenEffects, ultimoMs.current, agenda.duracaoQuadros),
         midias: midiasNoInstante(ultimoMs.current),
+        guardarQuadro: (plan.mediaLayers ?? []).some((m) => m.followPerson),
       });
     },
     [players, enquadramento, agenda, plan.screenEffects, midiasNoInstante],
@@ -714,7 +741,8 @@ export function Palco({
   // O modelo roda no quadro composto ANTES dos efeitos (o mesmo que o
   // render usa), reduzido a 256x256 pelo próprio compositor; a máscara
   // volta como textura e o shader põe a pessoa por cima do fundo mudado.
-  const temEfeitoDePessoa = (plan.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type));
+  const temEfeitoDePessoa =
+    (plan.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type)) || (plan.mediaLayers ?? []).some((m) => m.followPerson);
   useEffect(() => {
     if (!temEfeitoDePessoa || !comGl) return;
     let vivo = true;
@@ -728,7 +756,9 @@ export function Palco({
       quadro = requestAnimationFrame(passo);
       const c = compositorRef.current;
       if (!c || ocupado) return;
-      const ativo = efeitosNoQuadro(plan.screenEffects, tempoAoVivo.current, agenda.duracaoQuadros).some((e) => efeitoUsaPessoa(e.tipo));
+      const ms = tempoAoVivo.current;
+      const seguindo = (plan.mediaLayers ?? []).some((m) => m.followPerson && ms >= m.timelineStartMs && ms < m.timelineStartMs + m.durationMs);
+      const ativo = seguindo || efeitosNoQuadro(plan.screenEffects, ms, agenda.duracaoQuadros).some((e) => efeitoUsaPessoa(e.tipo));
       if (!ativo) {
         if (ativoAntes) c.definirMascara(null);
         ativoAntes = false;
@@ -755,6 +785,12 @@ export function Palco({
           }
           anterior = u8;
           c.definirMascara(u8);
+          // A cabeça, pela mesma conta do worker (cabeca.ts), suavizada.
+          const cabeca = cabecaDaMascara(u8, 256);
+          if (cabeca) {
+            const antes = cabecaRef.current;
+            cabecaRef.current = antes ? { x: antes.x * 0.4 + cabeca.x * 0.6, y: antes.y * 0.4 + cabeca.y * 0.6 } : cabeca;
+          }
           desenharGl(ultimoEstado.current);
         })
         .catch((e) => console.warn('[prévia] máscara da pessoa indisponível:', e))
@@ -1131,9 +1167,16 @@ export function Palco({
               const proporcao = w0 && h0 ? w0 / h0 : c.kind === 'sticker' ? 1 : 16 / 9;
               const arraste = arrasteDaMidia?.id === c.id ? arrasteDaMidia : null;
               const p = padraoDaCaixa(c);
-              const cx = arraste?.x ?? c.x ?? p.x;
-              const cy = arraste?.y ?? c.y ?? p.y;
-              const largura = arraste?.width ?? c.width ?? p.width;
+              // Animada: a alça fica onde a camada está no cursor.
+              const est = midiaEstaAnimada(c) || c.followPerson ? estadoDaMidia(c, posicaoMs - c.timelineStartMs, { x: c.x ?? p.x, y: c.y ?? p.y }) : null;
+              const cabeca = c.followPerson ? cabecaRef.current : null;
+              if (est && cabeca) {
+                est.x += cabeca.x - 0.5;
+                est.y += cabeca.y - 0.5;
+              }
+              const cx = arraste?.x ?? est?.x ?? c.x ?? p.x;
+              const cy = arraste?.y ?? est?.y ?? c.y ?? p.y;
+              const largura = arraste?.width ?? (c.width ?? p.width) * Math.max(0.05, est?.scale ?? 1);
               const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao);
               const selecionada = midiaSelecionada === c.id;
               return (
@@ -1163,7 +1206,10 @@ export function Palco({
                         if (moveu) setArrasteDaMidia({ id: c.id, ...ultimo });
                       },
                       () => {
-                        if (moveu) onAjustarMidia(c.id, { x: Math.round(ultimo.x * 1000) / 1000, y: Math.round(ultimo.y * 1000) / 1000 });
+                        // Acompanhando a pessoa, grava a posição EM RELAÇÃO à cabeça.
+                        const rx = cabeca ? ultimo.x - cabeca.x + 0.5 : ultimo.x;
+                        const ry = cabeca ? ultimo.y - cabeca.y + 0.5 : ultimo.y;
+                        if (moveu) onAjustarMidia(c.id, { x: Math.round(Math.min(1, Math.max(0, rx)) * 1000) / 1000, y: Math.round(Math.min(1, Math.max(0, ry)) * 1000) / 1000 });
                       },
                       () => setArrasteDaMidia(null),
                     );

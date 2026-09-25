@@ -9,6 +9,7 @@
 // ============================================================
 
 import { z } from 'zod';
+import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 
 export const LAYOUTS_DE_MIDIA = ['tela_cheia', 'pip', 'dividir_cima', 'dividir_baixo', 'livre'] as const;
 export type LayoutDeMidia = (typeof LAYOUTS_DE_MIDIA)[number];
@@ -45,6 +46,16 @@ export const camadaDeMidiaSchema = z
     /** Vídeo: de onde começa no arquivo, e o volume (mudo por padrão). */
     sourceStartMs: z.number().int().nonnegative().optional(),
     volume: z.number().min(0).max(2).optional(),
+    /** Animação (animacao-da-midia.ts): entrada, loop, saída e keyframes. */
+    animIn: z.enum(ENTRADAS_DE_MIDIA).optional(),
+    animLoop: z.enum(LOOPS_DE_MIDIA).optional(),
+    animOut: z.enum(SAIDAS_DE_MIDIA).optional(),
+    keyframes: z.array(keyframeDaMidiaSchema).max(24).optional(),
+    /**
+     * Acompanha a cabeça de quem fala (cabeca.ts): `x`/`y` passam a ser a
+     * posição EM RELAÇÃO à cabeça (0,5/0,5 = em cima dela).
+     */
+    followPerson: z.boolean().optional(),
   })
   .strict();
 

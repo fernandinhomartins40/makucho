@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import type { CurvaDeKeyframe, EditPlanV1, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
+import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
   ANIMACOES_DURANTE,
   CATEGORIAS_DE_EFEITO_DE_TELA,
@@ -25,6 +25,13 @@ import {
   CURVAS_DE_KEYFRAME,
   LAYOUTS_DE_MIDIA,
   NOME_DO_LAYOUT,
+  ENTRADAS_DE_MIDIA,
+  LOOPS_DE_MIDIA,
+  SAIDAS_DE_MIDIA,
+  NOME_DA_ENTRADA_DE_MIDIA,
+  NOME_DO_LOOP_DE_MIDIA,
+  NOME_DA_SAIDA_DE_MIDIA,
+  comKeyframeDaMidia,
   definicaoDoSticker,
   padraoDaCaixa,
   comKeyframe,
@@ -87,7 +94,7 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
       {item.tipo === 'trilha' && <TrilhaDeFundo plan={plan} onOperacao={onOperacao} onFechar={onFechar} />}
       {item.tipo === 'efeito' && <EfeitoDeTelaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
-      {item.tipo === 'midia' && <MidiaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
+      {item.tipo === 'midia' && <MidiaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} posicaoMs={posicaoMs} onSeek={onSeek} />}
     </div>
   );
 }
@@ -481,11 +488,15 @@ function MidiaDoItem({
   id,
   onOperacao,
   onFechar,
+  posicaoMs,
+  onSeek,
 }: {
   plan: EditPlanV1;
   id: string;
   onOperacao: (op: TimelineOperation) => void;
   onFechar: () => void;
+  posicaoMs: number;
+  onSeek?: (ms: number) => void;
 }) {
   const m = plan.mediaLayers?.find((x) => x.id === id);
   if (!m) return <p className="texto-secundario">Esta mídia não existe mais.</p>;
@@ -533,6 +544,43 @@ function MidiaDoItem({
           <Deslizante rotulo="Saída suave" valor={m.fadeOutMs ?? 0} min={0} max={2000} passo={50} unidade=" ms" onSoltar={(v) => editar({ fadeOutMs: v })} />
         </div>
       </div>
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Animação</span>
+        <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+          <select className="campo__selecao" style={{ flex: 1, minWidth: 100 }} aria-label="Entrada" value={m.animIn ?? 'nenhuma'} onChange={(e) => editar({ animIn: e.target.value as typeof ENTRADAS_DE_MIDIA[number] })}>
+            {ENTRADAS_DE_MIDIA.map((v) => (
+              <option key={v} value={v}>
+                Entrada: {NOME_DA_ENTRADA_DE_MIDIA[v]}
+              </option>
+            ))}
+          </select>
+          <select className="campo__selecao" style={{ flex: 1, minWidth: 100 }} aria-label="Durante" value={m.animLoop ?? 'nenhum'} onChange={(e) => editar({ animLoop: e.target.value as typeof LOOPS_DE_MIDIA[number] })}>
+            {LOOPS_DE_MIDIA.map((v) => (
+              <option key={v} value={v}>
+                Durante: {NOME_DO_LOOP_DE_MIDIA[v]}
+              </option>
+            ))}
+          </select>
+          <select className="campo__selecao" style={{ flex: 1, minWidth: 100 }} aria-label="Saída" value={m.animOut ?? 'nenhuma'} onChange={(e) => editar({ animOut: e.target.value as typeof SAIDAS_DE_MIDIA[number] })}>
+            {SAIDAS_DE_MIDIA.map((v) => (
+              <option key={v} value={v}>
+                Saída: {NOME_DA_SAIDA_DE_MIDIA[v]}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {m.layout === 'livre' && (
+        <label className="linha" style={{ gap: 'var(--e2)', fontSize: 13, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={Boolean(m.followPerson)}
+            onChange={(e) => editar({ followPerson: e.target.checked, ...(e.target.checked ? { x: 0.5, y: 0.45 } : {}) })}
+          />
+          Acompanhar a pessoa (fica sobre a cabeça de quem fala)
+        </label>
+      )}
+      <MovimentoDaMidia m={m} posicaoMs={posicaoMs} onSeek={onSeek} onKeyframes={(keyframes) => editar({ keyframes: keyframes ?? null })} />
       {m.kind === 'video' && (
         <>
           <Deslizante rotulo="Começar o vídeo em" valor={Math.round((m.sourceStartMs ?? 0) / 100) / 10} min={0} max={120} passo={0.5} unidade=" s" onSoltar={(v) => editar({ sourceStartMs: Math.round(v * 1000) })} />
@@ -550,6 +598,88 @@ function MidiaDoItem({
       >
         <IconeLixeira size={15} /> Remover mídia
       </button>
+    </div>
+  );
+}
+
+/**
+ * Pontos de movimento de uma camada: pôr no cursor, ir até um ponto, tirar.
+ * Os valores de cada ponto se ajustam arrastando na prévia (com o cursor
+ * sobre o ponto) -- é o jeito mais direto de dizer "aqui ela está ali".
+ */
+function MovimentoDaMidia({
+  m,
+  posicaoMs,
+  onSeek,
+  onKeyframes,
+}: {
+  m: NonNullable<EditPlanV1['mediaLayers']>[number];
+  posicaoMs: number;
+  onSeek?: (ms: number) => void;
+  onKeyframes: (k: KeyframeDaMidia[] | undefined) => void;
+}) {
+  const pontos = m.keyframes ?? [];
+  const t = Math.round(posicaoMs - m.timelineStartMs);
+  const dentro = t >= 0 && t < m.durationMs;
+  const atual = pontos.find((k) => Math.abs(k.t - t) <= 20);
+  const p = padraoDaCaixa(m);
+  const base = { x: m.x ?? p.x, y: m.y ?? p.y };
+  return (
+    <div className="campo" style={{ marginBottom: 0 }}>
+      <span className="campo__rotulo">Movimento (pontos)</span>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Ponha pontos no tempo e, com o cursor em cada um, arraste ou redimensione na prévia: a camada anda de um ponto ao outro.
+      </p>
+      <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+        <button type="button" className="botao botao--secundario botao--pequeno" disabled={!dentro || !!atual} onClick={() => onKeyframes(comKeyframeDaMidia(m, t, {}, base))}>
+          ◆ Ponto no cursor
+        </button>
+        {atual && (
+          <button
+            type="button"
+            className="botao botao--fantasma botao--pequeno"
+            onClick={() => {
+              const resto = pontos.filter((k) => k !== atual);
+              onKeyframes(resto.length ? resto : undefined);
+            }}
+          >
+            Tirar este ponto
+          </button>
+        )}
+        {pontos.length > 0 && (
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onKeyframes(undefined)}>
+            Tirar o movimento
+          </button>
+        )}
+      </div>
+      {pontos.length > 0 && (
+        <div className="pontos-de-movimento" role="list" aria-label="Pontos do movimento" style={{ marginTop: 'var(--e2)' }}>
+          {pontos.map((k) => (
+            <button
+              key={k.t}
+              type="button"
+              role="listitem"
+              className="ponto-de-movimento"
+              aria-current={atual?.t === k.t || undefined}
+              onClick={() => onSeek?.(m.timelineStartMs + k.t)}
+            >
+              ◆ {(k.t / 1000).toFixed(2).replace('.', ',')} s
+            </button>
+          ))}
+        </div>
+      )}
+      {atual && (
+        <div style={{ marginTop: 'var(--e2)', display: 'grid', gap: 'var(--e2)' }}>
+          <Deslizante rotulo="Giro no ponto" valor={Math.round(atual.rotation ?? 0)} min={-360} max={360} passo={5} unidade="°" onSoltar={(v) => onKeyframes(comKeyframeDaMidia(m, atual.t, { rotation: v }, base))} />
+          <Deslizante rotulo="Opacidade no ponto" valor={Math.round((atual.opacity ?? 1) * 100)} min={0} max={100} passo={5} unidade="%" onSoltar={(v) => onKeyframes(comKeyframeDaMidia(m, atual.t, { opacity: v / 100 }, base))} />
+          <Segmentado
+            rotulo="Curva até o próximo ponto"
+            valor={atual.ease ?? 'suave'}
+            opcoes={CURVAS_DE_KEYFRAME.map((c) => [c, NOME_DA_CURVA[c]] as const)}
+            onTrocar={(v) => onKeyframes(comKeyframeDaMidia(m, atual.t, { ease: v as CurvaDeKeyframe }, base))}
+          />
+        </div>
+      )}
     </div>
   );
 }

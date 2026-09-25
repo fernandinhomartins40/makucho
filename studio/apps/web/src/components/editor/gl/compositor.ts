@@ -54,6 +54,8 @@ export interface MidiaNoQuadro {
   raio: number;
   /** Opacidade já com o fade do instante. */
   alfa: number;
+  /** Giro em graus, no sentido horário (como o `rotate` do render). */
+  giro?: number;
 }
 
 export interface QuadroParaDesenhar {
@@ -64,6 +66,8 @@ export interface QuadroParaDesenhar {
   efeitos?: readonly EfeitoNoQuadro[];
   /** Camadas de mídia, de baixo para cima, sobre o quadro já com os efeitos. */
   midias?: readonly MidiaNoQuadro[];
+  /** Passa o quadro composto pelo framebuffer 2 mesmo sem efeitos (a máscara da pessoa lê de lá). */
+  guardarQuadro?: boolean;
 }
 
 /**
@@ -80,11 +84,16 @@ uniform float uProporcao;
 uniform float uCobrir;
 uniform float uRaio;
 uniform float uAlfa;
+uniform float uGiro;
 out vec4 cor;
 void main() {
   float X = floor(gl_FragCoord.x);
   float Y = uTamanho.y - 1.0 - floor(gl_FragCoord.y);
-  vec2 p = vec2(X, Y) + 0.5 - uCaixa.xy;
+  // Giro em volta do centro da caixa: o ponto da tela volta ao da mídia
+  // pela rotação inversa (a mesma do rotate do FFmpeg).
+  vec2 d = vec2(X, Y) + 0.5 - (uCaixa.xy + uCaixa.zw / 2.0);
+  float cs = cos(uGiro), sn = sin(uGiro);
+  vec2 p = vec2(cs * d.x + sn * d.y, -sn * d.x + cs * d.y) + uCaixa.zw / 2.0;
   if (p.x < 0.0 || p.y < 0.0 || p.x > uCaixa.z || p.y > uCaixa.w) discard;
   vec2 uv = p / uCaixa.zw;
   if (uCobrir > 0.5) {
@@ -203,7 +212,7 @@ export class Compositor {
     this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
-    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -409,8 +418,9 @@ export class Compositor {
     quadro.camadas.slice(0, 2).forEach((c, i) => this.montarCamada(i, c, quadro.enquadramento));
 
     const passos = this.passosDosEfeitos(quadro.efeitos ?? []);
-    // Com efeitos, o quadro composto vai para um framebuffer, não para a tela.
-    gl.bindFramebuffer(gl.FRAMEBUFFER, passos.length ? this.fbos[2]!.fb : null);
+    // Com efeitos (ou pedido de guardar), o quadro composto vai para um framebuffer, não para a tela.
+    const viaFramebuffer = passos.length > 0 || Boolean(quadro.guardarQuadro);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, viaFramebuffer ? this.fbos[2]!.fb : null);
     gl.viewport(0, 0, this.largura, this.altura);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbos[0]!.tex);
@@ -431,7 +441,17 @@ export class Compositor {
       gl.uniform1i(p.uniforms.uA!, 0);
     }
     this.desenharRetangulo();
-    this.aplicarEfeitos(this.fbos[2]!.tex, passos);
+    if (passos.length) this.aplicarEfeitos(this.fbos[2]!.tex, passos);
+    else if (viaFramebuffer) {
+      // Sem efeitos: só copia o quadro guardado para a tela.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.largura, this.altura);
+      gl.useProgram(this.copiar.programa);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.fbos[2]!.tex);
+      gl.uniform1i(this.copiar.uniforms.uA!, 0);
+      this.desenharRetangulo();
+    }
     this.desenharMidias(quadro.midias ?? []);
   }
 
@@ -478,6 +498,7 @@ export class Compositor {
       gl.uniform1f(p.uniforms.uCobrir!, m.caixa.modo === 'cobrir' ? 1 : 0);
       gl.uniform1f(p.uniforms.uRaio!, m.raio);
       gl.uniform1f(p.uniforms.uAlfa!, m.alfa);
+      gl.uniform1f(p.uniforms.uGiro!, ((m.giro ?? 0) * Math.PI) / 180);
       this.desenharRetangulo();
     }
     gl.disable(gl.BLEND);

@@ -448,5 +448,27 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
 }
 
+// ============================================================
+// Camada animada e camada que acompanha a pessoa
+// ============================================================
+{
+  const animado: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [
+      { id: 'a', assetId: 'emoji_fogo', kind: 'sticker', timelineStartMs: 1000, durationMs: 2000, layout: 'livre', animIn: 'pop', animLoop: 'balancar' },
+      { id: 'f', assetId: 'emoji_fogo', kind: 'sticker', timelineStartMs: 1000, durationMs: 2000, layout: 'livre', followPerson: true, x: 0.5, y: 0.4 },
+    ],
+  };
+  const midias = { emoji_fogo: { caminho: '/st/emoji_fogo.png', proporcao: 1 } };
+  const trilha = Array.from({ length: 90 }, (_, i) => ({ x: 0.3 + i / 300, y: 0.3 }));
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: animado, midias, cabeca: { inicioMs: 1000, trilha } });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('animada: escala e giro por quadro numa tela fixa', f.includes(':eval=frame,rotate=a=') && f.includes(':c=none:ow='));
+  t('animada: posição por quadro no overlay', /overlay=x='[^']*sin\(2\*PI\*\(t-1\.0000\)\/1\.2\)|overlay=x='\(/.test(f) && f.includes(":eval=frame:eof_action=pass"));
+  t('acompanhando: a posição soma a trilha da cabeça (desde o início da máscara)', f.includes('(t-1.0000)') && f.includes('0.30000+'));
+  const semTrilha = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: animado, midias });
+  t('sem trilha (sem máscara), a camada fica parada no lugar dela', (semTrilha[semTrilha.indexOf('-filter_complex') + 1]!.match(/rotate=/g) ?? []).length === 1);
+}
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

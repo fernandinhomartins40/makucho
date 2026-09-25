@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -80,6 +80,11 @@ export interface OpcoesDoRender {
    * assetId: o arquivo, a proporção (largura / altura) e se tem som.
    */
   midias?: Readonly<Record<string, { caminho: string; proporcao: number; temAudio?: boolean }>>;
+  /**
+   * Onde a cabeça de quem fala está, quadro a quadro, a partir de
+   * `inicioMs` (cabeca.ts, pela máscara): para as camadas que a acompanham.
+   */
+  cabeca?: { inicioMs: number; trilha: ReadonlyArray<{ x: number; y: number }> };
   /**
    * Modo da mascara: em vez do video final, os quadros montados (sem
    * texto, sem som) do intervalo, em `lado` x `lado`, RGB cru no stdout.
@@ -336,12 +341,41 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       partes.push(`${cadeia}[${r}s]`);
       cadeia = `[${r}s][${r}m]alphamerge`;
     }
-    const opacidade = c.opacity ?? 1;
-    if (opacidade < 1) cadeia += `,lutyuv=a='val*${opacidade.toFixed(4)}'`;
     if (c.fadeInMs) cadeia += `,fade=t=in:st=0:d=${(c.fadeInMs / 1000).toFixed(3)}:alpha=1`;
     if (c.fadeOutMs) cadeia += `,fade=t=out:st=${Math.max(0, d - c.fadeOutMs / 1000).toFixed(3)}:d=${(c.fadeOutMs / 1000).toFixed(3)}:alpha=1`;
-    partes.push(`${cadeia},setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}]`);
-    partes.push(`[${video}][${r}]overlay=x=${cx.x}:y=${cx.y}:eof_action=pass:format=yuv420[${r}o]`);
+    const seguir = Boolean(c.followPerson && opcoes.cabeca?.trilha.length);
+    if (!midiaEstaAnimada(c) && !seguir) {
+      const opacidade = c.opacity ?? 1;
+      if (opacidade < 1) cadeia += `,lutyuv=a='val*${opacidade.toFixed(4)}'`;
+      partes.push(`${cadeia},setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}]`);
+      partes.push(`[${video}][${r}]overlay=x=${cx.x}:y=${cx.y}:eof_action=pass:format=yuv420[${r}o]`);
+    } else {
+      // Animada: as MESMAS contas da prévia (animacao-da-midia.ts), como
+      // expressões por quadro. Tamanho e giro numa tela fixa M x M (a
+      // diagonal na maior escala), centrada no ponto do instante.
+      const base = { x: (cx.x + cx.w / 2) / W, y: (cx.y + cx.h / 2) / H };
+      const local = expressoesDaMidia(c, base, 't');
+      const noVideo = expressoesDaMidia(c, base, `(t-${(n0 / FPS).toFixed(4)})`);
+      const noGeq = expressoesDaMidia(c, base, 'T');
+      const M = Math.ceil((Math.hypot(cx.w, cx.h) * escalaMaxima(c)) / 2) * 2 + 4;
+      cadeia +=
+        `,scale=w='max(2,trunc(${cx.w}*(${local.scale})/2)*2)':h='max(2,trunc(${cx.h}*(${local.scale})/2)*2)':eval=frame` +
+        `,rotate=a='(${local.rotation})*PI/180':c=none:ow=${M}:oh=${M}`;
+      cadeia += /\bT\b/.test(noGeq.opacity)
+        ? `,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*clip(${noGeq.opacity},0,1)'`
+        : Number(noGeq.opacity) < 1
+          ? `,lutyuv=a='val*${Number(noGeq.opacity).toFixed(4)}'`
+          : '';
+      partes.push(`${cadeia},setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}]`);
+      // Acompanhando a pessoa, a posição é a da cabeça mais a da camada
+      // (0,5/0,5 = em cima dela).
+      const tc = `(t-${((opcoes.cabeca?.inicioMs ?? 0) / 1000).toFixed(4)})`;
+      const px = seguir ? `(${expressaoDaTrilha(opcoes.cabeca!.trilha, 'x', tc)})+(${noVideo.x})-0.5` : noVideo.x;
+      const py = seguir ? `(${expressaoDaTrilha(opcoes.cabeca!.trilha, 'y', tc)})+(${noVideo.y})-0.5` : noVideo.y;
+      partes.push(
+        `[${video}][${r}]overlay=x='(${px})*W-${M / 2}':y='(${py})*H-${M / 2}':eval=frame:eof_action=pass:format=yuv420[${r}o]`,
+      );
+    }
     video = `${r}o`;
 
     // O som do vídeo só entra com volume: o B-roll é mudo por padrão.

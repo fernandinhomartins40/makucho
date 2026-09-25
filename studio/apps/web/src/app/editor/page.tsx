@@ -26,6 +26,8 @@ import {
   aplicarOperacao,
   comIdsNovos,
   comKeyframe,
+  comKeyframeDaMidia,
+  padraoDaCaixa,
   aplicarOperacoes,
   CORES_PADRAO_DA_MARCA,
   estaProcessando,
@@ -990,7 +992,18 @@ function Editor({ projectId }: { projectId: string }) {
             onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
             midiaSelecionada={itemSelecionado?.tipo === 'midia' ? itemSelecionado.id : null}
             onSelecionarMidia={(id) => setItemSelecionado({ tipo: 'midia', id })}
-            onAjustarMidia={(id, mudanca) => executar({ op: 'editar_midia', mediaId: id, ...mudanca })}
+            onAjustarMidia={(id, mudanca) => {
+              const c = plano.mediaLayers?.find((m) => m.id === id);
+              if (!c?.keyframes?.length) return executar({ op: 'editar_midia', mediaId: id, ...mudanca });
+              // Com pontos de movimento, arrastar grava o ponto no cursor.
+              const p = padraoDaCaixa(c);
+              const valores = {
+                ...(mudanca.x !== undefined ? { x: mudanca.x, y: mudanca.y } : {}),
+                ...(mudanca.width !== undefined ? { scale: Math.round((mudanca.width / (c.width ?? p.width)) * 1000) / 1000 } : {}),
+              };
+              const keyframes = comKeyframeDaMidia(c, posicaoMs - c.timelineStartMs, valores, { x: c.x ?? p.x, y: c.y ?? p.y });
+              executar({ op: 'editar_midia', mediaId: id, keyframes });
+            }}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');

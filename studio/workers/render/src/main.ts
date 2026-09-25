@@ -27,6 +27,8 @@ import {
   gerarAss,
   janelasDaPessoa,
   arquivoDoSticker,
+  cabecaDaMascara,
+  suavizarTrilha,
   chaveDaCor,
   corEhNeutra,
   definicaoDoSticker,
@@ -48,7 +50,7 @@ import {
   medirMidia,
 } from '@makucho/studio-worker-core';
 import type { MascaraGerada, RuntimeOnnx } from '@makucho/studio-worker-core';
-import { copyFile, mkdir, rename, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 
@@ -196,6 +198,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         plano,
         legendas,
         ...(mascara ? { mascara } : {}),
+        ...(mascara && (plano.mediaLayers ?? []).some((m) => m.followPerson) ? { cabeca: await trilhaDaCabeca(mascara) } : {}),
         ...(mascara && legendasAtras ? { legendasAtras } : {}),
         pastaDeFontes: existsSync(PASTA_DE_FONTES) ? PASTA_DE_FONTES : undefined,
         imagens: arquivos.imagens,
@@ -466,6 +469,18 @@ async function midiasDoPlano(plano: EditPlanV1, arquivos: Record<string, string>
     }
   }
   return midias;
+}
+
+/**
+ * A cabeça quadro a quadro, lida da máscara já gerada (cabeca.ts): as
+ * camadas que acompanham a pessoa usam esta trilha.
+ */
+async function trilhaDaCabeca(m: MascaraGerada): Promise<{ inicioMs: number; trilha: Array<{ x: number; y: number }> }> {
+  const dados = await readFile(m.caminho);
+  const tamanho = m.lado * m.lado;
+  const pontos = [];
+  for (let q = 0; q < m.quadros; q += 1) pontos.push(cabecaDaMascara(dados.subarray(q * tamanho, (q + 1) * tamanho), m.lado));
+  return { inicioMs: m.inicioMs, trilha: suavizarTrilha(pontos) };
 }
 
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */

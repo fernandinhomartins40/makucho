@@ -101,6 +101,8 @@ export function janelasDaPessoa(plano: EditPlanV1, duracaoMs: number): Array<{ i
     [
       ...plano.overlays.filter(ehTextoAtras).map((o) => ({ inicioMs: o.timelineStartMs, fimMs: o.timelineStartMs + o.durationMs })),
       ...(plano.screenEffects ?? []).filter((e) => efeitoUsaPessoa(e.type)).map((e) => ({ inicioMs: e.timelineStartMs, fimMs: e.timelineStartMs + e.durationMs })),
+      // Camadas que acompanham a cabeça: a trilha sai da máscara.
+      ...(plano.mediaLayers ?? []).filter((m) => m.followPerson).map((m) => ({ inicioMs: m.timelineStartMs, fimMs: m.timelineStartMs + m.durationMs })),
     ],
     duracaoMs,
   );

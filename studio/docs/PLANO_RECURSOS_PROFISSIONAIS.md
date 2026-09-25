@@ -160,6 +160,21 @@ em volta do cursor (sem gastar IA). Fica de fora: modo de mistura (o
 - Animação de entrada/loop/saída, keyframes e acompanhar o rosto
   (detector de rosto em ONNX, mesmo esquema da máscara).
 
+**Estado: feito.** 40 stickers (24 desenhados em código, 16 emoji do
+Noto, Apache 2.0) em PNG 512 com transparência, gerados por
+`studio/assets/stickers/gerar.mjs`, copiados para a web e para a imagem
+do render. O sticker é uma camada de mídia `kind: 'sticker'`. Toda
+camada (sticker, imagem, vídeo) ganhou entrada, loop e saída e
+keyframes (posição, tamanho, giro, opacidade, curva):
+`animacao-da-midia.ts` tem a função da prévia e o gerador das
+expressões do FFmpeg (`scale`/`rotate` por quadro numa tela fixa,
+`geq` no alfa, `overlay` com posição por quadro), e o teste avalia as
+expressões contra a função em todo quadro. "Acompanhar a pessoa" usa a
+máscara que já existe, sem modelo novo: `cabeca.ts` acha o topo da
+silhueta; o worker tira a trilha da máscara do render e a prévia, da
+máscara do navegador. Alças na prévia movem e redimensionam camadas
+livres e em janela (com pontos, gravam o ponto no cursor).
+
 ## Fase 8 — Fotos e montagens
 
 - Foto na timeline com Ken Burns; slideshow com ritmo e batida da trilha;
