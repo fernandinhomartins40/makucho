@@ -136,7 +136,7 @@ desfocar).
   continuando; busca no Pexels (chave nas Configurações); IA sugere
   B-roll pela fala.
 
-**Estado: núcleo feito; Pexels e sugestão da IA pendentes.** Camadas de
+**Estado: feito (sem modo de mistura e sem "atrás da pessoa" para mídia).** Camadas de
 mídia (`contracts/src/midias.ts`, `plano.mediaLayers`): imagem ou vídeo
 do workspace em tela cheia (B-roll), janela (PiP), tela dividida ou
 livre, com opacidade, cantos arredondados, fades e, no vídeo, ponto de
@@ -144,10 +144,14 @@ início e volume (mudo por padrão). `caixaDaMidia` é a mesma conta no
 render (`scale`/`crop`, máscara de cantos, `overlay` a partir do quadro)
 e na prévia (camada no compositor WebGL). Biblioteca > Mídia (enviar e
 inserir), faixa Mídia na timeline, painel do item. A API passou a servir
-os arquivos de asset com Range (vídeo com busca na prévia). Pendente:
-busca no Pexels e sugestão de B-roll pela IA (dependem de módulo novo na
-API), modo de mistura (o `blend` do FFmpeg ignora transparência) e
-"atrás da pessoa" para mídia.
+os arquivos de asset com Range (vídeo com busca na prévia). Pexels:
+chave cifrada por workspace nas Configurações (tabela
+`stock_credentials`), busca vertical de vídeos e fotos, e importação em
+que o servidor busca o item de novo pelo id, baixa só do CDN do Pexels
+com teto de tamanho e grava como asset com o crédito do autor na
+licença. "Sugerir pela fala" preenche a busca com as palavras marcantes
+em volta do cursor (sem gastar IA). Fica de fora: modo de mistura (o
+`blend` do FFmpeg ignora transparência) e "atrás da pessoa" para mídia.
 
 ## Fase 7 — Stickers
 

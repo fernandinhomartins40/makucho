@@ -9,7 +9,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts"
+    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts && tsx test/pexels.test.ts"
   },
   "dependencies": {
     "@makucho/studio-contracts": "workspace:*",

@@ -178,6 +178,7 @@ model Workspace {
   projects             Project[]
   auditEvents          AuditEvent[]
   aiCredential         AiCredential?
+  stockCredential      StockCredential?
   retentionPolicy      RetentionSettings?
   aiUsage              AiUsage[]
 
@@ -236,6 +237,24 @@ model AiCredential {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("ai_credentials")
+}
+
+// Chave do banco de imagens e vídeos (Pexels) do workspace: cifrada como
+// a da IA. Serve à busca de B-roll; o arquivo baixado vira um asset.
+model StockCredential {
+  id           String   @id @default(cuid())
+  workspaceId  String   @unique
+  provider     String   @default("pexels")
+  encryptedKey String
+  iv           String
+  authTag      String
+  keyPrefix    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("stock_credentials")
 }
 
 // ============================================================

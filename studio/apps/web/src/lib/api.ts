@@ -724,6 +724,40 @@ export const credencialDeIa = {
 };
 
 // ============================================================
+// Banco de imagens e vídeos (Pexels)
+// ============================================================
+
+export interface ChaveDoBanco {
+  configured: boolean;
+  keyPrefix?: string;
+  updatedAt?: string;
+}
+
+export interface ResultadoDoBanco {
+  id: number;
+  tipo: 'video' | 'foto';
+  largura: number;
+  altura: number;
+  duracaoMs: number | null;
+  miniatura: string;
+  autor: string;
+  pagina: string;
+}
+
+export const bancoDeMidia = {
+  chave: () => api<ChaveDoBanco>('/settings/stock-credential'),
+  salvarChave: (apiKey: string) => api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'PUT', corpo: { apiKey } }),
+  removerChave: () => api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'DELETE' }),
+  buscar: (q: string, tipo: 'video' | 'foto', pagina = 1) =>
+    api<{ total: number; resultados: ResultadoDoBanco[] }>(
+      `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(pagina) })}`,
+    ),
+  /** O servidor baixa do Pexels e grava como asset do workspace. */
+  importar: (tipo: 'video' | 'foto', id: number) =>
+    api<{ id: string; jaExistia: boolean }>('/banco-de-midia/importar', { metodo: 'POST', corpo: { tipo, id } }),
+};
+
+// ============================================================
 // Aplicativo (PWA): nome, cores, ícones e capturas da instalação
 // ============================================================
 

@@ -15,6 +15,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { RendersModule } from './modules/renders/renders.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { PwaModule } from './modules/pwa/pwa.module';
+import { BancoDeMidiaModule } from './modules/banco-de-midia/banco-de-midia.module';
 import { HealthController } from './modules/health/health.controller';
 import { loadEnv } from './config/env';
 
@@ -39,6 +40,7 @@ import { loadEnv } from './config/env';
     RendersModule,
     AssetsModule,
     PwaModule,
+    BancoDeMidiaModule,
   ],
   controllers: [HealthController],
   providers: [

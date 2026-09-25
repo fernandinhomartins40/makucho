@@ -15,6 +15,8 @@ import { Topbar } from '../../components/shell/Topbar';
 import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
 import { useDados } from '../../lib/useDados';
 import {
+  bancoDeMidia,
+  type ChaveDoBanco,
   armazenamento as apiArmazenamento,
   credencialDeIa,
   ia as apiIa,
@@ -33,6 +35,7 @@ export default function ConfiguracoesPage() {
         <div style={{ maxWidth: 820, display: 'grid', gap: 'var(--e5)' }}>
           <h1>Configurações</h1>
           <SecaoDeIa />
+          <SecaoDoBanco />
           <SecaoDeArmazenamento />
           <SecaoDoApp />
         </div>
@@ -352,6 +355,90 @@ function SecaoDeIa() {
 // ============================================================
 // Armazenamento
 // ============================================================
+
+/** A chave do Pexels: busca de B-roll e fotos dentro do editor. */
+function SecaoDoBanco() {
+  const chave = useDados<ChaveDoBanco>(() => bancoDeMidia.chave());
+  const [valor, setValor] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const atual = chave.dados;
+
+  const salvar = async () => {
+    setSalvando(true);
+    setMensagem(null);
+    try {
+      chave.definir(await bancoDeMidia.salvarChave(valor.trim()));
+      setValor('');
+      setMensagem({ tom: 'sucesso', texto: 'Chave salva. No editor, Biblioteca > Mídia já busca no Pexels.' });
+    } catch (e) {
+      setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar a chave.' });
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const remover = async () => {
+    if (!window.confirm('Remover a chave do Pexels? A busca de imagens e vídeos deixa de funcionar.')) return;
+    try {
+      chave.definir(await bancoDeMidia.removerChave());
+      setMensagem({ tom: 'sucesso', texto: 'Chave removida.' });
+    } catch (e) {
+      setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível remover.' });
+    }
+  };
+
+  return (
+    <section className="cartao" style={{ display: 'grid', gap: 'var(--e4)' }} aria-labelledby="titulo-banco">
+      <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
+        <h2 id="titulo-banco" className="linha" style={{ gap: 'var(--e2)' }}>
+          <IconeNuvem size={20} color="var(--accent)" />
+          Banco de imagens e vídeos
+        </h2>
+        {atual && (
+          <span className={`selo ${atual.configured ? 'selo--sucesso' : 'selo--aviso'}`}>
+            <span className="selo__ponto" aria-hidden />
+            {atual.configured ? 'Ativo' : 'Sem chave'}
+          </span>
+        )}
+      </div>
+      <p className="texto-secundario" style={{ fontSize: 14 }}>
+        Com uma chave gratuita do Pexels (pexels.com/api), o editor busca vídeos e fotos para B-roll. O arquivo escolhido vira
+        mídia do workspace, com o crédito do autor guardado.
+      </p>
+      {mensagem && (
+        <div className={`aviso ${mensagem.tom === 'erro' ? 'aviso--erro' : 'aviso--info'}`} role={mensagem.tom === 'erro' ? 'alert' : 'status'}>
+          {mensagem.tom === 'erro' ? <IconeAviso size={16} /> : <IconeCheck size={16} />}
+          <span>{mensagem.texto}</span>
+        </div>
+      )}
+      {atual?.configured && (
+        <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{atual.keyPrefix}••••••••</span>
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
+            Remover chave
+          </button>
+        </div>
+      )}
+      <form
+        className="linha"
+        style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valor.trim().length >= 20) void salvar();
+        }}
+      >
+        <label className="campo crescer" style={{ marginBottom: 0, minWidth: 240 }}>
+          <span className="campo__rotulo">{atual?.configured ? 'Trocar a chave do Pexels' : 'Chave do Pexels'}</span>
+          <input className="campo__entrada" type="password" autoComplete="off" value={valor} onChange={(e) => setValor(e.target.value)} />
+        </label>
+        <button type="submit" className="botao botao--primario" style={{ alignSelf: 'end' }} disabled={salvando || valor.trim().length < 20}>
+          {salvando ? 'Salvando…' : 'Salvar'}
+        </button>
+      </form>
+    </section>
+  );
+}
 
 function SecaoDeArmazenamento() {
   const { dados, carregando, erro } = useDados<Armazenamento>(() => apiArmazenamento.obter());

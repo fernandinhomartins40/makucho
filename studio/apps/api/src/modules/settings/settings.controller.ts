@@ -116,6 +116,44 @@ export class SettingsController {
     return { configured: false };
   }
 
+  // ---------- Banco de imagens e vídeos (Pexels) ----------
+
+  @Get('stock-credential')
+  async obterChaveDoBanco(@CurrentTenant() tenant: TenantContext) {
+    const c = await this.prisma.stockCredential.findUnique({
+      where: { workspaceId: tenant.workspaceId },
+      select: { provider: true, keyPrefix: true, updatedAt: true },
+    });
+    return c ? { configured: true, ...c } : { configured: false };
+  }
+
+  @Put('stock-credential')
+  async salvarChaveDoBanco(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertIsOwner(tenant);
+    const { apiKey } = z.object({ apiKey: z.string().trim().min(20).max(200) }).parse(body);
+    const cifrado = this.crypto.cifrar(apiKey);
+    const keyPrefix = this.crypto.prefixoVisivel(apiKey);
+    await this.prisma.stockCredential.upsert({
+      where: { workspaceId: tenant.workspaceId },
+      create: { workspaceId: tenant.workspaceId, provider: 'pexels', keyPrefix, ...cifrado },
+      update: { keyPrefix, ...cifrado },
+    });
+    await this.prisma.auditEvent.create({
+      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.updated', entityType: 'StockCredential', metadata: { keyPrefix } },
+    });
+    return { configured: true, provider: 'pexels', keyPrefix };
+  }
+
+  @Delete('stock-credential')
+  async removerChaveDoBanco(@CurrentTenant() tenant: TenantContext) {
+    assertIsOwner(tenant);
+    await this.prisma.stockCredential.delete({ where: { workspaceId: tenant.workspaceId } }).catch(() => undefined);
+    await this.prisma.auditEvent.create({
+      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.removed', entityType: 'StockCredential' },
+    });
+    return { configured: false };
+  }
+
   // ---------- Armazenamento ----------
 
   @Get('storage')

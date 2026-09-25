@@ -4556,6 +4556,16 @@ button {
   text-overflow: ellipsis;
 }
 
+.busca-no-banco {
+  display: grid;
+  gap: 4px;
+  margin-top: var(--e3);
+}
+
+.midia-cartao__previa--vertical {
+  aspect-ratio: 9 / 12;
+}
+
 .midia-cartao__acoes {
   display: flex;
   flex-wrap: wrap;
