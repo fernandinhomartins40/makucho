@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -954,41 +954,8 @@ function posicaoDoLogo(variante: string | undefined, W: number, H: number, marge
  * o "pop" dos textos.
  */
 export function somEmbutido(id: string): string {
-  switch (id) {
-    case 'sfx-pop':
-      return `aevalsrc=exprs=0.8*sin(2*PI*(420+2600*t)*t)*exp(-26*t):s=48000:d=0.2`;
-    case 'sfx-click':
-      return `aevalsrc=exprs=0.7*sin(2*PI*1800*t)*exp(-90*t):s=48000:d=0.07`;
-    case 'sfx-swipe':
-      // Varrida curta e aguda: troca de assunto, lista que passa.
-      return (
-        `anoisesrc=d=0.32:c=white:r=48000:a=0.5,highpass=f=2500,` +
-        `afade=t=in:d=0.08,afade=t=out:st=0.1:d=0.22`
-      );
-    case 'sfx-riser':
-      // Subida que prepara a revelação.
-      return `aevalsrc=exprs=0.35*sin(2*PI*(180*t+700*t*t)*1)*(t/1.2):s=48000:d=1.2,afade=t=out:st=1.1:d=0.1`;
-    case 'sfx-impacto':
-      // Grave seco com corpo: a frase forte, o número que importa.
-      return `aevalsrc=exprs=0.95*sin(2*PI*(58+140*exp(-18*t))*t)*exp(-7*t):s=48000:d=0.6`;
-    case 'sfx-ding':
-      return `aevalsrc=exprs=0.45*(sin(2*PI*1320*t)+0.5*sin(2*PI*2640*t))*exp(-6*t):s=48000:d=0.8`;
-    case 'sfx-digitar':
-      // Teclas: cliques curtos em sequência.
-      return `aevalsrc=exprs=0.5*sin(2*PI*2400*t)*exp(-140*mod(t\\,0.09)):s=48000:d=0.54`;
-    case 'sfx-camera':
-      return (
-        `anoisesrc=d=0.18:c=white:r=48000:a=0.7,bandpass=f=3200:width_type=q:w=1.2,` +
-        `afade=t=in:d=0.005,afade=t=out:st=0.04:d=0.14`
-      );
-    case 'sfx-glitch':
-      return `aevalsrc=exprs=0.5*sgn(sin(2*PI*(90+800*floor(mod(t*30\\,4)))*t)):s=48000:d=0.3,afade=t=out:st=0.2:d=0.1`;
-    default:
-      return (
-        `anoisesrc=d=0.7:c=pink:r=48000:a=0.6,bandpass=f=1300:width_type=q:w=0.9,` +
-        `afade=t=in:d=0.35:curve=exp,afade=t=out:st=0.35:d=0.35`
-      );
-  }
+  // A receita do catálogo (contracts/sons.ts), a mesma dos WAVs da prévia.
+  return definicaoDoSom(id)?.receita ?? definicaoDoSom('sfx-whoosh')!.receita;
 }
 
 /**

@@ -8,7 +8,8 @@
 // ============================================================
 
 import type { CategoriaDeTransicao, EfeitoSonoroEmbutido, TipoDeTransicao } from '@makucho/studio-contracts';
-import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
+import { SONS_EMBUTIDOS, TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
+import type { CategoriaDeSom } from '@makucho/studio-contracts';
 
 export interface ItemDaBiblioteca<T extends string = string> {
   id: T;
@@ -40,18 +41,14 @@ export const EFEITOS_DE_TRECHO: ReadonlyArray<ItemDaBiblioteca<'nenhum' | 'punch
 
 export const NOME_DO_EFEITO: Record<string, string> = Object.fromEntries(EFEITOS_DE_TRECHO.map((e) => [e.id, e.rotulo]));
 
-export const SONS: ReadonlyArray<ItemDaBiblioteca<EfeitoSonoroEmbutido>> = [
-  { id: 'sfx-whoosh', rotulo: 'Whoosh', descricao: 'Passagem de ar.', quando: 'Transição, texto que entra de lado.' },
-  { id: 'sfx-swipe', rotulo: 'Varrida', descricao: 'Varrida curta e aguda.', quando: 'Lista que passa, troca rápida.' },
-  { id: 'sfx-pop', rotulo: 'Pop', descricao: 'Estalo curto e alegre.', quando: 'Texto ou emoji que aparece.' },
-  { id: 'sfx-click', rotulo: 'Clique', descricao: 'Toque seco.', quando: 'Detalhe, botão, escolha.' },
-  { id: 'sfx-riser', rotulo: 'Subida', descricao: 'Tom que sobe e prepara.', quando: 'Logo antes da revelação.' },
-  { id: 'sfx-impacto', rotulo: 'Impacto', descricao: 'Grave seco com corpo.', quando: 'A frase mais forte, o número que importa.' },
-  { id: 'sfx-ding', rotulo: 'Ding', descricao: 'Sino curto.', quando: 'Dica, acerto, "anota isso".' },
-  { id: 'sfx-digitar', rotulo: 'Digitar', descricao: 'Teclas em sequência.', quando: 'Texto sendo escrito, busca.' },
-  { id: 'sfx-camera', rotulo: 'Câmera', descricao: 'Clique de foto.', quando: 'Print, foto, "registra".' },
-  { id: 'sfx-glitch', rotulo: 'Glitch', descricao: 'Chiado digital.', quando: 'Erro, virada, "mas tem um problema".' },
-];
+/** Os efeitos sonoros vêm do catálogo único (contracts/sons.ts). */
+export const SONS: ReadonlyArray<ItemDaBiblioteca<EfeitoSonoroEmbutido> & { categoria: CategoriaDeSom }> = SONS_EMBUTIDOS.map((s) => ({
+  id: s.id,
+  rotulo: s.rotulo,
+  descricao: s.descricao,
+  quando: s.quando,
+  categoria: s.categoria,
+}));
 
 export const NOME_DO_SOM: Record<string, string> = Object.fromEntries(SONS.map((s) => [s.id, s.rotulo]));
 

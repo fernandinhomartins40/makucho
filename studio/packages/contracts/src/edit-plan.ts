@@ -15,6 +15,7 @@ import { clipRoleSchema, frameworkSchema, semanticRiskSchema } from './vocabular
 import { corDoTrechoSchema } from './cor';
 import { efeitoDeTelaSchema } from './efeitos-de-tela';
 import { camadaDeMidiaSchema } from './midias';
+import { SONS_EMBUTIDOS, type IdDeSomEmbutido } from './sons';
 
 // Milissegundos, sempre inteiros e nao negativos. Trabalhar em ms
 // evita o acumulo de erro de ponto flutuante ao somar dezenas de
@@ -376,19 +377,8 @@ export const musicTrackSchema = z.object({
  * nao ha licenca a registrar, nada a baixar e nada ocupando o storage.
  * Qualquer outro `assetId` aponta para um SOUND_EFFECT do workspace.
  */
-export const EFEITOS_SONOROS_EMBUTIDOS = [
-  'sfx-whoosh',
-  'sfx-pop',
-  'sfx-click',
-  'sfx-swipe',
-  'sfx-riser',
-  'sfx-impacto',
-  'sfx-ding',
-  'sfx-digitar',
-  'sfx-camera',
-  'sfx-glitch',
-] as const;
-export type EfeitoSonoroEmbutido = (typeof EFEITOS_SONOROS_EMBUTIDOS)[number];
+export const EFEITOS_SONOROS_EMBUTIDOS = SONS_EMBUTIDOS.map((s) => s.id) as readonly IdDeSomEmbutido[];
+export type EfeitoSonoroEmbutido = IdDeSomEmbutido;
 
 export function ehEfeitoSonoroEmbutido(id: string): id is EfeitoSonoroEmbutido {
   return (EFEITOS_SONOROS_EMBUTIDOS as readonly string[]).includes(id);

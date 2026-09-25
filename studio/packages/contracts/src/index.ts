@@ -39,6 +39,8 @@ export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';
 export * from './batidas';
+export * from './sons';
+export * from './protecao-da-fala';
 export * from './pausas';
 export * from './acabamento';
 export * from './retomadas';

@@ -11,8 +11,14 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CategoriaDeEfeitoDeTela, CategoriaDeTransicao, EditPlanV1, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
+import type { CategoriaDeEfeitoDeTela, CategoriaDeSom, CategoriaDeTransicao, EditPlanV1, EfeitoSonoroEmbutido, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
+  CATEGORIAS_DE_SOM,
+  duracaoDoSom,
+  ehEfeitoSonoroEmbutido,
+  palavrasNaTimeline,
+  protegerFala,
+  sugerirSons,
   CATEGORIAS_DE_STICKER,
   STICKERS,
   arquivoDoSticker,
@@ -28,7 +34,7 @@ import { assets as apiAssets, type Asset, type Transcricao } from '../../lib/api
 import { EstilosDeTexto } from '../editor/EstilosDeTexto';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
-import { EFEITOS_DE_TRECHO, ELEMENTOS, SONS, TRANSICOES } from './catalogo';
+import { EFEITOS_DE_TRECHO, ELEMENTOS, NOME_DO_SOM, SONS, TRANSICOES } from './catalogo';
 import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
@@ -549,15 +555,88 @@ function usePrevia() {
   return { tocando, tocar };
 }
 
-function Sons({ plan, posicaoMs, onOperacao }: Props) {
+function Sons({ plan, posicaoMs, onOperacao, onOperacoes, transcricao }: Props) {
   const previa = usePrevia();
+  const [grupo, setGrupo] = useState<CategoriaDeSom | 'todos'>('todos');
+  const [proteger, setProteger] = useState(true);
+  const [aviso, setAviso] = useState<string | null>(null);
   const duracaoTotal = useMemo(() => agendaDoPlano(plan).duracaoMs, [plan]);
   const noCursor = Math.min(Math.max(0, Math.round(posicaoMs)), Math.max(0, duracaoTotal - 300));
+  // A fala no tempo da timeline: é dela que os sons desviam.
+  const fala = useMemo(() => palavrasNaTimeline(plan, transcricao?.segmentos.flatMap((s) => s.palavras) ?? []), [plan, transcricao]);
+  const temFala = fala.length > 0;
+
+  const adicionar = (id: EfeitoSonoroEmbutido) => {
+    if (!proteger || !temFala) {
+      onOperacao({ op: 'adicionar_efeito_sonoro', assetId: id, timelineStartMs: noCursor, gainDb: -10 });
+      setAviso(null);
+      return;
+    }
+    const p = protegerFala(noCursor, duracaoDoSom(id), fala);
+    onOperacao({ op: 'adicionar_efeito_sonoro', assetId: id, timelineStartMs: p.inicioMs, gainDb: -10 + p.ganhoDb });
+    setAviso(
+      p.motivo === 'movido'
+        ? `O cursor estava em cima de uma palavra: o som foi para a pausa em ${tempo(p.inicioMs)}.`
+        : p.motivo === 'abaixado'
+          ? 'Sem pausa perto do cursor: o som entrou 6 dB mais baixo para não cobrir a fala.'
+          : null,
+    );
+  };
+
+  const sugerir = () => {
+    const lista = sugerirSons(plan, fala);
+    if (!lista.length) {
+      setAviso('Nada a sugerir: os elementos do vídeo já têm som, ou não há transição, texto ou efeito para acompanhar.');
+      return;
+    }
+    onOperacoes(lista.map((s) => ({ op: 'adicionar_efeito_sonoro' as const, assetId: s.assetId, timelineStartMs: s.timelineStartMs, gainDb: s.gainDb })));
+    setAviso(`${lista.length} som(ns) sugerido(s): ${lista.map((s) => `${NOME_DO_SOM[s.assetId] ?? s.assetId} (${s.motivo}, ${tempo(s.timelineStartMs)})`).join('; ')}.`);
+  };
+
+  const protegerTodos = () => {
+    const ops: TimelineOperation[] = [];
+    for (const e of plan.soundEffects) {
+      const p = protegerFala(e.timelineStartMs, ehEfeitoSonoroEmbutido(e.assetId) ? duracaoDoSom(e.assetId) : 600, fala);
+      if (p.motivo === 'movido') ops.push({ op: 'editar_efeito_sonoro', soundEffectId: e.id, timelineStartMs: p.inicioMs });
+      else if (p.motivo === 'abaixado') ops.push({ op: 'editar_efeito_sonoro', soundEffectId: e.id, gainDb: Math.max(-40, e.gainDb - 6) });
+    }
+    if (ops.length) onOperacoes(ops);
+    setAviso(ops.length ? `${ops.length} som(ns) ajustado(s) para não cobrir a fala.` : 'Nenhum som está em cima da fala.');
+  };
+
   return (
     <>
       <Alvo>Toque ▶ para ouvir. “Adicionar” põe o som no cursor ({tempo(noCursor)}); depois é só arrastar na faixa Sons.</Alvo>
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Tipo de som">
+        {([['todos', 'Todos'], ...Object.entries(CATEGORIAS_DE_SOM)] as Array<[CategoriaDeSom | 'todos', string]>).map(([id, rotulo]) => (
+          <button key={id} type="button" role="radio" aria-checked={grupo === id} className="biblioteca__chip" onClick={() => setGrupo(id)}>
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      {temFala && (
+        <label className="biblioteca__opcao">
+          <input type="checkbox" checked={proteger} onChange={(e) => setProteger(e.target.checked)} /> Proteger a fala: o som vai para a pausa mais
+          perto (ou entra mais baixo) em vez de cobrir uma palavra
+        </label>
+      )}
+      <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap', marginBottom: 'var(--e3)' }}>
+        <button type="button" className="botao botao--secundario botao--pequeno" onClick={sugerir}>
+          Sugerir sons pelos elementos
+        </button>
+        {temFala && plan.soundEffects.length > 0 && (
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={protegerTodos}>
+            Proteger a fala nos sons que já estão
+          </button>
+        )}
+      </div>
+      {aviso && (
+        <p className="biblioteca__alvo" role="status">
+          {aviso}
+        </p>
+      )}
       <ul className="lista-de-sons">
-        {SONS.map((s) => (
+        {SONS.filter((s) => grupo === 'todos' || s.categoria === grupo).map((s) => (
           <li key={s.id} className="som">
             <button
               type="button"
@@ -571,11 +650,7 @@ function Sons({ plan, posicaoMs, onOperacao }: Props) {
               <strong>{s.rotulo}</strong>
               <span>{s.quando}</span>
             </span>
-            <button
-              type="button"
-              className="botao botao--secundario botao--pequeno"
-              onClick={() => onOperacao({ op: 'adicionar_efeito_sonoro', assetId: s.id, timelineStartMs: noCursor, gainDb: -10 })}
-            >
+            <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => adicionar(s.id)}>
               <IconeMais size={14} /> Adicionar
             </button>
           </li>

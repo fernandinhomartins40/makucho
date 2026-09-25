@@ -201,6 +201,17 @@ troca no painel.
 - Proteção da fala: efeito que cai sobre palavra é abaixado ou movido
   para a pausa mais próxima; sugestão de som pela IA.
 
+**Estado: feito, só com sons sintetizados (sem acervo CC0: nenhum
+arquivo de terceiros, nenhuma licença a acompanhar).** 26 sons em 6
+categorias num catálogo único (`contracts/sons.ts`): o render usa a
+receita do FFmpeg direto e a prévia toca o WAV gerado pela mesma receita
+(`apps/web/scripts/gerar-sons.mjs`). Proteção da fala
+(`protecao-da-fala.ts`): o ataque do som (250 ms) vai para a pausa mais
+perto (até 400 ms), ou o som entra 6 dB mais baixo; vale ao adicionar e
+num botão para os sons que já estão. "Sugerir sons pelos elementos" é
+regra, não IA: transição, texto, número, chamada, sticker e efeitos de
+tela ganham o som deles, sem repetir onde já há som.
+
 ## Fase 10 — Pacotes de estilo
 
 - "Podcast limpo", "Energia TikTok", "Tutorial", "Cinema", "Vendas":
