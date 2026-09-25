@@ -6376,3 +6376,252 @@ button.recursos-do-trecho__item:hover {
   background: #05080f;
   border-radius: 4px;
 }
+
+/* ---------- Aba Legendas: ler e corrigir como um texto ---------- */
+.legendas {
+  display: grid;
+  gap: var(--e3);
+  padding: 0 var(--e3) var(--e4);
+}
+
+/* Filtros e busca ficam à mão enquanto o texto rola. */
+.legendas__topo {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  gap: var(--e2);
+  padding: var(--e3) var(--e1) var(--e3);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.legendas__ajuda,
+.legendas__aviso,
+.legendas__marca {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.legendas__aviso {
+  padding: var(--e4);
+  font-size: 13px;
+}
+
+.legendas__ajuda strong {
+  color: var(--text-primary);
+}
+
+.legendas__filtros {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.legendas__filtro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.legendas__filtro[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface-2));
+  color: var(--text-primary);
+}
+
+.legendas__conta {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.legendas__filtro[data-tipo='revisar'] .legendas__conta {
+  background: color-mix(in srgb, var(--warning) 25%, transparent);
+  color: var(--warning);
+}
+
+.legendas__busca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.legendas__busca input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.legendas__busca:focus-within {
+  border-color: var(--primary);
+}
+
+.legendas__exemplo-duvida {
+  color: var(--text-primary);
+  text-decoration: underline wavy var(--warning);
+  text-underline-offset: 3px;
+}
+
+.legendas__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+/* Uma frase: o tempo à esquerda, o texto corrido à direita. */
+.legendas__frase {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: var(--e2);
+  align-items: baseline;
+  padding: var(--e2) var(--e2);
+  border-radius: var(--r-controle);
+  border-left: 2px solid transparent;
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+.legendas__frase:hover {
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
+
+.legendas__frase[data-tocando] {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  border-left-color: var(--primary);
+}
+
+.legendas__tempo {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.legendas__tempo:hover {
+  text-decoration: underline;
+}
+
+.legendas__texto {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-primary);
+}
+
+/* A palavra é texto que se toca: sem cara de botão até o hover. */
+.legendas__palavra {
+  display: inline;
+  padding: 1px 1px;
+  margin: 0 -1px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: text;
+}
+
+.legendas__palavra:hover,
+.legendas__palavra:focus-visible {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  outline: none;
+}
+
+.legendas__palavra[data-duvida] {
+  text-decoration: underline wavy var(--warning);
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+
+.legendas__palavra[data-corrigida] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.legendas__palavra[data-oculta] {
+  color: var(--text-secondary);
+  text-decoration: line-through;
+}
+
+.legendas__palavra[data-falando] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.legendas__palavra[data-achada] {
+  background: color-mix(in srgb, var(--warning) 35%, transparent);
+}
+
+.legendas__campo {
+  font: inherit;
+  font-size: 14px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.legendas__correcoes {
+  display: grid;
+  gap: var(--e2);
+  padding-top: var(--e3);
+  border-top: 1px solid var(--border);
+}
+
+.legendas__correcoes h4 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.legendas__correcoes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.legendas__correcoes li {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  font-size: 12px;
+}
+
+.legendas__correcoes li .botao {
+  margin-left: auto;
+}

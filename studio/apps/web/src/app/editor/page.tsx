@@ -971,7 +971,7 @@ function Editor({ projectId }: { projectId: string }) {
           )}
           {aba === 'midia' && projeto && <PainelDeMidia projeto={projeto} />}
           {aba === 'legendas' && (
-            <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} />
+            <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} desligados={desligados} />
           )}
           {aba === 'marca' && <MarcaNoEditor plan={plano} posicaoMs={posicaoMs} onOperacao={executar} />}
         </section>
