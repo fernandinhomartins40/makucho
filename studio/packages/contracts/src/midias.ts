@@ -57,6 +57,21 @@ export const NOME_DO_KEN_BURNS: Record<KenBurns, string> = {
   para_direita: 'Deslizar para a direita',
 };
 
+/**
+ * Moldura em volta da imagem (composição): `moldura` é uma borda na cor da
+ * marca com sombra; `cartao` põe a imagem (um PNG, um ícone) sobre um
+ * cartão arredondado com respiro; `polaroid` é a foto com a borda branca
+ * e a base mais alta. Desenhada na prévia e na exportação (molduraDaMidia).
+ */
+export const MOLDURAS = ['nenhuma', 'moldura', 'cartao', 'polaroid'] as const;
+export type Moldura = (typeof MOLDURAS)[number];
+export const NOME_DA_MOLDURA: Record<Moldura, string> = {
+  nenhuma: 'Sem moldura',
+  moldura: 'Moldura com sombra',
+  cartao: 'Cartão',
+  polaroid: 'Polaroid',
+};
+
 /** Cortina: a camada se revela de um lado ao outro no começo. */
 export const REVELACOES = ['nenhuma', 'da_esquerda', 'da_direita'] as const;
 export type Revelacao = (typeof REVELACOES)[number];
@@ -100,6 +115,9 @@ export const camadaDeMidiaSchema = z
     /** Cortina de "antes e depois": revela a camada nos primeiros `revealMs`. */
     reveal: z.enum(REVELACOES).optional(),
     revealMs: z.number().int().min(100).max(10_000).optional(),
+    /** Moldura em volta da imagem (MOLDURAS) e a cor dela (padrão: a da marca). */
+    frame: z.enum(MOLDURAS).optional(),
+    frameColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   })
   .strict();
 

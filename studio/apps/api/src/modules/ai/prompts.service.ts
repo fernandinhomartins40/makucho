@@ -51,6 +51,8 @@ export const VERSAO_DO_PROMPT = {
   // de retenção sozinha (ai-roteiro-livre.ts).
   gerar_roteiro_livre: 'roteiro-v2',
   editar_roteiro: 'edicao-roteiro-v2',
+  // Imagens, ícones e vídeos que ilustram a fala (midias-da-ia.ts).
+  sugerir_midias: 'midias-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

@@ -27,6 +27,8 @@ import {
   NOME_DO_LAYOUT,
   KEN_BURNS,
   NOME_DO_KEN_BURNS,
+  MOLDURAS,
+  NOME_DA_MOLDURA,
   ENTRADAS_DE_MIDIA,
   LOOPS_DE_MIDIA,
   SAIDAS_DE_MIDIA,
@@ -49,6 +51,7 @@ import { EscolhaDeFonte } from './EscolhaDeFonte';
 import { EstilosDeTexto } from './EstilosDeTexto';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { IconeLixeira, IconeTocar, IconeMudo } from '../icones';
+import { assets as apiAssets } from '../../lib/api';
 import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
 import { Segmentado } from './Inspector';
 
@@ -485,6 +488,77 @@ function EfeitoDeTelaDoItem({
 
 // ---------- Mídia sobreposta ----------
 
+/**
+ * Moldura da imagem (cartão, polaroid, borda com sombra) e o recorte do
+ * fundo: a foto vira PNG transparente no navegador (lib/removerFundo) e a
+ * camada passa a usar o arquivo novo -- desfazível como qualquer ajuste.
+ */
+function MolduraERecorte({
+  m,
+  editar,
+}: {
+  m: NonNullable<EditPlanV1['mediaLayers']>[number];
+  editar: (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) => void;
+}) {
+  const [recortando, setRecortando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const recortar = async () => {
+    setErro(null);
+    setRecortando('Preparando…');
+    try {
+      const { removerFundo } = await import('../../lib/removerFundo');
+      const img = new Image();
+      img.crossOrigin = 'use-credentials';
+      img.src = apiAssets.url(m.assetId);
+      await img.decode();
+      const png = await removerFundo(img, (e) =>
+        setRecortando(e.etapa === 'modelo' ? `Baixando o modelo (44 MB, só na primeira vez): ${Math.round(e.fracao * 100)}%` : 'Recortando…'),
+      );
+      setRecortando('Salvando o recorte…');
+      const novo = await apiAssets.enviar('IMAGE', new File([png], `recorte-${m.assetId.slice(0, 8)}.png`, { type: 'image/png' }));
+      editar({ assetId: novo.id });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'não foi possível remover o fundo.');
+    } finally {
+      setRecortando(null);
+    }
+  };
+  return (
+    <div className="pilha" style={{ gap: 'var(--e2)' }}>
+      <div className="linha" style={{ gap: 'var(--e2)', alignItems: 'flex-end' }}>
+        <label className="campo crescer" style={{ marginBottom: 0 }}>
+          <span className="campo__rotulo">Moldura</span>
+          <select className="campo__selecao" value={m.frame ?? 'nenhuma'} onChange={(e) => editar({ frame: e.target.value as (typeof MOLDURAS)[number] })}>
+            {MOLDURAS.map((v) => (
+              <option key={v} value={v}>
+                {NOME_DA_MOLDURA[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {m.frame && m.frame !== 'nenhuma' && m.frame !== 'polaroid' && (
+          <label className="campo" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">Cor</span>
+            <input
+              type="color"
+              className="app-config__cor"
+              value={m.frameColor ?? '#2f66ff'}
+              aria-label="Cor da moldura"
+              onChange={(e) => editar({ frameColor: e.target.value })}
+            />
+          </label>
+        )}
+      </div>
+      {m.kind === 'image' && (
+        <button type="button" className="botao botao--secundario botao--pequeno" style={{ justifySelf: 'start' }} disabled={recortando !== null} onClick={() => void recortar()}>
+          {recortando ?? 'Remover o fundo (vira recorte)'}
+        </button>
+      )}
+      {erro && <p className="campo__erro">{erro}</p>}
+    </div>
+  );
+}
+
 function MidiaDoItem({
   plan,
   id,
@@ -559,6 +633,7 @@ function MidiaDoItem({
           </label>
         </div>
       )}
+      {m.kind !== 'video' && <MolduraERecorte m={m} editar={editar} />}
       <Deslizante rotulo="Cantos arredondados" valor={Math.round((m.radius ?? 0) * 100)} min={0} max={50} passo={1} unidade="%" onSoltar={(v) => editar({ radius: v / 100 })} />
       <div className="linha" style={{ gap: 'var(--e3)' }}>
         <div className="crescer">

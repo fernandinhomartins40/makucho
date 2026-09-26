@@ -35,7 +35,7 @@ type Aba = 'ia' | 'midia' | 'armazenamento' | 'app';
 
 const ABAS: ReadonlyArray<{ id: Aba; rotulo: string; ajuda: string; Icone: typeof IconeIA }> = [
   { id: 'ia', rotulo: 'Inteligência artificial', ajuda: 'Chave e consumo do mês', Icone: IconeIA },
-  { id: 'midia', rotulo: 'Banco de mídia', ajuda: 'Fotos e vídeos do Pexels', Icone: IconeMidia },
+  { id: 'midia', rotulo: 'Banco de mídia', ajuda: 'Pexels, Pixabay e fontes abertas', Icone: IconeMidia },
   { id: 'armazenamento', rotulo: 'Armazenamento', ajuda: 'Espaço usado', Icone: IconeNuvem },
   { id: 'app', rotulo: 'Aplicativo', ajuda: 'Ícone, nome e instalação', Icone: IconeCelular },
 ];
@@ -402,9 +402,29 @@ function SecaoDeIa() {
 // Banco de mídia
 // ============================================================
 
-/** A chave do Pexels: busca de B-roll e fotos dentro do editor. */
-function SecaoDoBanco() {
-  const chave = useDados<ChaveDoBanco>(() => bancoDeMidia.chave());
+const BANCOS = {
+  pexels: {
+    nome: 'Pexels',
+    titulo: 'Fotos e vídeos (Pexels)',
+    texto: 'Vídeos e fotos verticais de ótima qualidade para cobrir a fala (B-roll).',
+    link: 'https://www.pexels.com/api/',
+    rotuloDoLink: 'pexels.com/api',
+    passo: 'entre, clique em “Your API key” e copie',
+  },
+  pixabay: {
+    nome: 'Pixabay',
+    titulo: 'Fotos, ilustrações, vetores e vídeos (Pixabay)',
+    texto: 'Mais de 6 milhões de itens, com ilustrações e vetores em PNG transparente, ótimos para ilustrar conceitos.',
+    link: 'https://pixabay.com/api/docs/',
+    rotuloDoLink: 'pixabay.com/api/docs',
+    passo: 'entre na conta e a chave aparece na própria página, em “key”',
+  },
+} as const;
+
+/** A chave de um banco de mídia com chave (Pexels, Pixabay). */
+function CartaoDoBanco({ provider }: { provider: 'pexels' | 'pixabay' }) {
+  const b = BANCOS[provider];
+  const chave = useDados<ChaveDoBanco>(() => bancoDeMidia.chave(provider));
   const [valor, setValor] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
@@ -414,9 +434,9 @@ function SecaoDoBanco() {
     setSalvando(true);
     setMensagem(null);
     try {
-      chave.definir(await bancoDeMidia.salvarChave(valor.trim()));
+      chave.definir(await bancoDeMidia.salvarChave(valor.trim(), provider));
       setValor('');
-      setMensagem({ tom: 'sucesso', texto: 'Chave salva. No editor, Biblioteca > Mídia já busca no Pexels.' });
+      setMensagem({ tom: 'sucesso', texto: `Chave salva. No editor, Biblioteca > Mídia e as mídias da IA já buscam no ${b.nome}.` });
     } catch (e) {
       setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar a chave.' });
     } finally {
@@ -425,9 +445,9 @@ function SecaoDoBanco() {
   };
 
   const remover = async () => {
-    if (!window.confirm('Remover a chave do Pexels? A busca de imagens e vídeos deixa de funcionar.')) return;
+    if (!window.confirm(`Remover a chave do ${b.nome}? As buscas deixam de incluir o ${b.nome}.`)) return;
     try {
-      chave.definir(await bancoDeMidia.removerChave());
+      chave.definir(await bancoDeMidia.removerChave(provider));
       setMensagem({ tom: 'sucesso', texto: 'Chave removida.' });
     } catch (e) {
       setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível remover.' });
@@ -435,56 +455,88 @@ function SecaoDoBanco() {
   };
 
   return (
+    <section className="cartao config__cartao" aria-labelledby={`titulo-banco-${provider}`}>
+      <header className="config__cabeca">
+        <div>
+          <h3 id={`titulo-banco-${provider}`}>{b.titulo}</h3>
+          <p>{b.texto} O arquivo escolhido vira mídia do Studio, com a licença e o crédito do autor guardados.</p>
+        </div>
+        {atual && <Selo ativo={atual.configured} sim="Ativo" nao="Sem chave" />}
+      </header>
+      <Aviso mensagem={mensagem} />
+      {atual?.configured && (
+        <div className="config__chave">
+          <dl>
+            <div>
+              <dt>Chave</dt>
+              <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
+            </div>
+          </dl>
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
+            Remover
+          </button>
+        </div>
+      )}
+      <form
+        className="config__formulario"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valor.trim().length >= 20) void salvar();
+        }}
+      >
+        <label className="campo" style={{ margin: 0 }}>
+          <span className="campo__rotulo">{atual?.configured ? `Trocar a chave do ${b.nome}` : `Cole a chave do ${b.nome}`}</span>
+          <input className="campo__entrada" type="password" autoComplete="off" value={valor} onChange={(e) => setValor(e.target.value)} />
+          <span className="campo__ajuda">
+            Grátis em{' '}
+            <a href={b.link} target="_blank" rel="noreferrer">
+              {b.rotuloDoLink}
+            </a>{' '}
+            ({b.passo}).
+          </span>
+        </label>
+        <div>
+          <button type="submit" className="botao botao--primario" disabled={salvando || valor.trim().length < 20}>
+            {salvando ? 'Salvando…' : 'Salvar a chave'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+/** Os bancos de mídia: dois com chave e as fontes abertas (sem chave). */
+function SecaoDoBanco() {
+  return (
     <div className="config__pilha">
-      <section className="cartao config__cartao" aria-labelledby="titulo-banco">
+      <CartaoDoBanco provider="pexels" />
+      <CartaoDoBanco provider="pixabay" />
+      <section className="cartao config__cartao" aria-labelledby="titulo-abertas">
         <header className="config__cabeca">
           <div>
-            <h3 id="titulo-banco">Banco de fotos e vídeos (Pexels)</h3>
-            <p>
-              Com uma chave gratuita do Pexels, o editor busca vídeos e fotos para cobrir a fala (B-roll). O arquivo escolhido vira mídia do Studio, com
-              o crédito do autor guardado.
-            </p>
+            <h3 id="titulo-abertas">Fontes abertas (já ativas, sem chave)</h3>
+            <p>A busca do editor e as mídias sugeridas pela IA também usam estas fontes, todas de licença livre para uso comercial:</p>
           </div>
-          {atual && <Selo ativo={atual.configured} sim="Ativo" nao="Sem chave" />}
+          <Selo ativo sim="Ativas" nao="" />
         </header>
-        <Aviso mensagem={mensagem} />
-        {atual?.configured && (
-          <div className="config__chave">
-            <dl>
-              <div>
-                <dt>Chave</dt>
-                <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
-              </div>
-            </dl>
-            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
-              Remover
-            </button>
-          </div>
-        )}
-        <form
-          className="config__formulario"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (valor.trim().length >= 20) void salvar();
-          }}
-        >
-          <label className="campo" style={{ margin: 0 }}>
-            <span className="campo__rotulo">{atual?.configured ? 'Trocar a chave do Pexels' : 'Cole a chave do Pexels'}</span>
-            <input className="campo__entrada" type="password" autoComplete="off" value={valor} onChange={(e) => setValor(e.target.value)} />
-            <span className="campo__ajuda">
-              Crie de graça em{' '}
-              <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">
-                pexels.com/api
-              </a>{' '}
-              (entre, clique em &ldquo;Your API key&rdquo; e copie).
-            </span>
-          </label>
-          <div>
-            <button type="submit" className="botao botao--primario" disabled={salvando || valor.trim().length < 20}>
-              {salvando ? 'Salvando…' : 'Salvar a chave'}
-            </button>
-          </div>
-        </form>
+        <ul className="config__fontes">
+          <li>
+            <strong>Openverse</strong> — mais de 800 milhões de imagens Creative Commons (só CC0, domínio público e CC-BY, com o crédito guardado).
+          </li>
+          <li>
+            <strong>Iconify</strong> — mais de 300 mil ícones e logos de marcas, só de coleções MIT, Apache, ISC ou CC0/CC-BY.
+          </li>
+          <li>
+            <strong>3dicons</strong> — ícones 3D (CC0) em PNG transparente.
+          </li>
+          <li>
+            <strong>Microsoft Fluent Emoji 3D</strong> — cerca de 1.300 emojis 3D (MIT) em PNG transparente.
+          </li>
+        </ul>
+        <p className="campo__ajuda" style={{ margin: 0 }}>
+          O Google Imagens não entra: a API foi fechada e as imagens de lá não têm licença de uso. Logos de marcas são para uso informativo (falar do
+          Bitcoin, do Instagram), nunca como se fossem a marca do seu cliente.
+        </p>
       </section>
     </div>
   );

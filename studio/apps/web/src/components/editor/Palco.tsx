@@ -55,7 +55,8 @@ import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
-import { Compositor, type MidiaNoQuadro } from './gl/compositor';
+import { Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
+import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
@@ -222,6 +223,7 @@ export function Palco({
   // Um elemento por camada, fora da tela: a imagem é carregada uma vez;
   // o vídeo segue o relógio da prévia (mudo, salvo se a camada tem volume).
   const elementosDasMidias = useRef(new Map<string, { assetId: string; el: HTMLImageElement | HTMLVideoElement }>());
+  const moldurasRef = useRef(new MoldurasDasMidias());
   /** Onde está a cabeça agora (pela máscara da prévia), para as camadas que a acompanham. */
   const cabecaRef = useRef<{ x: number; y: number } | null>(null);
   const tocandoRef = useRef(false);
@@ -294,7 +296,19 @@ export function Palco({
         const largura = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
         const altura = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
         if (!largura || !altura) continue;
-        const base = caixaDaMidia(c, largura / altura, W, H);
+        // Moldura (cartão, polaroid...): a imagem composta num canvas, no
+        // formato da caixa quando a camada cobre uma área.
+        let fonteDaCamada: HTMLImageElement | HTMLVideoElement | QuadroExterno = el;
+        let proporcao = largura / altura;
+        if (!(el instanceof HTMLVideoElement) && c.frame && c.frame !== 'nenhuma') {
+          const caixaCheia = caixaDaMidia(c, 1, W, H);
+          const m = moldurasRef.current.obter(c, el, largura, altura, marca?.cores.primary ?? '#2F66FF', caixaCheia.modo === 'cobrir' ? caixaCheia.w / caixaCheia.h : undefined);
+          if (m) {
+            fonteDaCamada = m.fonte;
+            proporcao = m.largura / m.altura;
+          }
+        }
+        const base = caixaDaMidia(c, proporcao, W, H);
         // O fade do render: linear, por quadro.
         const d = nf / 30;
         const t = j / 30;
@@ -311,7 +325,7 @@ export function Palco({
         };
         const seguir = Boolean(c.followPerson && cabecaRef.current);
         if (!midiaEstaAnimada(c) && !seguir) {
-          lista.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras });
+          lista.push({ fonte: fonteDaCamada, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras });
           continue;
         }
         // Animada: a mesma função que gera as expressões do render.
@@ -324,7 +338,7 @@ export function Palco({
         const w = Math.max(2, base.w * est.scale);
         const h = Math.max(2, base.h * est.scale);
         lista.push({
-          fonte: el,
+          fonte: fonteDaCamada,
           caixa: { x: est.x * W - w / 2, y: est.y * H - h / 2, w, h, modo: base.modo },
           raio: raio * est.scale,
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
@@ -334,7 +348,7 @@ export function Palco({
       }
       return lista;
     },
-    [plan.mediaLayers, urlDoAsset, agenda.duracaoQuadros],
+    [plan.mediaLayers, urlDoAsset, agenda.duracaoQuadros, marca],
   );
   const desenharGlRef = useRef<(() => void) | null>(null);
 

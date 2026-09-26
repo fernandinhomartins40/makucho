@@ -2,7 +2,11 @@
 
 // ============================================================
 // Imagens e vídeos por cima do vídeo: B-roll em tela cheia, janela
-// (picture-in-picture) e tela dividida.
+// (picture-in-picture), tela dividida, ícones 3D e logos.
+//
+// No topo, as mídias sugeridas pela IA (SugestoesDeMidia); depois a busca
+// nos bancos de licença livre (Pexels, Pixabay, Openverse, Iconify,
+// 3dicons, Fluent Emoji 3D) e os arquivos do workspace.
 //
 // Os arquivos são os do workspace (Kit de marca / envios daqui). Um
 // clique põe a mídia no cursor, no layout escolhido; depois ela é um item
@@ -10,10 +14,12 @@
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { EditPlanV1, KenBurns, LayoutDeMidia, TimelineOperation } from '@makucho/studio-contracts';
-import { agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
+import type { Composicao, EditPlanV1, KenBurns, LayoutDeMidia, MarcaDoVideo, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
+import { NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
 import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
-import { assets as apiAssets, bancoDeMidia, type Asset, type ResultadoDoBanco, type Transcricao } from '../../lib/api';
+import { assets as apiAssets, bancoDeMidia, type Asset, type Transcricao } from '../../lib/api';
+import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
+import { SugestoesDeMidia } from './SugestoesDeMidia';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
 import { IconeEnviar } from '../icones';
@@ -26,7 +32,26 @@ interface Props {
   onSelecionarItem: (item: ItemDaTimeline) => void;
   urlDoAsset: (id: string) => string;
   transcricao?: Transcricao | null;
+  marca?: MarcaDoVideo;
+  /** Trechos desligados: a IA lê só a fala que está no vídeo. */
+  desligados?: readonly string[];
 }
+
+/** Como mostrar um resultado da busca, pelo que ele é. */
+function composicoesDoResultado(r: ResultadoDaBusca): Composicao[] {
+  if (r.tipo === 'video') return ['tela_cheia', 'janela'];
+  if (r.transparente) return ['icone_ao_lado', 'cartao', 'tela_cheia'];
+  return ['moldura', 'tela_cheia', 'janela'];
+}
+
+const NOME_CURTO: Record<Composicao, string> = {
+  icone_ao_lado: 'Ao lado',
+  tela_cheia: 'Tela cheia',
+  tela_cheia_com_titulo: 'Com título',
+  moldura: 'Moldura',
+  cartao: 'Cartão',
+  janela: 'Janela',
+};
 
 /** Os Ken Burns do slideshow, em sequência: cada foto com um movimento. */
 const MOVIMENTOS: readonly KenBurns[] = ['aproximar', 'para_esquerda', 'afastar', 'para_direita'];
@@ -65,7 +90,7 @@ const LAYOUTS: ReadonlyArray<readonly [LayoutDeMidia, string, string]> = [
   ['dividir_baixo', 'Dividir', 'Metade de baixo da tela'],
 ];
 
-export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao }: Props) {
+export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados }: Props) {
   const [lista, setLista] = useState<Asset[] | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -94,19 +119,22 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
     }
   };
 
-  // ---------- Busca no Pexels ----------
+  // ---------- Busca nos bancos de licença livre ----------
   const [busca, setBusca] = useState('');
-  const [tipoDaBusca, setTipoDaBusca] = useState<'video' | 'foto'>('video');
-  const [resultados, setResultados] = useState<ResultadoDoBanco[] | null>(null);
+  const [tipoDaBusca, setTipoDaBusca] = useState<TipoDaBusca>('icone3d');
+  const [resultados, setResultados] = useState<ResultadoDaBusca[] | null>(null);
+  const [avisosDaBusca, setAvisosDaBusca] = useState<string[]>([]);
   const [buscando, setBuscando] = useState(false);
-  const [trazendo, setTrazendo] = useState<number | null>(null);
+  const [trazendo, setTrazendo] = useState<string | null>(null);
   const [erroDaBusca, setErroDaBusca] = useState<string | null>(null);
   const buscar = async () => {
     if (!busca.trim()) return;
     setBuscando(true);
     setErroDaBusca(null);
     try {
-      setResultados((await bancoDeMidia.buscar(busca.trim(), tipoDaBusca)).resultados);
+      const r = await bancoDeMidia.buscar(busca.trim(), tipoDaBusca);
+      setResultados(r.resultados);
+      setAvisosDaBusca(r.avisos);
     } catch (e) {
       setErroDaBusca(e instanceof Error ? e.message : 'a busca falhou.');
       setResultados(null);
@@ -114,22 +142,25 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
       setBuscando(false);
     }
   };
-  /** Traz do Pexels (o servidor baixa) e já põe no vídeo. */
-  const trazer = async (r: ResultadoDoBanco, layout: LayoutDeMidia) => {
-    setTrazendo(r.id);
+  /** Traz da fonte (o servidor baixa, com a licença) e põe no cursor, na composição escolhida. */
+  const trazer = async (r: ResultadoDaBusca, composicao: Composicao) => {
+    setTrazendo(`${r.fonte}:${r.id}`);
     setErroDaBusca(null);
-    try {
-      const { id } = await bancoDeMidia.importar(r.tipo, r.id);
-      const novos = await Promise.all([apiAssets.listar('IMAGE'), apiAssets.listar('VIDEO')]);
-      const todos = [...novos[1], ...novos[0]].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      setLista(todos);
-      const asset = todos.find((a) => a.id === id);
-      if (asset) adicionar({ ...asset, durationMs: asset.durationMs ?? r.duracaoMs }, layout);
-    } catch (e) {
-      setErroDaBusca(e instanceof Error ? e.message : 'não foi possível trazer o arquivo.');
-    } finally {
-      setTrazendo(null);
-    }
+    const fim = Math.min(duracaoTotal, noCursor + (r.tipo === 'video' ? Math.min(r.duracaoMs ?? 4000, 4000) : 3000));
+    const { ops, falhas } = await operacoesDasEscolhas(
+      [
+        {
+          momento: { inicioMs: noCursor, fimMs: Math.max(noCursor + 1200, fim), conceito: busca.trim() || r.titulo, termos: [busca.trim() || r.titulo], tipo: r.tipo, composicao },
+          opcao: r,
+          composicao,
+        },
+      ],
+      marca?.cores.primary,
+    );
+    if (ops.length) onOperacoes(ops);
+    if (falhas.length) setErroDaBusca(falhas.join(' · '));
+    setTrazendo(null);
+    void carregar();
   };
 
   // ---------- Montagens com várias fotos ----------
@@ -219,6 +250,8 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
 
   return (
     <>
+      <SugestoesDeMidia plan={plan} desligados={desligados ?? []} corDaMarca={marca?.cores.primary} onOperacoes={onOperacoes} />
+
       <p className="biblioteca__alvo">
         Entra no cursor ({tempo(noCursor)}) na faixa Mídia. B-roll em vídeo entra mudo: a fala continua por baixo.
       </p>
@@ -246,19 +279,22 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
           void buscar();
         }}
       >
-        <span className="campo__rotulo">Buscar no Pexels</span>
+        <span className="campo__rotulo">Buscar em bancos de licença livre</span>
+        <div className="busca-no-banco__tipos" role="radiogroup" aria-label="O que buscar">
+          {TIPOS_DA_BUSCA.map((t) => (
+            <button key={t} type="button" role="radio" aria-checked={tipoDaBusca === t} onClick={() => setTipoDaBusca(t)}>
+              {NOME_DO_TIPO_DA_BUSCA[t]}
+            </button>
+          ))}
+        </div>
         <div className="linha" style={{ gap: 6 }}>
           <input
             className="campo__entrada crescer"
-            placeholder="Ex.: escritório, dinheiro, cidade à noite"
+            placeholder={tipoDaBusca === 'logo' ? 'Ex.: bitcoin, instagram, whatsapp' : 'Ex.: money, rocket, city at night (em inglês acha mais)'}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             aria-label="O que buscar"
           />
-          <select className="campo__selecao" style={{ width: 'auto' }} value={tipoDaBusca} onChange={(e) => setTipoDaBusca(e.target.value as 'video' | 'foto')} aria-label="Tipo">
-            <option value="video">Vídeos</option>
-            <option value="foto">Fotos</option>
-          </select>
           <button type="submit" className="botao botao--secundario" disabled={buscando || !busca.trim()}>
             {buscando ? 'Buscando…' : 'Buscar'}
           </button>
@@ -278,40 +314,41 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
         ) : null}
       </form>
       {erroDaBusca && <p className="campo__erro">{erroDaBusca}</p>}
-      {resultados && (
-        resultados.length === 0 ? (
-          <p className="texto-secundario">Nada encontrado. Tente outras palavras (em inglês costuma dar mais resultados).</p>
+      {avisosDaBusca.length > 0 && <p className="campo__ajuda">Fora desta busca: {avisosDaBusca.join(' · ')}</p>}
+      {resultados &&
+        (resultados.length === 0 ? (
+          <p className="texto-secundario">Nada encontrado. Tente outras palavras, em inglês (&ldquo;coin&rdquo;, &ldquo;rocket&rdquo;, &ldquo;office&rdquo;).</p>
         ) : (
           <div className="grade-de-midias grade-de-midias--banco">
             {resultados.map((r) => (
-              <div key={`${r.tipo}${r.id}`} className="midia-cartao">
-                <div className="midia-cartao__previa midia-cartao__previa--vertical">
+              <div key={`${r.fonte}-${r.id}`} className="midia-cartao">
+                <div className={`midia-cartao__previa${r.transparente ? ' midia-cartao__previa--transparente' : ' midia-cartao__previa--vertical'}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={r.miniatura} alt="" loading="lazy" />
+                  <img src={r.miniatura} alt={r.titulo} loading="lazy" />
                   {r.duracaoMs !== null && <span className="midia-cartao__selo">{Math.round(r.duracaoMs / 1000)} s</span>}
                 </div>
-                <a className="midia-cartao__nome" href={r.pagina} target="_blank" rel="noreferrer" title="Ver no Pexels">
-                  {r.autor}
+                <a className="midia-cartao__nome" href={r.pagina} target="_blank" rel="noreferrer" title={`${r.titulo} · ${r.licenca.nome}`}>
+                  {NOME_DA_FONTE[r.fonte]}
+                  {r.licenca.exigeCredito && r.autor ? ` · ${r.autor}` : ''}
                 </a>
                 <div className="midia-cartao__acoes">
-                  {LAYOUTS.map(([layout, rotulo, dica]) => (
+                  {composicoesDoResultado(r).map((c) => (
                     <button
-                      key={layout}
+                      key={c}
                       type="button"
                       className="botao botao--secundario botao--pequeno"
-                      title={dica}
+                      title={NOME_DA_COMPOSICAO[c]}
                       disabled={trazendo !== null}
-                      onClick={() => void trazer(r, layout)}
+                      onClick={() => void trazer(r, c)}
                     >
-                      {trazendo === r.id ? '…' : rotulo}
+                      {trazendo === `${r.fonte}:${r.id}` ? '…' : NOME_CURTO[c]}
                     </button>
                   ))}
                 </div>
               </div>
             ))}
           </div>
-        )
-      )}
+        ))}
 
       <span className="campo__rotulo" style={{ marginTop: 'var(--e3)', display: 'block' }}>
         Do workspace

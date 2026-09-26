@@ -34,6 +34,8 @@ export const CHAMADAS_DE_IA = [
   'configurar_marca',
   // #9: editar um roteiro por pedido livre (ai-roteiro-livre.ts).
   'editar_roteiro',
+  // #10: imagens, ícones e vídeos que ilustram a fala (midias-da-ia.ts).
+  'sugerir_midias',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -50,6 +52,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   comandar_edicao: 'Edição por comando',
   configurar_marca: 'Configuração da marca',
   editar_roteiro: 'Edição de roteiro',
+  sugerir_midias: 'Mídias sugeridas',
 };
 
 // ---------- Modelos ----------
@@ -96,6 +99,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   comandar_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   configurar_marca: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   editar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  sugerir_midias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /** Compatibilidade: so o modelo de cada chamada. */

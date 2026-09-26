@@ -9,16 +9,21 @@
 
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import { entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 import { AcabamentoService } from './acabamento.service';
+import { MidiasService } from './midias.service';
 
 @ApiTags('ai')
 @Controller()
 export class AcabamentoController {
-  constructor(private readonly acabamento: AcabamentoService) {}
+  constructor(
+    private readonly acabamento: AcabamentoService,
+    private readonly midias: MidiasService,
+  ) {}
 
   @Post('projects/:id/finishing')
   refazer(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
@@ -31,6 +36,17 @@ export class AcabamentoController {
   configurarMarca(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertCanWrite(tenant);
     return this.acabamento.configurarMarca(tenant, entradaDaMarcaSchema.parse(body));
+  }
+
+  /**
+   * Imagens, ícones e vídeos que ilustram a fala (IA + bancos de licença
+   * livre). Só sugere: a escolha vira operações no editor.
+   */
+  @Post('projects/:id/media-suggestions')
+  sugerirMidias(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    const { desligados } = z.object({ desligados: z.array(z.string().max(64)).max(200).default([]) }).parse(body ?? {});
+    return this.midias.sugerir(tenant, id, desligados);
   }
 
   @Post('projects/:id/command')

@@ -50,4 +50,5 @@ export * from './fechamento';
 export * from './ai-comando';
 export * from './ai-marca';
 export * from './kit-criativo';
+export * from './midias-da-ia';
 export * from './ai-roteiro-livre';

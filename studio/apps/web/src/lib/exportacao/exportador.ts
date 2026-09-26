@@ -60,6 +60,7 @@ import { carregarModeloDaPessoa, mascaraDoQuadro, pintarRecorte } from '../../co
 import { BITRATE_DO_AUDIO, bitrateDoVideo, faltaNoNavegador, tamanhoDoQuadro, type OpcoesDeExportacao } from './opcoes';
 import { LeitorDeAudio, TAXA, juntarAudios, mixarAudio, para48k } from './audio';
 import { RenderizadorDeLegendas } from './legendas';
+import { MoldurasDasMidias } from '../molduraDaMidia';
 
 export interface PedidoDeExportacao {
   titulo: string;
@@ -299,6 +300,7 @@ export async function exportarNoNavegador(
       }
     }
     const fontesDasMidias = new Map<string, { img?: HTMLImageElement; sink?: CanvasSink; leitor?: LeitorDeQuadros }>();
+    const molduras = new MoldurasDasMidias();
     for (const c of plano.mediaLayers ?? []) {
       if (c.kind === 'video') {
         const f = await abrirVideo(pedido.urlDoAsset(c.assetId));
@@ -461,6 +463,16 @@ export async function exportarNoNavegador(
           altura = el.altura;
         }
         if (!largura || !altura) continue;
+        // Moldura: a mesma composição da prévia (molduraDaMidia).
+        if (fonte.img && c.frame && c.frame !== 'nenhuma') {
+          const caixaCheia = caixaDaMidia(c, 1, W, H);
+          const m = molduras.obter(c, fonte.img, largura, altura, pedido.marca.cores.primary, caixaCheia.modo === 'cobrir' ? caixaCheia.w / caixaCheia.h : undefined);
+          if (m) {
+            el = m.fonte;
+            largura = m.largura;
+            altura = m.altura;
+          }
+        }
         const base = caixaDaMidia(c, largura / altura, W, H);
         const d = nf / 30;
         const tt = j / 30;

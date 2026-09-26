@@ -11,7 +11,16 @@
 //   - 401 tratado uma vez só.
 // ============================================================
 
-import type { ContextoDoComando, EntradaDaMarca, PreferenciasDeVideo, SugestaoDeMarca } from '@makucho/studio-contracts';
+import type {
+  ContextoDoComando,
+  EntradaDaMarca,
+  FonteDeMidia,
+  MomentoVisual,
+  PreferenciasDeVideo,
+  ResultadoDaBusca,
+  SugestaoDeMarca,
+  TipoDaBusca,
+} from '@makucho/studio-contracts';
 
 export class ErroDaApi extends Error {
   constructor(
@@ -758,37 +767,51 @@ export const credencialDeIa = {
 };
 
 // ============================================================
-// Banco de imagens e vídeos (Pexels)
+// Bancos de imagens, vídeos e ícones (licença livre) e mídias da IA
 // ============================================================
 
 export interface ChaveDoBanco {
   configured: boolean;
+  provider?: 'pexels' | 'pixabay';
   keyPrefix?: string;
   updatedAt?: string;
 }
 
-export interface ResultadoDoBanco {
-  id: number;
-  tipo: 'video' | 'foto';
-  largura: number;
-  altura: number;
-  duracaoMs: number | null;
-  miniatura: string;
-  autor: string;
-  pagina: string;
+/** Um item de banco de mídia, no formato único (contracts/midias-da-ia.ts). */
+export type ResultadoDoBanco = ResultadoDaBusca;
+
+/** O asset importado, com a medida (para montar a composição). */
+export interface MidiaImportada {
+  id: string;
+  jaExistia: boolean;
+  largura: number | null;
+  altura: number | null;
+  transparente: boolean;
+}
+
+export interface MomentoSugerido extends MomentoVisual {
+  tipoAchado: TipoDaBusca;
+  opcoes: ResultadoDaBusca[];
 }
 
 export const bancoDeMidia = {
-  chave: () => api<ChaveDoBanco>('/settings/stock-credential'),
-  salvarChave: (apiKey: string) => api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'PUT', corpo: { apiKey } }),
-  removerChave: () => api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'DELETE' }),
-  buscar: (q: string, tipo: 'video' | 'foto', pagina = 1) =>
-    api<{ total: number; resultados: ResultadoDoBanco[] }>(
-      `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(pagina) })}`,
+  chave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`),
+  salvarChave: (apiKey: string, provider: 'pexels' | 'pixabay' = 'pexels') =>
+    api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'PUT', corpo: { apiKey, provider } }),
+  removerChave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`, { metodo: 'DELETE' }),
+  buscar: (q: string, tipo: TipoDaBusca, opcoes: { fonte?: FonteDeMidia; pagina?: number } = {}) =>
+    api<{ total: number; resultados: ResultadoDaBusca[]; avisos: string[] }>(
+      `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(opcoes.pagina ?? 1), ...(opcoes.fonte ? { fonte: opcoes.fonte } : {}) })}`,
     ),
-  /** O servidor baixa do Pexels e grava como asset do workspace. */
-  importar: (tipo: 'video' | 'foto', id: number) =>
-    api<{ id: string; jaExistia: boolean }>('/banco-de-midia/importar', { metodo: 'POST', corpo: { tipo, id } }),
+  /** O servidor busca o item de novo na fonte, baixa e grava como asset do workspace (com licença). */
+  importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>
+    api<MidiaImportada>('/banco-de-midia/importar', { metodo: 'POST', corpo: { fonte: r.fonte, tipo: r.tipo, id: r.id } }),
+  /** A IA escolhe os momentos da fala que pedem imagem, e o servidor busca as opções. */
+  sugerir: (projectId: string, desligados: readonly string[] = []) =>
+    api<{ momentos: MomentoSugerido[]; semOpcoes: string[]; avisos: string[]; custoCentavos: number }>(`/projects/${projectId}/media-suggestions`, {
+      metodo: 'POST',
+      corpo: { desligados: [...desligados] },
+    }),
 };
 
 // ============================================================

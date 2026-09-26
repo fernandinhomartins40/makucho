@@ -32,7 +32,7 @@ import { STICKERS, definicaoDoSticker } from './stickers';
 import { EFEITOS_DE_TELA } from './efeitos-de-tela';
 import { APARENCIAS } from './cor';
 import { SONS_EMBUTIDOS } from './sons';
-import { LAYOUTS_DE_MIDIA } from './midias';
+import { LAYOUTS_DE_MIDIA, MOLDURAS } from './midias';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA } from './animacao-da-midia';
 import type { IntervaloDeFala } from './protecao-da-fala';
@@ -488,6 +488,7 @@ export function catalogoDoStudioParaIa(): string {
     `saída de texto: ${lista(SAIDAS_DE_TEXTO)}`,
     `animação durante o texto: ${lista(ANIMACOES_DURANTE)}`,
     `layout de mídia: ${lista(LAYOUTS_DE_MIDIA)}`,
+    `moldura da mídia (frame): ${lista(MOLDURAS)}`,
     `animação de mídia: entrada ${lista(ENTRADAS_DE_MIDIA)}; durante ${lista(LOOPS_DE_MIDIA)}; saída ${lista(SAIDAS_DE_MIDIA)}`,
   ].join('\n');
 }
@@ -524,6 +525,9 @@ function conferirArquivos(op: TimelineOperation, biblioteca: readonly ItemDaBibl
     case 'adicionar_midia':
       if (op.kind === 'sticker') return { op };
       return achar(op.assetId, op.kind === 'video' ? ['VIDEO'] : IMAGENS_DA_MARCA) ? { op } : { erro: semBiblioteca };
+    case 'editar_midia':
+      if (!op.assetId) return { op };
+      return achar(op.assetId, [...IMAGENS_DA_MARCA, 'VIDEO']) ? { op } : { erro: semBiblioteca };
     case 'adicionar_overlay':
       if (!op.assetId) return { op };
       return achar(op.assetId, IMAGENS_DA_MARCA) ? { op } : { erro: semBiblioteca };

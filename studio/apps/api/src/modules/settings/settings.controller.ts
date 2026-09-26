@@ -5,7 +5,7 @@
 // ambiente: cada workspace usa a propria conta e o proprio credito.
 // ============================================================
 
-import { Body, Controller, Delete, Get, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { resumoDeArmazenamento } from '@makucho/studio-contracts';
@@ -116,42 +116,50 @@ export class SettingsController {
     return { configured: false };
   }
 
-  // ---------- Banco de imagens e vídeos (Pexels) ----------
+  // ---------- Bancos de imagens e vídeos (Pexels, Pixabay) ----------
+  // Uma chave por banco; `?provider=` escolhe qual (Pexels por padrão,
+  // o de antes desta rota ter o parâmetro).
 
   @Get('stock-credential')
-  async obterChaveDoBanco(@CurrentTenant() tenant: TenantContext) {
+  async obterChaveDoBanco(@CurrentTenant() tenant: TenantContext, @Query('provider') provider?: string) {
     const c = await this.prisma.stockCredential.findUnique({
-      where: { workspaceId: tenant.workspaceId },
+      where: { workspaceId_provider: { workspaceId: tenant.workspaceId, provider: provedorDoBanco(provider) } },
       select: { provider: true, keyPrefix: true, updatedAt: true },
     });
-    return c ? { configured: true, ...c } : { configured: false };
+    return c ? { configured: true, ...c } : { configured: false, provider: provedorDoBanco(provider) };
   }
 
   @Put('stock-credential')
   async salvarChaveDoBanco(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertIsOwner(tenant);
-    const { apiKey } = z.object({ apiKey: z.string().trim().min(20).max(200) }).parse(body);
+    const { apiKey, provider: p } = z
+      .object({ apiKey: z.string().trim().min(20).max(200), provider: z.enum(['pexels', 'pixabay']).optional() })
+      .parse(body);
+    const provider = provedorDoBanco(p);
     const cifrado = this.crypto.cifrar(apiKey);
     const keyPrefix = this.crypto.prefixoVisivel(apiKey);
     await this.prisma.stockCredential.upsert({
-      where: { workspaceId: tenant.workspaceId },
-      create: { workspaceId: tenant.workspaceId, provider: 'pexels', keyPrefix, ...cifrado },
+      where: { workspaceId_provider: { workspaceId: tenant.workspaceId, provider } },
+      create: { workspaceId: tenant.workspaceId, provider, keyPrefix, ...cifrado },
       update: { keyPrefix, ...cifrado },
     });
     await this.prisma.auditEvent.create({
-      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.updated', entityType: 'StockCredential', metadata: { keyPrefix } },
+      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.updated', entityType: 'StockCredential', metadata: { keyPrefix, provider } },
     });
-    return { configured: true, provider: 'pexels', keyPrefix };
+    return { configured: true, provider, keyPrefix };
   }
 
   @Delete('stock-credential')
-  async removerChaveDoBanco(@CurrentTenant() tenant: TenantContext) {
+  async removerChaveDoBanco(@CurrentTenant() tenant: TenantContext, @Query('provider') p?: string) {
     assertIsOwner(tenant);
-    await this.prisma.stockCredential.delete({ where: { workspaceId: tenant.workspaceId } }).catch(() => undefined);
+    const provider = provedorDoBanco(p);
+    await this.prisma.stockCredential
+      .delete({ where: { workspaceId_provider: { workspaceId: tenant.workspaceId, provider } } })
+      .catch(() => undefined);
     await this.prisma.auditEvent.create({
-      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.removed', entityType: 'StockCredential' },
+      data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.removed', entityType: 'StockCredential', metadata: { provider } },
     });
-    return { configured: false };
+    return { configured: false, provider };
   }
 
   // ---------- Armazenamento ----------
@@ -188,4 +196,9 @@ export class SettingsController {
       arquivos: { permanente: assets._count, edicao: midias.length },
     };
   }
+}
+
+/** O banco de mídia de uma rota de chave: Pexels, a não ser que peça o Pixabay. */
+function provedorDoBanco(v: string | undefined): 'pexels' | 'pixabay' {
+  return v === 'pixabay' ? 'pixabay' : 'pexels';
 }

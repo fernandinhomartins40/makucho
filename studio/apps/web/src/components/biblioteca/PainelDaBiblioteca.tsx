@@ -69,6 +69,8 @@ interface Props {
   transcricao?: Transcricao | null;
   /** Pacote de estilo que combina com o vídeo (pacotes.ts). */
   recomendado?: string;
+  /** Trechos desligados (as mídias da IA leem só a fala que está no vídeo). */
+  desligados?: readonly string[];
 }
 
 /**

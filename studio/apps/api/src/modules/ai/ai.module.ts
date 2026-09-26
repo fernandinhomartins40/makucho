@@ -12,6 +12,7 @@
 import { Module } from '@nestjs/common';
 import { CryptoService } from '../../common/crypto.service';
 import { FilaService } from '../../common/fila.service';
+import { BancoDeMidiaModule } from '../banco-de-midia/banco-de-midia.module';
 import { EditPlansModule } from '../edit-plans/edit-plans.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { AcabamentoController } from './acabamento.controller';
@@ -20,6 +21,7 @@ import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
+import { MidiasService } from './midias.service';
 import { PromptsService } from './prompts.service';
 import { PropostaService } from './proposta.service';
 import { RefinoController } from './refino.controller';
@@ -31,10 +33,11 @@ import { UsoDeIaService } from './uso.service';
 @Module({
   // A analise persiste o plano e muda o estado do projeto; reusar os
   // servicos que ja fazem isso evita duas maquinas de estado.
-  imports: [EditPlansModule, ProjectsModule],
+  imports: [EditPlansModule, ProjectsModule, BancoDeMidiaModule],
   controllers: [AiController, AnaliseController, RoteiroController, RefinoController, AcabamentoController],
   providers: [
     AcabamentoService,
+    MidiasService,
     AiService,
     AnaliseService,
     PropostaService,

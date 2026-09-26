@@ -115,6 +115,16 @@ ${pedido.usuario}`);
         if (pedido.chamada === 'comandar_edicao') {
           return JSON.stringify(this.comandoValido());
         }
+        if (pedido.chamada === 'sugerir_midias') {
+          // Três momentos, um de cada caminho (ícone 3D, logo e foto com título).
+          return JSON.stringify({
+            momentos: [
+              { inicioMs: 2500, fimMs: 5000, conceito: 'dinheiro', termos: ['money bag', 'money'], tipo: 'icone3d', composicao: 'icone_ao_lado' },
+              { inicioMs: 7000, fimMs: 9500, conceito: 'bitcoin', termos: ['bitcoin'], tipo: 'logo', composicao: 'cartao' },
+              { inicioMs: 12000, fimMs: 15000, conceito: 'cidade', termos: ['city skyline', 'city'], tipo: 'foto', composicao: 'tela_cheia_com_titulo', texto: 'A cidade cresceu' },
+            ],
+          });
+        }
         return JSON.stringify({ ok: true, chamada: pedido.chamada });
     }
   }
