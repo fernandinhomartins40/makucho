@@ -25,7 +25,7 @@ import {
   editPlanV1Schema,
   efeitoDeTrechoSchema,
   estiloDoTextoSchema,
-  tipoDeTransicaoSchema, duracaoNaTimeline } from './edit-plan';
+  tipoDeTransicaoSchema, duracaoNaTimeline, canvasDoFormato } from './edit-plan';
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
@@ -287,6 +287,12 @@ export const definirEfeitoSchema = z.object({
   op: z.literal('definir_efeito'),
   clipId: idSchema,
   effect: z.union([efeitoDeTrechoSchema, z.literal('nenhum')]),
+});
+
+/** Formato do vídeo (9:16, 4:5, 1:1, 16:9): textos e mídias ficam no mesmo lugar relativo. */
+export const definirFormatoSchema = z.object({
+  op: z.literal('definir_formato'),
+  aspectRatio: z.enum(['9:16', '4:5', '1:1', '16:9']),
 });
 
 /** Velocidade de um trecho (0,25x a 4x); 1 volta ao normal. */
@@ -551,6 +557,7 @@ export const timelineOperationSchema = z
     transicaoEmTodosSchema,
     definirEfeitoSchema,
     definirVelocidadeSchema,
+    definirFormatoSchema,
     definirCorSchema,
     corEmTodosSchema,
     adicionarEfeitoDeTelaSchema,
@@ -1011,6 +1018,10 @@ export function aplicarOperacao(
       else clip.effect = operacao.effect;
       break;
     }
+
+    case 'definir_formato':
+      novo = { ...novo, canvas: canvasDoFormato(operacao.aspectRatio) };
+      break;
 
     case 'definir_velocidade': {
       const clip = clips.find((c) => c.id === operacao.clipId);

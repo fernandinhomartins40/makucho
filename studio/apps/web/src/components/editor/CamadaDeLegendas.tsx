@@ -64,11 +64,8 @@ export function fontesDoAss(ass: string): string[] {
   return [...nomes].map((n) => FONTES[n]).filter((u): u is string => Boolean(u));
 }
 
-/** O quadro do vídeo final: é a ele que o PlayRes do .ass se refere. */
-const LARGURA = 1080;
-const ALTURA = 1920;
-
-export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }: Props) {
+/** O quadro do vídeo final (padrão 9:16): é a ele que o PlayRes do .ass se refere. */
+export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha, largura: LARGURA = 1080, altura: ALTURA = 1920 }: Props & { largura?: number; altura?: number }) {
   const recipiente = useRef<HTMLDivElement>(null);
   const instancia = useRef<Jassub | null>(null);
   const pronto = useRef(false);

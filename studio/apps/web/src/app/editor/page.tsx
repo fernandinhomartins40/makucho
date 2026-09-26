@@ -1152,7 +1152,10 @@ function Editor({ projectId }: { projectId: string }) {
           {aba === 'marca' && <MarcaNoEditor plan={plano} posicaoMs={posicaoMs} onOperacao={executar} />}
         </section>
 
-        <main className="editor__palco">
+        <main
+          className="editor__palco"
+          style={{ ['--quadro-ar' as string]: `${plano.canvas.width} / ${plano.canvas.height}`, ['--quadro-hw' as string]: String(plano.canvas.height / plano.canvas.width) }}
+        >
           <FerramentasDoPalco
             ativa={folha === 'painel' ? (aba === 'midia' ? 'midia' : null) : null}
             onEscolher={naFerramenta}
@@ -1160,7 +1163,7 @@ function Editor({ projectId }: { projectId: string }) {
           <AcoesDoPalco
             formato={plano.canvas.aspectRatio}
             resolucao="1080P"
-            onFormato={() => naAcao('recorte')}
+            onFormato={(f) => executar({ op: 'definir_formato', aspectRatio: f })}
             onResolucao={() => setExportarAberto(true)}
             onAcao={naAcao}
           />

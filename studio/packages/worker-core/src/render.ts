@@ -816,7 +816,8 @@ export function filtroDoEfeitoDeTela(
   const nf = Math.min(quadros, totalQuadros - n0);
   const n1 = n0 + nf - 1;
   const k = e.intensity;
-  const S = W / 1080;
+  // Tamanhos em pixel seguem o lado MENOR (16:9 não engrossa tudo).
+  const S = Math.min(W, H) / 1080;
   const f = (x: number) => x.toFixed(6);
   const dur = `${((nf + 1) / FPS).toFixed(4)}`;
   const janela = `enable='between(n,${n0},${n1})'`;

@@ -87,7 +87,7 @@ vec3 desfocar(float sg) {
 vec3 efeito() {
   float k = uK;
   float j = uJ;
-  float S = W / 1080.0;
+  float S = min(W, H) / 1080.0;
   vec3 c = amostra(X, Y);
 
   // ---------- Camadas (overlay de preto/branco com alfa) ----------

@@ -361,10 +361,10 @@ export function Palco({
       const c = compositorRef.current;
       const canvas = glRef.current;
       if (!c || !canvas || !estado) return;
-      // O canvas desenha na resolução em que aparece (até o 1080x1920).
+      // O canvas desenha na resolução em que aparece (até o quadro do plano).
       const escala = Math.min(2, window.devicePixelRatio || 1);
-      const w = Math.min(1080, Math.round(canvas.clientWidth * escala));
-      const h = Math.min(1920, Math.round(canvas.clientHeight * escala));
+      const w = Math.min(plan.canvas.width, Math.round(canvas.clientWidth * escala));
+      const h = Math.min(plan.canvas.height, Math.round(canvas.clientHeight * escala));
       if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
         canvas.width = w;
         canvas.height = h;
@@ -1092,12 +1092,13 @@ export function Palco({
 
   return (
     <>
-      <div className="palco__quadro" ref={quadroRef}>
+      <div className="palco__quadro" ref={quadroRef} data-formato={plan.canvas.aspectRatio}>
         <div className="palco__chips">
-          <span className="chip" title="Formato 9:16">
+          <span className="chip" title={`Formato ${plan.canvas.aspectRatio}`}>
             <IconeCelular size={14} />
-            <span className="chip__texto">9:16</span>
+            <span className="chip__texto">{plan.canvas.aspectRatio}</span>
           </span>
+{plan.canvas.aspectRatio === '9:16' && (
           <button
             type="button"
             className="chip chip--acionavel"
@@ -1109,6 +1110,7 @@ export function Palco({
             <IconeZonaSegura size={14} />
             <span className="chip__texto">Zonas seguras</span>
           </button>
+          )}
         </div>
 
         {proxyUrl && !erroDoVideo ? (
@@ -1176,7 +1178,7 @@ export function Palco({
           )}
 
         {assAtras && !libassFalhou && (
-          <CamadaDeLegendas
+          <CamadaDeLegendas largura={plan.canvas.width} altura={plan.canvas.height}
             ass={assAtras}
             tempoMs={posicaoMs}
             tempoAoVivo={tempoAoVivo}
@@ -1187,7 +1189,7 @@ export function Palco({
         {temAtras && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
 
         {ass && !libassFalhou && (
-          <CamadaDeLegendas
+          <CamadaDeLegendas largura={plan.canvas.width} altura={plan.canvas.height}
             ass={ass}
             tempoMs={posicaoMs}
             tempoAoVivo={tempoAoVivo}
@@ -1196,7 +1198,7 @@ export function Palco({
           />
         )}
 
-        {zonasSeguras && <span className="palco__zonas" aria-hidden />}
+        {zonasSeguras && plan.canvas.aspectRatio === '9:16' && <span className="palco__zonas" aria-hidden />}
 
         {!tocando &&
           (() => {
@@ -1270,7 +1272,7 @@ export function Palco({
               const cx = arraste?.x ?? est?.x ?? c.x ?? p.x;
               const cy = arraste?.y ?? est?.y ?? c.y ?? p.y;
               const largura = arraste?.width ?? (c.width ?? p.width) * Math.max(0.05, est?.scale ?? 1);
-              const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao);
+              const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao, plan.canvas.width, plan.canvas.height);
               const selecionada = midiaSelecionada === c.id;
               return (
                 <div
@@ -1279,7 +1281,7 @@ export function Palco({
                   tabIndex={0}
                   className="palco__alca-destaque palco__alca-midia"
                   data-selecionado={selecionada || undefined}
-                  style={{ left: `${cx * 100}%`, top: `${cy * 100}%`, width: `${(caixa.w / 1080) * 100}%`, height: `${(caixa.h / 1920) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                  style={{ left: `${cx * 100}%`, top: `${cy * 100}%`, width: `${(caixa.w / plan.canvas.width) * 100}%`, height: `${(caixa.h / plan.canvas.height) * 100}%`, transform: 'translate(-50%, -50%)' }}
                   aria-label="Mover a camada"
                   title="Arraste para mover · canto para mudar o tamanho"
                   onPointerDown={(e) => {

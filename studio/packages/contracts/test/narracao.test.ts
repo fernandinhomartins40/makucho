@@ -2,7 +2,7 @@
 // Narração: operações e corte no fim do vídeo.
 // ============================================================
 
-import { aplicarOperacao, aplicarOperacoes } from '../src';
+import { aplicarOperacao, aplicarOperacoes, editPlanV1Schema } from '../src';
 import type { EditPlanV1 } from '../src';
 
 let ok = 0,
@@ -44,6 +44,12 @@ const aparada = aplicarOperacoes(r.plan!, [{ op: 'definir_velocidade', clipId: '
 t('passou do fim: a narração é aparada', aparada.ok && aparada.plan!.voiceovers![0]!.timelineStartMs + aparada.plan!.voiceovers![0]!.durationMs === aparada.plan!.targetDurationMs);
 const rem = aplicarOperacao(e.plan!, { op: 'remover_narracao', narracaoId: 'n1' });
 t('remove (sem deixar lista vazia)', rem.ok && rem.plan!.voiceovers === undefined);
+
+// ---------- Formato ----------
+const horizontal = aplicarOperacao(base, { op: 'definir_formato', aspectRatio: '16:9' });
+t('formato: 16:9 vira 1920x1080', horizontal.ok && horizontal.plan!.canvas.width === 1920 && horizontal.plan!.canvas.height === 1080);
+t('formato: 4:5 vira 1080x1350', aplicarOperacao(base, { op: 'definir_formato', aspectRatio: '4:5' }).plan!.canvas.height === 1350);
+t('formato: par que não bate é recusado', !editPlanV1Schema.safeParse({ ...base, canvas: { aspectRatio: '16:9', width: 1080, height: 1920 } }).success);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

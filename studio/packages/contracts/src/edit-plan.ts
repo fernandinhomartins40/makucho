@@ -28,13 +28,33 @@ const msSchema = z.number().int().nonnegative();
 const idSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
 
 // ---------- Canvas ----------
-// O MVP 1 entrega apenas 9:16 (plano, secao 4.2). Os demais formatos
-// entram na V3; ate la o enum de um valor so documenta a limitacao.
-export const canvasSchema = z.object({
-  aspectRatio: z.literal('9:16'),
-  width: z.literal(1080),
-  height: z.literal(1920),
-});
+// Os formatos das redes: vertical (Reels, TikTok, Shorts), feed 4:5,
+// quadrado e horizontal (YouTube). Cada um com um tamanho só -- o par
+// (formato, largura, altura) é fechado, para prévia e render nunca
+// divergirem sobre o quadro.
+export const FORMATOS_DO_VIDEO = {
+  '9:16': { width: 1080, height: 1920, rotulo: 'Vertical', ajuda: 'Reels, TikTok, Shorts' },
+  '4:5': { width: 1080, height: 1350, rotulo: 'Feed', ajuda: 'Feed do Instagram e Facebook' },
+  '1:1': { width: 1080, height: 1080, rotulo: 'Quadrado', ajuda: 'Feed e anúncios' },
+  '16:9': { width: 1920, height: 1080, rotulo: 'Horizontal', ajuda: 'YouTube, apresentações' },
+} as const;
+export type FormatoDoVideo = keyof typeof FORMATOS_DO_VIDEO;
+export const FORMATOS = Object.keys(FORMATOS_DO_VIDEO) as FormatoDoVideo[];
+
+export const canvasSchema = z
+  .object({
+    aspectRatio: z.enum(['9:16', '4:5', '1:1', '16:9']),
+    width: z.number().int(),
+    height: z.number().int(),
+  })
+  .refine((c) => FORMATOS_DO_VIDEO[c.aspectRatio].width === c.width && FORMATOS_DO_VIDEO[c.aspectRatio].height === c.height, {
+    message: 'tamanho do quadro não corresponde ao formato',
+  });
+
+/** O quadro de um formato. */
+export function canvasDoFormato(f: FormatoDoVideo): { aspectRatio: FormatoDoVideo; width: number; height: number } {
+  return { aspectRatio: f, width: FORMATOS_DO_VIDEO[f].width, height: FORMATOS_DO_VIDEO[f].height };
+}
 
 // ---------- Efeitos de trecho ----------
 //

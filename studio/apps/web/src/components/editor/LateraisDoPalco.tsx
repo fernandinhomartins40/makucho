@@ -13,7 +13,10 @@
 // estão nos painéis laterais, então as colunas só existem aqui.
 // ============================================================
 
+import { useEffect, useState } from 'react';
 import type { Icon } from '@phosphor-icons/react';
+import type { FormatoDoVideo } from '@makucho/studio-contracts';
+import { SeletorDeFormato } from './Inspector';
 import {
   IconeMidia,
   IconeTrilha,
@@ -76,19 +79,47 @@ export function AcoesDoPalco({
   onAcao,
   semVelocidade,
 }: {
-  formato: string;
+  formato: FormatoDoVideo;
   resolucao: string;
-  onFormato: () => void;
+  onFormato: (f: FormatoDoVideo) => void;
   onResolucao: () => void;
   onAcao: (a: AcaoDoPalco) => void;
   /** Enquanto a velocidade não existe no plano, o botão fica de fora. */
   semVelocidade?: boolean;
 }) {
+  const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    if (!menu) return;
+    const fechar = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.palco-lateral__menu, .palco-lateral__seletor--formato')) setMenu(false);
+    };
+    window.addEventListener('pointerdown', fechar);
+    return () => window.removeEventListener('pointerdown', fechar);
+  }, [menu]);
   return (
     <div className="palco-lateral palco-lateral--direita so-celular">
-      <button type="button" className="palco-lateral__seletor" onClick={onFormato} aria-label={`Formato do vídeo: ${formato}`}>
+      <button
+        type="button"
+        className="palco-lateral__seletor palco-lateral__seletor--formato"
+        onClick={() => setMenu((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={menu}
+        aria-label={`Formato do vídeo: ${formato}`}
+      >
         {formato} <IconeAbrir size={12} />
       </button>
+      {menu && (
+        <div className="palco-lateral__menu" role="dialog" aria-label="Formato do vídeo">
+          <strong>Formato do vídeo</strong>
+          <SeletorDeFormato
+            atual={formato}
+            onEscolher={(f) => {
+              setMenu(false);
+              onFormato(f);
+            }}
+          />
+        </div>
+      )}
       <button type="button" className="palco-lateral__seletor" onClick={onResolucao} aria-label={`Resolução da exportação: ${resolucao}`}>
         {resolucao} <IconeAbrir size={12} />
       </button>

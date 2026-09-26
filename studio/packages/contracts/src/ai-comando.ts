@@ -63,6 +63,7 @@ export const OPERACOES_DO_COMANDO = [
   'transicao_em_todos',
   'definir_efeito',
   'definir_velocidade',
+  'definir_formato',
   'configurar_video',
   'adicionar_overlay',
   'editar_overlay',

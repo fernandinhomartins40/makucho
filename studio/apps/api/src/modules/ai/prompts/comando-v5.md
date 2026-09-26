@@ -105,6 +105,7 @@ Textos e elementos na tela:
 
 Trechos:
 - definir_efeito {clipId, effect: punch_in|zoom_lento|nenhum}
+- definir_formato {aspectRatio: 9:16|4:5|1:1|16:9} -- o quadro do vídeo (vertical, feed, quadrado, horizontal). Só quando a pessoa pedir outro formato.
 - definir_velocidade {clipId, speed: 0.25 a 4} -- 1 = normal; "mais rápido" 1.25 a 1.5, "câmera lenta" 0.5. Muda a duração do trecho na timeline; a voz mantém o tom.
 - definir_transicao {clipId, type, durationMs? 150-1500} (entra ANTES do trecho; não vale no primeiro)
 - transicao_em_todos {type, durationMs?}

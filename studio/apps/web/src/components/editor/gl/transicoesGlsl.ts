@@ -62,7 +62,7 @@ function corpoDaReceita(id: string, r: ReceitaDeTransicao): { funcoes: string; c
   funcoes.push(`vec3 ${id}_mix(float x, float y) { float q = 1.0 - P; ${mistura} }`);
 
   // Faixas / ondas (displace): deslocamento pela linha do mapa 270x480.
-  const escala = 'W / 1080.0';
+  const escala = 'min(W, H) / 1080.0';
   let dcodigo = 'return 0.0;';
   if (r.faixas) {
     dcodigo = `float yl = floor(y * 480.0 / H); float q = 1.0 - P; float e = 1.0 - abs(1.0 - 2.0 * q);

@@ -999,7 +999,7 @@ h3 {
 
 .palco__quadro {
   position: relative;
-  aspect-ratio: 9 / 16;
+  aspect-ratio: var(--quadro-ar, 9 / 16);
   height: 100%;
   background: #000;
   border-radius: var(--r-destaque);
@@ -5998,7 +5998,7 @@ button.recursos-do-trecho__item:hover {
 }
 
 .palco__quadro {
-  height: min(100%, calc(100cqw * 16 / 9));
+  height: min(100%, calc(100cqw * var(--quadro-hw, 1.7778)));
   max-width: 100%;
 }
 
@@ -11106,7 +11106,7 @@ button.momento-midia__tempo:hover {
 
   .editor__palco > .palco__quadro {
     grid-area: quadro;
-    height: min(100%, calc((100cqw - 140px) * 16 / 9));
+    height: min(100%, calc((100cqw - 140px) * var(--quadro-hw, 1.7778)));
     align-self: center;
   }
 
@@ -11446,4 +11446,65 @@ button.momento-midia__tempo:hover {
   .gravador-narracao {
     bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + 8px);
   }
+}
+
+/* ---------- Formato do vídeo ---------- */
+.formatos {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.formatos__opcao {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  gap: 3px;
+  min-height: 74px;
+  padding: 8px 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.formatos__opcao strong {
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+.formatos__opcao small {
+  font-size: 10.5px;
+}
+
+.formatos__quadro {
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.formatos__opcao[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-2));
+  color: var(--accent);
+}
+
+.palco-lateral__menu {
+  position: fixed;
+  top: calc(var(--seguro-topo, 0px) + 110px);
+  right: 8px;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-sidebar);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 45%);
+}
+
+.palco-lateral__menu > strong {
+  font-size: 13px;
 }

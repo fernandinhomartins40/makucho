@@ -23,7 +23,7 @@ import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useMemo, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano, duracaoNaTimeline, velocidadeDoTrecho, VELOCIDADES_DO_TRECHO } from '@makucho/studio-contracts';
+import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano, duracaoNaTimeline, velocidadeDoTrecho, VELOCIDADES_DO_TRECHO, FORMATOS, FORMATOS_DO_VIDEO, type FormatoDoVideo } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
@@ -206,6 +206,11 @@ function AbaDeVideo({
   return (
     <>
       <div className="campo">
+        <span className="campo__rotulo">Formato</span>
+        <SeletorDeFormato atual={plan.canvas.aspectRatio} onEscolher={(f) => onOperacao({ op: 'definir_formato', aspectRatio: f })} />
+      </div>
+
+      <div className="campo">
         <span className="campo__rotulo">Enquadramento</span>
         <Segmentado
           rotulo="Enquadramento"
@@ -231,7 +236,7 @@ function AbaDeVideo({
 
       <div className="separador" />
 
-      <Propriedade rotulo="Formato" valor="1080 × 1920 (9:16), 30 fps" />
+      <Propriedade rotulo="Quadro" valor={`${plan.canvas.width} × ${plan.canvas.height} (${plan.canvas.aspectRatio}), 30 fps`} />
       <Propriedade rotulo="Duração" valor={`${(duracao / 1000).toFixed(1)}s`} />
       <Propriedade rotulo="Gravação original" valor={`${Math.round(plan.sourceDurationMs / 60_000)} min`} />
       <Propriedade rotulo="Redução" valor={`${reducao}%`} />
@@ -903,6 +908,25 @@ function PropriedadesDoTrecho({
  * Velocidade do trecho: câmera lenta a 4x. A duração na timeline muda e
  * a voz continua no mesmo tom (prévia, exportação e render).
  */
+/** Os formatos do vídeo, cada um com o desenho do quadro. */
+export function SeletorDeFormato({ atual, onEscolher }: { atual: FormatoDoVideo; onEscolher: (f: FormatoDoVideo) => void }) {
+  return (
+    <div className="formatos" role="radiogroup" aria-label="Formato do vídeo">
+      {FORMATOS.map((f) => {
+        const d = FORMATOS_DO_VIDEO[f];
+        const alto = 26;
+        return (
+          <button key={f} type="button" role="radio" aria-checked={f === atual} className="formatos__opcao" onClick={() => onEscolher(f)} title={d.ajuda}>
+            <span className="formatos__quadro" aria-hidden style={{ height: alto, width: Math.round((alto * d.width) / d.height) }} />
+            <strong>{f}</strong>
+            <small>{d.rotulo}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ControleDeVelocidade({ clipe, onOperacao }: { clipe: EditPlanV1['clips'][number]; onOperacao: (op: TimelineOperation) => void }) {
   const atual = velocidadeDoTrecho(clipe);
   const original = clipe.sourceEndMs - clipe.sourceStartMs;
