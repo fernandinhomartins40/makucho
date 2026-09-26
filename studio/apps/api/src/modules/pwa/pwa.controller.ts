@@ -103,6 +103,13 @@ export class PwaController {
     };
   }
 
+  /** Os arquivos gerados para cada destino, com o peso de cada um. */
+  @Get('settings/pwa/arquivos')
+  async arquivos(@CurrentTenant() tenant: TenantContext) {
+    assertIsOwner(tenant);
+    return this.pwa.arquivos();
+  }
+
   @Put('settings/pwa')
   async salvar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertIsOwner(tenant);

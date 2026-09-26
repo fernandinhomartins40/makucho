@@ -48,6 +48,25 @@ export const ICONES = {
 
 export type NomeDoIcone = keyof typeof ICONES;
 
+/** Para que serve cada arquivo (a tela lista o que foi gerado). */
+const USO_DO_ICONE: Record<NomeDoIcone, string> = {
+  'icon-192.png': 'Android e Chrome: tela inicial e atalhos',
+  'icon-512.png': 'Android e Chrome: instalação e tela de abertura',
+  'maskable-192.png': 'Android: ícone recortado (círculo, gota, squircle)',
+  'maskable-512.png': 'Android: ícone recortado, alta resolução',
+  'apple-touch-icon.png': 'iPhone e iPad: tela de início',
+  'favicon-32.png': 'Aba do navegador (telas de alta densidade)',
+  'favicon-16.png': 'Aba do navegador',
+};
+
+/**
+ * PNG comprimido: o ícone é baixado por todo aparelho que instala. Paleta
+ * de até 256 cores com dithering (qualidade 92) e zlib no nível 9: na
+ * logo metálica da marca, o 512 cai de 166 KB para 41 KB sem diferença
+ * visível. A arte-fonte de 1024 (enviarIcone) fica sem perda.
+ */
+const png = (s: sharp.Sharp) => s.png({ compressionLevel: 9, palette: true, quality: 92, dither: 1, effort: 10 });
+
 const COR = /^#[0-9a-fA-F]{6}$/;
 
 /**
@@ -159,27 +178,37 @@ export class PwaService {
     for (const [nome, { tamanho, tipo }] of Object.entries(ICONES)) {
       let imagem: Buffer;
       if (tipo === 'any') {
-        imagem = await sharp(principal).resize(tamanho, tamanho, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+        imagem = await png(sharp(principal).resize(tamanho, tamanho, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })).toBuffer();
       } else if (tipo === 'apple') {
         // Sem transparência (vira preto no iOS) e sangrando até a borda:
-        // o iOS aplica os cantos.
-        imagem = await sharp(principal).resize(tamanho, tamanho, { fit: 'cover' }).flatten({ background: fundo }).png().toBuffer();
+        // o iOS aplica os cantos. Com a arte mascarável (o editor de ícone
+        // sempre manda uma), é ela: já tem a margem que os cantos pedem.
+        imagem = await png(sharp(c.maskableKey && mascaravel ? mascaravel : principal).resize(tamanho, tamanho, { fit: 'cover' }).flatten({ background: fundo })).toBuffer();
       } else if (mascaravel) {
-        imagem = await sharp(mascaravel).resize(tamanho, tamanho, { fit: 'cover' }).flatten({ background: fundo }).png().toBuffer();
+        imagem = await png(sharp(mascaravel).resize(tamanho, tamanho, { fit: 'cover' }).flatten({ background: fundo })).toBuffer();
       } else {
         // Sem mascarável própria: o ícone em 72% do quadro, centralizado
         // sobre a cor de fundo -- dentro da zona segura de 80% que o
         // Android garante em qualquer formato de máscara.
         const interno = Math.round(tamanho * 0.72);
         const desenho = await sharp(principal).resize(interno, interno, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
-        imagem = await sharp({ create: { width: tamanho, height: tamanho, channels: 4, background: fundo } })
-          .composite([{ input: desenho, gravity: 'center' }])
-          .png()
-          .toBuffer();
+        imagem = await png(sharp({ create: { width: tamanho, height: tamanho, channels: 4, background: fundo } }).composite([{ input: desenho, gravity: 'center' }])).toBuffer();
       }
       await this.storage.gravar(`${this.pasta(c.version)}/${nome}`, imagem);
     }
     this.log.log(`ícones do app gerados (versão ${c.version})`);
+  }
+
+  /** Os arquivos da versão atual, com o peso de cada um (gera se faltar). */
+  async arquivos() {
+    const c = await this.config();
+    const pasta = this.pasta(c.version);
+    if ((await this.storage.tamanho(`${pasta}/icon-512.png`)) === null) await this.gerarIcones(c);
+    const lista = [];
+    for (const [nome, { tamanho }] of Object.entries(ICONES) as Array<[NomeDoIcone, (typeof ICONES)[NomeDoIcone]]>) {
+      lista.push({ nome, lado: tamanho, bytes: (await this.storage.tamanho(`${pasta}/${nome}`)) ?? 0, uso: USO_DO_ICONE[nome] });
+    }
+    return lista;
   }
 
   // ---------- Telas de abertura do iOS ----------
@@ -253,9 +282,9 @@ export class PwaService {
     const atual = await this.config();
     const versao = atual.version + 1;
     // Normaliza para PNG 1024: a fonte de todos os tamanhos.
-    const png = await sharp(conteudo, { density: 300 }).resize(1024, 1024, { fit: 'cover' }).png().toBuffer();
+    const fonte = await sharp(conteudo, { density: 300 }).resize(1024, 1024, { fit: 'cover' }).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
     const chave = `pwa/fonte/${tipo}-v${versao}.png`;
-    await this.storage.gravar(chave, png);
+    await this.storage.gravar(chave, fonte);
 
     return this.prisma.pwaConfig.update({
       where: { id: 'padrao' },

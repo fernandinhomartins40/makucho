@@ -807,8 +807,16 @@ export interface ConfigDoApp {
   versao: number;
 }
 
+/** Um arquivo de ícone gerado, com o destino e o peso. */
+export interface ArquivoDoApp {
+  nome: string;
+  lado: number;
+  bytes: number;
+  uso: string;
+}
+
 /** Envia a imagem crua no corpo, como os assets. */
-async function enviarImagem<T>(caminho: string, arquivo: File, cabecalhos: Record<string, string> = {}): Promise<T> {
+async function enviarImagem<T>(caminho: string, arquivo: Blob, cabecalhos: Record<string, string> = {}): Promise<T> {
   const enviar = () =>
     fetch(`/api${caminho}`, {
       method: 'POST',
@@ -839,7 +847,8 @@ export const app = {
   obter: () => api<ConfigDoApp>('/settings/pwa'),
   salvar: (dados: Partial<Pick<ConfigDoApp, 'name' | 'shortName' | 'description' | 'themeColor' | 'backgroundColor'>>) =>
     api<ConfigDoApp>('/settings/pwa', { metodo: 'PUT', corpo: dados }),
-  enviarIcone: (tipo: 'icone' | 'maskable', arquivo: File) => enviarImagem<ConfigDoApp>(`/settings/pwa/icone/${tipo}`, arquivo),
+  enviarIcone: (tipo: 'icone' | 'maskable', arquivo: Blob) => enviarImagem<ConfigDoApp>(`/settings/pwa/icone/${tipo}`, arquivo),
+  arquivos: () => api<ArquivoDoApp[]>('/settings/pwa/arquivos'),
   removerIcone: (tipo: 'icone' | 'maskable') => api<ConfigDoApp>(`/settings/pwa/icone/${tipo}`, { metodo: 'DELETE' }),
   enviarCaptura: (arquivo: File, formFactor: 'narrow' | 'wide', rotulo: string) =>
     enviarImagem<ConfigDoApp>('/settings/pwa/capturas', arquivo, {

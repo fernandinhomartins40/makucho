@@ -1,16 +1,20 @@
 'use client';
 
 // ============================================================
-// Configurações — chave de IA, teto de gasto, armazenamento e o
-// aplicativo instalável (PWA).
+// Configurações, em abas: cada assunto numa tela, com uma ação clara.
 //
-// A API tinha as rotas desde a Fase 5a, mas nenhuma tela as usava: a
-// chave de IA só entrava por linha de comando, e sem ela a análise
-// nunca rodava. É daqui que a IA passa a funcionar.
+//   Inteligência artificial  a chave da DeepSeek (o campo só aparece
+//                            para colocar ou trocar) e o consumo do mês;
+//   Banco de mídia           a chave do Pexels (B-roll no editor);
+//   Armazenamento            o espaço usado;
+//   Aplicativo               ícone (com o editor de recorte), nome,
+//                            cores, capturas e instalação.
+//
+// A aba aberta fica no endereço (#ia, #midia...), para voltar direto.
 // ============================================================
 
 import { dolares } from '../../lib/dinheiro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
 import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
 import { useDados } from '../../lib/useDados';
@@ -25,22 +29,80 @@ import {
   type CredencialDeIa,
 } from '../../lib/api';
 import { formatarBytes } from '../../lib/upload';
-import { IconeAviso, IconeCheck, IconeIA, IconeNuvem, IconeOlho, IconeOlhoFechado } from '../../components/icones';
+import { IconeAviso, IconeCelular, IconeCheck, IconeIA, IconeMidia, IconeNuvem, IconeOlho, IconeOlhoFechado } from '../../components/icones';
+
+type Aba = 'ia' | 'midia' | 'armazenamento' | 'app';
+
+const ABAS: ReadonlyArray<{ id: Aba; rotulo: string; ajuda: string; Icone: typeof IconeIA }> = [
+  { id: 'ia', rotulo: 'Inteligência artificial', ajuda: 'Chave e consumo do mês', Icone: IconeIA },
+  { id: 'midia', rotulo: 'Banco de mídia', ajuda: 'Fotos e vídeos do Pexels', Icone: IconeMidia },
+  { id: 'armazenamento', rotulo: 'Armazenamento', ajuda: 'Espaço usado', Icone: IconeNuvem },
+  { id: 'app', rotulo: 'Aplicativo', ajuda: 'Ícone, nome e instalação', Icone: IconeCelular },
+];
 
 export default function ConfiguracoesPage() {
+  const [aba, setAba] = useState<Aba>('ia');
+  useEffect(() => {
+    const h = window.location.hash.slice(1) as Aba;
+    if (ABAS.some((a) => a.id === h)) setAba(h);
+  }, []);
+  const irPara = (a: Aba) => {
+    setAba(a);
+    try {
+      window.history.replaceState(null, '', `#${a}`);
+    } catch {
+      // Sem histórico: só a aba muda.
+    }
+  };
+
   return (
     <>
       <Topbar trilha={['Configurações']} />
       <div className="conteudo">
-        <div style={{ maxWidth: 820, display: 'grid', gap: 'var(--e5)' }}>
-          <h1>Configurações</h1>
-          <SecaoDeIa />
-          <SecaoDoBanco />
-          <SecaoDeArmazenamento />
-          <SecaoDoApp />
+        <div className="config">
+          <header className="config__titulo">
+            <h1>Configurações</h1>
+            <p className="texto-secundario">Chaves, consumo, espaço e o app instalado.</p>
+          </header>
+          <nav className="abas-da-pagina" role="tablist" aria-label="Partes das configurações">
+            {ABAS.map(({ id, rotulo, ajuda, Icone }) => (
+              <button key={id} type="button" role="tab" aria-selected={aba === id} className="abas-da-pagina__aba" onClick={() => irPara(id)}>
+                <Icone size={18} weight={aba === id ? 'fill' : 'regular'} aria-hidden />
+                <span>
+                  <strong>{rotulo}</strong>
+                  <small>{ajuda}</small>
+                </span>
+              </button>
+            ))}
+          </nav>
+          <div role="tabpanel">
+            {aba === 'ia' && <SecaoDeIa />}
+            {aba === 'midia' && <SecaoDoBanco />}
+            {aba === 'armazenamento' && <SecaoDeArmazenamento />}
+            {aba === 'app' && <SecaoDoApp />}
+          </div>
         </div>
       </div>
     </>
+  );
+}
+
+function Aviso({ mensagem }: { mensagem: { tom: 'sucesso' | 'erro'; texto: string } | null }) {
+  if (!mensagem) return null;
+  return (
+    <div className={`aviso ${mensagem.tom === 'erro' ? 'aviso--erro' : 'aviso--sucesso'}`} role={mensagem.tom === 'erro' ? 'alert' : 'status'}>
+      {mensagem.tom === 'erro' ? <IconeAviso size={16} /> : <IconeCheck size={16} />}
+      <span>{mensagem.texto}</span>
+    </div>
+  );
+}
+
+function Selo({ ativo, sim, nao }: { ativo: boolean; sim: string; nao: string }) {
+  return (
+    <span className={`selo ${ativo ? 'selo--sucesso' : 'selo--aviso'}`}>
+      <span className="selo__ponto" aria-hidden />
+      {ativo ? sim : nao}
+    </span>
   );
 }
 
@@ -54,6 +116,7 @@ function SecaoDeIa() {
 
   const [chave, setChave] = useState('');
   const [mostrar, setMostrar] = useState(false);
+  const [trocando, setTrocando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
 
@@ -75,24 +138,21 @@ function SecaoDeIa() {
 
   const [limite, setLimite] = useState('');
   const [salvandoLimite, setSalvandoLimite] = useState(false);
+  const [mensagemDoLimite, setMensagemDoLimite] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
 
   const atual = credencial.dados;
   const chaveValida = chave.trim().length >= 16;
+  const mostrarFormulario = !atual?.configured || trocando;
 
   const salvar = async () => {
     setSalvando(true);
     setMensagem(null);
     try {
-      const salvo = await credencialDeIa.salvar({
-        provider: 'deepseek',
-        apiKey: chave.trim(),
-      });
+      const salvo = await credencialDeIa.salvar({ provider: 'deepseek', apiKey: chave.trim() });
       credencial.definir(salvo);
       setChave('');
-      setMensagem({
-        tom: 'sucesso',
-        texto: 'Chave salva. As próximas análises já usam a IA — vídeos montados sem IA podem ser analisados de novo no editor.',
-      });
+      setTrocando(false);
+      setMensagem({ tom: 'sucesso', texto: 'Chave salva. As próximas análises já usam a IA; vídeos montados sem IA podem ser analisados de novo no editor.' });
       consumo.recarregar();
     } catch (e) {
       setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar a chave.' });
@@ -112,179 +172,165 @@ function SecaoDeIa() {
   };
 
   const salvarLimite = async () => {
-    const dolares = Number(limite.replace(',', '.'));
-    if (!Number.isFinite(dolares) || dolares < 1 || dolares > 500) {
-      setMensagem({ tom: 'erro', texto: 'o limite precisa ficar entre US$ 1 e US$ 500 por mês.' });
+    const valor = Number(limite.replace(',', '.'));
+    if (!Number.isFinite(valor) || valor < 1 || valor > 500) {
+      setMensagemDoLimite({ tom: 'erro', texto: 'o limite precisa ficar entre US$ 1 e US$ 500 por mês.' });
       return;
     }
     setSalvandoLimite(true);
     try {
-      const r = await apiIa.definirLimite(Math.round(dolares * 100));
-      if (!r.ok) setMensagem({ tom: 'erro', texto: r.motivo ?? 'não foi possível salvar o limite.' });
+      const r = await apiIa.definirLimite(Math.round(valor * 100));
+      if (!r.ok) setMensagemDoLimite({ tom: 'erro', texto: r.motivo ?? 'não foi possível salvar o limite.' });
       else {
-        setMensagem({ tom: 'sucesso', texto: 'Limite mensal atualizado.' });
+        setMensagemDoLimite({ tom: 'sucesso', texto: 'Limite mensal atualizado.' });
         setLimite('');
         consumo.recarregar();
       }
     } catch (e) {
-      setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar o limite.' });
+      setMensagemDoLimite({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar o limite.' });
     } finally {
       setSalvandoLimite(false);
     }
   };
 
   const uso = consumo.dados;
+  const pct = uso ? Math.min(100, (uso.gastoCentavos / Math.max(1, uso.limiteCentavos)) * 100) : 0;
 
   return (
-    <section className="cartao" style={{ display: 'grid', gap: 'var(--e4)' }} aria-labelledby="titulo-ia">
-      <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
-        <h2 id="titulo-ia" className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeIA size={20} weight="fill" color="var(--accent)" />
-          Inteligência artificial
-        </h2>
-        {atual && (
-          <span className={`selo ${atual.configured ? 'selo--sucesso' : 'selo--aviso'}`}>
-            <span className="selo__ponto" aria-hidden />
-            {atual.configured ? 'Ativa' : 'Sem chave'}
-          </span>
-        )}
-      </div>
+    <div className="config__pilha">
+      {/* ---------- Chave ---------- */}
+      <section className="cartao config__cartao" aria-labelledby="titulo-ia">
+        <header className="config__cabeca">
+          <div>
+            <h3 id="titulo-ia">Chave da IA (DeepSeek)</h3>
+            <p>
+              A IA escolhe os melhores trechos, sugere cortes e escreve roteiros. Sem chave, o Studio monta o vídeo com toda a fala, sem as pausas
+              longas, e você corta na timeline.
+            </p>
+          </div>
+          {atual && <Selo ativo={atual.configured} sim="Ativa" nao="Sem chave" />}
+        </header>
+        <Aviso mensagem={mensagem} />
 
-      <p className="texto-secundario" style={{ fontSize: 14 }}>
-        A IA escolhe os melhores trechos da gravação, sugere cortes e ajuda a escrever roteiros. Sem
-        chave, o Studio continua funcionando: o vídeo é montado com toda a fala, sem as pausas
-        longas, e você corta na timeline.
-      </p>
-
-      {mensagem && (
-        <div className={`aviso ${mensagem.tom === 'erro' ? 'aviso--erro' : 'aviso--info'}`} role={mensagem.tom === 'erro' ? 'alert' : 'status'}>
-          {mensagem.tom === 'erro' ? <IconeAviso size={16} /> : <IconeCheck size={16} />}
-          <span>{mensagem.texto}</span>
-        </div>
-      )}
-
-      {credencial.carregando ? (
-        <span className="esqueleto" style={{ height: 48 }} />
-      ) : credencial.erro ? (
-        <div className="aviso aviso--erro" role="alert">
-          <IconeAviso size={16} />
-          <span>{credencial.erro}</span>
-        </div>
-      ) : atual?.configured ? (
-        <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 14 }}>
-          <dt className="texto-secundario">Provedor</dt>
-          <dd>DeepSeek</dd>
-          <dt className="texto-secundario">Chave</dt>
-          <dd style={{ fontFamily: 'monospace' }}>{atual.keyPrefix}••••••••</dd>
-          <dt className="texto-secundario">Último uso</dt>
-          <dd>{atual.lastUsedAt ? new Date(atual.lastUsedAt).toLocaleString('pt-BR') : 'ainda não usada'}</dd>
-        </dl>
-      ) : null}
-
-      {/* O teste separa "a chave não funciona" de "a IA ainda não foi
-          chamada": uma chamada mínima, e o resultado exato da DeepSeek. */}
-      {atual?.configured && (
-        <div style={{ display: 'grid', gap: 'var(--e2)', justifyItems: 'start' }}>
-          <button type="button" className="botao botao--secundario" disabled={testando} onClick={() => void testar()}>
-            {testando ? 'Testando…' : 'Testar a chave'}
-          </button>
-          {teste && (
-            <div className={teste.ok ? 'aviso aviso--sucesso' : 'aviso aviso--erro'} role="status">
-              <IconeAviso size={16} />
-              <span>{teste.ok ? `Funcionando. ${teste.mensagem}` : teste.mensagem}</span>
+        {credencial.carregando ? (
+          <span className="esqueleto" style={{ height: 48 }} />
+        ) : credencial.erro ? (
+          <Aviso mensagem={{ tom: 'erro', texto: credencial.erro }} />
+        ) : atual?.configured ? (
+          <div className="config__chave">
+            <dl>
+              <div>
+                <dt>Chave</dt>
+                <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
+              </div>
+              <div>
+                <dt>Último uso</dt>
+                <dd>{atual.lastUsedAt ? new Date(atual.lastUsedAt).toLocaleString('pt-BR') : 'ainda não usada'}</dd>
+              </div>
+            </dl>
+            <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+              {/* O teste separa "a chave não funciona" de "a IA ainda não foi
+                  chamada": uma chamada mínima, e o resultado exato da DeepSeek. */}
+              <button type="button" className="botao botao--secundario botao--pequeno" disabled={testando} onClick={() => void testar()}>
+                {testando ? 'Testando…' : 'Testar a chave'}
+              </button>
+              {!trocando && (
+                <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setTrocando(true)}>
+                  Trocar a chave
+                </button>
+              )}
+              <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
+                Remover
+              </button>
             </div>
-          )}
-        </div>
-      )}
+            {teste && <Aviso mensagem={{ tom: teste.ok ? 'sucesso' : 'erro', texto: teste.ok ? `Funcionando. ${teste.mensagem}` : teste.mensagem }} />}
+          </div>
+        ) : null}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (chaveValida) void salvar();
-        }}
-        style={{ display: 'grid', gap: 'var(--e3)' }}
-      >
-        <label className="campo">
-          <span className="campo__rotulo">{atual?.configured ? 'Trocar a chave da API DeepSeek' : 'Chave da API DeepSeek'}</span>
-          <span className="linha" style={{ gap: 'var(--e2)' }}>
-            <input
-              className="campo__entrada crescer"
-              type={mostrar ? 'text' : 'password'}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="sk-…"
-              value={chave}
-              onChange={(e) => setChave(e.target.value)}
-              aria-describedby="ajuda-chave"
-            />
-            <button
-              type="button"
-              className="botao-icone"
-              aria-label={mostrar ? 'Esconder a chave' : 'Mostrar a chave'}
-              onClick={() => setMostrar((v) => !v)}
-            >
-              {mostrar ? <IconeOlhoFechado size={18} /> : <IconeOlho size={18} />}
-            </button>
-          </span>
-          <span id="ajuda-chave" className="campo__ajuda">
-            Crie em platform.deepseek.com → API keys. A chave é guardada cifrada e nunca volta para a
-            tela; só os primeiros caracteres aparecem para você reconhecê-la.
-          </span>
-        </label>
+        {mostrarFormulario && !credencial.carregando && (
+          <form
+            className="config__formulario"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (chaveValida) void salvar();
+            }}
+          >
+            <label className="campo" style={{ margin: 0 }}>
+              <span className="campo__rotulo">{atual?.configured ? 'Nova chave da DeepSeek' : 'Cole a chave da DeepSeek'}</span>
+              <span className="linha" style={{ gap: 'var(--e2)' }}>
+                <input
+                  className="campo__entrada crescer"
+                  type={mostrar ? 'text' : 'password'}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="sk-…"
+                  value={chave}
+                  onChange={(e) => setChave(e.target.value)}
+                  aria-describedby="ajuda-chave"
+                />
+                <button type="button" className="botao-icone" aria-label={mostrar ? 'Esconder a chave' : 'Mostrar a chave'} onClick={() => setMostrar((v) => !v)}>
+                  {mostrar ? <IconeOlhoFechado size={18} /> : <IconeOlho size={18} />}
+                </button>
+              </span>
+              <span id="ajuda-chave" className="campo__ajuda">
+                Crie em platform.deepseek.com → API keys. A chave é guardada cifrada e nunca volta para a tela.
+                {chave && !chaveValida && ' A chave tem pelo menos 16 caracteres.'}
+              </span>
+            </label>
+            <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+              <button type="submit" className="botao botao--primario" disabled={!chaveValida || salvando}>
+                {salvando ? 'Salvando…' : 'Salvar a chave'}
+              </button>
+              {trocando && (
+                <button
+                  type="button"
+                  className="botao botao--fantasma"
+                  onClick={() => {
+                    setTrocando(false);
+                    setChave('');
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </form>
+        )}
 
         {/* Sem campo de modelo: o Studio escolhe o modelo e o nível de
-            raciocínio de cada função (o mais barato que dá conta dela),
-            e um modelo digitado aqui era salvo e ignorado. */}
-        <p className="campo__ajuda" style={{ maxWidth: 520 }}>
-          O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no
-          acabamento dos cortes.
+            raciocínio de cada função (o mais barato que dá conta dela). */}
+        <p className="campo__ajuda" style={{ margin: 0 }}>
+          O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no acabamento dos cortes.
         </p>
+      </section>
 
-        <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
-          <button type="submit" className="botao" disabled={!chaveValida || salvando}>
-            {salvando ? 'Salvando…' : 'Salvar chave'}
-          </button>
-          {atual?.configured && (
-            <button type="button" className="botao botao--fantasma" onClick={() => void remover()}>
-              Remover chave
-            </button>
-          )}
-          {chave && !chaveValida && (
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              A chave tem pelo menos 16 caracteres.
-            </span>
-          )}
-        </div>
-      </form>
-
-      <hr className="separador" />
-
-      <div style={{ display: 'grid', gap: 'var(--e3)' }}>
-        <h3>Consumo deste mês</h3>
+      {/* ---------- Consumo ---------- */}
+      <section className="cartao config__cartao" aria-labelledby="titulo-consumo">
+        <header className="config__cabeca">
+          <div>
+            <h3 id="titulo-consumo">Consumo deste mês</h3>
+            <p>Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
+          </div>
+        </header>
         {consumo.carregando ? (
           <span className="esqueleto" style={{ height: 32 }} />
         ) : uso ? (
           <>
-            <div
-              className="barra"
-              role="progressbar"
-              aria-valuenow={uso.gastoCentavos}
-              aria-valuemin={0}
-              aria-valuemax={uso.limiteCentavos}
-              aria-label="Gasto de IA no mês"
-            >
+            <div className="config__gasto">
+              <strong>{dolares(uso.gastoCentavos)}</strong>
+              <span className="texto-secundario">
+                de {dolares(uso.limiteCentavos)} · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
+              </span>
+            </div>
+            <div className="barra" role="progressbar" aria-valuenow={uso.gastoCentavos} aria-valuemin={0} aria-valuemax={uso.limiteCentavos} aria-label="Gasto de IA no mês">
               <div
                 className="barra__preenchida"
                 style={{
-                  width: `${Math.min(100, (uso.gastoCentavos / Math.max(1, uso.limiteCentavos)) * 100)}%`,
+                  width: `${pct}%`,
                   background: uso.estado === 'bloqueado' ? 'var(--danger)' : uso.estado === 'aviso' ? 'var(--warning)' : undefined,
                 }}
               />
             </div>
-            <p style={{ fontSize: 14 }}>
-              {dolares(uso.gastoCentavos)} de {dolares(uso.limiteCentavos)} ·{' '}
-              {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
-            </p>
             {uso.aviso && (
               <div className="aviso aviso--atencao">
                 <IconeAviso size={16} />
@@ -292,31 +338,31 @@ function SecaoDeIa() {
               </div>
             )}
             {(uso.economiaCentavos ?? 0) > 0 && (
-              <p className="texto-secundario" style={{ fontSize: 13 }}>
+              <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
                 Economia no mês: <strong>{dolares(uso.economiaCentavos ?? 0)}</strong>
-                {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''}
-                {' '}(cache e horário fora do pico).
+                {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''} (cache e horário fora do pico).
               </p>
             )}
             {uso.qualidade && uso.qualidade.videos > 0 && uso.qualidade.aproveitamentoMedio !== null && (
-              <p className="texto-secundario" style={{ fontSize: 13 }}>
-                A seleção da IA foi mantida em{' '}
-                <strong>{Math.round(uso.qualidade.aproveitamentoMedio * 100)}%</strong> nos{' '}
-                {uso.qualidade.videos} {uso.qualidade.videos === 1 ? 'vídeo exportado' : 'vídeos exportados'} dos
-                últimos 90 dias.
+              <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
+                A seleção da IA foi mantida em <strong>{Math.round(uso.qualidade.aproveitamentoMedio * 100)}%</strong> nos {uso.qualidade.videos}{' '}
+                {uso.qualidade.videos === 1 ? 'vídeo exportado' : 'vídeos exportados'} dos últimos 90 dias.
                 {uso.qualidade.aproveitamentoMedio < 0.6 &&
                   ' Abaixo de 60%: você está refazendo muito do que a IA escolhe; vale ajustar o roteiro ou o perfil de comunicação.'}
               </p>
             )}
             {uso.detalhe.length > 0 && (
-              <ul style={{ listStyle: 'none', display: 'grid', gap: 4, fontSize: 13 }}>
-                {uso.detalhe.map((d) => (
-                  <li key={d.chamada} className="linha entre">
-                    <span className="texto-secundario">{d.rotulo}</span>
-                    <span style={{ fontVariantNumeric: 'tabular-nums' }}>{dolares(d.centavos)}</span>
-                  </li>
-                ))}
-              </ul>
+              <details className="config__detalhe">
+                <summary>Gasto por função</summary>
+                <ul>
+                  {uso.detalhe.map((d) => (
+                    <li key={d.chamada}>
+                      <span>{d.rotulo}</span>
+                      <span>{dolares(d.centavos)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             )}
           </>
         ) : (
@@ -325,14 +371,13 @@ function SecaoDeIa() {
 
         {atual?.configured && (
           <form
-            className="linha"
-            style={{ gap: 'var(--e2)', flexWrap: 'wrap', alignItems: 'flex-end' }}
+            className="config__limite"
             onSubmit={(e) => {
               e.preventDefault();
               void salvarLimite();
             }}
           >
-            <label className="campo" style={{ maxWidth: 220 }}>
+            <label className="campo" style={{ margin: 0 }}>
               <span className="campo__rotulo">Limite mensal (US$)</span>
               <input
                 className="campo__entrada"
@@ -343,17 +388,18 @@ function SecaoDeIa() {
               />
             </label>
             <button type="submit" className="botao botao--secundario" disabled={!limite || salvandoLimite}>
-              {salvandoLimite ? 'Salvando…' : 'Salvar limite'}
+              {salvandoLimite ? 'Salvando…' : 'Mudar o limite'}
             </button>
           </form>
         )}
-      </div>
-    </section>
+        <Aviso mensagem={mensagemDoLimite} />
+      </section>
+    </div>
   );
 }
 
 // ============================================================
-// Armazenamento
+// Banco de mídia
 // ============================================================
 
 /** A chave do Pexels: busca de B-roll e fotos dentro do editor. */
@@ -389,90 +435,87 @@ function SecaoDoBanco() {
   };
 
   return (
-    <section className="cartao" style={{ display: 'grid', gap: 'var(--e4)' }} aria-labelledby="titulo-banco">
-      <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
-        <h2 id="titulo-banco" className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeNuvem size={20} color="var(--accent)" />
-          Banco de imagens e vídeos
-        </h2>
-        {atual && (
-          <span className={`selo ${atual.configured ? 'selo--sucesso' : 'selo--aviso'}`}>
-            <span className="selo__ponto" aria-hidden />
-            {atual.configured ? 'Ativo' : 'Sem chave'}
-          </span>
+    <div className="config__pilha">
+      <section className="cartao config__cartao" aria-labelledby="titulo-banco">
+        <header className="config__cabeca">
+          <div>
+            <h3 id="titulo-banco">Banco de fotos e vídeos (Pexels)</h3>
+            <p>
+              Com uma chave gratuita do Pexels, o editor busca vídeos e fotos para cobrir a fala (B-roll). O arquivo escolhido vira mídia do Studio, com
+              o crédito do autor guardado.
+            </p>
+          </div>
+          {atual && <Selo ativo={atual.configured} sim="Ativo" nao="Sem chave" />}
+        </header>
+        <Aviso mensagem={mensagem} />
+        {atual?.configured && (
+          <div className="config__chave">
+            <dl>
+              <div>
+                <dt>Chave</dt>
+                <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
+              </div>
+            </dl>
+            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
+              Remover
+            </button>
+          </div>
         )}
-      </div>
-      <p className="texto-secundario" style={{ fontSize: 14 }}>
-        Com uma chave gratuita do Pexels (pexels.com/api), o editor busca vídeos e fotos para B-roll. O arquivo escolhido vira
-        mídia do workspace, com o crédito do autor guardado.
-      </p>
-      {mensagem && (
-        <div className={`aviso ${mensagem.tom === 'erro' ? 'aviso--erro' : 'aviso--info'}`} role={mensagem.tom === 'erro' ? 'alert' : 'status'}>
-          {mensagem.tom === 'erro' ? <IconeAviso size={16} /> : <IconeCheck size={16} />}
-          <span>{mensagem.texto}</span>
-        </div>
-      )}
-      {atual?.configured && (
-        <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{atual.keyPrefix}••••••••</span>
-          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => void remover()}>
-            Remover chave
-          </button>
-        </div>
-      )}
-      <form
-        className="linha"
-        style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (valor.trim().length >= 20) void salvar();
-        }}
-      >
-        <label className="campo crescer" style={{ marginBottom: 0, minWidth: 240 }}>
-          <span className="campo__rotulo">{atual?.configured ? 'Trocar a chave do Pexels' : 'Chave do Pexels'}</span>
-          <input className="campo__entrada" type="password" autoComplete="off" value={valor} onChange={(e) => setValor(e.target.value)} />
-        </label>
-        <button type="submit" className="botao botao--primario" style={{ alignSelf: 'end' }} disabled={salvando || valor.trim().length < 20}>
-          {salvando ? 'Salvando…' : 'Salvar'}
-        </button>
-      </form>
-    </section>
+        <form
+          className="config__formulario"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valor.trim().length >= 20) void salvar();
+          }}
+        >
+          <label className="campo" style={{ margin: 0 }}>
+            <span className="campo__rotulo">{atual?.configured ? 'Trocar a chave do Pexels' : 'Cole a chave do Pexels'}</span>
+            <input className="campo__entrada" type="password" autoComplete="off" value={valor} onChange={(e) => setValor(e.target.value)} />
+            <span className="campo__ajuda">
+              Crie de graça em{' '}
+              <a href="https://www.pexels.com/api/" target="_blank" rel="noreferrer">
+                pexels.com/api
+              </a>{' '}
+              (entre, clique em &ldquo;Your API key&rdquo; e copie).
+            </span>
+          </label>
+          <div>
+            <button type="submit" className="botao botao--primario" disabled={salvando || valor.trim().length < 20}>
+              {salvando ? 'Salvando…' : 'Salvar a chave'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
+
+// ============================================================
+// Armazenamento
+// ============================================================
 
 function SecaoDeArmazenamento() {
   const { dados, carregando, erro } = useDados<Armazenamento>(() => apiArmazenamento.obter());
 
   return (
-    <section className="cartao" style={{ display: 'grid', gap: 'var(--e4)' }} aria-labelledby="titulo-armazenamento">
-      <h2 id="titulo-armazenamento" className="linha" style={{ gap: 'var(--e2)' }}>
-        <IconeNuvem size={20} />
-        Armazenamento
-      </h2>
-
-      {carregando && <span className="esqueleto" style={{ height: 60 }} />}
-      {erro && (
-        <div className="aviso aviso--erro" role="alert">
-          <IconeAviso size={16} />
-          <span>{erro}</span>
-        </div>
-      )}
-
-      {dados && (
-        <>
-          <Cota
-            titulo="Vídeos em edição"
-            texto="Gravações, prévias e vídeos exportados. Exclua projetos antigos para liberar espaço."
-            uso={dados.edicao}
-          />
-          <Cota
-            titulo="Material da marca"
-            texto="Logo, fontes e trilhas. Não expira."
-            uso={dados.permanente}
-          />
-        </>
-      )}
-    </section>
+    <div className="config__pilha">
+      <section className="cartao config__cartao" aria-labelledby="titulo-armazenamento">
+        <header className="config__cabeca">
+          <div>
+            <h3 id="titulo-armazenamento">Espaço usado</h3>
+            <p>O Studio guarda as gravações enquanto você edita, e o material da marca para sempre.</p>
+          </div>
+        </header>
+        {carregando && <span className="esqueleto" style={{ height: 60 }} />}
+        {erro && <Aviso mensagem={{ tom: 'erro', texto: erro }} />}
+        {dados && (
+          <>
+            <Cota titulo="Vídeos em edição" texto="Gravações, prévias e vídeos exportados. Exclua projetos antigos para liberar espaço." uso={dados.edicao} />
+            <Cota titulo="Material da marca" texto="Logo, fontes e trilhas. Não expira." uso={dados.permanente} />
+          </>
+        )}
+      </section>
+    </div>
   );
 }
 
