@@ -106,6 +106,12 @@ export const useExportacoes = create<Loja>((set, get) => {
         )
         .then((r) => {
           const url = URL.createObjectURL(r.blob);
+          // O guia "Comece por aqui" marca o último passo (exportar).
+          try {
+            window.localStorage.setItem('studio:ja-exportou', '1');
+          } catch {
+            // Sem armazenamento local: o guia só não marca o passo.
+          }
           atualizar(id, {
             estado: 'pronta',
             progresso: { etapa: 'finalizando', fracao: 1, quadro: 0, totalDeQuadros: 0, restanteMs: 0 },

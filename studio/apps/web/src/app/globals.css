@@ -2659,7 +2659,8 @@ button {
 
 .projetos__grade {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  /* O guia saiu da lateral (virou a seção de cima): os projetos ocupam a largura. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--e5);
   align-items: start;
 }
@@ -9852,4 +9853,264 @@ body[data-redimensionando] * {
 .kit-vinheta__logo a {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ============================================================
+   Início: guia "Comece por aqui" (GuiaDoFluxo)
+   ============================================================ */
+.visualmente-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.guia {
+  display: grid;
+  gap: var(--e4);
+  margin-bottom: var(--e6);
+  padding: var(--e5);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: var(--r-destaque);
+  background:
+    radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 60%),
+    var(--surface-1);
+}
+
+.guia__topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--e4);
+  flex-wrap: wrap;
+}
+
+.guia__selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.guia__topo h2 {
+  margin: var(--e2) 0 0;
+  font-size: 22px;
+}
+
+.guia__topo p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  max-width: 60ch;
+}
+
+.guia__progresso {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  justify-items: end;
+}
+
+.guia__progresso strong {
+  font-size: 15px;
+}
+
+.guia__progresso .barra {
+  width: 220px;
+}
+
+.guia__recolher {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.guia__passos {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--e3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: guia;
+}
+
+.guia__passo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--e4) var(--e3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  background: var(--bg-canvas);
+}
+
+.guia__passo h3 {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+}
+
+.guia__passo p {
+  flex: 1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.guia__passo[data-estado='atual'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-canvas));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.guia__passo[data-estado='feito'] h3 {
+  color: var(--text-secondary);
+}
+
+.guia__cabeca {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+}
+
+.guia__numero {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-forte, var(--border));
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guia__passo[data-estado='feito'] .guia__numero {
+  border: 0;
+  background: var(--success);
+  color: #041735;
+}
+
+.guia__passo[data-estado='atual'] .guia__numero {
+  border: 0;
+  background: var(--primary);
+  color: #fff;
+}
+
+.guia__icone {
+  color: var(--text-secondary);
+}
+
+.guia__passo[data-estado='atual'] .guia__icone {
+  color: var(--accent);
+}
+
+.guia__opcional {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.guia__passo .botao,
+.guia__link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.guia__link {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.guia__link:hover {
+  text-decoration: underline;
+}
+
+.guia--recolhido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+  flex-wrap: wrap;
+  padding: var(--e3) var(--e4);
+}
+
+.guia__resumo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.guia__resumo svg {
+  color: var(--accent);
+}
+
+@media (max-width: 1400px) {
+  .guia__passos {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .guia {
+    padding: var(--e4);
+  }
+  .guia__passos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .guia__passo {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--e3);
+    align-items: start;
+  }
+  .guia__passo .guia__cabeca {
+    grid-row: span 3;
+  }
+  .guia__passo .guia__icone,
+  .guia__passo .guia__opcional {
+    display: none;
+  }
+  .guia__passo h3 {
+    margin: 2px 0 0;
+  }
+  .guia__progresso {
+    justify-items: start;
+    min-width: 0;
+    width: 100%;
+  }
+  .guia__progresso .barra {
+    width: 100%;
+  }
+  .guia__topo h2 {
+    font-size: 19px;
+  }
 }

@@ -5,8 +5,8 @@
 //
 // O diagnóstico do guia apontou que o tutorial dominava a tela e o
 // trabalho ficava em segundo plano. Aqui a ordem se inverte: hero
-// compacto com a ação principal, projetos recentes em destaque e o
-// checklist como apoio.
+// compacto com a ação principal, o guia "Comece por aqui" com o caminho
+// inteiro (GuiaDoFluxo, progresso real) e os projetos recentes.
 //
 // Os projetos vêm da API. Enquanto não vêm, a tela mostra esqueletos
 // com a forma do cartão — não um "carregando…" centralizado, que faz
@@ -22,6 +22,7 @@ import { projetos as apiProjetos, type Projeto } from '../lib/api';
 import { useDados } from '../lib/useDados';
 import { formatarBytes } from '../lib/upload';
 import { Folha } from '../components/shell/Folha';
+import { GuiaDoFluxo } from '../components/inicio/GuiaDoFluxo';
 import {
   IconeBusca,
   IconeMais,
@@ -37,23 +38,6 @@ import {
   IconeOlhoFechado,
 } from '../components/icones';
 
-const PASSOS = [
-  {
-    titulo: 'Planeje o roteiro',
-    texto: 'Hook, problema, autoridade e CTA — a estrutura que segura quem assiste.',
-    href: '/roteiros',
-  },
-  {
-    titulo: 'Grave com teleprompter',
-    texto: 'O texto sobe no ritmo da sua fala, com a intenção de cada bloco à vista.',
-    href: '/gravar',
-  },
-  {
-    titulo: 'A IA monta o vídeo',
-    texto: 'Ela escolhe os trechos fortes e explica cada escolha. Você ajusta o que quiser.',
-    href: '/editor',
-  },
-];
 
 export default function ProjetosPage() {
   const [busca, setBusca] = useState('');
@@ -73,9 +57,6 @@ export default function ProjetosPage() {
     p.title.toLowerCase().includes(busca.trim().toLowerCase()),
   );
 
-  // O checklist mede progresso real: ter projeto conta como primeiro
-  // passo. Um contador fixo seria decoração.
-  const concluidos = lista.length > 0 ? 1 : 0;
 
   // Enquanto algum vídeo está sendo preparado, a lista se atualiza
   // sozinha: o selo "Transcrevendo" vira "Proposta pronta" sem F5.
@@ -172,7 +153,7 @@ export default function ProjetosPage() {
         )}
 
         {/* ---------- Hero ---------- */}
-        <section className="hero" style={{ marginBottom: 'var(--e6)' }}>
+        <section className="hero" style={{ marginBottom: 'var(--e5)' }}>
           <div style={{ maxWidth: 560 }}>
             <h2 className="hero__titulo" style={{ letterSpacing: -1, marginBottom: 'var(--e3)' }}>
               Crie vídeos melhores, mais rápido
@@ -204,6 +185,9 @@ export default function ProjetosPage() {
             />
           </picture>
         </section>
+
+        {/* O guia fica logo abaixo do hero: é o caminho do vídeo, não um apoio no canto. */}
+        {!verArquivados && !carregando && <GuiaDoFluxo projetos={lista} />}
 
         <div className="projetos__grade">
           {/* ---------- Projetos recentes ---------- */}
@@ -330,81 +314,6 @@ export default function ProjetosPage() {
             </Folha>
           </section>
 
-          {/* ---------- Comece por aqui ---------- */}
-          <aside className="cartao">
-            <div className="linha entre" style={{ marginBottom: 'var(--e3)' }}>
-              <h3>Comece por aqui</h3>
-              <span className="texto-secundario" style={{ fontSize: 12 }}>
-                {concluidos} de {PASSOS.length}
-              </span>
-            </div>
-
-            <div
-              className="barra"
-              role="progressbar"
-              aria-valuenow={concluidos}
-              aria-valuemin={0}
-              aria-valuemax={PASSOS.length}
-              aria-label="Progresso da configuração inicial"
-              style={{ marginBottom: 'var(--e4)' }}
-            >
-              <div
-                className="barra__preenchida"
-                style={{ width: `${(concluidos / PASSOS.length) * 100}%` }}
-              />
-            </div>
-
-            <ol style={{ listStyle: 'none', display: 'grid', gap: 'var(--e4)' }}>
-              {PASSOS.map((passo, i) => {
-                const feito = i < concluidos;
-
-                return (
-                  <li key={passo.titulo} style={{ display: 'flex', gap: 'var(--e3)' }}>
-                    {/* Número vira check quando concluído: a forma muda,
-                        não só a cor. */}
-                    <span
-                      aria-hidden
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: 13,
-                        display: 'grid',
-                        placeItems: 'center',
-                        flexShrink: 0,
-                        background: feito ? 'var(--success)' : 'var(--surface-2)',
-                        border: feito ? 'none' : '1px solid var(--border-forte)',
-                        color: feito ? '#041735' : 'var(--text-secondary)',
-                        fontSize: 12,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {feito ? <IconeCheck size={14} weight="bold" /> : i + 1}
-                    </span>
-
-                    <div>
-                      <Link
-                        href={passo.href}
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          textDecoration: 'none',
-                        }}
-                      >
-                        {i + 1}. {passo.titulo}
-                      </Link>
-                      <p
-                        className="texto-secundario"
-                        style={{ fontSize: 12, marginTop: 2, lineHeight: 1.45 }}
-                      >
-                        {passo.texto}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </aside>
         </div>
       </div>
     </>
