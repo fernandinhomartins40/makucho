@@ -81,6 +81,7 @@ const NOME_DO_TIPO: Partial<Record<string, string>> = {
   VIDEO: 'O vídeo',
   MUSIC: 'A trilha',
   SOUND_EFFECT: 'O som',
+  VOICEOVER: 'A narração',
   INTRO: 'A vinheta de abertura',
   OUTRO: 'A vinheta de encerramento',
 };

@@ -79,6 +79,7 @@ export const ASSET_KINDS = [
   'LOTTIE',
   'MUSIC',
   'SOUND_EFFECT',
+  'VOICEOVER',
   'INTRO',
   'OUTRO',
   'TRANSITION',
@@ -108,6 +109,8 @@ export const MIME_POR_TIPO: Readonly<Record<AssetKind, readonly string[]>> = {
   LOTTIE: ['application/json'],
   MUSIC: ['audio/mpeg', 'audio/wav', 'audio/ogg'],
   SOUND_EFFECT: ['audio/mpeg', 'audio/wav', 'audio/ogg'],
+  // Narração gravada no editor: o navegador a converte para WAV.
+  VOICEOVER: ['audio/wav', 'audio/mpeg', 'audio/ogg'],
   INTRO: ['video/mp4', 'video/webm'],
   OUTRO: ['video/mp4', 'video/webm'],
   TRANSITION: ['video/mp4', 'video/webm'],
@@ -133,6 +136,8 @@ export const TAMANHO_MAXIMO: Readonly<Record<AssetKind, number>> = {
   LOTTIE: 2 * 1024 * 1024,
   MUSIC: 20 * 1024 * 1024,
   SOUND_EFFECT: 2 * 1024 * 1024,
+  // Uma narração de 15 min em WAV mono de 32 kHz tem ~58 MB.
+  VOICEOVER: 64 * 1024 * 1024,
   INTRO: 50 * 1024 * 1024,
   OUTRO: 50 * 1024 * 1024,
   TRANSITION: 20 * 1024 * 1024,

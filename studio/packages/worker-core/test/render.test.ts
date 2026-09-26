@@ -482,5 +482,17 @@ t('atempo: 3x vira 2 x 1,5', cadeiaDeAtempo(3) === 'atempo=2,atempo=1.5');
   t('2x: a voz do trecho passa pelo atempo', f.includes('atempo=2,'));
 }
 
+// ---------- Narração ----------
+{
+  const narrado: EditPlanV1 = { ...plano, voiceovers: [{ id: 'n1', assetId: 'a-nr', timelineStartMs: 2500, durationMs: 4000, gainDb: 3 }] };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: narrado, sons: { 'a-nr': '/narracao.wav' } });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('narração: o arquivo entra', a.includes('/narracao.wav'));
+  t('narração: no ponto dela, com o volume', f.includes('volume=3dB,') && f.includes('adelay=delays=2500:all=1[nr0]'));
+  t('narração: somada às peças da voz', f.includes('[nr0]') && /amix=inputs=3/.test(f));
+  const semArquivo = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: narrado });
+  t('narração sem arquivo fica de fora (o vídeo sai)', !semArquivo[semArquivo.indexOf('-filter_complex') + 1]!.includes('[nr0]'));
+}
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

@@ -40,6 +40,7 @@ import {
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
+import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
 import { AvisoDeFechamento } from '../../components/editor/AvisoDeFechamento';
@@ -541,6 +542,10 @@ function Editor({ projectId }: { projectId: string }) {
 
   // A película da timeline: quadros tirados da prévia leve.
   const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0);
+
+  // ---------- Narração ----------
+  const [gravadorDe, setGravadorDe] = useState<number | null>(null);
+  const [gravandoDe, setGravandoDe] = useState<number | null>(null);
 
   // ---------- Celular: as colunas ao lado do vídeo ----------
   const [abaDoInspector, setAbaDoInspector] = useState<{ aba: AbaDoInspector; n: number } | null>(null);
@@ -1208,6 +1213,7 @@ function Editor({ projectId }: { projectId: string }) {
               const keyframes = comKeyframeDaMidia(c, posicaoMs - c.timelineStartMs, valores, { x: c.x ?? p.x, y: c.y ?? p.y });
               executar({ op: 'editar_midia', mediaId: id, keyframes });
             }}
+            gravandoDe={gravandoDe}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
@@ -1236,6 +1242,18 @@ function Editor({ projectId }: { projectId: string }) {
         </aside>
 
         {atalhosAbertos && <AtalhosDoEditor onFechar={() => setAtalhosAbertos(false)} />}
+        {gravadorDe !== null && (
+          <GravadorDeNarracao
+            inicioMs={gravadorDe}
+            onGravando={setGravandoDe}
+            onFechar={() => setGravadorDe(null)}
+            onPronta={(assetId, duracao, inicio) => {
+              setGravadorDe(null);
+              const cabe = Math.max(200, Math.min(duracao, duracaoMs - inicio));
+              executar({ op: 'adicionar_narracao', assetId, timelineStartMs: inicio, durationMs: cabe });
+            }}
+          />
+        )}
         {aviso && (
           <div className="editor__aviso" role="status">
             <IconeCheck size={16} /> {aviso}
@@ -1259,6 +1277,10 @@ function Editor({ projectId }: { projectId: string }) {
             onAbrirIa={() => abrirPainel('ia')}
             onAjustes={() => naAcao('ajustar')}
             onVelocidade={() => naAcao('velocidade')}
+            onGravarNarracao={() => {
+              setFolha(null);
+              setGravadorDe(Math.round(posicaoMs));
+            }}
             onTirarPausas={tirarAsPausas}
             onAbrirBiblioteca={(categoria) => {
               // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).

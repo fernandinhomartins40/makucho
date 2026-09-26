@@ -109,6 +109,8 @@ interface Props {
   onAbrirEstilos?: (overlayId: string) => void;
   /** Soltou a legenda num ponto ou num tamanho novo. */
   onAjustarLegenda?: (mudanca: { y?: number; sizeScale?: number }) => void;
+  /** Gravando narração: toca SEM SOM a partir daqui (null para). */
+  gravandoDe?: number | null;
 }
 
 export function Palco({
@@ -132,6 +134,7 @@ export function Palco({
   onAjustarMidia,
   onAbrirEstilos,
   onAjustarLegenda,
+  gravandoDe = null,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
   // trecho atual, o outro espera no começo do próximo.
@@ -150,7 +153,8 @@ export function Palco({
   const [tocando, setTocando] = useState(false);
   const [mudo, setMudo] = useState(false);
   const mudoRef = useRef(mudo);
-  mudoRef.current = mudo;
+  // Gravando narração, a prévia fica muda: o microfone não pega o vídeo.
+  mudoRef.current = mudo || gravandoDe !== null;
   const [zonasSeguras, setZonasSeguras] = useState(true);
   const [erroDoVideo, setErroDoVideo] = useState(false);
   const [libassFalhou, setLibassFalhou] = useState(false);
@@ -519,6 +523,48 @@ export function Palco({
     }
   }, [plan.soundEffects, urlDoAsset]);
 
+  // ---------- Narrações ----------
+  // Um <audio> por narração, alinhado ao relógio: toca dentro do
+  // intervalo dela, corrige o desvio e para fora dele.
+  const narracoes = useRef(new Map<string, HTMLAudioElement>());
+  useEffect(() => {
+    const vivas = new Set((plan.voiceovers ?? []).map((n) => n.id));
+    for (const [id, a] of narracoes.current) {
+      if (!vivas.has(id)) {
+        a.pause();
+        narracoes.current.delete(id);
+      }
+    }
+  }, [plan.voiceovers]);
+  const sincronizarNarracoes = useCallback(
+    (ms: number, tocandoAgora: boolean) => {
+      for (const n of plan.voiceovers ?? []) {
+        let a = narracoes.current.get(n.id);
+        if (!a) {
+          const url = urlDoAsset?.(n.assetId);
+          if (!url) continue;
+          a = new Audio(url);
+          a.preload = 'auto';
+          narracoes.current.set(n.id, a);
+        }
+        const dentro = ms - n.timelineStartMs;
+        const ativa = tocandoAgora && !mudoRef.current && dentro >= 0 && dentro < n.durationMs;
+        if (!ativa) {
+          if (!a.paused) a.pause();
+          continue;
+        }
+        a.volume = Math.min(1, Math.max(0, 10 ** (n.gainDb / 20)));
+        const alvo = dentro / 1000;
+        if (Math.abs(a.currentTime - alvo) > 0.2) a.currentTime = alvo;
+        if (a.paused) void a.play().catch(() => undefined);
+      }
+    },
+    [plan.voiceovers, urlDoAsset],
+  );
+  useEffect(() => {
+    if (!tocando) sincronizarNarracoes(0, false);
+  }, [tocando, sincronizarNarracoes]);
+
   // ---------- Reprodução ----------
   useEffect(() => {
     if (!tocando) return;
@@ -547,6 +593,7 @@ export function Palco({
       }
 
       for (const e of sonsQueComecam(plan, de, relogio.ms)) tocarSom(e);
+      sincronizarNarracoes(relogio.ms, true);
       aplicar(relogio.ms, true);
       tempoAoVivo.current = relogio.ms;
       desenharFundo();
@@ -564,7 +611,7 @@ export function Palco({
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom]);
+  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes]);
 
   // ---------- Trilha ----------
   const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;
@@ -626,6 +673,19 @@ export function Palco({
   }, [comandoAlternar, tocando, pausar, tocarDe]);
 
   useEffect(() => onTocando?.(tocando), [tocando, onTocando]);
+
+  // Gravação de narração: começa a tocar (mudo) do ponto dela e para junto.
+  const gravavaRef = useRef(false);
+  useEffect(() => {
+    if (gravandoDe !== null) {
+      gravavaRef.current = true;
+      tocarDe(gravandoDe);
+    } else if (gravavaRef.current) {
+      gravavaRef.current = false;
+      pausar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gravandoDe]);
 
   /** Pula para o começo do trecho anterior ou do próximo. */
   const pular = (frente: boolean) => {

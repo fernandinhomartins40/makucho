@@ -287,6 +287,28 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     pecas.push(`[p${k}]`);
   });
 
+  // ---------- Narração: mais uma peça no barramento da voz ----------
+  // Entra junto da fala (a limpeza de voz vale para ela e a trilha
+  // abaixa enquanto ela soa), no ponto em que foi gravada.
+  if (!opcoes.quadrosParaMascara) (plano.voiceovers ?? []).forEach((n, k) => {
+    const arquivo = opcoes.sons?.[n.assetId];
+    if (!arquivo) return;
+    const indice = proximaEntrada++;
+    entradas.push('-i', arquivo);
+    const dur = (n.durationMs / 1000).toFixed(3);
+    const fades = [
+      n.fadeInMs ? `afade=t=in:d=${(n.fadeInMs / 1000).toFixed(3)}` : '',
+      n.fadeOutMs ? `afade=t=out:st=${Math.max(0, (n.durationMs - n.fadeOutMs) / 1000).toFixed(3)}:d=${(n.fadeOutMs / 1000).toFixed(3)}` : '',
+    ].filter(Boolean);
+    partes.push(
+      `[${indice}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,` +
+        (n.gainDb ? `volume=${n.gainDb}dB,` : '') +
+        (fades.length ? `${fades.join(',')},` : '') +
+        `adelay=delays=${Math.max(0, Math.round(n.timelineStartMs))}:all=1[nr${k}]`,
+    );
+    pecas.push(`[nr${k}]`);
+  });
+
   const acumulado = agenda.duracaoQuadros;
   let video = 'montado';
 

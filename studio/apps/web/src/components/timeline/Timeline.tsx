@@ -73,13 +73,14 @@ import {
   IconeParametros,
   IconeVelocidade,
   IconeTrilha as IconeMusica,
+  IconeMicrofone,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 import { ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
 
 const VAZIO: ReadonlySet<string> = new Set();
 
-type Faixa = 'video' | 'midia' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
+type Faixa = 'video' | 'midia' | 'audio' | 'narracao' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
 
 // `compacta`: a altura em tela baixa (notebook com a barra do navegador
 // e a escala do Windows: 520 a 730 px úteis). Com as normais, só a faixa
@@ -88,6 +89,7 @@ const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number; co
   { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64, compacta: 52 },
   { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia, altura: 36, compacta: 28 },
   { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52, compacta: 38 },
+  { id: 'narracao', rotulo: 'Narração', Icone: IconeMicrofone, altura: 40, compacta: 30 },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40, compacta: 30 },
   { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40, compacta: 30 },
   { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36, compacta: 28 },
@@ -144,10 +146,12 @@ interface Props {
   onAbrirIa?: () => void;
   onVelocidade?: () => void;
   onAjustes?: () => void;
+  /** Abre o gravador de narração no ponto do cursor. */
+  onGravarNarracao?: () => void;
 }
 
 type Arraste = {
-  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia';
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia' | 'narracao';
   id: string;
   /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
   modo: 'mover' | 'inicio' | 'fim';
@@ -187,6 +191,7 @@ export function Timeline({
   onAbrirIa,
   onVelocidade,
   onAjustes,
+  onGravarNarracao,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -249,6 +254,7 @@ export function Timeline({
     if (arraste.tipo === 'clipe') onOperacao({ op: 'mover_clipe', clipId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'elemento') onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'som') onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: destino });
+    else if (arraste.tipo === 'narracao') onOperacao({ op: 'editar_narracao', narracaoId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'efeito') onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'midia') onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: destino });
     else onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
@@ -319,6 +325,8 @@ export function Timeline({
       for (const x of plan.screenEffects ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
     } else if (tipo === 'som') {
       for (const x of plan.soundEffects) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + 600]);
+    } else if (tipo === 'narracao') {
+      for (const x of plan.voiceovers ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
     } else if (tipo === 'legenda') {
       for (const b of blocos) if (b.manualId && b.manualId !== id) outros.push([b.inicioMs, b.fimMs]);
     }
@@ -623,6 +631,7 @@ export function Timeline({
     if (!(plan.screenEffects ?? []).length && !plan.clips.some((c) => c.effect)) v.add('efeitos');
     if (!plan.soundEffects.length) v.add('sons');
     if (!plan.music) v.add('trilha');
+    if (!(plan.voiceovers ?? []).length) v.add('narracao');
     return v;
   }, [plan, blocos]);
 
@@ -733,6 +742,11 @@ export function Timeline({
           {onAbrirBiblioteca && (
             <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('trilha')}>
               <IconeMusica size={16} /> Trilha de fundo
+            </button>
+          )}
+          {onGravarNarracao && (
+            <button type="button" role="menuitem" onClick={onGravarNarracao}>
+              <IconeMicrofone size={16} /> Narração
             </button>
           )}
           {onTirarPausas && (
@@ -1065,6 +1079,33 @@ export function Timeline({
                         }}
                       />
                     ))}
+
+                {id === 'narracao' &&
+                  ((plan.voiceovers ?? []).length
+                    ? (plan.voiceovers ?? []).map((n) => (
+                        <ItemSimples
+                          key={n.id}
+                          id={`narracao-${n.id}`}
+                          inicioMs={n.timelineStartMs}
+                          fimMs={n.timelineStartMs + n.durationMs}
+                          zoom={zoom}
+                          altura={altura}
+                          cor="#1d4ed8"
+                          rotulo={`Narração${n.gainDb ? ` · ${n.gainDb > 0 ? '+' : ''}${n.gainDb} dB` : ''}`}
+                          selecionado={selecionado('narracao', n.id)}
+                          arrastavel={onOperacao !== undefined}
+                          onIniciarArraste={iniciarArraste('narracao', n.id, n.timelineStartMs, n.durationMs)}
+                          onSelecionar={() => {
+                            onSelecionar?.(null);
+                            onSelecionarItem?.({ tipo: 'narracao', id: n.id });
+                          }}
+                        />
+                      ))
+                    : onGravarNarracao && (
+                        <button type="button" className="timeline__vazio" onClick={onGravarNarracao}>
+                          <IconeMicrofone size={13} /> Gravar narração no cursor
+                        </button>
+                      ))}
 
                 {id === 'sons' &&
                   plan.soundEffects.map((s) => (

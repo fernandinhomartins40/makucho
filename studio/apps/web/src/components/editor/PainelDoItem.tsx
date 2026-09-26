@@ -98,6 +98,7 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
       {item.tipo === 'som' && <EfeitoSonoro plan={plan} id={item.id} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'audio' && <SomDoTrecho plan={plan} clipId={item.id} onOperacao={onOperacao} />}
       {item.tipo === 'trilha' && <TrilhaDeFundo plan={plan} onOperacao={onOperacao} onFechar={onFechar} />}
+      {item.tipo === 'narracao' && <NarracaoDoItem plan={plan} id={item.id} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'efeito' && <EfeitoDeTelaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} />}
       {item.tipo === 'midia' && <MidiaDoItem plan={plan} id={item.id} onOperacao={onOperacao} onFechar={onFechar} posicaoMs={posicaoMs} onSeek={onSeek} />}
     </div>
@@ -110,6 +111,7 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'som') return 'Efeito sonoro';
   if (item.tipo === 'audio') return 'Som do trecho';
   if (item.tipo === 'trilha') return 'Trilha de fundo';
+  if (item.tipo === 'narracao') return 'Narração';
   if (item.tipo === 'midia') {
     const m = plan.mediaLayers?.find((x) => x.id === item.id);
     return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
@@ -272,6 +274,64 @@ function Corte({ plan, clipId, onOperacao }: { plan: EditPlanV1; clipId: string;
  * J/L-cut. A timeline mostra a mesma coisa na faixa Áudio (a forma de
  * onda muda com o volume e os fades).
  */
+/** A narração gravada: volume, entrada e saída suaves, e o som do vídeo por baixo. */
+function NarracaoDoItem({
+  plan,
+  id,
+  onOperacao,
+  onOperacoes,
+  onFechar,
+}: {
+  plan: EditPlanV1;
+  id: string;
+  onOperacao: (op: TimelineOperation) => void;
+  onOperacoes: (ops: TimelineOperation[]) => void;
+  onFechar: () => void;
+}) {
+  const n = (plan.voiceovers ?? []).find((x) => x.id === id);
+  if (!n) return <p className="texto-secundario">Esta narração não existe mais.</p>;
+  const editar = (m: Omit<Extract<TimelineOperation, { op: 'editar_narracao' }>, 'op' | 'narracaoId'>) => onOperacao({ op: 'editar_narracao', narracaoId: id, ...m });
+  // Os trechos que tocam junto da narração (para silenciar o som deles).
+  const agenda = agendaDoPlano(plan);
+  const cobertos = agenda.trechos.filter((t) => t.inicioMs < n.timelineStartMs + n.durationMs && t.inicioMs + t.duracaoMs > n.timelineStartMs);
+  const todosMudos = cobertos.length > 0 && cobertos.every((t) => t.clip.audio?.muted);
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Toca de {segundos(n.timelineStartMs)} s a {segundos(n.timelineStartMs + n.durationMs)} s. Arraste o bloco na faixa Narração para mudar de lugar.
+      </p>
+      <Deslizante rotulo="Volume" valor={n.gainDb} min={-30} max={12} passo={1} unidade=" dB" onSoltar={(v) => editar({ gainDb: v })} />
+      <div className="linha" style={{ gap: 'var(--e3)' }}>
+        <div className="crescer">
+          <Deslizante rotulo="Entrada suave" valor={n.fadeInMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => editar({ fadeInMs: v })} />
+        </div>
+        <div className="crescer">
+          <Deslizante rotulo="Saída suave" valor={n.fadeOutMs ?? 0} min={0} max={3000} passo={50} unidade=" ms" onSoltar={(v) => editar({ fadeOutMs: v })} />
+        </div>
+      </div>
+      {cobertos.length > 0 && (
+        <button
+          type="button"
+          className="botao botao--secundario"
+          onClick={() => onOperacoes(cobertos.map((t) => ({ op: 'ajustar_audio_do_clipe', clipId: t.clip.id, muted: todosMudos ? null : true })))}
+        >
+          {todosMudos ? 'Devolver o som original a esses trechos' : `Silenciar o som original por baixo (${cobertos.length} ${cobertos.length === 1 ? 'trecho' : 'trechos'})`}
+        </button>
+      )}
+      <button
+        type="button"
+        className="botao botao--perigo"
+        onClick={() => {
+          onOperacao({ op: 'remover_narracao', narracaoId: id });
+          onFechar();
+        }}
+      >
+        Remover narração
+      </button>
+    </div>
+  );
+}
+
 function SomDoTrecho({ plan, clipId, onOperacao }: { plan: EditPlanV1; clipId: string; onOperacao: (op: TimelineOperation) => void }) {
   const clip = plan.clips.find((c) => c.id === clipId);
   if (!clip) return <p className="texto-secundario">Este trecho não existe mais.</p>;

@@ -426,6 +426,7 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
   for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
   for (const m of plano.mediaLayers ?? []) if (m.kind !== 'sticker') ids.add(m.assetId);
   for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
+  for (const n of plano.voiceovers ?? []) ids.add(n.assetId);
   if (plano.music) ids.add(plano.music.assetId);
   if (plano.intro) ids.add(plano.intro.assetId);
   if (plano.outro) ids.add(plano.outro.assetId);
@@ -448,7 +449,7 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
       continue;
     }
     if (a.kind === 'MUSIC' && plano.music?.assetId === a.id) musica = caminho;
-    else if (a.kind === 'SOUND_EFFECT') sons[a.id] = caminho;
+    else if (a.kind === 'SOUND_EFFECT' || a.kind === 'VOICEOVER') sons[a.id] = caminho;
     else if (a.kind === 'INTRO' && plano.intro?.assetId === a.id) abertura = caminho;
     else if (a.kind === 'OUTRO' && plano.outro?.assetId === a.id) encerramento = caminho;
     else imagens[a.id] = caminho;

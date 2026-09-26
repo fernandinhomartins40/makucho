@@ -185,6 +185,27 @@ export async function mixarAudio(e: EntradaDaMixagem): Promise<AudioBuffer> {
   }
   e.aoProgredir?.(++feitos / total);
 
+  // ---------- Narração (no barramento da voz: limpeza e ducking valem) ----------
+  for (const n of e.plano.voiceovers ?? []) {
+    const inicio = n.timelineStartMs / 1000;
+    if (inicio >= duracaoS) continue;
+    const buf = await decodificar(e.urlDoAsset(n.assetId));
+    if (!buf) continue;
+    const fonte = ctx.createBufferSource();
+    fonte.buffer = buf;
+    const g = ctx.createGain();
+    const base = db(n.gainDb);
+    const dur = Math.min(n.durationMs / 1000, buf.duration, duracaoS - inicio);
+    g.gain.setValueAtTime(n.fadeInMs ? 0 : base, inicio);
+    if (n.fadeInMs) g.gain.linearRampToValueAtTime(base, inicio + n.fadeInMs / 1000);
+    if (n.fadeOutMs) {
+      g.gain.setValueAtTime(base, Math.max(inicio, inicio + dur - n.fadeOutMs / 1000));
+      g.gain.linearRampToValueAtTime(0, inicio + dur);
+    }
+    fonte.connect(g).connect(vozEntrada);
+    fonte.start(inicio, 0, dur);
+  }
+
   // ---------- Efeitos sonoros ----------
   const cache = new Map<string, Promise<AudioBuffer | null>>();
   for (const s of e.plano.soundEffects) {

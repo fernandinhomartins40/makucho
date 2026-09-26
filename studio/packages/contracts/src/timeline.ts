@@ -384,6 +384,31 @@ export const adicionarEfeitoSonoroSchema = z.object({
   gainDb: z.number().min(-40).max(6).optional(),
 });
 
+/** Uma narração gravada, no ponto da timeline em que foi gravada. */
+export const adicionarNarracaoSchema = z.object({
+  op: z.literal('adicionar_narracao'),
+  id: idSchema.optional(),
+  assetId: idSchema,
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(200).max(900_000),
+  gainDb: z.number().min(-30).max(12).optional(),
+});
+
+/** Move, muda o volume ou os fades de uma narração. */
+export const editarNarracaoSchema = z.object({
+  op: z.literal('editar_narracao'),
+  narracaoId: idSchema,
+  timelineStartMs: msSchema.optional(),
+  gainDb: z.number().min(-30).max(12).optional(),
+  fadeInMs: msSchema.max(3000).optional(),
+  fadeOutMs: msSchema.max(3000).optional(),
+});
+
+export const removerNarracaoSchema = z.object({
+  op: z.literal('remover_narracao'),
+  narracaoId: idSchema,
+});
+
 /** Move ou muda o volume de um efeito sonoro. */
 export const editarEfeitoSonoroSchema = z.object({
   op: z.literal('editar_efeito_sonoro'),
@@ -542,6 +567,9 @@ export const timelineOperationSchema = z
     removerOverlaySchema,
     adicionarEfeitoSonoroSchema,
     removerEfeitoSonoroSchema,
+    adicionarNarracaoSchema,
+    editarNarracaoSchema,
+    removerNarracaoSchema,
   ])
   // As regras que cruzam campos ficam aqui, depois da discriminacao:
   // um .refine() dentro do membro impediria o Zod de ler o campo "op".
@@ -1218,6 +1246,52 @@ export function aplicarOperacao(
       };
       break;
 
+    case 'adicionar_narracao': {
+      const lista = novo.voiceovers ?? [];
+      if (lista.length >= 20) return { ok: false, erro: 'o video ja tem o maximo de narracoes' };
+      novo = {
+        ...novo,
+        voiceovers: [
+          ...lista,
+          {
+            id: livre(operacao.id, lista, 'nr'),
+            assetId: operacao.assetId,
+            timelineStartMs: operacao.timelineStartMs,
+            durationMs: operacao.durationMs,
+            gainDb: operacao.gainDb ?? 0,
+          },
+        ],
+      };
+      break;
+    }
+
+    case 'editar_narracao': {
+      const lista = novo.voiceovers ?? [];
+      if (!lista.some((n) => n.id === operacao.narracaoId)) return { ok: false, erro: 'narracao nao encontrada' };
+      novo = {
+        ...novo,
+        voiceovers: lista.map((n) =>
+          n.id === operacao.narracaoId
+            ? {
+                ...n,
+                ...(operacao.timelineStartMs !== undefined ? { timelineStartMs: operacao.timelineStartMs } : {}),
+                ...(operacao.gainDb !== undefined ? { gainDb: operacao.gainDb } : {}),
+                ...(operacao.fadeInMs !== undefined ? { fadeInMs: operacao.fadeInMs } : {}),
+                ...(operacao.fadeOutMs !== undefined ? { fadeOutMs: operacao.fadeOutMs } : {}),
+              }
+            : n,
+        ),
+      };
+      break;
+    }
+
+    case 'remover_narracao': {
+      const lista = (novo.voiceovers ?? []).filter((n) => n.id !== operacao.narracaoId);
+      const { voiceovers: _v, ...semNarracao } = novo;
+      novo = lista.length ? { ...novo, voiceovers: lista } : (semNarracao as EditPlanV1);
+      break;
+    }
+
     case 'remover_efeito_sonoro':
       novo = {
         ...novo,
@@ -1263,6 +1337,14 @@ export function aplicarOperacao(
           : o,
       ),
     soundEffects: novo.soundEffects.filter((e) => e.timelineStartMs < duracaoAtual),
+    // A narração depois do fim sai; a que passa do fim é encurtada.
+    ...(novo.voiceovers
+      ? {
+          voiceovers: novo.voiceovers
+            .filter((n) => n.timelineStartMs < duracaoAtual - 200)
+            .map((n) => (n.timelineStartMs + n.durationMs > duracaoAtual ? { ...n, durationMs: duracaoAtual - n.timelineStartMs } : n)),
+        }
+      : {}),
   };
 
   // A mesma porta por onde a proposta da IA passa. Se a edicao do
@@ -1349,6 +1431,8 @@ export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
       return operacao.id ? operacao : { ...operacao, id: novoId('ov') };
     case 'adicionar_efeito_sonoro':
       return operacao.id ? operacao : { ...operacao, id: novoId('sf') };
+    case 'adicionar_narracao':
+      return operacao.id ? operacao : { ...operacao, id: novoId('nr') };
     case 'adicionar_efeito_de_tela':
       return operacao.id ? operacao : { ...operacao, id: novoId('ef') };
     case 'adicionar_midia':

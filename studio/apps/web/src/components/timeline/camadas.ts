@@ -29,7 +29,9 @@ export type ItemDaTimeline =
   | { tipo: 'midia'; id: string }
   /** O som de um trecho (id = id do trecho), separado da imagem. */
   | { tipo: 'audio'; id: string }
-  | { tipo: 'trilha'; id: 'trilha' };
+  | { tipo: 'trilha'; id: 'trilha' }
+  /** Uma narração gravada (faixa Narração). */
+  | { tipo: 'narracao'; id: string };
 
 export interface BlocoNaFaixa {
   id: string;

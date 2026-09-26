@@ -407,6 +407,22 @@ export function ehEfeitoSonoroEmbutido(id: string): id is EfeitoSonoroEmbutido {
   return (EFEITOS_SONOROS_EMBUTIDOS as readonly string[]).includes(id);
 }
 
+/**
+ * Narração: voz gravada no editor, por cima do vídeo. Uma faixa própria,
+ * como um efeito sonoro longo -- entra no mesmo barramento da fala (a
+ * limpeza de voz vale para ela, e a trilha abaixa enquanto ela soa).
+ */
+export const narracaoSchema = z.object({
+  id: idSchema,
+  assetId: idSchema,
+  timelineStartMs: msSchema,
+  durationMs: z.number().int().min(200).max(900_000),
+  gainDb: z.number().min(-30).max(12),
+  fadeInMs: msSchema.max(3000).optional(),
+  fadeOutMs: msSchema.max(3000).optional(),
+});
+export type Narracao = z.infer<typeof narracaoSchema>;
+
 export const soundEffectSchema = z.object({
   id: idSchema,
   assetId: idSchema,
@@ -538,6 +554,8 @@ export const editPlanV1Schema = z
     overlays: z.array(overlaySchema).max(40),
     music: musicTrackSchema.optional(),
     soundEffects: z.array(soundEffectSchema).max(40),
+    /** Narrações gravadas no editor (voz por cima do vídeo). */
+    voiceovers: z.array(narracaoSchema).max(20).optional(),
     /** Efeitos de tela (efeitos-de-tela.ts), na ordem em que se aplicam. */
     screenEffects: z.array(efeitoDeTelaSchema).max(40).optional(),
     /** Imagens e vídeos sobrepostos (midias.ts), de baixo para cima. */
