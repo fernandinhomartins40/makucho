@@ -68,8 +68,13 @@ import {
   IconeMudo,
   IconeTeclado,
   IconeIA,
+  IconeOlho,
+  IconeOlhoFechado,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
+import { ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
+
+const VAZIO: ReadonlySet<string> = new Set();
 
 type Faixa = 'video' | 'midia' | 'audio' | 'legendas' | 'textos' | 'elementos' | 'efeitos' | 'sons' | 'trilha';
 
@@ -125,6 +130,9 @@ interface Props {
   /** Abre a biblioteca numa categoria (som, trilha, texto...). */
   onAbrirBiblioteca?: (categoria: 'sons' | 'trilha' | 'textos' | 'transicoes' | 'efeitos' | 'midia') => void;
   onMostrarAtalhos?: () => void;
+  /** Faixas escondidas pelo olho (saem da prévia e da exportação). */
+  ocultas?: ReadonlySet<string>;
+  onAlternarCamada?: (faixa: CamadaOcultavel) => void;
 }
 
 type Arraste = {
@@ -140,6 +148,12 @@ type Arraste = {
   atualDuracao: number;
   /** Áudio: quanto o som já passava da imagem antes do arraste. */
   extraInicial?: number;
+  /**
+   * Até onde o item pode ir sem encostar no vizinho da mesma faixa: o
+   * arraste para na borda do outro, nada fica por cima de nada.
+   */
+  min: number;
+  max: number;
 };
 
 export function Timeline({
@@ -156,6 +170,8 @@ export function Timeline({
   onTirarPausas,
   onAbrirBiblioteca,
   onMostrarAtalhos,
+  ocultas = VAZIO,
+  onAlternarCamada,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -248,12 +264,14 @@ export function Timeline({
 
       const fimInicial = arraste.startMsInicial + arraste.duracaoInicial;
       if (arraste.modo === 'mover') {
-        arraste.atualMs = Math.max(0, arraste.startMsInicial + deslocamentoMs);
+        // Anda só dentro do vão entre os vizinhos: encosta, não sobrepõe.
+        const teto = Math.max(arraste.min, arraste.max - arraste.duracaoInicial);
+        arraste.atualMs = Math.min(Math.max(arraste.min, arraste.startMsInicial + deslocamentoMs), teto);
       } else if (arraste.modo === 'fim') {
-        arraste.atualDuracao = Math.max(300, arraste.duracaoInicial + deslocamentoMs);
+        arraste.atualDuracao = Math.max(Math.min(300, arraste.duracaoInicial), Math.min(arraste.duracaoInicial + deslocamentoMs, arraste.max - arraste.startMsInicial));
       } else {
-        // O fim fica parado; o começo anda, sem passar dele.
-        arraste.atualMs = Math.min(Math.max(0, arraste.startMsInicial + deslocamentoMs), fimInicial - 300);
+        // O fim fica parado; o começo anda, sem passar dele nem do vizinho.
+        arraste.atualMs = Math.min(Math.max(arraste.min, arraste.startMsInicial + deslocamentoMs), fimInicial - 300);
         arraste.atualDuracao = fimInicial - arraste.atualMs;
       }
 
@@ -266,23 +284,80 @@ export function Timeline({
     [zoom],
   );
 
+  /** O vão livre em volta do item, entre os vizinhos da mesma faixa. */
+  const limitesDe = (tipo: Arraste['tipo'], id: string, inicio: number, dur: number) => {
+    const outros: Array<[number, number]> = [];
+    if (tipo === 'elemento') {
+      const ehTexto = COMPONENTES_DE_TEXTO.has(plan.overlays.find((o) => o.id === id)?.component ?? '');
+      for (const o of plan.overlays) {
+        if (o.id === id || o.component === 'ProgressBar' || COMPONENTES_DE_TEXTO.has(o.component) !== ehTexto) continue;
+        outros.push([o.timelineStartMs, o.timelineStartMs + o.durationMs]);
+      }
+    } else if (tipo === 'midia') {
+      for (const m of plan.mediaLayers ?? []) if (m.id !== id) outros.push([m.timelineStartMs, m.timelineStartMs + m.durationMs]);
+    } else if (tipo === 'efeito') {
+      for (const x of plan.screenEffects ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
+    } else if (tipo === 'som') {
+      for (const x of plan.soundEffects) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + 600]);
+    } else if (tipo === 'legenda') {
+      for (const b of blocos) if (b.manualId && b.manualId !== id) outros.push([b.inicioMs, b.fimMs]);
+    }
+    const fim = inicio + dur;
+    // Trechos de vídeo se reordenam (a agenda os põe em fila): sem teto.
+    let min = 0;
+    let max = tipo === 'clipe' || tipo === 'audio' ? Number.POSITIVE_INFINITY : Math.max(fim, duracaoMs);
+    for (const [a, z] of outros) {
+      if (z <= inicio + 1) min = Math.max(min, z);
+      else if (a >= fim - 1) max = Math.min(max, a);
+    }
+    return { min, max };
+  };
+
   const iniciarArraste =
     (tipo: Arraste['tipo'], id: string, startMs: number, duracaoMs = 0, modo: Arraste['modo'] = 'mover', extraInicial = 0) =>
     (e: React.PointerEvent) => {
       if (!onOperacao) return;
       if (modo !== 'mover') e.stopPropagation();
-      arrasteRef.current = {
-        tipo,
-        id,
-        modo,
-        xInicial: e.clientX,
-        startMsInicial: startMs,
-        duracaoInicial: tipo === 'audio' ? extraInicial : duracaoMs,
-        atualMs: startMs,
-        atualDuracao: tipo === 'audio' ? extraInicial : duracaoMs,
-        extraInicial,
+      const comecar = (x: number) => {
+        arrasteRef.current = {
+          tipo,
+          id,
+          modo,
+          xInicial: x,
+          startMsInicial: startMs,
+          duracaoInicial: tipo === 'audio' ? extraInicial : duracaoMs,
+          atualMs: startMs,
+          atualDuracao: tipo === 'audio' ? extraInicial : duracaoMs,
+          extraInicial,
+          ...limitesDe(tipo, id, startMs, duracaoMs),
+        };
+        setArrastando(id);
       };
-      setArrastando(id);
+      if (e.pointerType !== 'touch') {
+        comecar(e.clientX);
+        return;
+      }
+      // No toque, deslizar o dedo ROLA a timeline; para arrastar um item,
+      // segure nele um instante (como segurar um ícone no celular).
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      const limpar = () => {
+        clearTimeout(espera);
+        window.removeEventListener('pointermove', mover);
+        window.removeEventListener('pointerup', limpar);
+        window.removeEventListener('pointercancel', limpar);
+      };
+      const mover = (ev: PointerEvent) => {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) limpar();
+      };
+      const espera = setTimeout(() => {
+        limpar();
+        navigator.vibrate?.(12);
+        comecar(x0);
+      }, 320);
+      window.addEventListener('pointermove', mover);
+      window.addEventListener('pointerup', limpar);
+      window.addEventListener('pointercancel', limpar);
     };
 
   /** Clique duplo (ou dois toques) num texto: abre os estilos dele. */
@@ -399,6 +474,79 @@ export function Timeline({
     if (x < area.scrollLeft || x > area.scrollLeft + visivel - 40) area.scrollLeft = Math.max(0, x - visivel * 0.25);
   }, [posicaoMs, zoom, arrastando]);
 
+  // Rolar sem mexer nos itens: arrastar um espaço vazio da faixa (ou com
+  // o botão do meio em qualquer lugar) rola a timeline para os lados; a
+  // roda com Ctrl dá zoom no ponto do mouse; sem rolagem vertical, a roda
+  // anda para os lados. No toque, o dedo rola (e segurar arrasta o item).
+  const panRef = useRef<{ x: number; y: number; esquerda: number; topo: number } | null>(null);
+  const [rolando, setRolando] = useState(false);
+  const aoApertarNaArea = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'touch' || arrasteRef.current) return;
+    const alvo = e.target as HTMLElement;
+    const vazio = alvo.classList.contains('timeline__pista') || alvo.classList.contains('timeline__linha');
+    if (!(e.button === 1 || (e.button === 0 && vazio))) return;
+    const area = rolagemRef.current;
+    if (!area) return;
+    e.preventDefault();
+    panRef.current = { x: e.clientX, y: e.clientY, esquerda: area.scrollLeft, topo: area.scrollTop };
+    setRolando(true);
+    const mover = (ev: PointerEvent) => {
+      const p = panRef.current;
+      if (!p) return;
+      area.scrollLeft = p.esquerda - (ev.clientX - p.x);
+      area.scrollTop = p.topo - (ev.clientY - p.y);
+    };
+    const soltar = () => {
+      panRef.current = null;
+      setRolando(false);
+      window.removeEventListener('pointermove', mover);
+      window.removeEventListener('pointerup', soltar);
+      window.removeEventListener('pointercancel', soltar);
+    };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+    window.addEventListener('pointercancel', soltar);
+  };
+
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  useEffect(() => {
+    const area = rolagemRef.current;
+    if (!area) return;
+    const roda = (e: WheelEvent) => {
+      const rotulo = area.querySelector<HTMLElement>('.timeline__canto')?.offsetWidth ?? 0;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const x = e.clientX - area.getBoundingClientRect().left - rotulo;
+        const msNoMouse = pxParaMs(area.scrollLeft + x, zoomRef.current);
+        const novo = Math.min(8, Math.max(0.25, zoomRef.current * Math.exp(-e.deltaY * 0.002)));
+        setZoom(novo);
+        requestAnimationFrame(() => {
+          area.scrollLeft = Math.max(0, msParaPx(msNoMouse, novo) - x);
+        });
+        return;
+      }
+      const naRegua = (e.target as HTMLElement).closest('.timeline__linha--regua');
+      const semRolagemVertical = area.scrollHeight <= area.clientHeight + 1;
+      if (!e.shiftKey && Math.abs(e.deltaX) < Math.abs(e.deltaY) && (naRegua || semRolagemVertical)) {
+        e.preventDefault();
+        area.scrollLeft += e.deltaY;
+      }
+    };
+    // Arrastando um item no toque, o dedo não pode rolar a área junto.
+    const toque = (e: TouchEvent) => {
+      if (arrasteRef.current && e.cancelable) e.preventDefault();
+    };
+    area.addEventListener('wheel', roda, { passive: false });
+    area.addEventListener('touchmove', toque, { passive: false });
+    return () => {
+      area.removeEventListener('wheel', roda);
+      area.removeEventListener('touchmove', toque);
+    };
+  }, []);
+
+  const faixaOculta = (id: Faixa) => ocultas.has(id) || (id === 'legendas' && !plan.captions.enabled);
+
   /** Zoom que cabe o vídeo inteiro na largura visível. */
   const ajustar = () => {
     const area = rolagemRef.current;
@@ -457,6 +605,8 @@ export function Timeline({
       <div
         ref={rolagemRef}
         className="timeline__rolagem"
+        data-rolando={rolando || undefined}
+        onPointerDown={aoApertarNaArea}
         onPointerMove={arrastando ? aoArrastar : undefined}
         onPointerUp={arrastando ? aoSoltar : undefined}
         onPointerCancel={arrastando ? aoSoltar : undefined}
@@ -474,15 +624,14 @@ export function Timeline({
           {FAIXAS.map(({ id, rotulo, Icone, altura: normal, compacta }) => {
             const altura = telaBaixa ? compacta : normal;
             return (
-            <div key={id} className={`timeline__linha timeline__linha--${id}`} style={{ height: altura }}>
+            <div key={id} className={`timeline__linha timeline__linha--${id}`} data-oculta={faixaOculta(id) || undefined} style={{ height: altura }}>
               {/* Nome da faixa, preso à esquerda durante a rolagem. */}
               <div className="timeline__faixa" title={rotulo}>
                 <Icone size={16} />
                 <span className="timeline__nome">{rotulo}</span>
-                {id === 'legendas' && onOperacao && <MaisNaFaixa rotulo="Nova legenda no cursor" onClick={novaLegenda} />}
-                {id === 'textos' && onOperacao && <MaisNaFaixa rotulo="Novo texto no cursor" onClick={novoTexto} />}
-                {id === 'sons' && onAbrirBiblioteca && <MaisNaFaixa rotulo="Adicionar efeito sonoro" onClick={() => onAbrirBiblioteca('sons')} />}
-                {id === 'trilha' && onAbrirBiblioteca && <MaisNaFaixa rotulo="Escolher trilha" onClick={() => onAbrirBiblioteca('trilha')} />}
+                {id !== 'video' && onAlternarCamada && ehCamadaOcultavel(id) && (
+                  <OlhoDaFaixa rotulo={rotulo} oculta={faixaOculta(id)} onClick={() => onAlternarCamada(id)} />
+                )}
               </div>
 
               <div className="timeline__pista" style={{ width: larguraPx + 40 }}>
@@ -798,10 +947,20 @@ export function Timeline({
   );
 }
 
-function MaisNaFaixa({ rotulo, onClick }: { rotulo: string; onClick: () => void }) {
+/** O olho da faixa: mostra ou esconde a camada na prévia e na exportação. */
+function OlhoDaFaixa({ rotulo, oculta, onClick }: { rotulo: string; oculta: boolean; onClick: () => void }) {
+  const texto = oculta ? `${rotulo}: escondida no vídeo. Clique para mostrar` : `${rotulo}: aparece no vídeo. Clique para esconder`;
   return (
-    <button type="button" className="botao-icone botao-icone--pequeno timeline__mais" aria-label={rotulo} title={rotulo} onClick={onClick}>
-      <IconeMais size={13} />
+    <button
+      type="button"
+      className="botao-icone botao-icone--pequeno timeline__olho"
+      aria-label={texto}
+      aria-pressed={!oculta}
+      title={texto}
+      data-oculta={oculta || undefined}
+      onClick={onClick}
+    >
+      {oculta ? <IconeOlhoFechado size={14} /> : <IconeOlho size={14} />}
     </button>
   );
 }

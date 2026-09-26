@@ -1446,12 +1446,39 @@ h3 {
   text-overflow: ellipsis;
 }
 
-.timeline__mais {
-  opacity: 0.75;
+.timeline__olho {
+  flex: none;
+  color: var(--text-secondary);
 }
 
-.timeline__mais:hover {
-  opacity: 1;
+.timeline__olho:hover {
+  color: var(--text-primary);
+}
+
+.timeline__olho[data-oculta] {
+  color: var(--warning);
+}
+
+/* Faixa escondida: os itens continuam lá, apagados. */
+.timeline__linha[data-oculta] .timeline__pista > * {
+  opacity: 0.32;
+  filter: grayscale(0.6);
+}
+
+.timeline__linha[data-oculta] .timeline__nome {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+/* Arrastar o vazio rola a timeline: a mão mostra isso. */
+.timeline__rolagem .timeline__pista {
+  cursor: grab;
+}
+
+.timeline__rolagem[data-rolando],
+.timeline__rolagem[data-rolando] * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .timeline__pista {
@@ -1576,7 +1603,8 @@ h3 {
   background: color-mix(in srgb, var(--success) 14%, var(--surface-1));
   color: var(--success);
   cursor: pointer;
-  touch-action: none;
+  /* O dedo que desliza rola a timeline; segurar arrasta (Timeline.tsx). */
+  touch-action: pan-x pan-y;
 }
 
 .audio-do-trecho:hover {
@@ -1657,7 +1685,8 @@ h3 {
   border-radius: var(--r-controle);
   overflow: hidden;
   cursor: grab;
-  touch-action: none;
+  /* O dedo que desliza rola a timeline; segurar arrasta (Timeline.tsx). */
+  touch-action: pan-x pan-y;
   display: flex;
   align-items: center;
   padding: 0 var(--e2);
@@ -3080,7 +3109,6 @@ button {
   }
 
   .timeline__nome,
-  .timeline__mais,
   .timeline__acao-rotulo,
   .timeline__tecla {
     display: none;

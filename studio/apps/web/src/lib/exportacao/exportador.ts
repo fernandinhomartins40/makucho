@@ -414,6 +414,10 @@ export async function exportarNoNavegador(
       t0 = abertura.quadros / fps;
     }
 
+    // Quadros que saíram sem a imagem do vídeo (camada preta). Um ou dois
+    // no começo acontecem (o primeiro quadro do arquivo começa um pouco
+    // depois do zero); mais que isso é defeito, e o arquivo não é entregue.
+    let quadrosSemVideo = 0;
     for (let f = 0; f < nPrincipal; f += 1) {
       if (sinal.aborted) throw cancelado();
       const ms = Math.min(duracaoMs - 1, (f * 1000) / fps);
@@ -428,6 +432,7 @@ export async function exportarNoNavegador(
       for (const [i, l] of leitores) {
         if (!estado.camadas.some((c) => c.indice === i) && i < estado.indice) {
           await l.fechar();
+          compositor.soltarPlayer(l.quadro);
           leitores.delete(i);
         }
       }
@@ -543,6 +548,7 @@ export async function exportarNoNavegador(
 
       // 5. Montagem final.
       compositor.desenhar(montagem);
+      if (compositor.camadasSemImagem > 0) quadrosSemVideo += 1;
       ctx.drawImage(glCanvas, 0, 0, W, H);
       for (const o of plano.overlays) {
         if (o.component !== 'LogoBug' && o.component !== 'ImageOverlay') continue;
@@ -578,6 +584,11 @@ export async function exportarNoNavegador(
       progresso('video');
     }
 
+    if (quadrosSemVideo > Math.max(3, nPrincipal * 0.01)) {
+      throw new Error(
+        `${quadrosSemVideo} de ${nPrincipal} quadros saíram sem a imagem do vídeo, e o arquivo não foi entregue. Tente de novo; se repetir, desmarque "Usar o arquivo original".`,
+      );
+    }
     if (encerramento) await quadroDeVinheta(encerramento, t0 + nPrincipal / fps);
 
     // ---------- Arquivo ----------

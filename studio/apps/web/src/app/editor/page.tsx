@@ -55,6 +55,7 @@ import { MarcaNoEditor } from '../../components/marca/MarcaNoEditor';
 import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
 import { useExportacoes } from '../../lib/exportacao/tarefas';
+import { esconderCamadas, ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
 import type { OpcoesDeExportacao } from '../../lib/exportacao/opcoes';
 import { tempo } from '../../components/editor/funcoes';
 import {
@@ -170,6 +171,27 @@ function Editor({ projectId }: { projectId: string }) {
       // Sem armazenamento local, o estado vale só nesta aba.
     }
   }, [desligados, chaveDosDesligados]);
+
+  // Faixas escondidas pelo olho da timeline: saem da prévia e da
+  // exportação sem apagar nada do plano. Guardadas por projeto.
+  const chaveDasOcultas = `studio:camadas-ocultas:${projectId}`;
+  const [ocultas, setOcultas] = useState<Set<CamadaOcultavel>>(() => {
+    try {
+      const salvo = typeof window !== 'undefined' ? window.localStorage.getItem(chaveDasOcultas) : null;
+      return new Set(salvo ? (JSON.parse(salvo) as string[]).filter(ehCamadaOcultavel) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(chaveDasOcultas, JSON.stringify([...ocultas]));
+    } catch {
+      // Sem armazenamento local, vale só nesta aba.
+    }
+  }, [ocultas, chaveDasOcultas]);
+
+  const planoVisivel = useMemo(() => (plano ? esconderCamadas(plano, ocultas) : null), [plano, ocultas]);
 
   const [passado, setPassado] = useState<EditPlanV1[]>([]);
   const [futuro, setFuturo] = useState<EditPlanV1[]>([]);
@@ -373,15 +395,29 @@ function Editor({ projectId }: { projectId: string }) {
     [plano, salvarDocumento],
   );
 
-  /** Um plano novo vindo do servidor (acabamento, comando da IA). */
+  /**
+   * Um plano novo vindo do servidor (acabamento, comando da IA). A edição
+   * da IA aparece inteira: todas as faixas voltam a ficar visíveis, e a
+   * legenda liga -- a não ser que o pedido tenha sido tirá-la.
+   */
   const receberPlano = useCallback(
-    (documento: EditPlanV1) => {
+    (documento: EditPlanV1, pedido?: string) => {
       if (plano) setPassado((h) => [...h, plano]);
       setFuturo([]);
+      setOcultas(new Set());
+      const pediuSemLegenda = pedido ? /(sem|tir[ae]|remov|desliga|esconde|oculta)\w*\s.*legenda|legenda.*(sem|fora|desligad|escondid)/i.test(pedido) : false;
+      if (!documento.captions.enabled && !pediuSemLegenda) {
+        const ligada = aplicarOperacao(documento, { op: 'configurar_legenda', enabled: true });
+        if (ligada.ok && ligada.plan) {
+          setPlano(ligada.plan);
+          void salvarDocumento(ligada.plan);
+          return;
+        }
+      }
       setPlano(documento);
       setSalvamento('salvo');
     },
-    [plano],
+    [plano, salvarDocumento],
   );
 
   const refazerAcabamento = useCallback(async () => {
@@ -414,7 +450,7 @@ function Editor({ projectId }: { projectId: string }) {
           cursorMs: Math.max(0, Math.round(posicaoMs)),
           ...(anterior ? { anterior } : {}),
         });
-        if (r.aplicadas > 0) receberPlano(r.plano.document as EditPlanV1);
+        if (r.aplicadas > 0) receberPlano(r.plano.document as EditPlanV1, texto);
         return { texto: r.resposta, ignoradas: r.ignoradas, aplicadas: r.aplicadas };
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'a IA não conseguiu aplicar o pedido.');
@@ -485,6 +521,7 @@ function Editor({ projectId }: { projectId: string }) {
     setAvisosDaIa([]);
     try {
       const resultado = await apiIa.analisar(projectId);
+      setOcultas(new Set());
       await carregarPlano();
       await carregarProjeto();
       setAvisosDaIa(resultado.avisos);
@@ -503,7 +540,7 @@ function Editor({ projectId }: { projectId: string }) {
       if (!plano) return;
       iniciarExportacao(projectId, {
         titulo: titulo || projeto?.title || 'Vídeo',
-        plano,
+        plano: planoVisivel ?? plano,
         desligados: [...desligados],
         palavras: (transcricao?.segmentos ?? []).flatMap((s) => s.palavras).map((p) => ({ id: p.id, startMs: p.startMs, endMs: p.endMs, word: p.texto })),
         marca: marcaDoVideo,
@@ -513,7 +550,29 @@ function Editor({ projectId }: { projectId: string }) {
         urlDoAsset: apiAssets.url,
       });
     },
-    [plano, projectId, titulo, projeto?.title, desligados, transcricao, marcaDoVideo, iniciarExportacao],
+    [plano, planoVisivel, projectId, titulo, projeto?.title, desligados, transcricao, marcaDoVideo, iniciarExportacao],
+  );
+
+  /** O olho de uma faixa. A legenda desligada no plano liga de verdade. */
+  const alternarCamada = useCallback(
+    (faixa: CamadaOcultavel) => {
+      if (faixa === 'legendas' && plano && !plano.captions.enabled) {
+        setOcultas((atual) => {
+          const proximo = new Set(atual);
+          proximo.delete('legendas');
+          return proximo;
+        });
+        executar({ op: 'configurar_legenda', enabled: true });
+        return;
+      }
+      setOcultas((atual) => {
+        const proximo = new Set(atual);
+        if (proximo.has(faixa)) proximo.delete(faixa);
+        else proximo.add(faixa);
+        return proximo;
+      });
+    },
+    [plano, executar],
   );
 
   const alternarTrecho = useCallback((clipId: string) => {
@@ -798,7 +857,7 @@ function Editor({ projectId }: { projectId: string }) {
           aoFechar={() => setExportarAberto(false)}
           projectId={projectId}
           titulo={titulo || projeto?.title || 'video'}
-          plano={plano}
+          plano={planoVisivel ?? plano}
           desligados={desligados}
           aoExportar={exportar}
         />
@@ -940,7 +999,7 @@ function Editor({ projectId }: { projectId: string }) {
 
         <main className="editor__palco">
           <Palco
-            plan={plano}
+            plan={planoVisivel ?? plano}
             proxyUrl={temProxy ? urlDoVideo(projectId) : undefined}
             posicaoMs={posicaoMs}
             onPosicao={setPosicaoMs}
@@ -1025,6 +1084,8 @@ function Editor({ projectId }: { projectId: string }) {
           <DivisorDaTimeline editorRef={editorRef} />
           <Timeline
             plan={plano}
+            ocultas={ocultas}
+            onAlternarCamada={alternarCamada}
             posicaoMs={posicaoMs}
             onSeek={setPosicaoMs}
             onOperacao={executar}

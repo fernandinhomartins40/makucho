@@ -214,6 +214,10 @@ export class Compositor {
   private texVideo: WebGLTexture[] = [];
   /** A textura de cada player: guarda o último quadro bom dele. */
   private texDoPlayer = new Map<FonteDeVideo, { tex: WebGLTexture; w: number; h: number; t: number }>();
+  /** As fontes das camadas do quadro sendo desenhado (não podem perder a textura). */
+  private emUso = new Set<FonteDeVideo>();
+  /** Camadas do último quadro desenhado que saíram pretas (sem imagem do vídeo). */
+  camadasSemImagem = 0;
   private fbos: Array<{ fb: WebGLFramebuffer; tex: WebGLTexture }> = [];
   private largura = 0;
   private altura = 0;
@@ -425,8 +429,17 @@ export class Compositor {
     const gl = this.gl;
     let guardada = this.texDoPlayer.get(v);
     if (!guardada) {
-      const livre = this.texVideo.find((t) => ![...this.texDoPlayer.values()].some((g) => g.tex === t));
-      if (!livre) return undefined;
+      let livre = this.texVideo.find((t) => ![...this.texDoPlayer.values()].some((g) => g.tex === t));
+      if (!livre) {
+        // São só duas texturas de vídeo. Na prévia, os dois players; na
+        // exportação, cada trecho traz uma fonte nova (QuadroExterno) -- e
+        // sem devolver a textura, do terceiro trecho em diante o vídeo
+        // saía preto. A fonte mais antiga que não está no quadro cede a sua.
+        const velha = [...this.texDoPlayer.keys()].find((k) => k !== v && !this.emUso.has(k));
+        if (!velha) return undefined;
+        livre = this.texDoPlayer.get(velha)!.tex;
+        this.texDoPlayer.delete(velha);
+      }
       guardada = { tex: livre, w: 0, h: 0, t: -1 };
       this.texDoPlayer.set(v, guardada);
     }
@@ -460,7 +473,8 @@ export class Compositor {
     const gl = this.gl;
     const canvas = gl.canvas as HTMLCanvasElement;
     this.garantirTamanho(canvas.width, canvas.height);
-    quadro.camadas.slice(0, 2).forEach((c, i) => this.montarCamada(i, c, quadro.enquadramento));
+    this.emUso = new Set(quadro.camadas.slice(0, 2).flatMap((c) => (c.fonte ? [c.fonte] : [])));
+    this.camadasSemImagem = quadro.camadas.slice(0, 2).filter((c, i) => !this.montarCamada(i, c, quadro.enquadramento)).length;
 
     const passos = this.passosDosEfeitos(quadro.efeitos ?? []);
     // Com efeitos (ou pedido de guardar), o quadro composto vai para um framebuffer, não para a tela.
@@ -553,6 +567,11 @@ export class Compositor {
   }
 
   /** Esquece a textura de uma mídia que saiu do plano. */
+  /** A fonte saiu de cena (um trecho que acabou na exportação): devolve a textura. */
+  soltarPlayer(v: FonteDeVideo): void {
+    this.texDoPlayer.delete(v);
+  }
+
   esquecerMidia(f: HTMLImageElement | HTMLVideoElement | QuadroExterno): void {
     const g = this.texDaMidia.get(f);
     if (g) this.gl.deleteTexture(g.tex);
