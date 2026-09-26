@@ -22,6 +22,7 @@ import {
   catalogoDaMarcaParaIa,
   catalogoDoStudioParaIa,
   descricaoDaMarcaParaIa,
+  itensDoKit,
   lerSugestaoDaMarca,
   sugestaoPorRegra,
   palavrasNaTimeline,
@@ -36,6 +37,7 @@ import type {
   EntradaDaMarca,
   IntervaloDeFala,
   ItemDaBibliotecaDaMarca,
+  ItemDoKitComArquivo,
   PreferenciasDeVideo,
   SugestaoDeMarca,
 } from '@makucho/studio-contracts';
@@ -128,13 +130,20 @@ export class AcabamentoService {
       select: { id: true, kind: true, originalName: true, durationMs: true },
     });
     const notas = new Map((prefs?.itensDaMarca ?? []).map((i) => [i.assetId, i]));
+    // O arquivo gerado por um prompt do kit criativo leva o prompt junto:
+    // a IA sabe como a trilha soa ou o que o vídeo mostra sem abri-lo.
+    const doKit = new Map<string, ItemDoKitComArquivo>();
+    for (const item of itensDoKit(prefs?.kitCriativo)) for (const id of item.assetIds) doKit.set(id, item);
     return assets.map((a) => {
       const nota = notas.get(a.id);
+      const kit = doKit.get(a.id);
+      const uso = nota?.uso || kit?.uso;
       return {
         assetId: a.id,
         tipo: a.kind,
-        nome: nota?.nome || a.originalName.replace(/\.[a-z0-9]{2,5}$/i, ''),
-        ...(nota?.uso ? { uso: nota.uso } : {}),
+        nome: nota?.nome || kit?.nome || a.originalName.replace(/\.[a-z0-9]{2,5}$/i, ''),
+        ...(uso ? { uso } : {}),
+        ...(kit?.pedido ? { criadoCom: kit.pedido } : {}),
         duracaoMs: a.durationMs,
       };
     });

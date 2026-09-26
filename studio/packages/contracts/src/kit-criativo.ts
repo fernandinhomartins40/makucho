@@ -16,16 +16,24 @@ import type { BrandColors } from './brand';
 
 const texto = (n: number) => z.string().trim().max(n);
 
+/**
+ * Os arquivos gerados a partir deste pedido e enviados pelo próprio
+ * cartão: o elo entre o prompt e o arquivo. A IA do editor lê o prompt
+ * como descrição do arquivo (acabamento.service, `criadoCom`).
+ */
+const arquivosDoItem = z.array(z.string().min(1).max(64)).max(8).optional();
+
 export const trilhaDoKitSchema = z
   .object({
     nome: texto(60),
     uso: texto(160),
     /** O campo "Style of Music" do Suno (modo Custom, instrumental). */
     estilo: texto(400),
+    assetIds: arquivosDoItem,
   })
   .strict();
 
-export const somDoKitSchema = z.object({ nome: texto(60), uso: texto(160), prompt: texto(400) }).strict();
+export const somDoKitSchema = z.object({ nome: texto(60), uso: texto(160), prompt: texto(400), assetIds: arquivosDoItem }).strict();
 
 export const vinhetaDoKitSchema = z
   .object({
@@ -43,14 +51,15 @@ export const vinhetaDoKitSchema = z
     passos: z.array(texto(240)).max(8).optional(),
     /** O som da vinheta, para o Suno. */
     som: texto(400),
+    assetIds: arquivosDoItem,
   })
   .strict();
 
 export const imagemDoKitSchema = z
-  .object({ nome: texto(60), uso: texto(160), prompt: texto(1500), formato: z.enum(['9:16', '1:1', '16:9']) })
+  .object({ nome: texto(60), uso: texto(160), prompt: texto(1500), formato: z.enum(['9:16', '1:1', '16:9']), assetIds: arquivosDoItem })
   .strict();
 
-export const videoDoKitSchema = z.object({ nome: texto(60), uso: texto(160), prompt: texto(1500) }).strict();
+export const videoDoKitSchema = z.object({ nome: texto(60), uso: texto(160), prompt: texto(1500), assetIds: arquivosDoItem }).strict();
 
 export const kitCriativoSchema = z
   .object({
@@ -219,4 +228,54 @@ export function kitPorRegra(e: { nome?: string; segmento?: string; tom: string; 
       },
     ],
   };
+}
+
+// ---------- O elo prompt -> arquivo ----------
+
+export type SecaoDoKit = 'trilhas' | 'sons' | 'abertura' | 'encerramento' | 'imagens' | 'videos';
+
+/** O tipo de arquivo (AssetKind) que cada seção do kit gera. */
+export const TIPO_DA_SECAO: Record<SecaoDoKit, 'MUSIC' | 'SOUND_EFFECT' | 'INTRO' | 'OUTRO' | 'IMAGE' | 'VIDEO'> = {
+  trilhas: 'MUSIC',
+  sons: 'SOUND_EFFECT',
+  abertura: 'INTRO',
+  encerramento: 'OUTRO',
+  imagens: 'IMAGE',
+  videos: 'VIDEO',
+};
+
+export interface ItemDoKitComArquivo {
+  secao: SecaoDoKit;
+  indice: number;
+  nome: string;
+  uso: string;
+  /** O pedido: estilo (trilha), prompt (som, imagem, vídeo), prompt + som (vinheta). */
+  pedido: string;
+  assetIds: string[];
+}
+
+/** Todos os itens do kit, na mesma forma, com os arquivos ligados a cada um. */
+export function itensDoKit(kit: KitCriativo | null | undefined): ItemDoKitComArquivo[] {
+  if (!kit) return [];
+  const itens: ItemDoKitComArquivo[] = [];
+  kit.trilhas.forEach((t, i) => itens.push({ secao: 'trilhas', indice: i, nome: t.nome, uso: t.uso, pedido: t.estilo, assetIds: t.assetIds ?? [] }));
+  kit.sons.forEach((t, i) => itens.push({ secao: 'sons', indice: i, nome: t.nome, uso: t.uso, pedido: t.prompt, assetIds: t.assetIds ?? [] }));
+  for (const secao of ['abertura', 'encerramento'] as const) {
+    const v = kit[secao];
+    if (v) itens.push({ secao, indice: 0, nome: v.nome, uso: `${secao === 'abertura' ? 'Abertura' : 'Encerramento'} de ${String(v.duracaoS).replace('.', ',')} s`, pedido: [v.prompt, v.som && `som: ${v.som}`].filter(Boolean).join(' | '), assetIds: v.assetIds ?? [] });
+  }
+  kit.imagens.forEach((t, i) => itens.push({ secao: 'imagens', indice: i, nome: t.nome, uso: t.uso, pedido: t.prompt, assetIds: t.assetIds ?? [] }));
+  kit.videos.forEach((t, i) => itens.push({ secao: 'videos', indice: i, nome: t.nome, uso: t.uso, pedido: t.prompt, assetIds: t.assetIds ?? [] }));
+  return itens;
+}
+
+/** O kit com os arquivos de um item trocados (ligar ou desligar um arquivo). */
+export function comArquivosNoItem(kit: KitCriativo, secao: SecaoDoKit, indice: number, assetIds: string[]): KitCriativo {
+  const ids = [...new Set(assetIds)].slice(-8);
+  if (secao === 'abertura' || secao === 'encerramento') {
+    const v = kit[secao];
+    return v ? { ...kit, [secao]: { ...v, assetIds: ids } } : kit;
+  }
+  const lista = kit[secao] as Array<{ assetIds?: string[] }>;
+  return { ...kit, [secao]: lista.map((t, i) => (i === indice ? { ...t, assetIds: ids } : t)) } as KitCriativo;
 }

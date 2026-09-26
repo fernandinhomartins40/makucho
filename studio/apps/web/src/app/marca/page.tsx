@@ -21,7 +21,8 @@
 
 import { useEffect, useState } from 'react';
 import type { PreferenciasDeVideo, SugestaoDeMarca, TipoDeTransicao } from '@makucho/studio-contracts';
-import { FAMILIAS_DE_FONTE, PRESETS_DE_LEGENDA, PRESETS_DE_TEXTO, presetDaLegenda } from '@makucho/studio-contracts';
+import { FAMILIAS_DE_FONTE, PRESETS_DE_LEGENDA, PRESETS_DE_TEXTO, TIPO_DA_SECAO, comArquivosNoItem, itensDoKit, presetDaLegenda } from '@makucho/studio-contracts';
+import type { SecaoDoKit } from '@makucho/studio-contracts';
 import { ConfigurarComIa } from '../../components/marca/ConfigurarComIa';
 import { LogosDaMarca, VARIANTES_DA_LOGO } from '../../components/marca/LogosDaMarca';
 import { BibliotecaDaMarca, type TipoDaBiblioteca } from '../../components/marca/BibliotecaDaMarca';
@@ -197,23 +198,94 @@ export default function MarcaPage() {
     textDark: corDe('fundo'),
   };
 
-  const salvar = async () => {
+  /**
+   * Salva o kit. `com` traz valores que acabaram de mudar (o estado do
+   * React só muda no próximo desenho): aplicar a sugestão da IA e ligar
+   * um arquivo a um prompt salvam na hora, sem esperar o clique.
+   */
+  const salvar = async (
+    com: { prefs?: Preferencias; cores?: typeof coresDaMarca; fonteTitulo?: string; fonteCorpo?: string; estilo?: string } = {},
+    mensagem = 'Salvo. O kit passa a valer nos próximos vídeos.',
+  ) => {
     setSalvando(true);
     setAviso(null);
     try {
       await apiMarca.salvar({
         name: nome.trim() || 'Kit de marca',
-        colors: coresDaMarca,
-        fontPrimary: fonteTitulo,
-        fontSecond: fonteCorpo,
-        videoDefaults: { ...prefs, captionPreset: estilo as PreferenciasDeVideo['captionPreset'] },
+        colors: com.cores ?? coresDaMarca,
+        fontPrimary: com.fonteTitulo ?? fonteTitulo,
+        fontSecond: com.fonteCorpo ?? fonteCorpo,
+        videoDefaults: { ...(com.prefs ?? prefs), captionPreset: (com.estilo ?? estilo) as PreferenciasDeVideo['captionPreset'] },
       });
       setSujo(false);
-      setAviso({ tom: 'info', texto: 'Salvo. O kit passa a valer nos próximos vídeos.' });
+      setAviso({ tom: 'info', texto: mensagem });
+      return true;
     } catch (e) {
       setAviso({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar.' });
+      return false;
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // ---------- Kit criativo: o arquivo gerado volta para o seu prompt ----------
+  /**
+   * Envia o arquivo gerado pelo prompt de um cartão do kit: ele vai para
+   * a biblioteca no tipo certo, fica LIGADO ao prompt (a IA do editor lê o
+   * prompt como descrição do arquivo) e já ganha nome e "para que serve".
+   * Abertura, encerramento e a primeira trilha viram o padrão se ainda não
+   * houver um. Tudo salvo na hora.
+   */
+  const enviarDoKit = async (secao: SecaoDoKit, indice: number, lista: File[]) => {
+    const kit = prefs.kitCriativo;
+    const item = itensDoKit(kit).find((i) => i.secao === secao && i.indice === indice);
+    if (!kit || !item || !lista.length) return;
+    const kind = TIPO_DA_SECAO[secao];
+    setEnviando(`kit:${secao}:${indice}`);
+    setAviso(null);
+    try {
+      const novos: string[] = [];
+      for (const arquivo of lista) novos.push((await apiAssets.enviar(kind, arquivo, await medirDuracao(arquivo))).id);
+      const notas = [
+        ...(prefs.itensDaMarca ?? []).filter((n) => !novos.includes(n.assetId)),
+        ...novos.map((assetId) => ({ assetId, nome: item.nome.slice(0, 60), uso: item.uso.slice(0, 160) })),
+      ].slice(-120);
+      const novo: Preferencias = { ...prefs, kitCriativo: comArquivosNoItem(kit, secao, indice, [...item.assetIds, ...novos]), itensDaMarca: notas };
+      if (kind === 'INTRO' && !prefs.abertura?.assetId) novo.abertura = { usar: true, assetId: novos[0] };
+      if (kind === 'OUTRO' && !prefs.encerramento?.assetId) novo.encerramento = { usar: true, assetId: novos[0] };
+      if (kind === 'MUSIC' && !prefs.musica.assetId) novo.musica = { ...prefs.musica, assetId: novos[0] };
+      setPrefs(novo);
+      await carregarAssets();
+      await salvar({ prefs: novo }, `"${item.nome}" enviado e ligado ao prompt. A IA do editor já sabe o que é e quando usar.`);
+    } catch (e) {
+      setAviso({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível enviar o arquivo.' });
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  /** Tira um arquivo do prompt: ele sai da biblioteca e do kit. */
+  const removerDoKit = async (secao: SecaoDoKit, indice: number, assetId: string) => {
+    const kit = prefs.kitCriativo;
+    const item = itensDoKit(kit).find((i) => i.secao === secao && i.indice === indice);
+    if (!kit || !item) return;
+    if (!window.confirm('Remover este arquivo? Ele sai da biblioteca da marca.')) return;
+    setAviso(null);
+    try {
+      await apiAssets.remover(assetId).catch(() => undefined);
+      const novo: Preferencias = {
+        ...prefs,
+        kitCriativo: comArquivosNoItem(kit, secao, indice, item.assetIds.filter((id) => id !== assetId)),
+        itensDaMarca: (prefs.itensDaMarca ?? []).filter((n) => n.assetId !== assetId),
+        ...(prefs.abertura?.assetId === assetId ? { abertura: { usar: prefs.abertura.usar, assetId: undefined } } : {}),
+        ...(prefs.encerramento?.assetId === assetId ? { encerramento: { usar: prefs.encerramento.usar, assetId: undefined } } : {}),
+        ...(prefs.musica.assetId === assetId ? { musica: { ...prefs.musica, assetId: undefined } } : {}),
+      };
+      setPrefs(novo);
+      await carregarAssets();
+      await salvar({ prefs: novo }, 'Arquivo removido.');
+    } catch (e) {
+      setAviso({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível remover.' });
     }
   };
 
@@ -226,26 +298,49 @@ export default function MarcaPage() {
     setSujo(true);
   };
 
-  /** A sugestão da IA vira o kit inteiro; quem salva é a pessoa. */
+  /**
+   * A sugestão da IA vira o kit inteiro e é SALVA na hora: "Usar este kit"
+   * já é a aprovação, e os prompts do kit não podem se perder por falta
+   * de um segundo clique. Os arquivos já ligados a prompts de mesmo nome
+   * continuam ligados.
+   */
   const aplicarSugestao = (s: SugestaoDeMarca) => {
-    setCores(coresDe(s.cores));
-    setFonteTitulo(s.fonteTitulo);
-    setFonteCorpo(s.fonteCorpo);
-    setEstilo(presetDaLegenda(s.captionPreset)?.id ?? estilo);
-    setPrefs((atual) => ({
-      ...atual,
+    const novasCores = coresDe(s.cores);
+    const novoEstilo = presetDaLegenda(s.captionPreset)?.id ?? estilo;
+    const antigos = new Map(itensDoKit(prefs.kitCriativo).map((i) => [`${i.secao}:${i.nome}`, i.assetIds]));
+    let kit = s.kit;
+    for (const i of itensDoKit(kit)) {
+      const ids = antigos.get(`${i.secao}:${i.nome}`);
+      if (ids?.length) kit = comArquivosNoItem(kit, i.secao, i.indice, ids);
+    }
+    const novo: Preferencias = {
+      ...prefs,
       textoPreset: s.textoPreset,
       transicaoPadrao: s.transicaoPadrao as TipoDeTransicao,
       autoZoom: s.preferencias.autoZoom,
       efeitosSonoros: s.preferencias.efeitosSonoros,
       barraDeProgresso: s.preferencias.barraDeProgresso,
       voiceEnhance: s.preferencias.voiceEnhance,
-      logo: { ...atual.logo, posicao: s.preferencias.logoPosicao },
-      musica: { ...atual.musica, volumeDb: s.preferencias.volumeTrilhaDb },
-      kitCriativo: s.kit,
-    }));
-    setSujo(true);
-    setAviso({ tom: 'info', texto: 'Kit aplicado em todas as abas. Confira e clique em "Salvar alterações". Os pedidos para criar trilhas, sons e vinhetas estão em "Criar com IA".' });
+      logo: { ...prefs.logo, posicao: s.preferencias.logoPosicao },
+      musica: { ...prefs.musica, volumeDb: s.preferencias.volumeTrilhaDb },
+      kitCriativo: kit,
+    };
+    setCores(novasCores);
+    setFonteTitulo(s.fonteTitulo);
+    setFonteCorpo(s.fonteCorpo);
+    setEstilo(novoEstilo);
+    setPrefs(novo);
+    const cor = (id: string) => novasCores.find((c) => c.id === id)?.valor ?? COR_PADRAO[id] ?? '#2F66FF';
+    void salvar(
+      {
+        prefs: novo,
+        cores: { primary: cor('primaria'), secondary: cor('secundaria'), accent: cor('superficie'), textLight: cor('texto'), textDark: cor('fundo') },
+        fonteTitulo: s.fonteTitulo,
+        fonteCorpo: s.fonteCorpo,
+        estilo: novoEstilo,
+      },
+      'Kit aplicado e salvo em todas as abas. Os prompts para criar trilhas, sons, vinhetas, imagens e vídeos estão em "Criar com IA".',
+    );
   };
 
   const presetEscolhido = presetDaLegenda(estilo) ?? PRESETS_DE_LEGENDA[0];
@@ -568,6 +663,10 @@ export default function MarcaPage() {
             {aba === 'criar' && (
               <KitCriativo
                 kit={prefs.kitCriativo}
+                arquivos={arquivos}
+                enviando={enviando}
+                onEnviarArquivo={(secao, indice, lista) => void enviarDoKit(secao, indice, lista)}
+                onRemoverArquivo={(secao, indice, id) => void removerDoKit(secao, indice, id)}
                 logos={Object.fromEntries(arquivos.filter((a) => TIPOS_DE_LOGO.includes(a.kind)).map((a) => [a.kind, apiAssets.url(a.id)]))}
                 onEnviar={(tipo) => {
                   setAbaDaBiblioteca(tipo);

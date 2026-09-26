@@ -10114,3 +10114,110 @@ body[data-redimensionando] * {
     font-size: 19px;
   }
 }
+
+/* Kit criativo: o arquivo gerado, ligado ao prompt, dentro do cartão. */
+.kit-arquivos {
+  display: grid;
+  gap: var(--e2);
+  margin-top: var(--e2);
+  padding-top: var(--e3);
+  border-top: 1px dashed var(--border);
+}
+
+.kit-arquivos__lista {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kit-arquivos__lista li {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--success) 40%, var(--border));
+  border-radius: var(--r-controle);
+  background: color-mix(in srgb, var(--success) 7%, transparent);
+}
+
+.kit-arquivos__ok {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--success);
+  color: #041735;
+}
+
+.kit-arquivos__previa audio {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  height: 32px;
+}
+
+.kit-arquivos__previa img,
+.kit-arquivos__previa video {
+  display: block;
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #000;
+}
+
+.kit-arquivos__nome {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kit-arquivos__envio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--e3);
+}
+
+.kit-arquivos__envio small {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.kit-prompt[data-com-arquivo],
+.kit-vinheta[data-com-arquivo] {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+}
+
+.kit__rodape-geral {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.kit__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 599px) {
+  .kit-arquivos__lista li {
+    flex-wrap: wrap;
+  }
+  .kit-arquivos__previa audio {
+    width: 100%;
+  }
+}

@@ -13,6 +13,9 @@ import {
   lerSugestaoDaMarca,
   preferenciasDeVideoSchema,
   sugestaoPorRegra,
+  comArquivosNoItem,
+  itensDoKit,
+  TIPO_DA_SECAO,
 } from '../src/index';
 import type { EntradaDaMarca } from '../src/index';
 
@@ -105,6 +108,17 @@ const catalogo = catalogoDaMarcaParaIa();
 t('o pedido é curto (< 600 caracteres)', pedido.length < 600);
 t('o catálogo é fixo (prefixo cacheável)', catalogo === catalogoDaMarcaParaIa());
 console.log(`   (pedido: ${pedido.length} caracteres; catálogo: ${catalogo.length})`);
+
+// ---------- O arquivo gerado ligado ao seu prompt ----------
+{
+  const kit = regra.kit;
+  const ligado = comArquivosNoItem(comArquivosNoItem(kit, 'trilhas', 0, ['a1', 'a1', 'a2']), 'abertura', 0, ['v1']);
+  const itens = itensDoKit(ligado);
+  const trilha = itens.find((x) => x.secao === 'trilhas' && x.indice === 0)!;
+  t('ligar arquivos ao prompt (sem repetir) e à vinheta', trilha.assetIds.join(',') === 'a1,a2' && itens.find((x) => x.secao === 'abertura')!.assetIds[0] === 'v1');
+  t('o kit com arquivos ligados continua válido para salvar', preferenciasDeVideoSchema.safeParse({ kitCriativo: ligado }).success);
+  t('o pedido da trilha vai junto (é o que a IA do editor lê)', trilha.pedido === kit.trilhas[0]!.estilo && TIPO_DA_SECAO.trilhas === 'MUSIC' && TIPO_DA_SECAO.encerramento === 'OUTRO');
+}
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

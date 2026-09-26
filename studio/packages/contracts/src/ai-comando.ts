@@ -267,6 +267,11 @@ export interface ItemDaBibliotecaDaMarca {
   nome: string;
   uso?: string;
   duracaoMs?: number | null;
+  /**
+   * O pedido que gerou o arquivo (kit criativo: o estilo da trilha no
+   * Suno, a cena do vídeo): diz à IA como ele é, sem ela ouvir ou ver.
+   */
+  criadoCom?: string;
 }
 
 const NOME_DO_TIPO: Record<string, string> = {
@@ -351,10 +356,17 @@ export function resumoDoPlanoParaIa(
     linhas.push(`Cores da marca: ${Object.entries(recursos.coresDaMarca).map(([k, v]) => `${k}=${v}`).join(' ')}`);
   }
   if (recursos.biblioteca?.length) {
-    linhas.push('', 'Biblioteca da marca (assetId|tipo|nome|para que serve|duração):');
+    linhas.push('', 'Biblioteca da marca (assetId|tipo|nome|para que serve|duração|como é: o pedido que o gerou):');
     for (const b of recursos.biblioteca.slice(0, 60)) {
       linhas.push(
-        [b.assetId, NOME_DO_TIPO[b.tipo] ?? b.tipo, `"${curto(b.nome, 40)}"`, b.uso ? `"${curto(b.uso, 100)}"` : '-', b.duracaoMs ? seg(b.duracaoMs) : '-'].join('|'),
+        [
+          b.assetId,
+          NOME_DO_TIPO[b.tipo] ?? b.tipo,
+          `"${curto(b.nome, 40)}"`,
+          b.uso ? `"${curto(b.uso, 100)}"` : '-',
+          b.duracaoMs ? seg(b.duracaoMs) : '-',
+          b.criadoCom ? `"${curto(b.criadoCom, 160)}"` : '-',
+        ].join('|'),
       );
     }
     if (plano.intro || plano.outro) {

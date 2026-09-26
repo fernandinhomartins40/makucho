@@ -6,19 +6,30 @@
 // vídeos de apoio num gerador de vídeo (Sora, Veo, Kling, Runway, com a
 // logo anexada), imagens no GPT Image.
 //
-// Cada cartão diz ONDE colar, tem o texto pronto com um botão de copiar,
-// e termina levando para a aba da Biblioteca onde o arquivo pronto entra.
+// Cada cartão diz ONDE colar e tem o texto pronto para copiar. E fecha o
+// ciclo no próprio cartão: o arquivo gerado é enviado ali, fica LIGADO
+// ao prompt (salvo no kit) e a IA do editor passa a ler o prompt como a
+// descrição do arquivo -- sabe como a trilha soa e o que o vídeo mostra
+// sem abri-lo, e usa cada um no lugar certo.
 // ============================================================
 
-import { useState } from 'react';
-import type { KitCriativo as Kit } from '@makucho/studio-contracts';
-import { IconeCopiar, IconeCheck, IconeIA, IconeLinkExterno, IconeAudio, IconeVideo, IconeMidia, IconeEnviar } from '../icones';
+import { useRef, useState } from 'react';
+import type { KitCriativo as Kit, SecaoDoKit } from '@makucho/studio-contracts';
+import { TIPO_DA_SECAO } from '@makucho/studio-contracts';
+import { assets as apiAssets, type Asset } from '../../lib/api';
+import { IconeCopiar, IconeCheck, IconeIA, IconeLinkExterno, IconeAudio, IconeVideo, IconeMidia, IconeEnviar, IconeLixeira } from '../icones';
 import type { TipoDaBiblioteca } from './BibliotecaDaMarca';
 
 interface Props {
   kit: Kit | null | undefined;
   /** URL de cada versão da logo enviada, para baixar e anexar no gerador. */
   logos?: Partial<Record<'LOGO' | 'LOGO_NEGATIVE' | 'LOGO_COMPACT', string>>;
+  /** Os arquivos da marca (para mostrar os ligados a cada prompt). */
+  arquivos?: readonly Asset[];
+  /** `kit:<secao>:<indice>` enquanto um cartão envia. */
+  enviando?: string | null;
+  onEnviarArquivo?: (secao: SecaoDoKit, indice: number, arquivos: File[]) => void;
+  onRemoverArquivo?: (secao: SecaoDoKit, indice: number, assetId: string) => void;
   /** Leva para a Biblioteca, na aba do tipo de arquivo. */
   onEnviar: (tipo: TipoDaBiblioteca) => void;
   /** Não há kit ainda: leva ao "Configurar com IA". */
@@ -26,6 +37,16 @@ interface Props {
 }
 
 const LOGO: Record<string, string> = { LOGO: 'a logo principal', LOGO_NEGATIVE: 'a logo para fundo escuro (versão clara)', LOGO_COMPACT: 'o ícone (só o símbolo)' };
+
+/** O que cada seção aceita e como o botão chama o arquivo. */
+const ENVIO: Record<SecaoDoKit, { accept: string; nome: string }> = {
+  trilhas: { accept: 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/x-m4a', nome: 'a trilha gerada' },
+  sons: { accept: 'audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/x-m4a', nome: 'o som gerado' },
+  abertura: { accept: 'video/mp4,video/webm,video/quicktime', nome: 'a abertura gerada' },
+  encerramento: { accept: 'video/mp4,video/webm,video/quicktime', nome: 'o encerramento gerado' },
+  imagens: { accept: 'image/png,image/jpeg,image/webp', nome: 'a imagem gerada' },
+  videos: { accept: 'video/mp4,video/webm,video/quicktime', nome: 'o vídeo gerado' },
+};
 
 function Copiar({ texto, rotulo = 'Copiar' }: { texto: string; rotulo?: string }) {
   const [feito, setFeito] = useState(false);
@@ -57,22 +78,6 @@ function Ferramenta({ href, nome }: { href: string; nome: string }) {
   );
 }
 
-function Prompt({ nome, uso, texto, detalhe }: { nome: string; uso: string; texto: string; detalhe?: string }) {
-  return (
-    <div className="kit-prompt">
-      <div className="kit-prompt__topo">
-        <span>
-          <strong>{nome}</strong>
-          {uso && <small>{uso}</small>}
-        </span>
-        <Copiar texto={texto} />
-      </div>
-      <p className="kit-prompt__texto">{texto}</p>
-      {detalhe && <p className="kit-prompt__detalhe">{detalhe}</p>}
-    </div>
-  );
-}
-
 const GERADORES_DE_VIDEO = [
   { nome: 'Sora', href: 'https://sora.chatgpt.com/' },
   { nome: 'Veo', href: 'https://labs.google/fx/tools/flow' },
@@ -90,7 +95,108 @@ function Geradores() {
   );
 }
 
-export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
+/**
+ * O fim de cada cartão: os arquivos já gerados a partir deste prompt, com
+ * prévia, e o botão para enviar o próximo.
+ */
+function ArquivosDoPrompt({
+  secao,
+  indice,
+  assetIds,
+  arquivos,
+  enviando,
+  onEnviar,
+  onRemover,
+}: {
+  secao: SecaoDoKit;
+  indice: number;
+  assetIds: readonly string[] | undefined;
+  arquivos: readonly Asset[];
+  enviando: boolean;
+  onEnviar?: (arquivos: File[]) => void;
+  onRemover?: (assetId: string) => void;
+}) {
+  const entrada = useRef<HTMLInputElement>(null);
+  const ligados = (assetIds ?? []).map((id) => arquivos.find((a) => a.id === id)).filter((a): a is Asset => Boolean(a));
+  const tipo = TIPO_DA_SECAO[secao];
+  if (!onEnviar) return null;
+  return (
+    <div className="kit-arquivos" data-cartao={`${secao}:${indice}`} data-com-arquivo={ligados.length > 0 || undefined}>
+      {ligados.length > 0 && (
+        <ul className="kit-arquivos__lista">
+          {ligados.map((a) => (
+            <li key={a.id}>
+              <span className="kit-arquivos__ok" aria-hidden>
+                <IconeCheck size={12} weight="bold" />
+              </span>
+              <span className="kit-arquivos__previa">
+                {tipo === 'MUSIC' || tipo === 'SOUND_EFFECT' ? (
+                  <audio controls preload="none" src={apiAssets.url(a.id)} />
+                ) : tipo === 'IMAGE' ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={apiAssets.url(a.id)} alt="" />
+                ) : (
+                  <video src={apiAssets.url(a.id)} preload="metadata" muted playsInline controls />
+                )}
+              </span>
+              <span className="kit-arquivos__nome" title={a.originalName}>
+                {a.originalName}
+              </span>
+              {onRemover && (
+                <button type="button" className="botao-icone botao-icone--pequeno" aria-label={`Remover ${a.originalName}`} onClick={() => onRemover(a.id)}>
+                  <IconeLixeira size={14} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="kit-arquivos__envio">
+        <button type="button" className="botao botao--secundario botao--pequeno" disabled={enviando} onClick={() => entrada.current?.click()}>
+          <IconeEnviar size={14} />
+          {enviando ? 'Enviando…' : ligados.length ? 'Enviar outra versão' : `Enviar ${ENVIO[secao].nome}`}
+        </button>
+        <small>
+          {ligados.length
+            ? 'Ligado a este prompt: a IA do editor sabe o que é e quando usar.'
+            : 'Gerou? Envie aqui: o arquivo fica ligado a este prompt, e a IA do editor entende o que ele é.'}
+        </small>
+      </div>
+      <input
+        ref={entrada}
+        type="file"
+        hidden
+        multiple={secao !== 'abertura' && secao !== 'encerramento'}
+        accept={ENVIO[secao].accept}
+        onChange={(e) => {
+          const lista = [...(e.target.files ?? [])];
+          e.target.value = '';
+          if (lista.length) onEnviar(lista);
+        }}
+      />
+    </div>
+  );
+}
+
+/** Um prompt do kit: nome, para que serve, o texto e, embaixo, os arquivos gerados. */
+function Prompt({ nome, uso, texto, detalhe, comArquivo, rodape }: { nome: string; uso: string; texto: string; detalhe?: string; comArquivo: boolean; rodape: React.ReactNode }) {
+  return (
+    <div className="kit-prompt" data-com-arquivo={comArquivo || undefined}>
+      <div className="kit-prompt__topo">
+        <span>
+          <strong>{nome}</strong>
+          {uso && <small>{uso}</small>}
+        </span>
+        <Copiar texto={texto} />
+      </div>
+      <p className="kit-prompt__texto">{texto}</p>
+      {detalhe && <p className="kit-prompt__detalhe">{detalhe}</p>}
+      {rodape}
+    </div>
+  );
+}
+
+export function KitCriativo({ kit, logos = {}, arquivos = [], enviando = null, onEnviarArquivo, onRemoverArquivo, onEnviar, onGerar }: Props) {
   if (!kit) {
     return (
       <div className="kit-vazio">
@@ -109,10 +215,22 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
     );
   }
 
-  const vinheta = (v: NonNullable<Kit['abertura']>, tipo: 'INTRO' | 'OUTRO') => {
+  const arquivosDe = (secao: SecaoDoKit, indice: number, assetIds: readonly string[] | undefined) => (
+    <ArquivosDoPrompt
+      secao={secao}
+      indice={indice}
+      assetIds={assetIds}
+      arquivos={arquivos}
+      enviando={enviando === `kit:${secao}:${indice}`}
+      {...(onEnviarArquivo ? { onEnviar: (l: File[]) => onEnviarArquivo(secao, indice, l) } : {})}
+      {...(onRemoverArquivo ? { onRemover: (id: string) => onRemoverArquivo(secao, indice, id) } : {})}
+    />
+  );
+
+  const vinheta = (v: NonNullable<Kit['abertura']>, secao: 'abertura' | 'encerramento') => {
     const urlDaLogo = logos[v.logo];
     return (
-      <div className="kit-vinheta">
+      <div className="kit-vinheta" data-com-arquivo={(v.assetIds?.length ?? 0) > 0 || undefined}>
         <div className="kit-prompt__topo">
           <span>
             <strong>{v.nome}</strong>
@@ -151,9 +269,10 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
             <Copiar texto={v.som} />
           </div>
         )}
-        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onEnviar(tipo)}>
-          <IconeEnviar size={14} /> Pronto? Enviar em {tipo === 'INTRO' ? 'Aberturas' : 'Encerramentos'}
-        </button>
+        <p className="kit-vinheta__logo">
+          <strong>4.</strong> Junte o vídeo e o som (o gerador de vídeo ou o Suno exportam juntos) e envie aqui.
+        </p>
+        {arquivosDe(secao, 0, v.assetIds)}
       </div>
     );
   };
@@ -162,7 +281,7 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
     <div className="kit">
       <p className="kit__intro">
         Prompts prontos para ferramentas de IA, com as cores, as fontes e o jeito da sua marca. Copie, cole na ferramenta indicada, gere o arquivo
-        e envie de volta na Biblioteca: a partir daí a IA do editor usa nos seus vídeos.
+        e envie no próprio cartão: ele fica ligado ao prompt, e a IA do editor sabe o que é e onde usar.
       </p>
 
       {(kit.trilhas.length > 0 || kit.sons.length > 0) && (
@@ -180,20 +299,19 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
             <Ferramenta href="https://suno.com/create" nome="Suno" />
           </header>
           <div className="kit__lista">
-            {kit.trilhas.map((t) => (
-              <Prompt key={t.nome + t.estilo} nome={t.nome} uso={t.uso} texto={t.estilo} />
+            {kit.trilhas.map((t, i) => (
+              <Prompt key={`t${i}`} nome={t.nome} uso={t.uso} texto={t.estilo} comArquivo={(t.assetIds?.length ?? 0) > 0} rodape={arquivosDe('trilhas', i, t.assetIds)} />
             ))}
-            {kit.sons.map((t) => (
-              <Prompt key={t.nome + t.prompt} nome={t.nome} uso={t.uso} texto={t.prompt} detalhe="Som curto: depois de gerar, corte só o trecho que interessa." />
+            {kit.sons.map((t, i) => (
+              <Prompt
+                key={`s${i}`}
+                nome={t.nome}
+                uso={t.uso}
+                texto={t.prompt}
+                detalhe="Som curto: depois de gerar, corte só o trecho que interessa."
+                comArquivo={(t.assetIds?.length ?? 0) > 0} rodape={arquivosDe('sons', i, t.assetIds)}
+              />
             ))}
-          </div>
-          <div className="kit__rodape">
-            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onEnviar('MUSIC')}>
-              <IconeEnviar size={14} /> Enviar trilhas
-            </button>
-            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onEnviar('SOUND_EFFECT')}>
-              <IconeEnviar size={14} /> Enviar sons
-            </button>
           </div>
         </section>
       )}
@@ -213,8 +331,8 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
             <Geradores />
           </header>
           <div className="kit__vinhetas">
-            {kit.abertura && vinheta(kit.abertura, 'INTRO')}
-            {kit.encerramento && vinheta(kit.encerramento, 'OUTRO')}
+            {kit.abertura && vinheta(kit.abertura, 'abertura')}
+            {kit.encerramento && vinheta(kit.encerramento, 'encerramento')}
           </div>
         </section>
       )}
@@ -227,21 +345,14 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
             </span>
             <div>
               <h2>Imagens</h2>
-              <p>
-                Cole no ChatGPT (GPT Image) e peça no formato indicado. Depois baixe a imagem e envie em <strong>Imagens</strong>.
-              </p>
+              <p>Cole no ChatGPT (GPT Image) e peça no formato indicado. Depois baixe a imagem e envie no cartão.</p>
             </div>
             <Ferramenta href="https://chatgpt.com/" nome="ChatGPT" />
           </header>
           <div className="kit__lista">
-            {kit.imagens.map((t) => (
-              <Prompt key={t.nome + t.prompt} nome={`${t.nome} · ${t.formato}`} uso={t.uso} texto={t.prompt} />
+            {kit.imagens.map((t, i) => (
+              <Prompt key={`i${i}`} nome={`${t.nome} · ${t.formato}`} uso={t.uso} texto={t.prompt} comArquivo={(t.assetIds?.length ?? 0) > 0} rodape={arquivosDe('imagens', i, t.assetIds)} />
             ))}
-          </div>
-          <div className="kit__rodape">
-            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onEnviar('IMAGE')}>
-              <IconeEnviar size={14} /> Enviar imagens
-            </button>
           </div>
         </section>
       )}
@@ -259,17 +370,20 @@ export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
             <Geradores />
           </header>
           <div className="kit__lista">
-            {kit.videos.map((t) => (
-              <Prompt key={t.nome + t.prompt} nome={t.nome} uso={t.uso} texto={t.prompt} />
+            {kit.videos.map((t, i) => (
+              <Prompt key={`v${i}`} nome={t.nome} uso={t.uso} texto={t.prompt} comArquivo={(t.assetIds?.length ?? 0) > 0} rodape={arquivosDe('videos', i, t.assetIds)} />
             ))}
-          </div>
-          <div className="kit__rodape">
-            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onEnviar('VIDEO')}>
-              <IconeEnviar size={14} /> Enviar vídeos
-            </button>
           </div>
         </section>
       )}
+
+      <p className="kit__rodape-geral">
+        Todos os arquivos enviados também aparecem na{' '}
+        <button type="button" className="kit__link" onClick={() => onEnviar('MUSIC')}>
+          Biblioteca da marca
+        </button>
+        .
+      </p>
     </div>
   );
 }
