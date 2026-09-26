@@ -92,6 +92,14 @@ const COR: Record<Papel, string> = {
 
 const PAPEIS = Object.keys(ROTULO) as Papel[];
 const ehPapel = (v: string): v is Papel => (PAPEIS as string[]).includes(v);
+/**
+ * O papel como a tela usa. O banco guarda em maiúsculas (HOOK, CTA), e o
+ * roteiro salvo voltava todo como "Insight" ao ser aberto.
+ */
+const papelDe = (v: string | null | undefined): Papel => {
+  const k = (v ?? '').toLowerCase();
+  return ehPapel(k) ? k : 'insight';
+};
 const ESTRUTURAS = ['authority_education', 'viral_education', 'storytelling', 'pas', 'sales'];
 
 const PALAVRAS_POR_SEGUNDO = 2.5;
@@ -141,7 +149,7 @@ function daIa(r: RoteiroParaSalvar): Estado {
     blocos: r.blocks
       .slice()
       .sort((a, b) => a.position - b.position)
-      .map((b) => ({ id: novoId(), papel: ehPapel(b.role) ? b.role : 'insight', intencao: b.goal ?? '', texto: b.text })),
+      .map((b) => ({ id: novoId(), papel: papelDe(b.role), intencao: b.goal ?? '', texto: b.text })),
   };
 }
 
@@ -195,7 +203,7 @@ function Roteiros() {
           blocos: r.blocks
             .slice()
             .sort((a, b) => a.position - b.position)
-            .map((b) => ({ id: b.id ?? novoId(), papel: ehPapel(b.role) ? b.role : 'insight', intencao: b.goal ?? '', texto: b.text })),
+            .map((b) => ({ id: b.id ?? novoId(), papel: papelDe(b.role), intencao: b.goal ?? '', texto: b.text })),
         }),
       )
       .catch((e) => setAviso(e instanceof Error ? e.message : 'não foi possível abrir o roteiro.'));
