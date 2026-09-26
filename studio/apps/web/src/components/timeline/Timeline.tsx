@@ -94,6 +94,8 @@ const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number; co
 ];
 
 const ALTURA_REGUA = 28;
+const ALTURA_VAZIA = 30;
+const ALTURA_VAZIA_COMPACTA = 26;
 const ALTURA_REGUA_COMPACTA = 22;
 
 /** Tela baixa (mesma regra do CSS): faixas e régua mais baixas. */
@@ -545,6 +547,28 @@ export function Timeline({
     };
   }, []);
 
+  const vazias = useMemo(() => {
+    const v = new Set<Faixa>();
+    if (!(plan.mediaLayers ?? []).length) v.add('midia');
+    if (!blocos.length) v.add('legendas');
+    if (!plan.overlays.some((o) => COMPONENTES_DE_TEXTO.has(o.component))) v.add('textos');
+    if (!plan.overlays.some((o) => !COMPONENTES_DE_TEXTO.has(o.component))) v.add('elementos');
+    if (!(plan.screenEffects ?? []).length && !plan.clips.some((c) => c.effect)) v.add('efeitos');
+    if (!plan.soundEffects.length) v.add('sons');
+    if (!plan.music) v.add('trilha');
+    return v;
+  }, [plan, blocos]);
+
+  const [menuAdicionar, setMenuAdicionar] = useState(false);
+  useEffect(() => {
+    if (!menuAdicionar) return;
+    const fechar = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.timeline__adicionar-menu')) setMenuAdicionar(false);
+    };
+    window.addEventListener('pointerdown', fechar);
+    return () => window.removeEventListener('pointerdown', fechar);
+  }, [menuAdicionar]);
+
   const faixaOculta = (id: Faixa) => ocultas.has(id) || (id === 'legendas' && !plan.captions.enabled);
 
   /** Zoom que cabe o vídeo inteiro na largura visível. */
@@ -567,15 +591,30 @@ export function Timeline({
 
         <span className="timeline__separador" aria-hidden />
         {onTirarPausas && (
-          <Acao Icone={IconeIA} rotulo="Tirar pausas" desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
+          <Acao Icone={IconeIA} rotulo="Tirar pausas" comNome desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
         )}
-        <Acao Icone={IconeMais} rotulo="Legenda" desabilitado={!onOperacao} onClick={novaLegenda} />
-        <Acao Icone={IconeMais} rotulo="Texto" desabilitado={!onOperacao} onClick={novoTexto} />
-        {onAbrirBiblioteca && <Acao Icone={IconeMais} rotulo="Som" desabilitado={!onOperacao} onClick={() => onAbrirBiblioteca('sons')} />}
+        <span className="timeline__adicionar-largo">
+          <Acao Icone={IconeMais} rotulo="Legenda" comNome desabilitado={!onOperacao} onClick={novaLegenda} dica="Nova legenda no cursor" />
+          <Acao Icone={IconeMais} rotulo="Texto" comNome desabilitado={!onOperacao} onClick={novoTexto} dica="Novo texto no cursor" />
+          {onAbrirBiblioteca && <Acao Icone={IconeMais} rotulo="Som" comNome desabilitado={!onOperacao} onClick={() => onAbrirBiblioteca('sons')} dica="Adicionar efeito sonoro" />}
+        </span>
+        {/* No celular, os três "adicionar" viram um menu: a barra cabe inteira na tela. */}
+        <span className="timeline__adicionar-menu">
+          <button
+            type="button"
+            className="botao botao--fantasma botao--pequeno"
+            disabled={!onOperacao}
+            aria-haspopup="menu"
+            aria-expanded={menuAdicionar}
+            onClick={() => setMenuAdicionar((v) => !v)}
+          >
+            <IconeMais size={16} /> Adicionar
+          </button>
+        </span>
 
         <div className="linha auto" style={{ gap: 'var(--e2)' }}>
           {onMostrarAtalhos && (
-            <button type="button" className="botao-icone botao-icone--pequeno" onClick={onMostrarAtalhos} aria-label="Atalhos de teclado" title="Atalhos de teclado (?)">
+            <button type="button" className="botao-icone botao-icone--pequeno so-largo" onClick={onMostrarAtalhos} aria-label="Atalhos de teclado" title="Atalhos de teclado (?)">
               <IconeTeclado size={17} />
             </button>
           )}
@@ -594,12 +633,29 @@ export function Timeline({
           <button type="button" className="botao-icone botao-icone--pequeno" onClick={() => setZoom((z) => Math.min(8, z * 1.5))} aria-label="Aumentar zoom">
             <IconeZoomMais size={17} />
           </button>
-          <button type="button" className="botao botao--secundario botao--pequeno" onClick={ajustar}>
+          <button type="button" className="botao botao--secundario botao--pequeno" onClick={ajustar} aria-label="Ajustar o zoom ao vídeo inteiro" title="Ajustar o zoom ao vídeo inteiro">
             <IconeAjustarZoom size={15} />
-            Ajustar
+            <span className="timeline__acao-rotulo">Ajustar</span>
           </button>
         </div>
       </div>
+
+      {/* O menu "Adicionar" do celular: fora da barra (que rola e o cortaria). */}
+      {menuAdicionar && (
+        <div className="timeline__menu timeline__adicionar-menu" role="menu" onClick={() => setMenuAdicionar(false)}>
+          <button type="button" role="menuitem" onClick={novaLegenda}>
+            <IconeLegenda size={16} /> Legenda no cursor
+          </button>
+          <button type="button" role="menuitem" onClick={novoTexto}>
+            <IconeTexto size={16} /> Texto no cursor
+          </button>
+          {onAbrirBiblioteca && (
+            <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('sons')}>
+              <IconeSom size={16} /> Efeito sonoro
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ---------- Área rolável: uma rolagem só ---------- */}
       <div
@@ -622,9 +678,17 @@ export function Timeline({
           </div>
 
           {FAIXAS.map(({ id, rotulo, Icone, altura: normal, compacta }) => {
-            const altura = telaBaixa ? compacta : normal;
+            // Faixa sem nada fica fina: sobra altura para as que têm
+            // conteúdo (em notebook, 4 de 9 faixas cabiam à vista).
+            const altura = vazias.has(id) ? (telaBaixa ? ALTURA_VAZIA_COMPACTA : ALTURA_VAZIA) : telaBaixa ? compacta : normal;
             return (
-            <div key={id} className={`timeline__linha timeline__linha--${id}`} data-oculta={faixaOculta(id) || undefined} style={{ height: altura }}>
+            <div
+              key={id}
+              className={`timeline__linha timeline__linha--${id}`}
+              data-oculta={faixaOculta(id) || undefined}
+              data-vazia={vazias.has(id) || undefined}
+              style={{ height: altura }}
+            >
               {/* Nome da faixa, preso à esquerda durante a rolagem. */}
               <div className="timeline__faixa" title={rotulo}>
                 <Icone size={16} />
@@ -972,6 +1036,7 @@ function Acao({
   atalho,
   dica,
   onClick,
+  comNome,
 }: {
   Icone: Icon;
   rotulo: string;
@@ -979,6 +1044,8 @@ function Acao({
   atalho?: string;
   dica?: string;
   onClick?: () => void;
+  /** O nome aparece mesmo em tela estreita (três "+" iguais não dizem nada). */
+  comNome?: boolean;
 }) {
   return (
     <button
@@ -991,7 +1058,7 @@ function Acao({
       title={[dica ?? rotulo, atalho ? `(${atalho})` : ''].filter(Boolean).join(' ')}
     >
       <Icone size={16} />
-      <span className="timeline__acao-rotulo">{rotulo}</span>
+      <span className={comNome ? 'timeline__acao-rotulo timeline__acao-rotulo--fixo' : 'timeline__acao-rotulo'}>{rotulo}</span>
       {atalho && <kbd className="timeline__tecla">{atalho}</kbd>}
     </button>
   );
