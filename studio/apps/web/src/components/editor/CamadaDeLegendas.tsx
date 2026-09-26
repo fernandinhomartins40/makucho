@@ -113,11 +113,12 @@ export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }
         const { default: JASSUB } = await import('jassub');
         if (cancelado) return;
 
-        const iniciais = fontesDoAss(assAtual.current);
+        const inicial = assAtual.current;
+        const iniciais = fontesDoAss(inicial);
         fontesCarregadas.current = new Set(iniciais);
         const j = new JASSUB({
           canvas,
-          subContent: assAtual.current,
+          subContent: inicial,
           fonts: iniciais,
           availableFonts: FONTES,
           // Sem fontes do computador de quem assiste: a prévia tem de
@@ -128,6 +129,18 @@ export function CamadaDeLegendas({ ass, tempoMs, tempoAoVivo, tocando, onFalha }
 
         await j.ready;
         if (cancelado) return;
+        // O .ass mudou enquanto o libass carregava (o caso da primeira
+        // montagem: a transcrição chega depois do plano, e a legenda
+        // nascia vazia até religar o olho da faixa). O efeito de conteúdo
+        // só guardou o novo; aplica aqui, com as fontes dele.
+        if (assAtual.current !== inicial) {
+          const novas = fontesDoAss(assAtual.current).filter((u) => !fontesCarregadas.current.has(u));
+          novas.forEach((u) => fontesCarregadas.current.add(u));
+          if (novas.length && j.renderer.addFonts) await Promise.resolve(j.renderer.addFonts(novas)).catch(() => true);
+          if (cancelado) return;
+          await j.renderer.setTrack(assAtual.current);
+          if (cancelado) return;
+        }
         pronto.current = true;
         desenhar(tempoAoVivo.current, true);
       } catch (e) {

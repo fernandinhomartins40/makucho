@@ -180,6 +180,10 @@ export function Timeline({
   const [arrastando, setArrastando] = useState<string | null>(null);
   const rolagemRef = useRef<HTMLDivElement>(null);
   const arrasteRef = useRef<Arraste | null>(null);
+  /** Quando o último arraste terminou: o clique que vem junto não conta. */
+  const soltouEm = useRef(0);
+  /** Mouse, dedo ou caneta: no toque, tocar de novo desseleciona. */
+  const ponteiro = useRef<string>('mouse');
   /** Último toque/clique num elemento: dois seguidos abrem os estilos. */
   const ultimoToqueRef = useRef<{ id: string; em: number } | null>(null);
 
@@ -195,6 +199,7 @@ export function Timeline({
     const arraste = arrasteRef.current;
     arrasteRef.current = null;
     setArrastando(null);
+    if (arraste) soltouEm.current = Date.now();
 
     if (!arraste || !onOperacao) return;
     // Um clique sem arraste não vira versão nova do plano.
@@ -482,6 +487,35 @@ export function Timeline({
   // anda para os lados. No toque, o dedo rola (e segurar arrasta o item).
   const panRef = useRef<{ x: number; y: number; esquerda: number; topo: number } | null>(null);
   const [rolando, setRolando] = useState(false);
+  const rolouNoArraste = useRef(false);
+
+  /**
+   * Tirar a seleção. No celular e no tablet não há "clicar fora" fácil:
+   * tocar de novo no item selecionado desseleciona. Em qualquer aparelho,
+   * tocar num vazio da faixa também (menos quando foi um arraste para rolar).
+   */
+  const aoClicarNaArea = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (Date.now() - soltouEm.current < 350) return;
+    const alvo = e.target as HTMLElement;
+    const vazio = (alvo.classList.contains('timeline__pista') || alvo.classList.contains('timeline__linha')) && !alvo.closest('.timeline__linha--regua');
+    if (vazio) {
+      if (rolouNoArraste.current) {
+        rolouNoArraste.current = false;
+        return;
+      }
+      onSelecionar?.(null);
+      onSelecionarItem?.(null);
+      return;
+    }
+    if (ponteiro.current === 'mouse') return;
+    const item = alvo.closest('[data-selecionado]');
+    if (item && rolagemRef.current?.contains(item)) {
+      e.stopPropagation();
+      e.preventDefault();
+      onSelecionar?.(null);
+      onSelecionarItem?.(null);
+    }
+  };
   const aoApertarNaArea = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'touch' || arrasteRef.current) return;
     const alvo = e.target as HTMLElement;
@@ -491,10 +525,12 @@ export function Timeline({
     if (!area) return;
     e.preventDefault();
     panRef.current = { x: e.clientX, y: e.clientY, esquerda: area.scrollLeft, topo: area.scrollTop };
+    rolouNoArraste.current = false;
     setRolando(true);
     const mover = (ev: PointerEvent) => {
       const p = panRef.current;
       if (!p) return;
+      if (Math.abs(ev.clientX - p.x) + Math.abs(ev.clientY - p.y) > 4) rolouNoArraste.current = true;
       area.scrollLeft = p.esquerda - (ev.clientX - p.x);
       area.scrollTop = p.topo - (ev.clientY - p.y);
     };
@@ -663,6 +699,10 @@ export function Timeline({
         className="timeline__rolagem"
         data-rolando={rolando || undefined}
         onPointerDown={aoApertarNaArea}
+        onPointerDownCapture={(e) => {
+          ponteiro.current = e.pointerType || 'mouse';
+        }}
+        onClickCapture={aoClicarNaArea}
         onPointerMove={arrastando ? aoArrastar : undefined}
         onPointerUp={arrastando ? aoSoltar : undefined}
         onPointerCancel={arrastando ? aoSoltar : undefined}
