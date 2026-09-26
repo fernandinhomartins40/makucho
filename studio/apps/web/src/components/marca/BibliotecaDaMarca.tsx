@@ -76,13 +76,18 @@ interface Props {
   enviando: string | null;
   onEnviar: (kind: string, arquivos: File[]) => void;
   onRemover: (id: string) => void;
+  /** Aba aberta de fora (o kit criativo leva direto ao tipo certo). */
+  aba?: TipoDaBiblioteca;
+  onAba?: (tipo: TipoDaBiblioteca) => void;
 }
 
 const segundos = (ms: number | null) => (ms ? `${(ms / 1000).toFixed(1).replace('.', ',')} s` : null);
 const semExtensao = (nome: string) => nome.replace(/\.[a-z0-9]{2,5}$/i, '');
 
-export function BibliotecaDaMarca({ assets, itens, onItens, padroes, onPadrao, enviando, onEnviar, onRemover }: Props) {
-  const [aba, setAba] = useState<TipoDaBiblioteca>('MUSIC');
+export function BibliotecaDaMarca({ assets, itens, onItens, padroes, onPadrao, enviando, onEnviar, onRemover, aba: abaDeFora, onAba }: Props) {
+  const [abaLocal, setAbaLocal] = useState<TipoDaBiblioteca>('MUSIC');
+  const aba = abaDeFora ?? abaLocal;
+  const setAba = (t: TipoDaBiblioteca) => (onAba ? onAba(t) : setAbaLocal(t));
   const categoria = CATEGORIAS_DA_BIBLIOTECA.find((c) => c.kind === aba)!;
   const lista = assets.filter((a) => a.kind === aba);
   const nota = (id: string) => itens.find((i) => i.assetId === id);

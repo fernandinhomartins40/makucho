@@ -54,8 +54,8 @@ import { PromptsService } from './prompts.service';
  */
 const MAX_TOKENS_DO_COMANDO = 1500;
 
-/** O kit da marca cabe em ~300 tokens de resposta. */
-const MAX_TOKENS_DA_MARCA = 600;
+/** O kit completo (visual, acabamento e ~20 prompts) cabe em ~3 mil tokens. */
+const MAX_TOKENS_DA_MARCA = 4000;
 
 /** Os tipos de arquivo que formam a biblioteca da marca. */
 const TIPOS_DA_BIBLIOTECA = ['LOGO', 'LOGO_NEGATIVE', 'LOGO_COMPACT', 'WATERMARK', 'IMAGE', 'VIDEO', 'MUSIC', 'SOUND_EFFECT', 'INTRO', 'OUTRO'] as const;

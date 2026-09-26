@@ -44,7 +44,9 @@ export const VERSAO_DO_PROMPT = {
   // v4: biblioteca da marca (logos, trilhas, sons, vinhetas, imagens e
   // vídeos com "para que serve") e as vinhetas de abertura/encerramento.
   comandar_edicao: 'comando-v4',
-  configurar_marca: 'marca-v1',
+  // v2: além do visual, o acabamento e o kit criativo (Suno, GPT Image,
+  // vídeo, vinhetas passo a passo) com a cara da marca.
+  configurar_marca: 'marca-v2',
   // Roteiro por pedido livre: a IA entende o contexto e aplica as técnicas
   // de retenção sozinha (ai-roteiro-livre.ts).
   gerar_roteiro_livre: 'roteiro-v2',

@@ -69,6 +69,7 @@ import {
   DotsSixVertical,
   CaretRight,
   CaretDown,
+  ArrowSquareOut,
   DeviceMobile,
   Crop,
   PencilSimple,
@@ -162,6 +163,7 @@ export const IconeAjustar = ArrowsOutLineHorizontal;
 export const IconeArrastar = DotsSixVertical;
 export const IconeAvancar = CaretRight;
 export const IconeAbrir = CaretDown;
+export const IconeLinkExterno = ArrowSquareOut;
 export const IconeAjustarZoom = ArrowsOut;
 
 // ---------- Palco ----------

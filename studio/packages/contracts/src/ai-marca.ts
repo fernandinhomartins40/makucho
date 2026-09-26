@@ -24,6 +24,7 @@ import { FAMILIAS_DE_FONTE, PRESETS_DE_LEGENDA } from './estilos-de-legenda';
 import { PRESETS_DE_TEXTO } from './textos-de-tela';
 import { PACOTES_DE_ESTILO } from './pacotes';
 import { TIPOS_DE_TRANSICAO } from './edit-plan';
+import { kitPorRegra, lerKitCriativo, type KitCriativo } from './kit-criativo';
 
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
@@ -33,6 +34,8 @@ export const entradaDaMarcaSchema = z
     nome: z.string().trim().max(60).optional(),
     /** O que a marca faz ("clínica odontológica", "loja de roupas"). */
     segmento: z.string().trim().max(120).optional(),
+    /** Livre: público, personalidade, o que não pode faltar ("sério, para médicos"). */
+    sobre: z.string().trim().max(800).optional(),
     paleta: z
       .array(z.object({ hex, peso: z.number().min(0).max(1) }).strict())
       .min(1)
@@ -68,7 +71,45 @@ export interface SugestaoDeMarca {
   tom: string;
   /** Por que essas escolhas, em português simples. */
   justificativa: string;
+  /** O acabamento dos vídeos novos, com a cara da marca. */
+  preferencias: PreferenciasSugeridas;
+  /** Prompts prontos para trilhas, sons, vinhetas, imagens e vídeos. */
+  kit: KitCriativo;
   origem: 'ia' | 'regra';
+}
+
+export interface PreferenciasSugeridas {
+  autoZoom: boolean;
+  efeitosSonoros: boolean;
+  barraDeProgresso: boolean;
+  voiceEnhance: boolean;
+  logoPosicao: 'sd' | 'se' | 'id' | 'ie';
+  /** Volume da trilha, -32 a -8 dB. */
+  volumeTrilhaDb: number;
+}
+
+const PREFERENCIAS_POR_REGRA: PreferenciasSugeridas = {
+  autoZoom: true,
+  efeitosSonoros: true,
+  barraDeProgresso: false,
+  voiceEnhance: true,
+  logoPosicao: 'sd',
+  volumeTrilhaDb: -20,
+};
+
+function lerPreferencias(v: unknown, reserva: PreferenciasSugeridas): PreferenciasSugeridas {
+  if (!v || typeof v !== 'object') return reserva;
+  const o = v as Record<string, unknown>;
+  const bool = (x: unknown, r: boolean) => (typeof x === 'boolean' ? x : r);
+  const vol = Number(o.volumeTrilhaDb);
+  return {
+    autoZoom: bool(o.autoZoom, reserva.autoZoom),
+    efeitosSonoros: bool(o.efeitosSonoros, reserva.efeitosSonoros),
+    barraDeProgresso: bool(o.barraDeProgresso, reserva.barraDeProgresso),
+    voiceEnhance: bool(o.voiceEnhance, reserva.voiceEnhance),
+    logoPosicao: ['sd', 'se', 'id', 'ie'].includes(String(o.logoPosicao)) ? (o.logoPosicao as PreferenciasSugeridas['logoPosicao']) : reserva.logoPosicao,
+    volumeTrilhaDb: Number.isFinite(vol) ? Math.min(-8, Math.max(-32, Math.round(vol / 2) * 2)) : reserva.volumeTrilhaDb,
+  };
 }
 
 // ---------- Cor ----------
@@ -147,16 +188,20 @@ export function coresPorRegra(paleta: EntradaDaMarca['paleta']): BrandColors {
 export function sugestaoPorRegra(entrada: EntradaDaMarca): SugestaoDeMarca {
   const cores = coresPorRegra(entrada.paleta);
   const viva = saturacao(cores.primary) > 0.6;
+  const tom = viva ? 'vibrante e direto' : 'sóbrio e confiável';
+  const fonteTitulo = viva ? 'Montserrat' : 'Poppins';
   return {
     cores,
-    fonteTitulo: viva ? 'Montserrat' : 'Poppins',
+    preferencias: PREFERENCIAS_POR_REGRA,
+    kit: kitPorRegra({ nome: entrada.nome, segmento: entrada.segmento, tom: viva ? 'energetic' : 'calm and trustworthy', cores, fonteTitulo }),
+    fonteTitulo,
     fonteCorpo: 'Inter',
     captionPreset: viva ? 'destaque' : 'padrao',
     textoPreset: viva ? 'classico' : 'minimal',
     pacote: null,
     transicaoPadrao: 'cut',
-    tom: viva ? 'vibrante e direto' : 'sóbrio e confiável',
-    justificativa: 'Cores medidas nas suas logos; fontes e estilos escolhidos pela intensidade das cores da marca.',
+    tom,
+    justificativa: 'Cores medidas nas suas logos; fontes e estilos escolhidos pela intensidade das cores da marca. Sem a IA, os prompts do kit criativo são modelos com as suas cores.',
     origem: 'regra',
   };
 }
@@ -171,6 +216,8 @@ export function catalogoDaMarcaParaIa(): string {
     `## Estilos de texto na tela (textoPreset: descrição)\n${PRESETS_DE_TEXTO.map((p) => `${p.id}: ${p.descricao}`).join('\n')}`,
     `## Pacotes de estilo (pacote: descrição, ou null)\n${PACOTES_DE_ESTILO.map((p) => `${p.id}: ${p.descricao}`).join('\n')}`,
     `## Transição padrão entre cortes (transicaoPadrao)\ncut (corte seco, o padrão em vídeo falado), fade, smooth, slide, zoom, fadeblack`,
+    `## Posição do logo (preferencias.logoPosicao)\nsd (superior direito), se (superior esquerdo), id (inferior direito), ie (inferior esquerdo)`,
+    `## Logos que a vinheta pode usar (kit.abertura.logo / kit.encerramento.logo)\nLOGO (principal), LOGO_NEGATIVE (versão clara, para fundo escuro), LOGO_COMPACT (só o símbolo)`,
   ].join('\n\n');
 }
 
@@ -184,6 +231,7 @@ export function descricaoDaMarcaParaIa(entrada: EntradaDaMarca): string {
   const NOME: Record<string, string> = { LOGO: 'principal', LOGO_NEGATIVE: 'para fundo escuro', LOGO_COMPACT: 'ícone', WATERMARK: "marca d'água" };
   return [
     `Marca: ${entrada.nome || '(sem nome)'}${entrada.segmento ? ` | segmento: ${entrada.segmento}` : ''}`,
+    ...(entrada.sobre ? [`Sobre a marca (nas palavras da pessoa): ${entrada.sobre}`] : []),
     `Logos: ${entrada.logos.map((l) => `${NOME[l.variante]} (${l.transparente ? 'fundo transparente' : 'fundo opaco'}, ${l.proporcao > 1.6 ? 'horizontal' : l.proporcao < 0.7 ? 'vertical' : 'quadrada'}, ${l.claridade < 0.35 ? 'escura' : l.claridade > 0.7 ? 'clara' : 'média'})`).join('; ') || 'nenhuma'}`,
     'Paleta medida nas logos (hex | quanto da logo ocupa | tom):',
     ...entrada.paleta.map((c) => `${c.hex.toUpperCase()} | ${Math.round(c.peso * 100)}% | ${tom(c.hex)}`),
@@ -224,6 +272,7 @@ export function lerSugestaoDaMarca(bruto: string, entrada: EntradaDaMarca): Suge
   const noCatalogo = (id: string, ids: readonly string[], reserva: string) => (ids.includes(id) ? id : reserva);
 
   const cores = { ...r.cores };
+  const resto = json as Record<string, unknown>;
   // Texto claro tem de ser legível sobre o fundo escuro da marca.
   if (contraste(cores.textLight, cores.textDark) < 4.5) {
     cores.textLight = '#FFFFFF';
@@ -240,6 +289,9 @@ export function lerSugestaoDaMarca(bruto: string, entrada: EntradaDaMarca): Suge
     transicaoPadrao: noCatalogo(r.transicaoPadrao, TIPOS_DE_TRANSICAO, 'cut'),
     tom: r.tom.trim().slice(0, 80),
     justificativa: r.justificativa.trim().slice(0, 400),
+    preferencias: lerPreferencias(resto.preferencias, regra.preferencias),
+    // Kit que não veio (ou veio vazio): o da regra, com as cores da IA.
+    kit: lerKitCriativo(resto.kit) ?? kitPorRegra({ nome: entrada.nome, segmento: entrada.segmento, tom: r.tom, cores, fonteTitulo: familia(r.fonteTitulo, regra.fonteTitulo) }),
     origem: 'ia',
   };
 }

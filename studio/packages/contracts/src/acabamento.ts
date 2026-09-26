@@ -28,6 +28,7 @@ import { idDoPresetSchema, presetDaLegenda } from './estilos-de-legenda';
 import { DURACAO_PADRAO_DA_TRANSICAO } from './timeline';
 import { pacoteSalvoSchema } from './pacotes';
 import { PRESETS_DE_TEXTO } from './textos-de-tela';
+import { kitCriativoSchema } from './kit-criativo';
 
 // ---------- Preferencias (Kit de marca) ----------
 
@@ -79,6 +80,8 @@ export const preferenciasDeVideoSchema = z
       )
       .max(120)
       .optional(),
+    /** Prompts prontos (Suno, GPT Image, vídeo, vinhetas) com a cara da marca. */
+    kitCriativo: kitCriativoSchema.optional(),
     /** "Whoosh" nas transicoes e "pop" nos textos. */
     efeitosSonoros: z.boolean().optional(),
     barraDeProgresso: z.boolean().optional(),

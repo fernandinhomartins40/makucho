@@ -75,6 +75,28 @@ t('as preferências novas cabem no Kit de marca', preferenciasDeVideoSchema.safe
   itensDaMarca: [{ assetId: 'a1', nome: 'Vinheta', uso: 'abertura de todo vídeo' }],
 }).success);
 
+// ---------- Kit criativo e acabamento ----------
+t('sem IA, o kit criativo vem completo (trilhas, sons, vinhetas, imagens, vídeos)', regra.kit.trilhas.length >= 2 && regra.kit.sons.length >= 2 && !!regra.kit.abertura && !!regra.kit.encerramento && regra.kit.imagens.length >= 1 && regra.kit.videos.length >= 1);
+t('os prompts da regra levam as cores da marca', regra.kit.imagens[0]!.prompt.includes(regra.cores.primary) && regra.kit.abertura!.passos.some((p) => p.includes(regra.cores.textDark)));
+t('o kit da regra cabe no Kit de marca', preferenciasDeVideoSchema.safeParse({ kitCriativo: regra.kit }).success);
+const comKit = lerSugestaoDaMarca(
+  JSON.stringify({
+    ...JSON.parse(resposta),
+    preferencias: { autoZoom: false, logoPosicao: 'ie', volumeTrilhaDb: -25, voiceEnhance: 'sim' },
+    kit: {
+      trilhas: [{ nome: 'Padaria de manhã', uso: 'fundo', estilo: 'instrumental acoustic, warm, 95 bpm' }, { nome: 'sem estilo' }],
+      abertura: { nome: 'Forno', duracaoS: 40, logo: 'QUALQUER', passos: ['Fundo laranja', 'Logo no centro'], som: 'bell' },
+      imagens: [{ nome: 'Pão', uso: 'capa', prompt: 'croissant', formato: '4:5' }],
+    },
+  }),
+  entrada,
+)!;
+t('preferências da IA lidas, com o que veio errado no padrão', comKit.preferencias.autoZoom === false && comKit.preferencias.logoPosicao === 'ie' && comKit.preferencias.volumeTrilhaDb === -24 && comKit.preferencias.voiceEnhance === true);
+t('kit da IA consertado (trilha sem estilo sai, duração e logo no limite, formato padrão)', comKit.kit.trilhas.length === 1 && comKit.kit.abertura!.duracaoS === 15 && comKit.kit.abertura!.logo === 'LOGO' && comKit.kit.imagens[0]!.formato === '9:16');
+t('kit da IA cabe no Kit de marca', preferenciasDeVideoSchema.safeParse({ kitCriativo: comKit.kit }).success);
+const semKit = lerSugestaoDaMarca(resposta, entrada)!;
+t('resposta sem kit: kit da regra com as cores da IA', semKit.kit.trilhas.length >= 2 && semKit.kit.imagens[0]!.prompt.includes(semKit.cores.primary));
+
 const pedido = descricaoDaMarcaParaIa(entrada);
 const catalogo = catalogoDaMarcaParaIa();
 t('o pedido é curto (< 600 caracteres)', pedido.length < 600);
