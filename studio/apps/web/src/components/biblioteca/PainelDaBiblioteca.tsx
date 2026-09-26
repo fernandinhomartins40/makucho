@@ -30,7 +30,7 @@ import {
   agendaDoPlano,
 } from '@makucho/studio-contracts';
 import { QUADROS_DA_MINIATURA, quadrosDaTransicao, quadrosDoEfeito } from '../editor/gl/miniaturas';
-import { assets as apiAssets, type Asset, type Transcricao } from '../../lib/api';
+import { assets as apiAssets, type Asset, type MidiasSeparadas, type Transcricao } from '../../lib/api';
 import { EstilosDeTexto } from '../editor/EstilosDeTexto';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
@@ -71,6 +71,9 @@ interface Props {
   recomendado?: string;
   /** Trechos desligados (as mídias da IA leem só a fala que está no vídeo). */
   desligados?: readonly string[];
+  /** Mídias que a montagem com IA separou, para aprovar na categoria Mídia. */
+  midiasSeparadas?: MidiasSeparadas | null;
+  onMidiasConcluidas?: () => void;
 }
 
 /**

@@ -7,7 +7,7 @@
 // Os dois criam uma versão nova do plano — desfazível.
 // ============================================================
 
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
@@ -47,6 +47,19 @@ export class AcabamentoController {
     assertCanWrite(tenant);
     const { desligados } = z.object({ desligados: z.array(z.string().max(64)).max(200).default([]) }).parse(body ?? {});
     return this.midias.sugerir(tenant, id, desligados);
+  }
+
+  /** As mídias separadas na montagem, esperando aprovação (null se nenhuma). */
+  @Get('projects/:id/media-suggestions')
+  midiasPendentes(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.midias.pendentes(tenant, id);
+  }
+
+  /** Aprovadas ou dispensadas: o aviso some do editor. */
+  @Delete('projects/:id/media-suggestions')
+  concluirMidias(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertCanWrite(tenant);
+    return this.midias.concluir(tenant, id);
   }
 
   @Post('projects/:id/command')

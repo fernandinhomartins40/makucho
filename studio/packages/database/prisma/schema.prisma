@@ -450,6 +450,10 @@ model Project {
   // Por que a IA NAO montou a proposta atual (chave recusada, sem
   // credito, rede...). Mostrado no editor; nulo quando a IA montou.
   aiFallbackReason String?
+  // Mídias que a IA separou na montagem (midias-da-ia.ts), esperando a
+  // aprovação no editor: { momentos, avisos, semOpcoes, geradoEm }. Nulo
+  // depois de aprovar ou dispensar.
+  mediaSuggestions Json?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

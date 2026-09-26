@@ -794,6 +794,14 @@ export interface MomentoSugerido extends MomentoVisual {
   opcoes: ResultadoDaBusca[];
 }
 
+/** O que a montagem com IA separou para aprovar. */
+export interface MidiasSeparadas {
+  momentos: MomentoSugerido[];
+  avisos: string[];
+  semOpcoes: string[];
+  geradoEm?: string;
+}
+
 export const bancoDeMidia = {
   chave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`),
   salvarChave: (apiKey: string, provider: 'pexels' | 'pixabay' = 'pexels') =>
@@ -806,6 +814,10 @@ export const bancoDeMidia = {
   /** O servidor busca o item de novo na fonte, baixa e grava como asset do workspace (com licença). */
   importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>
     api<MidiaImportada>('/banco-de-midia/importar', { metodo: 'POST', corpo: { fonte: r.fonte, tipo: r.tipo, id: r.id } }),
+  /** As mídias que a montagem com IA separou, esperando aprovação (null se nenhuma). */
+  pendentes: (projectId: string) => api<MidiasSeparadas | null>(`/projects/${projectId}/media-suggestions`),
+  /** Aprovadas ou dispensadas: o aviso some do editor. */
+  concluir: (projectId: string) => api<{ ok: boolean }>(`/projects/${projectId}/media-suggestions`, { metodo: 'DELETE' }),
   /** A IA escolhe os momentos da fala que pedem imagem, e o servidor busca as opções. */
   sugerir: (projectId: string, desligados: readonly string[] = []) =>
     api<{ momentos: MomentoSugerido[]; semOpcoes: string[]; avisos: string[]; custoCentavos: number }>(`/projects/${projectId}/media-suggestions`, {

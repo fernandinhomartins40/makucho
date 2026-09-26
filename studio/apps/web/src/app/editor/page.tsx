@@ -65,7 +65,9 @@ import {
   transcricao as apiTranscricao,
   marca as apiMarca,
   assets as apiAssets,
+  bancoDeMidia,
   urlDoVideo,
+  type MidiasSeparadas,
   type PerfilDeMarca,
   type Projeto,
   type ProjetoDetalhado,
@@ -524,6 +526,7 @@ function Editor({ projectId }: { projectId: string }) {
       setOcultas(new Set());
       await carregarPlano();
       await carregarProjeto();
+      carregarMidiasSeparadas();
       setAvisosDaIa(resultado.avisos);
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'não foi possível analisar.');
@@ -531,6 +534,25 @@ function Editor({ projectId }: { projectId: string }) {
       setAnalisando(false);
     }
   }, [analisando, projectId, carregarPlano, carregarProjeto]);
+
+  // ---------- Mídias que a montagem separou, para aprovar ----------
+  const [midiasSeparadas, setMidiasSeparadas] = useState<MidiasSeparadas | null>(null);
+  const carregarMidiasSeparadas = useCallback(() => {
+    void bancoDeMidia
+      .pendentes(projectId)
+      .then(setMidiasSeparadas)
+      .catch(() => setMidiasSeparadas(null));
+  }, [projectId]);
+  useEffect(carregarMidiasSeparadas, [carregarMidiasSeparadas]);
+  const abrirMidiasSeparadas = () => {
+    setCategoriaDaBiblioteca('midia');
+    setAba('biblioteca');
+    if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
+  };
+  const concluirMidiasSeparadas = useCallback(() => {
+    setMidiasSeparadas(null);
+    void bancoDeMidia.concluir(projectId).catch(() => undefined);
+  }, [projectId]);
 
   // ---------- Exportar ----------
   // No navegador, não na VPS: o pedido leva o plano, a transcrição (para
@@ -939,19 +961,36 @@ function Editor({ projectId }: { projectId: string }) {
                 </div>
               ))}
               {!semIa && <PedirAIa onEnviar={pedirAIa} />}
-              {!semIa && (
-                <button
-                  type="button"
-                  className="botao botao--secundario"
-                  style={{ width: '100%' }}
-                  onClick={() => {
-                    setCategoriaDaBiblioteca('midia');
-                    setAba('biblioteca');
-                    if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
-                  }}
-                >
-                  <IconeMidia size={16} /> Ilustrar a fala com imagens, ícones 3D e vídeos
-                </button>
+              {midiasSeparadas?.momentos.length ? (
+                <div className="midias-separadas" role="status">
+                  <div className="midias-separadas__topo">
+                    <IconeMidia size={18} />
+                    <strong>
+                      A IA separou {midiasSeparadas.momentos.length} {midiasSeparadas.momentos.length === 1 ? 'mídia' : 'mídias'} para ilustrar a fala
+                    </strong>
+                  </div>
+                  <div className="midias-separadas__miniaturas" aria-hidden>
+                    {midiasSeparadas.momentos.slice(0, 6).map((m) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={`${m.inicioMs}-${m.conceito}`} src={m.opcoes[0]?.miniatura} alt="" data-transparente={m.opcoes[0]?.transparente || undefined} />
+                    ))}
+                  </div>
+                  <p>Ícones 3D, logos, fotos e vídeos nos momentos certos. Nada entrou no vídeo ainda: revise e aprove.</p>
+                  <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+                    <button type="button" className="botao botao--primario botao--pequeno" onClick={abrirMidiasSeparadas}>
+                      Revisar e aprovar
+                    </button>
+                    <button type="button" className="botao botao--fantasma botao--pequeno" onClick={concluirMidiasSeparadas}>
+                      Dispensar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                !semIa && (
+                  <button type="button" className="botao botao--secundario" style={{ width: '100%' }} onClick={abrirMidiasSeparadas}>
+                    <IconeMidia size={16} /> Ilustrar a fala com imagens, ícones 3D e vídeos
+                  </button>
+                )
               )}
             </div>
           )}
@@ -999,6 +1038,8 @@ function Editor({ projectId }: { projectId: string }) {
               urlDoAsset={apiAssets.url}
               transcricao={transcricao}
               desligados={[...desligados]}
+              midiasSeparadas={midiasSeparadas}
+              onMidiasConcluidas={concluirMidiasSeparadas}
               recomendado={pacoteRecomendado(
                 projeto?.framework,
                 projeto?.entendimentoDaIa ? `${projeto.entendimentoDaIa.topic} ${projeto.entendimentoDaIa.structure} ${projeto.entendimentoDaIa.hookType}` : null,

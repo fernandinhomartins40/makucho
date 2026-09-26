@@ -10267,12 +10267,10 @@ body[data-redimensionando] * {
 }
 
 .sugestoes-midia__auto {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin: 0;
   font-size: 12.5px;
+  line-height: 1.45;
   color: var(--text-secondary);
-  cursor: pointer;
 }
 
 .sugestoes-midia__feito {
@@ -10475,4 +10473,67 @@ body[data-redimensionando] * {
   padding-left: 18px;
   font-size: 13.5px;
   line-height: 1.5;
+}
+
+/* Mídias separadas na montagem: o aviso para aprovar (painel da IA). */
+.midias-separadas {
+  display: grid;
+  gap: var(--e2);
+  padding: var(--e3);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-radius: var(--r-cartao);
+  background:
+    radial-gradient(100% 140% at 0% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 65%),
+    var(--surface-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.midias-separadas__topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.midias-separadas__topo svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.midias-separadas p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.midias-separadas__miniaturas {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.midias-separadas__miniaturas img {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-canvas);
+}
+
+.midias-separadas__miniaturas img[data-transparente] {
+  object-fit: contain;
+  padding: 4px;
+}
+
+.sugestoes-midia__da-montagem {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  line-height: 1.45;
 }

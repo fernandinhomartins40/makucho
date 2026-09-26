@@ -202,16 +202,16 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     const sistema: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
     await this.planos.salvar(sistema, projectId, plano, resposta.origem === 'ia' ? 'ai' : 'user');
 
-    // Com a IA de pé, a montagem já sai ilustrada: ícones 3D, logos, fotos
-    // e vídeos nos momentos da fala (midias.service). Sem IA (montagem
-    // automática), não há quem escolha os momentos.
+    // Com a IA de pé, a montagem já separa as mídias que ilustram a fala
+    // (ícones 3D, logos, fotos, vídeos) -- para APROVAR no editor, não
+    // aplicadas. Sem IA (montagem automática), não há quem escolha.
     if (resposta.origem === 'ia') {
       await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
-      const n = await this.midias.ilustrarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
+      const n = await this.midias.separarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
         this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
         return 0;
       });
-      if (n > 0) resposta.avisos = [...resposta.avisos, `A IA ilustrou a fala com ${n} ${n === 1 ? 'mídia' : 'mídias'} (faixa Mídia).`];
+      if (n > 0) resposta.avisos = [...resposta.avisos, `A IA separou ${n} ${n === 1 ? 'mídia' : 'mídias'} para ilustrar a fala: aprove no painel da IA.`];
     }
     await this.ativar(projectId);
 

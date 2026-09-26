@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Composicao, EditPlanV1, KenBurns, LayoutDeMidia, MarcaDoVideo, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
 import { NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
 import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
-import { assets as apiAssets, bancoDeMidia, type Asset, type Transcricao } from '../../lib/api';
+import { assets as apiAssets, bancoDeMidia, type Asset, type MidiasSeparadas, type Transcricao } from '../../lib/api';
 import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import { SugestoesDeMidia } from './SugestoesDeMidia';
 import type { ItemDaTimeline } from '../timeline/camadas';
@@ -35,6 +35,9 @@ interface Props {
   marca?: MarcaDoVideo;
   /** Trechos desligados: a IA lê só a fala que está no vídeo. */
   desligados?: readonly string[];
+  /** Mídias que a montagem com IA separou, para aprovar. */
+  midiasSeparadas?: MidiasSeparadas | null;
+  onMidiasConcluidas?: () => void;
 }
 
 /** Como mostrar um resultado da busca, pelo que ele é. */
@@ -90,7 +93,7 @@ const LAYOUTS: ReadonlyArray<readonly [LayoutDeMidia, string, string]> = [
   ['dividir_baixo', 'Dividir', 'Metade de baixo da tela'],
 ];
 
-export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados }: Props) {
+export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados, midiasSeparadas, onMidiasConcluidas }: Props) {
   const [lista, setLista] = useState<Asset[] | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -250,7 +253,14 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
 
   return (
     <>
-      <SugestoesDeMidia plan={plan} desligados={desligados ?? []} corDaMarca={marca?.cores.primary} onOperacoes={onOperacoes} />
+      <SugestoesDeMidia
+        plan={plan}
+        desligados={desligados ?? []}
+        corDaMarca={marca?.cores.primary}
+        onOperacoes={onOperacoes}
+        separadas={midiasSeparadas ?? null}
+        {...(onMidiasConcluidas ? { onConcluir: onMidiasConcluidas } : {})}
+      />
 
       <p className="biblioteca__alvo">
         Entra no cursor ({tempo(noCursor)}) na faixa Mídia. B-roll em vídeo entra mudo: a fala continua por baixo.

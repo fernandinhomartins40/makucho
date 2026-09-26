@@ -4,13 +4,16 @@
 // A IA lê a fala no tempo do vídeo montado e devolve os momentos visuais
 // (midias-da-ia.ts); para cada um, o servidor busca nas fontes de licença
 // livre do tipo pedido e ordena os resultados. Nada é aplicado aqui: o
-// editor mostra as opções e a pessoa escolhe (ou aceita todas) -- a
-// escolha vira operações da timeline, desfazíveis, no próprio editor.
+// editor mostra as opções e a pessoa aprova (escolhe, troca, desmarca) --
+// a escolha vira operações da timeline, desfazíveis, no próprio editor.
+// Na montagem com IA a sugestão é feita sozinha e fica guardada no
+// projeto (`mediaSuggestions`) até a aprovação.
 // ============================================================
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { agendaDoPlano, aplicarOperacoes, falaParaMidias, lerMomentosVisuais, operacoesDaComposicao, ranquearResultados } from '@makucho/studio-contracts';
-import type { MomentoVisual, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@makucho/studio-database';
+import { agendaDoPlano, falaParaMidias, lerMomentosVisuais, ranquearResultados } from '@makucho/studio-contracts';
+import type { MomentoVisual, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
@@ -101,62 +104,45 @@ export class MidiasService {
   }
 
   /**
-   * Na MONTAGEM com IA (proposta.service): a IA escolhe os momentos, a
-   * melhor opção de cada um é importada e as camadas entram numa versão
-   * nova do plano -- o vídeo já abre ilustrado. Desligável no Kit de marca
-   * (`midiasDaIa: false`). Nunca derruba a montagem: qualquer falha vira
-   * zero mídias e um aviso no log.
+   * Na MONTAGEM com IA (proposta.service): a IA escolhe os momentos e o
+   * servidor busca as opções, mas NADA entra no vídeo -- a sugestão fica
+   * guardada no projeto e o editor pede a aprovação (escolher, trocar,
+   * desmarcar). Desligável no Kit de marca (`midiasDaIa: false`). Nunca
+   * derruba a montagem: falha vira zero sugestões e um aviso no log.
    */
-  async ilustrarNaMontagem(workspaceId: string, projectId: string): Promise<number> {
+  async separarNaMontagem(workspaceId: string, projectId: string): Promise<number> {
     const perfil = await this.prisma.brandProfile.findFirst({
       where: { workspaceId, isActive: true },
       orderBy: { version: 'desc' },
-      select: { colors: true, videoDefaults: true },
+      select: { videoDefaults: true },
     });
     const prefs = (perfil?.videoDefaults ?? {}) as { midiasDaIa?: boolean };
     if (prefs.midiasDaIa === false) return 0;
-    const cor = (perfil?.colors as { primary?: string } | null)?.primary;
     const tenant: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
+    const r = await this.sugerir(tenant, projectId);
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        mediaSuggestions: r.momentos.length
+          ? ({ momentos: r.momentos, avisos: r.avisos, semOpcoes: r.semOpcoes, geradoEm: new Date().toISOString() } as unknown as Prisma.InputJsonValue)
+          : Prisma.DbNull,
+      },
+    });
+    return r.momentos.length;
+  }
 
-    const { momentos } = await this.sugerir(tenant, projectId);
-    const ops: TimelineOperation[] = [];
-    let colocadas = 0;
-    for (const m of momentos) {
-      // A 1ª opção que baixar (fonte fora do ar, arquivo grande: tenta a 2ª).
-      for (const opcao of m.opcoes.slice(0, 2)) {
-        try {
-          const imp = await this.banco.importar(tenant, { fonte: opcao.fonte, tipo: opcao.tipo, id: opcao.id });
-          ops.push(
-            ...operacoesDaComposicao(
-              m,
-              {
-                assetId: imp.id,
-                kind: opcao.tipo === 'video' ? 'video' : 'image',
-                largura: imp.largura ?? opcao.largura,
-                altura: imp.altura ?? opcao.altura,
-                transparente: imp.transparente || opcao.transparente,
-              },
-              cor ? { corDaMarca: cor } : {},
-            ),
-          );
-          colocadas += 1;
-          break;
-        } catch (e) {
-          this.log.warn(`mídia de "${m.conceito}" não veio de ${opcao.fonte}: ${e instanceof Error ? e.message : e}`);
-        }
-      }
-    }
-    if (!ops.length) return 0;
-    const atual = await this.planos.atual(tenant, projectId);
-    const r = aplicarOperacoes(atual.document, ops);
-    if (!r.ok || !r.plan) {
-      this.log.warn(`mídias da montagem recusadas no projeto ${projectId}: ${r.erro}`);
-      return 0;
-    }
-    // Versão própria (não 'ai'): o plano da SELEÇÃO continua sendo a
-    // referência do aproveitamento, e Ctrl+Z tira as mídias de uma vez.
-    await this.planos.salvar(tenant, projectId, r.plan, 'ai-comando');
-    return colocadas;
+  /** As mídias separadas na montagem, esperando aprovação (ou null). */
+  async pendentes(tenant: TenantContext, projectId: string) {
+    const p = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId: tenant.workspaceId }, select: { mediaSuggestions: true } });
+    if (!p) throw new NotFoundException('projeto não encontrado');
+    return (p.mediaSuggestions ?? null) as { momentos: MomentoComOpcoes[]; avisos: string[]; semOpcoes: string[]; geradoEm: string } | null;
+  }
+
+  /** Aprovadas (as escolhidas já entraram pelo editor) ou dispensadas: some o aviso. */
+  async concluir(tenant: TenantContext, projectId: string) {
+    const r = await this.prisma.project.updateMany({ where: { id: projectId, workspaceId: tenant.workspaceId }, data: { mediaSuggestions: Prisma.DbNull } });
+    if (!r.count) throw new NotFoundException('projeto não encontrado');
+    return { ok: true };
   }
 
   /** As opções de um momento: termo a termo até achar, e o tipo reserva se nada. */

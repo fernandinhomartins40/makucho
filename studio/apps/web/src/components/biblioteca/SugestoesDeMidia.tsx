@@ -12,11 +12,11 @@
 // outra leva ou escolher uma a uma.
 // ============================================================
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { COMPOSICOES, NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA } from '@makucho/studio-contracts';
 import type { Composicao, EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
-import { bancoDeMidia, type MomentoSugerido } from '../../lib/api';
+import { bancoDeMidia, type MidiasSeparadas, type MomentoSugerido } from '../../lib/api';
 import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import { tempo } from '../editor/funcoes';
 import { IconeIA, IconeCheck, IconeAviso } from '../icones';
@@ -26,6 +26,10 @@ interface Props {
   desligados?: readonly string[];
   corDaMarca?: string;
   onOperacoes: (ops: TimelineOperation[]) => void;
+  /** O que a montagem com IA já separou: o painel abre com isso para aprovar. */
+  separadas?: MidiasSeparadas | null;
+  /** Aprovadas ou dispensadas (o editor tira o aviso). */
+  onConcluir?: () => void;
 }
 
 interface Linha {
@@ -35,7 +39,7 @@ interface Linha {
   composicao: Composicao;
 }
 
-export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoes }: Props) {
+export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoes, separadas, onConcluir }: Props) {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -47,6 +51,16 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
   // a função mais nova, não a da hora do clique.
   const onOperacoesRef = useRef(onOperacoes);
   onOperacoesRef.current = onOperacoes;
+
+  // O que a montagem separou entra na lista, pronto para aprovar.
+  const [daMontagem, setDaMontagem] = useState(false);
+  useEffect(() => {
+    if (!separadas?.momentos.length) return;
+    setLinhas(separadas.momentos.map((m) => ({ momento: m, usar: true, escolhida: 0, composicao: m.composicao })));
+    setAvisos(separadas.avisos ?? []);
+    setSemOpcoes(separadas.semOpcoes ?? []);
+    setDaMontagem(true);
+  }, [separadas]);
 
   const sugerir = async () => {
     setBuscando(true);
@@ -81,6 +95,16 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
     setFeito(`${n} ${n === 1 ? 'mídia entrou' : 'mídias entraram'} no vídeo (faixa Mídia). Ctrl+Z desfaz tudo de uma vez.`);
     if (falhas.length) setErro(falhas.join(' · '));
     setLinhas(null);
+    setDaMontagem(false);
+    onConcluir?.();
+  };
+
+  const descartar = () => {
+    setLinhas(null);
+    if (daMontagem) {
+      setDaMontagem(false);
+      onConcluir?.();
+    }
   };
 
   return (
@@ -95,16 +119,24 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
         </div>
       </header>
 
+      {daMontagem && linhas && (
+        <p className="sugestoes-midia__da-montagem" role="status">
+          A IA separou estas mídias na montagem. Troque o que quiser, desmarque o que não servir e aprove.
+        </p>
+      )}
+
       {!linhas && (
         <button type="button" className="botao botao--primario" style={{ width: '100%' }} disabled={buscando} onClick={() => void sugerir()}>
           <IconeIA size={16} weight="fill" /> {buscando ? 'Lendo a fala e buscando as mídias… (até 1 min)' : 'Sugerir mídias para este vídeo'}
         </button>
       )}
 
-      <p className="sugestoes-midia__auto">
-        A montagem com IA já coloca as mídias sozinha; aqui você pede outra leva ou escolhe uma a uma.{' '}
-        <Link href="/marca#videos">Ligar ou desligar em Marca &gt; Vídeos</Link>
-      </p>
+      {!linhas && (
+        <p className="sugestoes-midia__auto">
+          A montagem com IA já separa as mídias para você aprovar; aqui você pede outra leva quando quiser.{' '}
+          <Link href="/marca#videos">Ligar ou desligar em Marca &gt; Vídeos</Link>
+        </p>
+      )}
 
       {erro && (
         <p className="campo__erro" role="alert">
@@ -189,10 +221,10 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
           {semOpcoes.length > 0 && <p className="texto-secundario">Sem opções boas para: {semOpcoes.join(', ')}.</p>}
           <div className="sugestoes-midia__acoes">
             <button type="button" className="botao botao--primario botao--pequeno" disabled={!marcadas.length || aplicando !== null} onClick={() => void aplicar()}>
-              {aplicando ?? `Adicionar ${marcadas.length} ${marcadas.length === 1 ? 'mídia' : 'mídias'} ao vídeo`}
+              {aplicando ?? `${daMontagem ? 'Aprovar e adicionar' : 'Adicionar'} ${marcadas.length} ${marcadas.length === 1 ? 'mídia' : 'mídias'}`}
             </button>
-            <button type="button" className="botao botao--fantasma botao--pequeno" disabled={aplicando !== null} onClick={() => setLinhas(null)}>
-              Descartar
+            <button type="button" className="botao botao--fantasma botao--pequeno" disabled={aplicando !== null} onClick={descartar}>
+              {daMontagem ? 'Dispensar' : 'Descartar'}
             </button>
           </div>
         </>
