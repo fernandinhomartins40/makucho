@@ -33,6 +33,7 @@ import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { FilaService } from '../../common/fila.service';
 import { AcabamentoService } from './acabamento.service';
+import { MidiasService } from './midias.service';
 import { AnaliseService } from './analise.service';
 
 export interface ResultadoDaProposta {
@@ -64,6 +65,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly planos: EditPlansService,
     private readonly acabamento: AcabamentoService,
     private readonly filas: FilaService,
+    private readonly midias: MidiasService,
   ) {}
 
   onModuleInit() {
@@ -199,6 +201,18 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
 
     const sistema: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
     await this.planos.salvar(sistema, projectId, plano, resposta.origem === 'ia' ? 'ai' : 'user');
+
+    // Com a IA de pé, a montagem já sai ilustrada: ícones 3D, logos, fotos
+    // e vídeos nos momentos da fala (midias.service). Sem IA (montagem
+    // automática), não há quem escolha os momentos.
+    if (resposta.origem === 'ia') {
+      await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
+      const n = await this.midias.ilustrarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
+        this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
+        return 0;
+      });
+      if (n > 0) resposta.avisos = [...resposta.avisos, `A IA ilustrou a fala com ${n} ${n === 1 ? 'mídia' : 'mídias'} (faixa Mídia).`];
+    }
     await this.ativar(projectId);
 
     // O motivo fica no projeto: a tela diz POR QUE a IA não montou

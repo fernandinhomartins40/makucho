@@ -9,8 +9,8 @@
 // ============================================================
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { agendaDoPlano, falaParaMidias, lerMomentosVisuais, ranquearResultados } from '@makucho/studio-contracts';
-import type { MomentoVisual, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
+import { agendaDoPlano, aplicarOperacoes, falaParaMidias, lerMomentosVisuais, operacoesDaComposicao, ranquearResultados } from '@makucho/studio-contracts';
+import type { MomentoVisual, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
@@ -98,6 +98,65 @@ export class MidiasService {
       avisos: [...avisos],
       custoCentavos: resposta.custoCentavos,
     };
+  }
+
+  /**
+   * Na MONTAGEM com IA (proposta.service): a IA escolhe os momentos, a
+   * melhor opção de cada um é importada e as camadas entram numa versão
+   * nova do plano -- o vídeo já abre ilustrado. Desligável no Kit de marca
+   * (`midiasDaIa: false`). Nunca derruba a montagem: qualquer falha vira
+   * zero mídias e um aviso no log.
+   */
+  async ilustrarNaMontagem(workspaceId: string, projectId: string): Promise<number> {
+    const perfil = await this.prisma.brandProfile.findFirst({
+      where: { workspaceId, isActive: true },
+      orderBy: { version: 'desc' },
+      select: { colors: true, videoDefaults: true },
+    });
+    const prefs = (perfil?.videoDefaults ?? {}) as { midiasDaIa?: boolean };
+    if (prefs.midiasDaIa === false) return 0;
+    const cor = (perfil?.colors as { primary?: string } | null)?.primary;
+    const tenant: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
+
+    const { momentos } = await this.sugerir(tenant, projectId);
+    const ops: TimelineOperation[] = [];
+    let colocadas = 0;
+    for (const m of momentos) {
+      // A 1ª opção que baixar (fonte fora do ar, arquivo grande: tenta a 2ª).
+      for (const opcao of m.opcoes.slice(0, 2)) {
+        try {
+          const imp = await this.banco.importar(tenant, { fonte: opcao.fonte, tipo: opcao.tipo, id: opcao.id });
+          ops.push(
+            ...operacoesDaComposicao(
+              m,
+              {
+                assetId: imp.id,
+                kind: opcao.tipo === 'video' ? 'video' : 'image',
+                largura: imp.largura ?? opcao.largura,
+                altura: imp.altura ?? opcao.altura,
+                transparente: imp.transparente || opcao.transparente,
+              },
+              cor ? { corDaMarca: cor } : {},
+            ),
+          );
+          colocadas += 1;
+          break;
+        } catch (e) {
+          this.log.warn(`mídia de "${m.conceito}" não veio de ${opcao.fonte}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+    }
+    if (!ops.length) return 0;
+    const atual = await this.planos.atual(tenant, projectId);
+    const r = aplicarOperacoes(atual.document, ops);
+    if (!r.ok || !r.plan) {
+      this.log.warn(`mídias da montagem recusadas no projeto ${projectId}: ${r.erro}`);
+      return 0;
+    }
+    // Versão própria (não 'ai'): o plano da SELEÇÃO continua sendo a
+    // referência do aproveitamento, e Ctrl+Z tira as mídias de uma vez.
+    await this.planos.salvar(tenant, projectId, r.plan, 'ai-comando');
+    return colocadas;
   }
 
   /** As opções de um momento: termo a termo até achar, e o tipo reserva se nada. */

@@ -67,6 +67,7 @@ const PREFERENCIAS_PADRAO: Preferencias = {
   fit: 'desfoque',
   voiceEnhance: true,
   autoZoom: true,
+  midiasDaIa: true,
   transicaoPadrao: 'cut',
   logo: { mostrar: true, posicao: 'sd' },
   musica: { usar: true, volumeDb: -20 },
@@ -608,6 +609,12 @@ export default function MarcaPage() {
                   <h2>Movimento e cortes</h2>
                   <Interruptor rotulo="Zoom automático" ajuda="Aproximação lenta na abertura e zoom seco em cortes alternados." ligado={prefs.autoZoom} onTrocar={(v) => mudarPrefs({ autoZoom: v })} />
                   <Interruptor rotulo="Barra de progresso" ajuda="Uma linha no topo que avança até o fim." ligado={prefs.barraDeProgresso} onTrocar={(v) => mudarPrefs({ barraDeProgresso: v })} />
+                  <Interruptor
+                    rotulo="Imagens e ícones pela IA"
+                    ajuda="Na montagem, a IA ilustra a fala com ícones 3D, logos, fotos e vídeos de bancos de licença livre."
+                    ligado={prefs.midiasDaIa !== false}
+                    onTrocar={(v) => mudarPrefs({ midiasDaIa: v })}
+                  />
                   <div className="marca__fontes">
                     <label className="campo" style={{ margin: 0 }}>
                       <span className="campo__rotulo">Passagem entre os cortes</span>

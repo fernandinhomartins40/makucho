@@ -56,7 +56,6 @@ import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
 import { useExportacoes } from '../../lib/exportacao/tarefas';
 import { esconderCamadas, ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
-import { midiasAutomaticas, operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import type { OpcoesDeExportacao } from '../../lib/exportacao/opcoes';
 import { tempo } from '../../components/editor/funcoes';
 import {
@@ -66,7 +65,6 @@ import {
   transcricao as apiTranscricao,
   marca as apiMarca,
   assets as apiAssets,
-  bancoDeMidia,
   urlDoVideo,
   type PerfilDeMarca,
   type Projeto,
@@ -525,8 +523,6 @@ function Editor({ projectId }: { projectId: string }) {
       const resultado = await apiIa.analisar(projectId);
       setOcultas(new Set());
       await carregarPlano();
-      // "Colocar as mídias sozinha": com o plano novo na tela, a IA escolhe.
-      if (midiasAutomaticas()) setMidiasPendentes(true);
       await carregarProjeto();
       setAvisosDaIa(resultado.avisos);
     } catch (e) {
@@ -535,31 +531,6 @@ function Editor({ projectId }: { projectId: string }) {
       setAnalisando(false);
     }
   }, [analisando, projectId, carregarPlano, carregarProjeto]);
-
-  // ---------- Mídias da IA, sozinhas depois de montar ----------
-  const [midiasPendentes, setMidiasPendentes] = useState(false);
-  const executarVariasRef = useRef(executarVarias);
-  executarVariasRef.current = executarVarias;
-  useEffect(() => {
-    if (!midiasPendentes || !plano) return;
-    setMidiasPendentes(false);
-    void (async () => {
-      setAviso('A IA está escolhendo imagens, ícones e vídeos para ilustrar a fala…');
-      try {
-        const r = await bancoDeMidia.sugerir(projectId, [...desligados]);
-        const escolhas = r.momentos.map((m) => ({ momento: m, opcao: m.opcoes[0]!, composicao: m.composicao }));
-        const { ops, falhas } = await operacoesDasEscolhas(escolhas, marcaDoVideo.cores.primary);
-        // A função mais nova: o plano pode ter mudado enquanto as mídias vinham.
-        if (ops.length) executarVariasRef.current(ops);
-        const n = escolhas.length - falhas.length;
-        setAviso(n ? `A IA colocou ${n} ${n === 1 ? 'mídia' : 'mídias'} (faixa Mídia). Ctrl+Z desfaz todas.` : 'A IA não achou mídias boas para esta fala.');
-      } catch (e) {
-        setErro(e instanceof Error ? e.message : 'não foi possível colocar as mídias.');
-      }
-    })();
-    // Uma vez por pedido: o plano entra só para esperar ele existir.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [midiasPendentes, plano]);
 
   // ---------- Exportar ----------
   // No navegador, não na VPS: o pedido leva o plano, a transcrição (para

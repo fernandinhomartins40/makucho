@@ -42,6 +42,11 @@ export const preferenciasDeVideoSchema = z
     voiceEnhance: z.boolean().optional(),
     /** Zoom automatico nos trechos (abertura e cortes). */
     autoZoom: z.boolean().optional(),
+    /**
+     * Na montagem com IA, ilustrar a fala com imagens, ícones 3D, logos e
+     * vídeos de bancos de licença livre (midias-da-ia.ts). Ausente = ligado.
+     */
+    midiasDaIa: z.boolean().optional(),
     /** Transicao em todos os cortes; `cut` (padrao) e corte seco. */
     transicaoPadrao: tipoDeTransicaoSchema.optional(),
     logo: z

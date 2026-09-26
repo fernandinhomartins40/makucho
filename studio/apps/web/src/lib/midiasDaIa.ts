@@ -5,8 +5,6 @@
 // o asset com a licença) e vira as operações da composição
 // (contracts/midias-da-ia.ts). Tudo entra numa versão só do plano: um
 // Ctrl+Z desfaz a leva inteira.
-//
-// Também guarda a preferência "colocar sozinha ao montar com IA".
 // ============================================================
 
 import { operacoesDaComposicao } from '@makucho/studio-contracts';
@@ -56,23 +54,4 @@ export async function operacoesDasEscolhas(
   }
   aoProgredir?.(escolhas.length, escolhas.length);
   return { ops, falhas };
-}
-
-const CHAVE_AUTOMATICO = 'studio:midias-automaticas';
-
-/** "Ao montar com IA, colocar as mídias sugeridas sozinha." */
-export function midiasAutomaticas(): boolean {
-  try {
-    return window.localStorage.getItem(CHAVE_AUTOMATICO) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function definirMidiasAutomaticas(v: boolean): void {
-  try {
-    window.localStorage.setItem(CHAVE_AUTOMATICO, v ? '1' : '0');
-  } catch {
-    // Vale só nesta aba.
-  }
 }

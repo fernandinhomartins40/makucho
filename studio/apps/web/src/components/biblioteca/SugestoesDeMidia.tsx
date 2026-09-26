@@ -7,8 +7,9 @@
 // A IA marca os momentos da fala que pedem imagem; para cada um, o
 // servidor traz até 4 opções. Aqui a pessoa confere: troca a opção, muda
 // a composição, desmarca o que não quer -- e adiciona tudo numa versão só
-// (um Ctrl+Z desfaz a leva). Nada entra sem essa aprovação, a não ser que
-// ela ligue "colocar sozinha ao montar com IA".
+// (um Ctrl+Z desfaz a leva). A montagem com IA já ilustra sozinha no
+// servidor (midias.service, `midiasDaIa` no Kit de marca); aqui é pedir
+// outra leva ou escolher uma a uma.
 // ============================================================
 
 import { useRef, useState } from 'react';
@@ -16,7 +17,7 @@ import Link from 'next/link';
 import { COMPOSICOES, NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA } from '@makucho/studio-contracts';
 import type { Composicao, EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { bancoDeMidia, type MomentoSugerido } from '../../lib/api';
-import { definirMidiasAutomaticas, midiasAutomaticas, operacoesDasEscolhas } from '../../lib/midiasDaIa';
+import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import { tempo } from '../editor/funcoes';
 import { IconeIA, IconeCheck, IconeAviso } from '../icones';
 
@@ -42,7 +43,6 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
   const [semOpcoes, setSemOpcoes] = useState<string[]>([]);
   const [aplicando, setAplicando] = useState<string | null>(null);
   const [feito, setFeito] = useState<string | null>(null);
-  const [automatico, setAutomatico] = useState(() => (typeof window === 'undefined' ? false : midiasAutomaticas()));
   // As operações entram no plano de DEPOIS da importação (que demora):
   // a função mais nova, não a da hora do clique.
   const onOperacoesRef = useRef(onOperacoes);
@@ -101,17 +101,10 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
         </button>
       )}
 
-      <label className="sugestoes-midia__auto">
-        <input
-          type="checkbox"
-          checked={automatico}
-          onChange={(e) => {
-            setAutomatico(e.target.checked);
-            definirMidiasAutomaticas(e.target.checked);
-          }}
-        />
-        Colocar as mídias sozinha quando a IA montar o vídeo
-      </label>
+      <p className="sugestoes-midia__auto">
+        A montagem com IA já coloca as mídias sozinha; aqui você pede outra leva ou escolhe uma a uma.{' '}
+        <Link href="/marca#videos">Ligar ou desligar em Marca &gt; Vídeos</Link>
+      </p>
 
       {erro && (
         <p className="campo__erro" role="alert">
