@@ -27,6 +27,15 @@ interface Estado {
 
 const porUrl = new Map<string, Estado>();
 
+// Enquanto a prévia toca, a extração espera: um terceiro <video> buscando
+// quadros disputa decodificador e rede com os dois players da prévia, e
+// no celular isso fazia o vídeo travar.
+let pausada = false;
+export function pausarQuadros(pausar: boolean): void {
+  pausada = pausar;
+}
+const esperar = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
 function extrair(url: string, duracaoMs: number): Estado {
   const existente = porUrl.get(url);
   if (existente) return existente;
@@ -38,7 +47,9 @@ function extrair(url: string, duracaoMs: number): Estado {
   const video = document.createElement('video');
   video.muted = true;
   video.playsInline = true;
-  video.preload = 'auto';
+  // Só o que cada busca pede: 'auto' baixava a prévia inteira em
+  // segundo plano, concorrendo com o vídeo que a pessoa assiste.
+  video.preload = 'metadata';
   video.src = url;
   const canvas = document.createElement('canvas');
   canvas.width = LARGURA;
@@ -65,7 +76,12 @@ function extrair(url: string, duracaoMs: number): Estado {
     });
     const total = Number.isFinite(video.duration) ? video.duration * 1000 : duracaoMs;
     let desde = 0;
+    // Deixa o editor abrir primeiro.
+    await esperar(1500);
     for (let ms = 0; ms < total; ms += passoMs) {
+      while (pausada) await esperar(400);
+      // Um quadro por vez, com folga: nunca uma rajada no processador.
+      await esperar(60);
       await buscar((ms + passoMs / 2) / 1000);
       if (!ctx) break;
       // Cobre o quadro 9:16 (vídeo deitado é cortado no centro).

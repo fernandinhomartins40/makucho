@@ -39,7 +39,8 @@ import {
   agendaDoPlano, duracaoNaTimeline } from '@makucho/studio-contracts';
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
-import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
+import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
+import { Congelado } from '../../components/editor/Congelado';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
@@ -543,6 +544,18 @@ function Editor({ projectId }: { projectId: string }) {
   // A película da timeline: quadros tirados da prévia leve.
   const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0);
 
+  // ---------- Reprodução: o que para enquanto o vídeo toca ----------
+  const [tocandoNaPrevia, setTocandoNaPrevia] = useState(false);
+  useEffect(() => pausarQuadros(tocandoNaPrevia), [tocandoNaPrevia]);
+  const [celular, setCelular] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 899px)');
+    const atualizar = () => setCelular(mq.matches);
+    atualizar();
+    mq.addEventListener('change', atualizar);
+    return () => mq.removeEventListener('change', atualizar);
+  }, []);
+
   // ---------- Narração ----------
   const [gravadorDe, setGravadorDe] = useState<number | null>(null);
   const [gravandoDe, setGravandoDe] = useState<number | null>(null);
@@ -970,7 +983,7 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined}>
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined}>
         <RailDeFerramentas
           aba={aba}
           onTrocar={(nova) => {
@@ -985,6 +998,10 @@ function Editor({ projectId }: { projectId: string }) {
         {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
         <section className="editor__ia" aria-label="Painel de conteúdo">
+          {/* No celular a folha fechada não se atualiza (continua montada:
+              nada do que foi digitado se perde) -- durante o vídeo, é
+              trabalho a menos a cada atualização. */}
+          <Congelado ativo={!celular || folha === 'painel'}>
           <CabecalhoDaFolha titulo={ROTULO_DA_ABA[aba]} aoFechar={() => setFolha(null)} />
           {/* Aba IA, na ordem do que a pessoa quer fazer: (1) pedir um
               ajuste, (2) conferir os trechos, (3) o que a IA entendeu e
@@ -1150,6 +1167,7 @@ function Editor({ projectId }: { projectId: string }) {
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} desligados={desligados} />
           )}
           {aba === 'marca' && <MarcaNoEditor plan={plano} posicaoMs={posicaoMs} onOperacao={executar} />}
+          </Congelado>
         </section>
 
         <main
@@ -1217,6 +1235,7 @@ function Editor({ projectId }: { projectId: string }) {
               executar({ op: 'editar_midia', mediaId: id, keyframes });
             }}
             gravandoDe={gravandoDe}
+            onTocando={setTocandoNaPrevia}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
@@ -1225,6 +1244,7 @@ function Editor({ projectId }: { projectId: string }) {
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
+          <Congelado ativo={!celular || folha === 'inspector'}>
           <CabecalhoDaFolha titulo="Ajustes" aoFechar={() => setFolha(null)} />
           <Inspector
             plan={plano}
@@ -1242,6 +1262,7 @@ function Editor({ projectId }: { projectId: string }) {
             onSeek={setPosicaoMs}
             abaPedida={abaDoInspector}
           />
+          </Congelado>
         </aside>
 
         {atalhosAbertos && <AtalhosDoEditor onFechar={() => setAtalhosAbertos(false)} />}

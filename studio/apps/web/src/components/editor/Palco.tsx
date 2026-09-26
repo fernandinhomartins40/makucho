@@ -566,6 +566,10 @@ export function Palco({
   }, [tocando, sincronizarNarracoes]);
 
   // ---------- Reprodução ----------
+  const intervaloDoAviso = useMemo(
+    () => (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 250 : 90),
+    [],
+  );
   useEffect(() => {
     if (!tocando) return;
     let quadro = 0;
@@ -599,8 +603,10 @@ export function Palco({
       desenharFundo();
 
       // A timeline e a legenda de reserva não precisam de 60
-      // atualizações por segundo: cada uma re-renderiza o editor.
-      if (agora - ultimoAviso > 90) {
+      // atualizações por segundo: cada uma re-renderiza o editor. No
+      // celular, 4 por segundo (o cursor da timeline desliza por CSS
+      // entre uma e outra): o processador fica para o vídeo.
+      if (agora - ultimoAviso > intervaloDoAviso) {
         ultimoAviso = agora;
         setSourceMs(sourceNoInstante(agenda, indiceRef.current, relogio.ms) * 1000);
         ultimaPosicaoRef.current = relogio.ms;
@@ -611,7 +617,7 @@ export function Palco({
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes]);
+  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes, intervaloDoAviso]);
 
   // ---------- Trilha ----------
   const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;

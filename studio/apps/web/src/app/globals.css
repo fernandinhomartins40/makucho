@@ -11508,3 +11508,11 @@ button.momento-midia__tempo:hover {
 .palco-lateral__menu > strong {
   font-size: 13px;
 }
+
+/* Tocando no celular: a posição chega 4x por segundo; o cursor da
+   timeline desliza entre uma e outra em vez de pular. */
+@media (pointer: coarse) {
+  .editor[data-tocando] .timeline__playhead {
+    transition: left 250ms linear;
+  }
+}
