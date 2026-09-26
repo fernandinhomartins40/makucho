@@ -23,13 +23,19 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   PERFIL_COMUNICACAO_PADRAO,
+  lerRoteiroDaIa,
   parseRoteiroGerado,
   parseSugestoes,
+  roteiroAtualParaIa,
+  roteiroDaIaParaEntrada,
   roteiroParaEntrada,
+  vocabularioDeRoteiroParaIa,
 } from '@makucho/studio-contracts';
 import type {
   CommunicationProfileInput,
   Framework,
+  PedidoDeEdicaoDeRoteiro,
+  PedidoDeRoteiroLivre,
   ScriptMode,
   SugestoesDeRoteiro,
 } from '@makucho/studio-contracts';
@@ -46,6 +52,8 @@ import { PromptsService } from './prompts.service';
  */
 const MAX_TOKENS_ROTEIRO = 4000;
 const MAX_TOKENS_SUGESTOES = 3000;
+/** Um roteiro de até 8 blocos com as técnicas cabe folgado em 2 mil tokens. */
+const MAX_TOKENS_ROTEIRO_LIVRE = 2500;
 
 /**
  * Uma chamada a cada 20 segundos por roteiro (seção 26.3).
@@ -138,6 +146,68 @@ export class RoteiroService {
       // salvamento seriam dois lugares para divergir.
       roteiro: roteiroParaEntrada(lido.dados, duracao),
       custoCentavos: resposta.custoCentavos,
+    };
+  }
+
+  // ----------------------------------------------------------
+  // Roteiro por pedido livre (gerar e editar)
+  // ----------------------------------------------------------
+
+  /**
+   * Gera um roteiro a partir do que a pessoa escreveu, do jeito dela.
+   *
+   * Não salva: a tela mostra, a pessoa ajusta e salva. O perfil de
+   * comunicação entra como padrão -- o pedido de agora vale mais.
+   */
+  async gerarLivre(workspaceId: string, pedido: PedidoDeRoteiroLivre) {
+    const perfil = await this.perfilDe(workspaceId);
+    const { texto: instrucoes, versao } = this.prompts.obter('gerar_roteiro_livre');
+    const resposta = await this.ai.chamar({
+      workspaceId,
+      chamada: 'gerar_roteiro',
+      sistema: `${instrucoes}\n\n${vocabularioDeRoteiroParaIa()}`,
+      usuario: [
+        `PEDIDO: ${pedido.pedido}`,
+        pedido.duracaoS ? `DURAÇÃO ALVO: ${pedido.duracaoS} segundos (obrigatória)` : 'DURAÇÃO: decida pelo pedido.',
+        '',
+        'PERFIL DE COMUNICAÇÃO DE QUEM VAI FALAR (padrão; o pedido vale mais):',
+        this.descreverPerfil(perfil),
+      ].join('\n'),
+      maxTokens: MAX_TOKENS_ROTEIRO_LIVRE,
+      promptVersion: versao,
+      // Pedir de novo o mesmo texto quer OUTRO roteiro, não o mesmo.
+      semCache: true,
+    });
+    return this.lerOuFalhar(resposta.texto, resposta.custoCentavos);
+  }
+
+  /** Revisa o roteiro inteiro conforme um pedido livre ("gancho mais forte", "encurta"...). */
+  async editar(workspaceId: string, pedido: PedidoDeEdicaoDeRoteiro) {
+    const perfil = await this.perfilDe(workspaceId);
+    const { texto: instrucoes, versao } = this.prompts.obter('editar_roteiro');
+    const resposta = await this.ai.chamar({
+      workspaceId,
+      chamada: 'editar_roteiro',
+      sistema: `${instrucoes}\n\n${vocabularioDeRoteiroParaIa()}`,
+      usuario: [roteiroAtualParaIa(pedido), '', 'PERFIL DE COMUNICAÇÃO (padrão):', this.descreverPerfil(perfil)].join('\n'),
+      maxTokens: MAX_TOKENS_ROTEIRO_LIVRE,
+      promptVersion: versao,
+      semCache: true,
+    });
+    return this.lerOuFalhar(resposta.texto, resposta.custoCentavos);
+  }
+
+  private lerOuFalhar(texto: string, custoCentavos: number) {
+    const lido = lerRoteiroDaIa(texto);
+    if (!lido.ok) {
+      this.log.warn(`roteiro livre inválido: ${lido.erro}`);
+      throw new BadRequestException('a resposta da IA veio incompleta; tente de novo');
+    }
+    return {
+      roteiro: roteiroDaIaParaEntrada(lido.roteiro),
+      tecnicas: lido.roteiro.tecnicas,
+      resposta: lido.roteiro.resposta,
+      custoCentavos,
     };
   }
 
@@ -261,7 +331,7 @@ export class RoteiroService {
    * do que um objeto que ele precisa interpretar. A saída é JSON; a
    * entrada não precisa ser.
    */
-  private descreverPerfil(p: CommunicationProfileInput): string {
+  descreverPerfil(p: CommunicationProfileInput): string {
     const linhas = [
       `- tom: ${p.tone}`,
       `- energia: ${p.energy}`,

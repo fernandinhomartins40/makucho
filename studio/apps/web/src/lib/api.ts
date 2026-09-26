@@ -303,8 +303,25 @@ export interface RoteiroParaSalvar {
   blocks: Array<{ role: string; goal?: string; text: string; position: number }>;
 }
 
+/** O que a IA devolve para a tela: o roteiro, as técnicas usadas e o que mudou. */
+export interface RoteiroDaIaNaTela {
+  roteiro: RoteiroParaSalvar;
+  tecnicas: Array<{ nome: string; onde: string }>;
+  resposta: string;
+  custoCentavos: number;
+}
+
+/** Um roteiro na lista (sem os blocos). */
+export interface RoteiroNaLista {
+  id: string;
+  title: string;
+  targetDurationMs: number;
+  updatedAt: string;
+  _count?: { blocks: number };
+}
+
 export const roteiros = {
-  listar: () => api<Roteiro[]>('/scripts'),
+  listar: () => api<RoteiroNaLista[]>('/scripts'),
   obter: (id: string) => api<Roteiro>(`/scripts/${id}`),
   criar: (dados: RoteiroParaSalvar) =>
     api<Roteiro>('/scripts', { metodo: 'POST', corpo: dados }),
@@ -657,6 +674,16 @@ export const ia = {
   // #1 -- escreve um rascunho a partir do tema. Nao salva nada: o
   // retorno vai para a tela, editavel, e quem decide salvar e quem
   // vai falar o texto.
+  /** Roteiro por pedido livre ("um vídeo de 30s pro Instagram sobre..."). Não salva. */
+  roteiroLivre: (dados: { pedido: string; duracaoS?: number | null }) =>
+    api<RoteiroDaIaNaTela>('/scripts/ai/gerar', { metodo: 'POST', corpo: dados }),
+  /** Revisa o roteiro da tela por um pedido livre ("gancho mais forte", "encurta"). */
+  editarRoteiro: (dados: {
+    pedido: string;
+    roteiro: { title: string; targetDurationMs?: number; blocks: Array<{ role: string; goal?: string; text: string }> };
+    blocoSelecionado?: number | null;
+    anterior?: { pedido: string; resposta: string };
+  }) => api<RoteiroDaIaNaTela>('/scripts/ai/editar', { metodo: 'POST', corpo: dados }),
   gerarRoteiro: (dados: {
     tema: string;
     framework?: string;

@@ -1853,30 +1853,7 @@ body {
    porque seu conteúdo não cresce.
    ============================================================ */
 
-.roteiro {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 360px;
-  gap: var(--e5);
-  align-items: start;
-}
-
-@media (max-width: 1400px) {
-  .roteiro {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
-
-  /* O assistente desce para a largura toda em vez de sumir: as
-     sugestões e o checklist são o motivo de a tela existir. */
-  .roteiro > aside:last-child {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 900px) {
-  .roteiro {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
+/* (A grade de três colunas da tela antiga de roteiro saiu: ver "Roteiros" no fim do arquivo.) */
 
 /* ---------- Bloco do roteiro ---------- */
 
@@ -3031,7 +3008,6 @@ button {
     padding: var(--e3) var(--e4);
   }
 
-  .roteiro,
   .marca {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -7271,5 +7247,596 @@ body[data-redimensionando] * {
     right: var(--e3);
     width: auto;
     bottom: calc(var(--barra-inferior, 64px) + var(--seguro-baixo, 0px) + var(--e2));
+  }
+}
+
+/* =====================================================================
+   Roteiros: lista à esquerda, pedido livre ou o roteiro ao centro, e a
+   barra "Peça à IA" presa embaixo do roteiro.
+   ===================================================================== */
+.roteiros {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: var(--e5);
+  align-items: start;
+}
+
+@media (max-width: 899px) {
+  .roteiros {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.roteiros__lista {
+  position: sticky;
+  top: 0;
+}
+
+.roteiros__area {
+  min-width: 0;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.roteiros__aviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+  margin: 0 0 var(--e3);
+  padding: var(--e2) var(--e3);
+  border-radius: var(--r-controle);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  font-size: 13px;
+}
+
+/* ---------- Lista ---------- */
+.lista-roteiros {
+  display: grid;
+  gap: var(--e3);
+}
+
+.lista-roteiros__titulo {
+  margin: var(--e2) 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.lista-roteiros__busca {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-controle);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.lista-roteiros__busca input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lista-roteiros__vazio {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.lista-roteiros ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lista-roteiros li {
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-controle);
+}
+
+.lista-roteiros li[data-atual] {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.lista-roteiros li:hover {
+  background: var(--surface-2);
+}
+
+.lista-roteiros__item {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: var(--e2) var(--e3);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lista-roteiros__item strong {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lista-roteiros__item span {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.lista-roteiros__excluir {
+  opacity: 0;
+  margin-right: 4px;
+}
+
+.lista-roteiros li:hover .lista-roteiros__excluir,
+.lista-roteiros__excluir:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .lista-roteiros__excluir {
+    opacity: 0.7;
+  }
+}
+
+/* ---------- Novo roteiro ---------- */
+.roteiro-novo {
+  display: grid;
+  justify-items: center;
+  gap: var(--e3);
+  padding: var(--e6, 48px) 0 var(--e5);
+  text-align: center;
+}
+
+.roteiro-novo__icone {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: #fff;
+}
+
+.roteiro-novo h1 {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+}
+
+.roteiro-novo__ajuda {
+  margin: 0;
+  max-width: 560px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.roteiro-novo__form {
+  width: 100%;
+  display: grid;
+  gap: var(--e3);
+  margin-top: var(--e3);
+  padding: var(--e3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-destaque);
+  background: var(--surface-1);
+  box-shadow: var(--sombra-2);
+  text-align: left;
+}
+
+.roteiro-novo__form:focus-within {
+  border-color: var(--primary);
+}
+
+.roteiro-novo__pedido {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.roteiro-novo__linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+  flex-wrap: wrap;
+}
+
+.roteiro-novo__duracoes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.roteiro-novo__duracoes button,
+.roteiro-novo__exemplos button,
+.roteiro-ia__rapidos button {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.roteiro-novo__duracoes button[aria-checked="true"] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 20%, var(--surface-2));
+  color: var(--text-primary);
+}
+
+.roteiro-novo__exemplos {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  margin-top: var(--e3);
+  text-align: left;
+}
+
+.roteiro-novo__exemplos > span {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.roteiro-novo__exemplos button {
+  border-radius: var(--r-controle);
+  padding: var(--e2) var(--e3);
+  text-align: left;
+  line-height: 1.4;
+}
+
+.roteiro-novo__exemplos button:hover,
+.roteiro-ia__rapidos button:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.roteiro-novo__branco {
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---------- Roteiro ---------- */
+.roteiro {
+  display: grid;
+  gap: var(--e3);
+  padding-bottom: var(--e4);
+}
+
+.roteiro__topo {
+  display: grid;
+  gap: var(--e2);
+}
+
+.roteiro__titulo {
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: clamp(20px, 2.4vw, 26px);
+  font-weight: 800;
+}
+
+.roteiro__titulo:hover,
+.roteiro__titulo:focus {
+  border-bottom-color: var(--border-forte);
+}
+
+.roteiro__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e2) var(--e4);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.roteiro__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.roteiro__meta [data-ok] {
+  color: var(--success);
+}
+
+.roteiro__meta [data-alerta] {
+  color: var(--warning);
+}
+
+.roteiro__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: calc(-1 * var(--e2));
+}
+
+.roteiro__tecnicas {
+  padding: var(--e2) var(--e3);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: var(--r-cartao);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: 13px;
+}
+
+.roteiro__tecnicas summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.roteiro__tecnicas ul {
+  margin: var(--e2) 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.roteiro__tecnicas strong {
+  color: var(--text-primary);
+}
+
+.roteiro__blocos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--e2);
+}
+
+.roteiro-bloco {
+  display: grid;
+  gap: 4px;
+  padding: var(--e3) var(--e3) var(--e3) var(--e4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cor-papel);
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  transition: border-color var(--transicao), background var(--transicao);
+}
+
+.roteiro-bloco[data-selecionado] {
+  border-color: var(--primary);
+  border-left-color: var(--cor-papel);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-1));
+}
+
+.roteiro-bloco__cabeca {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+}
+
+.roteiro-bloco__papel {
+  appearance: none;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cor-papel) 22%, transparent);
+  color: var(--cor-papel);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.roteiro-bloco__papel option {
+  color: #111;
+}
+
+.roteiro-bloco__tempo {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.roteiro-bloco__ferramentas {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0.35;
+  transition: opacity var(--transicao);
+}
+
+.roteiro-bloco:hover .roteiro-bloco__ferramentas,
+.roteiro-bloco[data-selecionado] .roteiro-bloco__ferramentas,
+.roteiro-bloco__ferramentas:focus-within {
+  opacity: 1;
+}
+
+.roteiro-bloco__intencao {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.roteiro-bloco__texto {
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.roteiro__adicionar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: var(--e2);
+  border: 1px dashed var(--border-forte);
+  border-radius: var(--r-cartao);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.roteiro__adicionar:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+/* ---------- Peça à IA (presa embaixo) ---------- */
+.roteiro-ia {
+  position: sticky;
+  bottom: var(--e3);
+  z-index: 5;
+  display: grid;
+  gap: var(--e2);
+  margin-top: var(--e3);
+  padding: var(--e3);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: var(--r-destaque);
+  background: color-mix(in srgb, var(--surface-1) 94%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--sombra-3);
+}
+
+.roteiro-ia__linha {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  color: var(--accent);
+}
+
+.roteiro-ia__linha input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14.5px;
+}
+
+.roteiro-ia__rapidos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.roteiro-ia__resposta,
+.roteiro-ia__alvo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.roteiro-ia__resposta {
+  color: var(--text-primary);
+}
+
+.roteiro-ia__resposta svg {
+  color: var(--success);
+}
+
+.roteiro-ia__alvo {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.roteiro-ia__resposta button,
+.roteiro-ia__alvo button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 899px) {
+  .roteiro-ia {
+    bottom: calc(var(--barra-inferior, 64px) + var(--seguro-baixo, 0px) + var(--e2));
+  }
+  .roteiro-novo {
+    padding-top: var(--e4);
+  }
+}
+
+/* Celular: a barra da IA ocupa pouco -- atalhos numa linha só, rolando. */
+@media (max-width: 899px) {
+  .roteiro-ia {
+    padding: var(--e2);
+    gap: 6px;
+  }
+  .roteiro-ia__rapidos {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--e2));
+    padding: 0 var(--e2);
+  }
+  .roteiro-ia__rapidos::-webkit-scrollbar {
+    display: none;
+  }
+  .roteiro-ia__rapidos button {
+    flex-shrink: 0;
+  }
+  .roteiro-ia__resposta {
+    font-size: 12.5px;
   }
 }

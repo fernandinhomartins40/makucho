@@ -32,6 +32,8 @@ export const CHAMADAS_DE_IA = [
   'comandar_edicao',
   // #8: "Configurar com IA" no Kit de marca (ai-marca.ts).
   'configurar_marca',
+  // #9: editar um roteiro por pedido livre (ai-roteiro-livre.ts).
+  'editar_roteiro',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -47,6 +49,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   refinar_cortes: 'Aprimoramento de cortes',
   comandar_edicao: 'Edição por comando',
   configurar_marca: 'Configuração da marca',
+  editar_roteiro: 'Edição de roteiro',
 };
 
 // ---------- Modelos ----------
@@ -92,6 +95,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   refinar_cortes: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   comandar_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   configurar_marca: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  editar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /** Compatibilidade: so o modelo de cada chamada. */

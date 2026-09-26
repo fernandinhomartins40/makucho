@@ -12,7 +12,7 @@
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { frameworkSchema, scriptModeSchema } from '@makucho/studio-contracts';
+import { frameworkSchema, pedidoDeEdicaoDeRoteiroSchema, pedidoDeRoteiroLivreSchema, scriptModeSchema } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -50,6 +50,20 @@ export class RoteiroController {
   gerar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertCanWrite(tenant);
     return this.roteiro.gerar(tenant.workspaceId, gerarSchema.parse(body ?? {}));
+  }
+
+  /** Roteiro a partir de um pedido livre, do jeito da pessoa. Não salva. */
+  @Post('ai/gerar')
+  gerarLivre(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    return this.roteiro.gerarLivre(tenant.workspaceId, pedidoDeRoteiroLivreSchema.parse(body ?? {}));
+  }
+
+  /** Revisa o roteiro (o que está na tela, salvo ou não) por um pedido livre. */
+  @Post('ai/editar')
+  editar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    return this.roteiro.editar(tenant.workspaceId, pedidoDeEdicaoDeRoteiroSchema.parse(body ?? {}));
   }
 
   /**

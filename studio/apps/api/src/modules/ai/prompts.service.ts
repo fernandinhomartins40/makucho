@@ -45,6 +45,10 @@ export const VERSAO_DO_PROMPT = {
   // vídeos com "para que serve") e as vinhetas de abertura/encerramento.
   comandar_edicao: 'comando-v4',
   configurar_marca: 'marca-v1',
+  // Roteiro por pedido livre: a IA entende o contexto e aplica as técnicas
+  // de retenção sozinha (ai-roteiro-livre.ts).
+  gerar_roteiro_livre: 'roteiro-v2',
+  editar_roteiro: 'edicao-roteiro-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;
