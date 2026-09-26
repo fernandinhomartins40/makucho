@@ -9834,3 +9834,22 @@ body[data-redimensionando] * {
     grid-template-rows: minmax(0, 1fr) minmax(200px, 42dvh);
   }
 }
+
+/* Kit criativo: os links dos geradores de vídeo e a instrução da logo. */
+.kit__ferramentas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.kit-vinheta__logo {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.kit-vinheta__logo a {
+  color: var(--accent);
+  font-weight: 600;
+}

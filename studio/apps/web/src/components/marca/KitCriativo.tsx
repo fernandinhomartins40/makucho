@@ -2,8 +2,9 @@
 
 // ============================================================
 // Kit criativo: os pedidos prontos para criar o que é da marca fora do
-// Studio -- trilhas e sons no Suno, abertura e encerramento num editor de
-// vídeo, imagens no GPT Image e vídeos num gerador de vídeo.
+// Studio, com IA -- trilhas e sons no Suno, abertura e encerramento e
+// vídeos de apoio num gerador de vídeo (Sora, Veo, Kling, Runway, com a
+// logo anexada), imagens no GPT Image.
 //
 // Cada cartão diz ONDE colar, tem o texto pronto com um botão de copiar,
 // e termina levando para a aba da Biblioteca onde o arquivo pronto entra.
@@ -16,6 +17,8 @@ import type { TipoDaBiblioteca } from './BibliotecaDaMarca';
 
 interface Props {
   kit: Kit | null | undefined;
+  /** URL de cada versão da logo enviada, para baixar e anexar no gerador. */
+  logos?: Partial<Record<'LOGO' | 'LOGO_NEGATIVE' | 'LOGO_COMPACT', string>>;
   /** Leva para a Biblioteca, na aba do tipo de arquivo. */
   onEnviar: (tipo: TipoDaBiblioteca) => void;
   /** Não há kit ainda: leva ao "Configurar com IA". */
@@ -70,7 +73,24 @@ function Prompt({ nome, uso, texto, detalhe }: { nome: string; uso: string; text
   );
 }
 
-export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
+const GERADORES_DE_VIDEO = [
+  { nome: 'Sora', href: 'https://sora.chatgpt.com/' },
+  { nome: 'Veo', href: 'https://labs.google/fx/tools/flow' },
+  { nome: 'Kling', href: 'https://klingai.com/' },
+  { nome: 'Runway', href: 'https://app.runwayml.com/' },
+];
+
+function Geradores() {
+  return (
+    <span className="kit__ferramentas">
+      {GERADORES_DE_VIDEO.map((g) => (
+        <Ferramenta key={g.nome} href={g.href} nome={g.nome} />
+      ))}
+    </span>
+  );
+}
+
+export function KitCriativo({ kit, logos = {}, onEnviar, onGerar }: Props) {
   if (!kit) {
     return (
       <div className="kit-vazio">
@@ -79,8 +99,8 @@ export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
         </span>
         <h2>Crie o que é da sua marca com IA</h2>
         <p>
-          O &ldquo;Configurar com IA&rdquo; monta, junto com as cores e o estilo, os pedidos prontos para criar a trilha e os sons da marca no Suno, a
-          abertura e o encerramento no seu editor de vídeo, e imagens e vídeos com a cara da marca. É só copiar e colar.
+          O &ldquo;Configurar com IA&rdquo; monta, junto com as cores e o estilo, os prompts prontos para criar a trilha e os sons da marca no Suno, a
+          abertura, o encerramento e vídeos de apoio numa IA de vídeo (Sora, Veo, Kling, Runway) e imagens no GPT Image. É só copiar e colar.
         </p>
         <button type="button" className="botao botao--primario" onClick={onGerar}>
           <IconeIA size={16} weight="fill" /> Configurar com IA
@@ -90,27 +110,42 @@ export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
   }
 
   const vinheta = (v: NonNullable<Kit['abertura']>, tipo: 'INTRO' | 'OUTRO') => {
-    const passos = v.passos.map((p, i) => `${i + 1}. ${p}`).join('\n');
+    const urlDaLogo = logos[v.logo];
     return (
       <div className="kit-vinheta">
         <div className="kit-prompt__topo">
           <span>
             <strong>{v.nome}</strong>
-            <small>
-              {v.duracaoS.toString().replace('.', ',')} s · use {LOGO[v.logo] ?? 'a logo principal'}
-            </small>
+            <small>{v.duracaoS.toString().replace('.', ',')} s · vertical 9:16</small>
           </span>
-          <Copiar texto={passos} rotulo="Copiar passos" />
+          {v.prompt && <Copiar texto={v.prompt} rotulo="Copiar prompt" />}
         </div>
-        <ol className="kit-vinheta__passos">
-          {v.passos.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ol>
+        {v.prompt ? (
+          <>
+            <p className="kit-vinheta__logo">
+              <strong>1.</strong> Anexe no gerador, como imagem de referência, {LOGO[v.logo] ?? 'a logo principal'}.{' '}
+              {urlDaLogo ? (
+                <a href={urlDaLogo} download target="_blank" rel="noreferrer">
+                  Baixar essa logo
+                </a>
+              ) : (
+                <span className="texto-secundario">(envie essa versão na aba Identidade)</span>
+              )}
+            </p>
+            <p className="kit-vinheta__logo">
+              <strong>2.</strong> Cole o prompt abaixo e gere o vídeo.
+            </p>
+            <p className="kit-prompt__texto">{v.prompt}</p>
+          </>
+        ) : (
+          <p className="kit-prompt__detalhe">
+            Este kit é do formato antigo (passos de editor). Clique em &ldquo;Configurar com IA&rdquo; para gerar o prompt para a IA de vídeo.
+          </p>
+        )}
         {v.som && (
           <div className="kit-vinheta__som">
             <span>
-              <IconeAudio size={14} /> Som da vinheta (Suno)
+              <IconeAudio size={14} /> <strong>3.</strong> Som da vinheta (Suno)
             </span>
             <p className="kit-prompt__texto">{v.som}</p>
             <Copiar texto={v.som} />
@@ -126,8 +161,8 @@ export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
   return (
     <div className="kit">
       <p className="kit__intro">
-        Pedidos prontos, com as cores, as fontes e o jeito da sua marca. Copie, cole na ferramenta indicada, gere o arquivo e envie de volta na
-        Biblioteca: a partir daí a IA do editor usa nos seus vídeos.
+        Prompts prontos para ferramentas de IA, com as cores, as fontes e o jeito da sua marca. Copie, cole na ferramenta indicada, gere o arquivo
+        e envie de volta na Biblioteca: a partir daí a IA do editor usa nos seus vídeos.
       </p>
 
       {(kit.trilhas.length > 0 || kit.sons.length > 0) && (
@@ -171,9 +206,11 @@ export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
             </span>
             <div>
               <h2>Abertura e encerramento</h2>
-              <p>Siga os passos no seu editor de vídeo (CapCut, Canva, Premiere). A logo certa já está indicada em cada um.</p>
+              <p>
+                Prompts para a IA que gera vídeo (Sora, Veo, Kling ou Runway). Anexe a logo indicada, cole o prompt e gere; o som sai no Suno.
+              </p>
             </div>
-            <Ferramenta href="https://www.capcut.com/editor" nome="CapCut" />
+            <Geradores />
           </header>
           <div className="kit__vinhetas">
             {kit.abertura && vinheta(kit.abertura, 'INTRO')}
@@ -217,8 +254,9 @@ export function KitCriativo({ kit, onEnviar, onGerar }: Props) {
             </span>
             <div>
               <h2>Vídeos de apoio (B-roll)</h2>
-              <p>Cole num gerador de vídeo (Sora, Veo, Kling) em formato vertical. Servem para cobrir a fala nos seus vídeos.</p>
+              <p>Cole num gerador de vídeo (Sora, Veo, Kling ou Runway) em formato vertical. Servem para cobrir a fala nos seus vídeos.</p>
             </div>
+            <Geradores />
           </header>
           <div className="kit__lista">
             {kit.videos.map((t) => (

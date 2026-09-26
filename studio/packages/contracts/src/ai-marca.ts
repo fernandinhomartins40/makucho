@@ -26,6 +26,16 @@ import { PACOTES_DE_ESTILO } from './pacotes';
 import { TIPOS_DE_TRANSICAO } from './edit-plan';
 import { kitPorRegra, lerKitCriativo, type KitCriativo } from './kit-criativo';
 
+/**
+ * O kit da IA, com o que faltar vindo do kit por regra: uma vinheta sem
+ * prompt de vídeo (a IA ainda no formato antigo, ou cortada) não some do
+ * kit -- entra a versão da regra, com as cores da marca.
+ */
+function completarKit(daIa: KitCriativo | null, regra: KitCriativo): KitCriativo {
+  if (!daIa) return regra;
+  return { ...daIa, abertura: daIa.abertura ?? regra.abertura, encerramento: daIa.encerramento ?? regra.encerramento };
+}
+
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 /** O que o navegador mede nas logos e manda ao servidor. */
@@ -291,7 +301,10 @@ export function lerSugestaoDaMarca(bruto: string, entrada: EntradaDaMarca): Suge
     justificativa: r.justificativa.trim().slice(0, 400),
     preferencias: lerPreferencias(resto.preferencias, regra.preferencias),
     // Kit que não veio (ou veio vazio): o da regra, com as cores da IA.
-    kit: lerKitCriativo(resto.kit) ?? kitPorRegra({ nome: entrada.nome, segmento: entrada.segmento, tom: r.tom, cores, fonteTitulo: familia(r.fonteTitulo, regra.fonteTitulo) }),
+    kit: completarKit(
+      lerKitCriativo(resto.kit),
+      kitPorRegra({ nome: entrada.nome, segmento: entrada.segmento, tom: r.tom, cores, fonteTitulo: familia(r.fonteTitulo, regra.fonteTitulo) }),
+    ),
     origem: 'ia',
   };
 }

@@ -1,10 +1,11 @@
 // ============================================================
 // MAKUCHO STUDIO - Kit criativo da marca: prompts prontos para copiar.
 //
-// O Studio não gera música nem vídeo de abertura; ferramentas que fazem
-// isso bem já existem (Suno, GPT Image, geradores de vídeo, CapCut). O
-// que faltava era o PEDIDO certo para cada uma, com a cara da marca:
-// cores em hexadecimal, fontes, tom, qual logo usar, duração. O kit é
+// O Studio não gera música nem vídeo de abertura; ferramentas de IA que
+// fazem isso bem já existem (Suno, GPT Image, geradores de vídeo como
+// Sora, Veo, Kling e Runway). O que faltava era o PEDIDO certo para cada
+// uma, com a cara da marca: cores em hexadecimal, fontes, tom, qual logo
+// anexar, duração. O kit é
 // gerado junto do "Configurar com IA" (ai-marca.ts), fica salvo no Kit
 // de marca, e a pessoa só copia, cola, gera e envia o arquivo de volta
 // para a Biblioteca da marca.
@@ -30,10 +31,16 @@ export const vinhetaDoKitSchema = z
   .object({
     nome: texto(60),
     duracaoS: z.number().min(1).max(15),
-    /** Qual versão da logo usar (as do Kit de marca). */
+    /** Qual versão da logo anexar como imagem de referência (as do Kit de marca). */
     logo: z.enum(['LOGO', 'LOGO_NEGATIVE', 'LOGO_COMPACT']),
-    /** O passo a passo no editor de vídeo (CapCut, Canva, Premiere...). */
-    passos: z.array(texto(240)).max(8),
+    /**
+     * O pedido para a IA que GERA o vídeo (Sora, Veo, Kling, Runway), em
+     * inglês: formato, duração, cena, movimento, cores em hex, e o uso da
+     * logo anexada sem redesenhá-la.
+     */
+    prompt: texto(1500).default(''),
+    /** Legado: kits antigos traziam passos de editor. Só lidos, não gerados. */
+    passos: z.array(texto(240)).max(8).optional(),
     /** O som da vinheta, para o Suno. */
     som: texto(400),
   })
@@ -68,14 +75,46 @@ const obj = (v: unknown) => ((v ?? {}) as Record<string, unknown>);
 function vinheta(v: unknown): VinhetaDoKit | null {
   if (!v || typeof v !== 'object') return null;
   const o = obj(v);
-  const passos = lista(o.passos)
-    .map((p) => cortar(p, 240))
-    .filter(Boolean)
-    .slice(0, 8);
-  if (!passos.length) return null;
+  const prompt = cortar(o.prompt ?? o.promptDeVideo ?? o.videoPrompt, 1500);
+  if (!prompt) return null;
   const logo = ['LOGO', 'LOGO_NEGATIVE', 'LOGO_COMPACT'].includes(String(o.logo)) ? (o.logo as VinhetaDoKit['logo']) : 'LOGO';
   const d = Number(o.duracaoS);
-  return { nome: cortar(o.nome, 60) || 'Vinheta', duracaoS: Number.isFinite(d) ? Math.min(15, Math.max(1, d)) : 3, logo, passos, som: cortar(o.som, 400) };
+  return { nome: cortar(o.nome, 60) || 'Vinheta', duracaoS: Number.isFinite(d) ? Math.min(15, Math.max(1, d)) : 3, logo, prompt, som: cortar(o.som, 400) };
+}
+
+/** O que dizer sobre a logo a anexar, em inglês, dentro do prompt de vídeo. */
+const LOGO_EM_INGLES: Record<VinhetaDoKit['logo'], string> = {
+  LOGO: 'the attached brand logo (main version)',
+  LOGO_NEGATIVE: 'the attached brand logo (light version for dark backgrounds)',
+  LOGO_COMPACT: 'the attached brand symbol (icon only)',
+};
+
+/**
+ * Prompt de vídeo montado por regra, para kits sem prompt (gerados antes
+ * desta versão) ou sem IA.
+ */
+export function promptDeVinhetaPorRegra(
+  tipo: 'abertura' | 'encerramento',
+  e: { nome?: string; tom: string; cores: BrandColors; duracaoS: number; logo: VinhetaDoKit['logo'] },
+): string {
+  const logo = LOGO_EM_INGLES[e.logo];
+  const s = String(e.duracaoS).replace(',', '.');
+  if (tipo === 'abertura') {
+    return [
+      `Vertical 9:16 (1080x1920) animated brand intro, exactly ${s} seconds, ${e.tom} mood.`,
+      `Background: deep ${e.cores.textDark} with a soft glowing light in ${e.cores.primary} at the center and subtle floating particles in ${e.cores.secondary}.`,
+      `${logo[0]!.toUpperCase()}${logo.slice(1)} appears in the center, scaling up smoothly from 80% to 100% with a gentle light sweep across it, then holds still for the last second.`,
+      'Use the logo exactly as provided: do not redraw, distort, recolor or add letters to it. Keep it inside the central safe area.',
+      'Smooth slow camera push-in, clean modern motion design, no people, no extra text, no voiceover, no music.',
+    ].join(' ');
+  }
+  return [
+    `Vertical 9:16 (1080x1920) animated brand outro, exactly ${s} seconds, ${e.tom} mood.`,
+    `Background: smooth gradient from ${e.cores.textDark} to ${e.cores.accent} with a soft light in ${e.cores.primary}.`,
+    `${logo[0]!.toUpperCase()}${logo.slice(1)} fades in on the upper third and stays still; below it, leave clean empty space for a call-to-action text to be added later.`,
+    'Use the logo exactly as provided: do not redraw, distort, recolor or add letters to it.',
+    'Calm camera, elegant light movement, no people, no generated text, no voiceover, no music.',
+  ].join(' ');
 }
 
 /** Lê o kit que a IA devolveu, consertando o que dá (campo faltando, texto longo). */
@@ -148,30 +187,14 @@ export function kitPorRegra(e: { nome?: string; segmento?: string; tom: string; 
       nome: 'Abertura curta',
       duracaoS: 2.5,
       logo: 'LOGO',
-      passos: [
-        'Crie um projeto vertical 1080x1920 (9:16), 30 fps, com 2,5 segundos.',
-        `Fundo na cor ${e.cores.textDark}, com um brilho suave em ${e.cores.primary} no centro.`,
-        'Coloque a logo PRINCIPAL no centro, com 60% da largura da tela.',
-        'Animação: a logo entra crescendo de 80% para 100% em 0,6 s (ease-out), com leve desfoque saindo.',
-        `Acrescente uma linha fina na cor ${e.cores.secondary} passando embaixo da logo aos 0,8 s.`,
-        'Coloque a assinatura sonora (gerada no Suno) começando em 0 s.',
-        'Exporte em MP4, 1080x1920, e envie em Biblioteca › Aberturas.',
-      ],
+      prompt: promptDeVinhetaPorRegra('abertura', { nome: marca, tom: e.tom, cores: e.cores, duracaoS: 2.5, logo: 'LOGO' }),
       som: `short sonic logo intro, 2.5 seconds, ${e.tom}, rising synth swell ending in a clean chime, no vocals`,
     },
     encerramento: {
       nome: 'Encerramento com chamada',
       duracaoS: 3,
       logo: 'LOGO_NEGATIVE',
-      passos: [
-        'Projeto vertical 1080x1920 (9:16), 30 fps, com 3 segundos.',
-        `Fundo em degradê de ${e.cores.textDark} para ${e.cores.accent}.`,
-        'Logo PARA FUNDO ESCURO (versão clara) no terço de cima, com 50% da largura.',
-        `Embaixo, o texto "Siga ${marca}" na fonte ${e.fonteTitulo}, cor ${e.cores.textLight}, entrando de baixo para cima aos 0,5 s.`,
-        'Se tiver, acrescente o @ da rede ou o site em letra menor.',
-        'Som: a assinatura sonora no começo, bem baixa.',
-        'Exporte em MP4, 1080x1920, e envie em Biblioteca › Encerramentos.',
-      ],
+      prompt: promptDeVinhetaPorRegra('encerramento', { nome: marca, tom: e.tom, cores: e.cores, duracaoS: 3, logo: 'LOGO_NEGATIVE' }),
       som: `short outro sting, 3 seconds, ${e.tom}, gentle synth resolve, no vocals`,
     },
     imagens: [

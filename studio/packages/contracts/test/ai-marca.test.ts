@@ -77,7 +77,8 @@ t('as preferências novas cabem no Kit de marca', preferenciasDeVideoSchema.safe
 
 // ---------- Kit criativo e acabamento ----------
 t('sem IA, o kit criativo vem completo (trilhas, sons, vinhetas, imagens, vídeos)', regra.kit.trilhas.length >= 2 && regra.kit.sons.length >= 2 && !!regra.kit.abertura && !!regra.kit.encerramento && regra.kit.imagens.length >= 1 && regra.kit.videos.length >= 1);
-t('os prompts da regra levam as cores da marca', regra.kit.imagens[0]!.prompt.includes(regra.cores.primary) && regra.kit.abertura!.passos.some((p) => p.includes(regra.cores.textDark)));
+t('os prompts da regra levam as cores da marca', regra.kit.imagens[0]!.prompt.includes(regra.cores.primary) && regra.kit.abertura!.prompt.includes(regra.cores.textDark));
+t('a vinheta é um prompt para IA de vídeo, com a logo anexada e sem editor', /9:16/.test(regra.kit.abertura!.prompt) && /attached brand logo/.test(regra.kit.abertura!.prompt) && !/capcut|canva|premiere/i.test(JSON.stringify(regra.kit)));
 t('o kit da regra cabe no Kit de marca', preferenciasDeVideoSchema.safeParse({ kitCriativo: regra.kit }).success);
 const comKit = lerSugestaoDaMarca(
   JSON.stringify({
@@ -85,7 +86,8 @@ const comKit = lerSugestaoDaMarca(
     preferencias: { autoZoom: false, logoPosicao: 'ie', volumeTrilhaDb: -25, voiceEnhance: 'sim' },
     kit: {
       trilhas: [{ nome: 'Padaria de manhã', uso: 'fundo', estilo: 'instrumental acoustic, warm, 95 bpm' }, { nome: 'sem estilo' }],
-      abertura: { nome: 'Forno', duracaoS: 40, logo: 'QUALQUER', passos: ['Fundo laranja', 'Logo no centro'], som: 'bell' },
+      abertura: { nome: 'Forno', duracaoS: 40, logo: 'QUALQUER', prompt: 'Vertical 9:16 bakery intro with the attached logo', som: 'bell' },
+      encerramento: { nome: 'Antigo', duracaoS: 3, logo: 'LOGO', passos: ['Abra o CapCut'], som: 'x' },
       imagens: [{ nome: 'Pão', uso: 'capa', prompt: 'croissant', formato: '4:5' }],
     },
   }),
@@ -93,6 +95,7 @@ const comKit = lerSugestaoDaMarca(
 )!;
 t('preferências da IA lidas, com o que veio errado no padrão', comKit.preferencias.autoZoom === false && comKit.preferencias.logoPosicao === 'ie' && comKit.preferencias.volumeTrilhaDb === -24 && comKit.preferencias.voiceEnhance === true);
 t('kit da IA consertado (trilha sem estilo sai, duração e logo no limite, formato padrão)', comKit.kit.trilhas.length === 1 && comKit.kit.abertura!.duracaoS === 15 && comKit.kit.abertura!.logo === 'LOGO' && comKit.kit.imagens[0]!.formato === '9:16');
+t('vinheta sem prompt (formato antigo) vira a da regra, sem passos de editor', !!comKit.kit.encerramento && comKit.kit.encerramento.prompt.includes('9:16') && !comKit.kit.encerramento.passos);
 t('kit da IA cabe no Kit de marca', preferenciasDeVideoSchema.safeParse({ kitCriativo: comKit.kit }).success);
 const semKit = lerSugestaoDaMarca(resposta, entrada)!;
 t('resposta sem kit: kit da regra com as cores da IA', semKit.kit.trilhas.length >= 2 && semKit.kit.imagens[0]!.prompt.includes(semKit.cores.primary));

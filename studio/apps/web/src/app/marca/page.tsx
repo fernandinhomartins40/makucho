@@ -568,6 +568,7 @@ export default function MarcaPage() {
             {aba === 'criar' && (
               <KitCriativo
                 kit={prefs.kitCriativo}
+                logos={Object.fromEntries(arquivos.filter((a) => TIPOS_DE_LOGO.includes(a.kind)).map((a) => [a.kind, apiAssets.url(a.id)]))}
                 onEnviar={(tipo) => {
                   setAbaDaBiblioteca(tipo);
                   irPara('biblioteca');
