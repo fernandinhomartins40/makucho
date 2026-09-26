@@ -28,6 +28,7 @@
 
 import { efeitoUsaPessoa } from './efeitos-de-tela';
 import type { CaptionStyleInput } from './brand';
+import { duracaoNaTimeline, velocidadeDoTrecho } from './edit-plan';
 import type { EditPlanV1 } from './edit-plan';
 import { eventosDoTextoDeTela } from './textos-de-tela';
 import {
@@ -242,8 +243,9 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
   let inicioNaTimeline = 0;
 
   for (const clip of clips) {
-    const duracaoDoClip = clip.sourceEndMs - clip.sourceStartMs;
+    const duracaoDoClip = duracaoNaTimeline(clip);
     const fimDoClip = inicioNaTimeline + duracaoDoClip;
+    const v = velocidadeDoTrecho(clip);
 
     // As palavras cuja MAIOR PARTE cai dentro do trecho. Inteira era
     // rígido demais: um corte que pegava um pedaço da palavra (aparar,
@@ -269,8 +271,8 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
 
       // A mesma conta que o `setpts=PTS-STARTPTS` faz no video, presa
       // às bordas do trecho (a palavra pode começar um pouco antes).
-      const inicio = inicioNaTimeline + Math.max(0, palavra.startMs - clip.sourceStartMs);
-      const fim = Math.min(fimDoClip, inicioNaTimeline + (palavra.endMs - clip.sourceStartMs));
+      const inicio = inicioNaTimeline + Math.max(0, palavra.startMs - clip.sourceStartMs) / v;
+      const fim = Math.min(fimDoClip, inicioNaTimeline + (palavra.endMs - clip.sourceStartMs) / v);
       if (fim <= inicio) continue;
 
       const cabe =
@@ -923,7 +925,7 @@ function eventosDosTextos(plano: EditPlanV1, duracaoMs: number, marca: MarcaDoVi
 /** Duracao do resultado, somando os trechos ligados. */
 function duracaoDoVideo(plano: EditPlanV1, desligados: readonly string[] = []): number {
   const fora = new Set(desligados);
-  return plano.clips.filter((c) => !fora.has(c.id)).reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  return plano.clips.filter((c) => !fora.has(c.id)).reduce((t, c) => t + duracaoNaTimeline(c), 0);
 }
 
 /** O plano tem algo para o .ass desenhar? */

@@ -30,7 +30,7 @@
 // entra antes da imagem ou continua depois dela) que a pessoa escolhe.
 // ============================================================
 
-import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
+import { velocidadeDoTrecho, type EditPlanV1, type TipoDeTransicao } from './edit-plan';
 
 export const FPS_DA_AGENDA = 30;
 
@@ -56,6 +56,8 @@ export interface TrechoNaAgenda {
   consumidoNoInicio: number;
   /** Quadros do fim que tocam dentro da transição de saída. */
   consumidoNoFim: number;
+  /** Velocidade (1 = normal): cada ms da timeline anda `velocidade` ms no original. */
+  velocidade: number;
 }
 
 export interface JanelaDeTransicao {
@@ -84,6 +86,8 @@ export interface PecaDeAudio {
   ganhoDb: number;
   fadeInMs: number;
   fadeOutMs: number;
+  /** Velocidade do trecho: a peça lê `duracaoMs * velocidade` do original. */
+  velocidade: number;
 }
 
 export interface Agenda {
@@ -106,8 +110,10 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
 
   let acumulado = 0;
   const trechos: TrechoNaAgenda[] = ligados.map(({ clip, indiceNoPlano }) => {
-    // Número exato de quadros: é a unidade em que o vídeo anda.
-    const quadros = Math.max(1, Math.round(((clip.sourceEndMs - clip.sourceStartMs) * FPS_DA_AGENDA) / 1000));
+    // Número exato de quadros: é a unidade em que o vídeo anda. Com
+    // velocidade, o mesmo pedaço do original rende mais ou menos quadros.
+    const velocidade = velocidadeDoTrecho(clip);
+    const quadros = Math.max(1, Math.round(((clip.sourceEndMs - clip.sourceStartMs) * FPS_DA_AGENDA) / 1000 / velocidade));
     const t: TrechoNaAgenda = {
       clip,
       indiceNoPlano,
@@ -117,6 +123,7 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
       duracaoMs: msDe(quadros),
       consumidoNoInicio: 0,
       consumidoNoFim: 0,
+      velocidade,
     };
     acumulado += quadros;
     return t;
@@ -135,9 +142,10 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
     if (pedido < 2) continue;
 
     // Sobras do original: depois do fim de A e antes do começo de B.
-    const fimDeA = a.clip.sourceStartMs + msDe(a.quadros);
-    const sobraDepoisDeA = Math.max(0, quadrosDe(plano.sourceDurationMs - fimDeA) - 1);
-    const sobraAntesDeB = quadrosDe(b.clip.sourceStartMs);
+    // (em quadros da TIMELINE: com velocidade, cada quadro anda mais ou menos no original)
+    const fimDeA = a.clip.sourceStartMs + msDe(a.quadros) * a.velocidade;
+    const sobraDepoisDeA = Math.max(0, quadrosDe((plano.sourceDurationMs - fimDeA) / a.velocidade) - 1);
+    const sobraAntesDeB = quadrosDe(b.clip.sourceStartMs / b.velocidade);
     // O que resta de A sem a transição de entrada dele fica com ao menos
     // um quadro; B guarda espaço para a próxima.
     const limiteAntes = Math.min(Math.floor(a.quadros * FRACAO_MAXIMA_DA_TRANSICAO), a.quadros - a.consumidoNoInicio - 1);
@@ -173,7 +181,8 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
   trechos.forEach((t, i) => {
     const a = t.clip.audio;
     if (a?.muted) return;
-    const sourceFim = t.clip.sourceStartMs + t.duracaoMs;
+    const v = t.velocidade;
+    const sourceFim = t.clip.sourceStartMs + t.duracaoMs * v;
 
     // Entrada: o cruzamento com o trecho anterior.
     const entrada = janelaEm.get(i);
@@ -181,7 +190,7 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
     let fadeIn = i === 0 ? FADE_DAS_PONTAS_MS : entrada ? msDe(entrada.antes + entrada.depois) : 2 * MEIO_CRUZAMENTO_MS;
     // J-cut: o som deste trecho entra antes da imagem.
     antes = Math.max(antes, a?.leadMs ?? 0);
-    antes = Math.min(antes, t.clip.sourceStartMs, t.inicioMs);
+    antes = Math.min(antes, t.clip.sourceStartMs / v, t.inicioMs);
 
     // Saída: o cruzamento com o próximo.
     const saida = janelaEm.get(i + 1);
@@ -190,7 +199,7 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
     let fadeOut = ultimo ? FADE_DAS_PONTAS_MS : saida ? msDe(saida.antes + saida.depois) : 2 * MEIO_CRUZAMENTO_MS;
     // L-cut: o som continua depois da imagem.
     depois = Math.max(depois, a?.tailMs ?? 0);
-    depois = Math.max(0, Math.min(depois, plano.sourceDurationMs - sourceFim, duracaoMs - (t.inicioMs + t.duracaoMs)));
+    depois = Math.max(0, Math.min(depois, (plano.sourceDurationMs - sourceFim) / v, duracaoMs - (t.inicioMs + t.duracaoMs)));
 
     const duracao = t.duracaoMs + antes + depois;
     fadeIn = Math.min(a?.fadeInMs ?? fadeIn, duracao / 2);
@@ -200,11 +209,12 @@ export function agendaDoPlano(plano: EditPlanV1, desligados: readonly string[] =
       clipId: t.clip.id,
       indice: i,
       inicioMs: t.inicioMs - antes,
-      sourceInicioMs: t.clip.sourceStartMs - antes,
+      sourceInicioMs: t.clip.sourceStartMs - antes * v,
       duracaoMs: duracao,
       ganhoDb: a?.gainDb ?? 0,
       fadeInMs: fadeIn,
       fadeOutMs: fadeOut,
+      velocidade: v,
     });
   });
 
@@ -224,4 +234,17 @@ export function volumeDaPeca(p: PecaDeAudio, msNaTimeline: number): number {
   const restante = p.duracaoMs - dentro;
   if (p.fadeOutMs > 0 && restante < p.fadeOutMs) v *= restante / p.fadeOutMs;
   return Math.max(0, v);
+}
+
+/**
+ * O ponto do ORIGINAL que toca num instante da timeline, dentro de um
+ * trecho da agenda (com a velocidade dele).
+ */
+export function origemNoTrecho(t: TrechoNaAgenda, msNaTimeline: number): number {
+  return t.clip.sourceStartMs + (msNaTimeline - t.inicioMs) * t.velocidade;
+}
+
+/** O instante da timeline em que um ponto do original toca, dentro do trecho. */
+export function timelineNoTrecho(t: TrechoNaAgenda, sourceMs: number): number {
+  return t.inicioMs + (sourceMs - t.clip.sourceStartMs) / t.velocidade;
 }

@@ -23,7 +23,7 @@ import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useMemo, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano } from '@makucho/studio-contracts';
+import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano, duracaoNaTimeline, velocidadeDoTrecho, VELOCIDADES_DO_TRECHO } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
@@ -199,7 +199,7 @@ function AbaDeVideo({
   onRefazerAcabamento?: () => void;
   refazendo?: boolean;
 }) {
-  const duracao = plan.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const duracao = plan.clips.reduce((t, c) => t + duracaoNaTimeline(c), 0);
   const reducao = Math.round((1 - duracao / plan.sourceDurationMs) * 100);
   const fit = plan.render.fit ?? 'ajustar';
 
@@ -458,7 +458,7 @@ function AbaDeEfeitos({
   onOperacao: (op: TimelineOperation) => void;
   onOperacoes: (ops: TimelineOperation[]) => void;
 }) {
-  const duracao = plan.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const duracao = plan.clips.reduce((t, c) => t + duracaoNaTimeline(c), 0);
   const titulo = plan.overlays.find((o) => o.component === 'HookTitle');
   const chamada = plan.overlays.find((o) => o.component === 'CTA');
   const logo = plan.overlays.find((o) => o.component === 'LogoBug');
@@ -640,7 +640,7 @@ function AbaDeEfeitos({
           let inicio = 0;
           const inicios = plan.clips.map((c) => {
             const i = inicio;
-            inicio += c.sourceEndMs - c.sourceStartMs;
+            inicio += duracaoNaTimeline(c);
             return i;
           });
           onOperacoes([
@@ -743,7 +743,8 @@ function PropriedadesDoTrecho({
   onOperacao: (op: TimelineOperation) => void;
   onSelecionarItem?: (item: ItemDaTimeline) => void;
 }) {
-  const duracaoMs = clipe.sourceEndMs - clipe.sourceStartMs;
+  const duracaoMs = duracaoNaTimeline(clipe);
+  const velocidade = velocidadeDoTrecho(clipe);
   const posicao = plan.clips.findIndex((c) => c.id === clipe.id);
   const ultimo = plan.clips.length === 1;
   const transicao = plan.transitions.find((t) => t.beforeClipIndex === posicao);
@@ -814,8 +815,10 @@ function PropriedadesDoTrecho({
         </div>
       )}
 
-      <Propriedade rotulo="Duração" valor={`${(duracaoMs / 1000).toFixed(1)}s`} />
+      <Propriedade rotulo="Duração" valor={`${(duracaoMs / 1000).toFixed(1)}s${velocidade !== 1 ? ` (${velocidade}x)` : ''}`} />
       <Propriedade rotulo="No original" valor={`${tempo(clipe.sourceStartMs)} – ${tempo(clipe.sourceEndMs)}`} />
+
+      <ControleDeVelocidade clipe={clipe} onOperacao={onOperacao} />
 
       <div className="campo" style={{ marginTop: 'var(--e4)' }}>
         <span className="campo__rotulo">Efeito</span>
@@ -893,6 +896,43 @@ function PropriedadesDoTrecho({
       </button>
       {ultimo && <p className="campo__ajuda">O vídeo precisa de ao menos um trecho.</p>}
     </>
+  );
+}
+
+/**
+ * Velocidade do trecho: câmera lenta a 4x. A duração na timeline muda e
+ * a voz continua no mesmo tom (prévia, exportação e render).
+ */
+export function ControleDeVelocidade({ clipe, onOperacao }: { clipe: EditPlanV1['clips'][number]; onOperacao: (op: TimelineOperation) => void }) {
+  const atual = velocidadeDoTrecho(clipe);
+  const original = clipe.sourceEndMs - clipe.sourceStartMs;
+  return (
+    <div className="campo velocidade" id="velocidade-do-trecho">
+      <span className="campo__rotulo">Velocidade</span>
+      <div className="velocidade__opcoes" role="radiogroup" aria-label="Velocidade do trecho">
+        {VELOCIDADES_DO_TRECHO.map((v) => {
+          const curto = original / v < 500;
+          return (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={Math.abs(atual - v) < 0.001}
+              className="velocidade__opcao"
+              disabled={curto}
+              title={curto ? 'Rápido demais para este trecho' : `${(original / v / 1000).toFixed(1)} s na timeline`}
+              onClick={() => onOperacao({ op: 'definir_velocidade', clipId: clipe.id, speed: v })}
+            >
+              {String(v).replace('.', ',')}x
+            </button>
+          );
+        })}
+      </div>
+      <p className="campo__ajuda">
+        {atual === 1 ? 'Normal.' : atual > 1 ? 'Mais rápido' : 'Câmera lenta'}
+        {atual !== 1 && `: ${(original / 1000).toFixed(1)} s viram ${(original / atual / 1000).toFixed(1)} s`}. A voz mantém o tom.
+      </p>
+    </div>
   );
 }
 

@@ -20,6 +20,7 @@
 // - A resposta e curta: operacoes + uma frase.
 // ============================================================
 
+import { duracaoNaTimeline } from './edit-plan';
 import { z } from 'zod';
 import type { EditPlanV1, EstiloDoTexto } from './edit-plan';
 import { FONTES_DE_VIDEO, PRESETS_DE_LEGENDA } from './estilos-de-legenda';
@@ -61,6 +62,7 @@ export const OPERACOES_DO_COMANDO = [
   'definir_transicao',
   'transicao_em_todos',
   'definir_efeito',
+  'definir_velocidade',
   'configurar_video',
   'adicionar_overlay',
   'editar_overlay',
@@ -332,7 +334,7 @@ export function resumoDoPlanoParaIa(
   recursos: RecursosDoResumo = {},
 ): string {
   const seg = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
-  const total = plano.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const total = plano.clips.reduce((t, c) => t + duracaoNaTimeline(c), 0);
   const transicaoAntes = new Map(plano.transitions.map((t) => [t.beforeClipIndex, t.type]));
   const c = plano.captions;
   const extrasDaLegenda = [
@@ -380,7 +382,7 @@ export function resumoDoPlanoParaIa(
   linhas.push('', 'Trechos (id|papel|início|duração|origem no bruto|zoom|transição antes|cor|som|fala):');
   let inicio = 0;
   plano.clips.forEach((clip, i) => {
-    const duracao = clip.sourceEndMs - clip.sourceStartMs;
+    const duracao = duracaoNaTimeline(clip);
     const cor = clip.color ? `${clip.color.look ?? 'ajuste'}${clip.color.intensity !== undefined ? `:${clip.color.intensity}` : ''}` : '-';
     linhas.push(
       [
@@ -388,7 +390,7 @@ export function resumoDoPlanoParaIa(
         clip.role,
         seg(inicio),
         seg(duracao),
-        `${clip.sourceStartMs}-${clip.sourceEndMs}ms`,
+        `${clip.sourceStartMs}-${clip.sourceEndMs}ms${clip.speed && clip.speed !== 1 ? ` a ${clip.speed}x` : ''}`,
         clip.effect ?? '-',
         transicaoAntes.get(i) ?? '-',
         cor,

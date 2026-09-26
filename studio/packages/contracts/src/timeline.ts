@@ -25,8 +25,7 @@ import {
   editPlanV1Schema,
   efeitoDeTrechoSchema,
   estiloDoTextoSchema,
-  tipoDeTransicaoSchema,
-} from './edit-plan';
+  tipoDeTransicaoSchema, duracaoNaTimeline } from './edit-plan';
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
@@ -290,6 +289,13 @@ export const definirEfeitoSchema = z.object({
   effect: z.union([efeitoDeTrechoSchema, z.literal('nenhum')]),
 });
 
+/** Velocidade de um trecho (0,25x a 4x); 1 volta ao normal. */
+export const definirVelocidadeSchema = z.object({
+  op: z.literal('definir_velocidade'),
+  clipId: idSchema,
+  speed: z.number().min(0.25).max(4),
+});
+
 /** Filtro e ajustes de cor de um trecho; `null` volta à cor original. */
 export const definirCorSchema = z.object({
   op: z.literal('definir_cor'),
@@ -519,6 +525,7 @@ export const timelineOperationSchema = z
     definirTransicaoSchema,
     transicaoEmTodosSchema,
     definirEfeitoSchema,
+    definirVelocidadeSchema,
     definirCorSchema,
     corEmTodosSchema,
     adicionarEfeitoDeTelaSchema,
@@ -977,6 +984,19 @@ export function aplicarOperacao(
       break;
     }
 
+    case 'definir_velocidade': {
+      const clip = clips.find((c) => c.id === operacao.clipId);
+      if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
+      // Abaixo de meio segundo na timeline não é um trecho, é um tique.
+      if ((clip.sourceEndMs - clip.sourceStartMs) / operacao.speed < 500) {
+        return { ok: false, erro: 'rápido demais: o trecho ficaria com menos de meio segundo' };
+      }
+      if (Math.abs(operacao.speed - 1) < 0.001) delete clip.speed;
+      else clip.speed = Math.round(operacao.speed * 100) / 100;
+      novo = { ...novo, clips: recomporTimeline(clips) };
+      break;
+    }
+
     case 'definir_cor': {
       const clip = clips.find((c) => c.id === operacao.clipId);
       if (!clip) return { ok: false, erro: 'clipe nao encontrado' };
@@ -1227,10 +1247,7 @@ export function aplicarOperacao(
   // frame). Sem recalcular aqui, toda edicao que mexe em duracao
   // seria recusada pela propria validacao -- o campo ficaria falando
   // de um plano que nao existe mais.
-  const duracaoAtual = novo.clips.reduce(
-    (total, c) => total + (c.sourceEndMs - c.sourceStartMs),
-    0,
-  );
+  const duracaoAtual = novo.clips.reduce((total, c) => total + duracaoNaTimeline(c), 0);
   novo = { ...novo, targetDurationMs: duracaoAtual };
 
   // Textos, imagens e efeitos sonoros que ficaram alem do fim (o video
@@ -1271,13 +1288,13 @@ export function aplicarOperacao(
  * comeca. Espaco vazio no meio viraria tela preta no render, que
  * nunca e o que o usuario quis.
  */
-function recomporTimeline<T extends { timelineStartMs: number; sourceStartMs: number; sourceEndMs: number }>(
+function recomporTimeline<T extends { timelineStartMs: number; sourceStartMs: number; sourceEndMs: number; speed?: number | undefined }>(
   clips: readonly T[],
 ): T[] {
   let posicao = 0;
   return clips.map((clip) => {
     const recomposto = { ...clip, timelineStartMs: posicao };
-    posicao += clip.sourceEndMs - clip.sourceStartMs;
+    posicao += duracaoNaTimeline(clip);
     return recomposto;
   });
 }
@@ -1347,7 +1364,7 @@ export function comIdsNovos<T extends TimelineOperation>(operacao: T): T {
 
 /** Duracao total do plano, somando os clipes ativos. */
 export function duracaoDoPlano(plan: EditPlanV1): number {
-  return plan.clips.reduce((total, c) => total + (c.sourceEndMs - c.sourceStartMs), 0);
+  return plan.clips.reduce((total, c) => total + duracaoNaTimeline(c), 0);
 }
 
 /**
@@ -1403,7 +1420,7 @@ export function montarVisao(plan: EditPlanV1): Record<Track, ItemDeTrack[]> {
   };
 
   for (const clip of plan.clips) {
-    const duracao = clip.sourceEndMs - clip.sourceStartMs;
+    const duracao = duracaoNaTimeline(clip);
     visao.video.push({
       id: clip.id,
       track: 'video',

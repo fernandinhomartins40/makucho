@@ -43,7 +43,7 @@ export const VERSAO_DO_PROMPT = {
   // servidor -- a IA age em vez de perguntar.
   // v4: biblioteca da marca (logos, trilhas, sons, vinhetas, imagens e
   // vídeos com "para que serve") e as vinhetas de abertura/encerramento.
-  comandar_edicao: 'comando-v4',
+  comandar_edicao: 'comando-v5',
   // v2: além do visual, o acabamento e o kit criativo (Suno, GPT Image,
   // vídeo, vinhetas passo a passo) com a cara da marca.
   configurar_marca: 'marca-v3',

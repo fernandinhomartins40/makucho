@@ -16,6 +16,7 @@
 // palavras.
 // ============================================================
 
+import { duracaoNaTimeline, velocidadeDoTrecho } from './edit-plan';
 import type { EditPlanV1 } from './edit-plan';
 import type { PalavraDaTranscricao } from './legendas-ass';
 
@@ -120,7 +121,7 @@ export function tirarPausas(
       };
       novos.push(pedaco);
       novosDe[i]!.push(pedaco);
-      posicao += Math.round(p.fim) - Math.round(p.inicio);
+      posicao += duracaoNaTimeline(pedaco);
     });
   });
 
@@ -132,15 +133,16 @@ export function tirarPausas(
   const mapear = (ms: number): number => {
     let acumulado = 0;
     for (const [i, clip] of plano.clips.entries()) {
-      const dur = clip.sourceEndMs - clip.sourceStartMs;
+      const dur = duracaoNaTimeline(clip);
+      const v = velocidadeDoTrecho(clip);
       if (ms < acumulado + dur || i === plano.clips.length - 1) {
-        const noOriginal = clip.sourceStartMs + Math.min(dur, Math.max(0, ms - acumulado));
+        const noOriginal = clip.sourceStartMs + Math.min(dur, Math.max(0, ms - acumulado)) * v;
         const doTrecho = novosDe[i]!;
         for (const n of doTrecho) {
-          if (noOriginal < n.sourceEndMs) return n.timelineStartMs + Math.max(0, noOriginal - n.sourceStartMs);
+          if (noOriginal < n.sourceEndMs) return n.timelineStartMs + Math.max(0, noOriginal - n.sourceStartMs) / v;
         }
         const ultimo = doTrecho.at(-1);
-        return ultimo ? ultimo.timelineStartMs + (ultimo.sourceEndMs - ultimo.sourceStartMs) : ms;
+        return ultimo ? ultimo.timelineStartMs + duracaoNaTimeline(ultimo) : ms;
       }
       acumulado += dur;
     }

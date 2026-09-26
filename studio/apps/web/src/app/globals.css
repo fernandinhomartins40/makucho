@@ -11253,3 +11253,61 @@ button.momento-midia__tempo:hover {
     display: none;
   }
 }
+
+/* ---------- Velocidade do trecho ---------- */
+.clipe__velocidade {
+  margin-left: 2px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 35%);
+  font-weight: 800;
+}
+
+.velocidade__opcoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+}
+
+.velocidade__opcao {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.velocidade__opcao[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 28%, var(--surface-2));
+}
+
+.velocidade__opcao:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 899px) {
+  /* Uma linha só na barra, como na referência: sete ações com nome
+     cabem em 360 px (48 px cada); em tela menor, rola para o lado. */
+  .timeline__barra {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0;
+    padding-inline: 4px;
+  }
+
+  .timeline__barra .timeline__acao {
+    min-width: 48px;
+    padding-inline: 2px;
+  }
+
+  .timeline__barra .timeline__separador {
+    margin-inline: 2px;
+  }
+}

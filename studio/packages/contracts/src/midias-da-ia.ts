@@ -239,8 +239,8 @@ export function falaParaMidias(
     for (const p of palavras) {
       if (p.startMs >= t.clip.sourceStartMs && p.startMs < t.clip.sourceEndMs) {
         noVideo.push({
-          inicio: t.inicioMs + (p.startMs - t.clip.sourceStartMs),
-          fim: t.inicioMs + (Math.min(p.endMs, t.clip.sourceEndMs) - t.clip.sourceStartMs),
+          inicio: t.inicioMs + (p.startMs - t.clip.sourceStartMs) / t.velocidade,
+          fim: t.inicioMs + (Math.min(p.endMs, t.clip.sourceEndMs) - t.clip.sourceStartMs) / t.velocidade,
           texto: p.texto,
         });
       }

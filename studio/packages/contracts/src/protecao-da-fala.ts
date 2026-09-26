@@ -36,8 +36,8 @@ export function palavrasNaTimeline(
     for (const p of palavras) {
       if (p.startMs >= t.clip.sourceStartMs && p.startMs < t.clip.sourceEndMs) {
         lista.push({
-          inicioMs: t.inicioMs + (p.startMs - t.clip.sourceStartMs),
-          fimMs: t.inicioMs + (Math.min(p.endMs, t.clip.sourceEndMs) - t.clip.sourceStartMs),
+          inicioMs: t.inicioMs + (p.startMs - t.clip.sourceStartMs) / t.velocidade,
+          fimMs: t.inicioMs + (Math.min(p.endMs, t.clip.sourceEndMs) - t.clip.sourceStartMs) / t.velocidade,
         });
       }
     }

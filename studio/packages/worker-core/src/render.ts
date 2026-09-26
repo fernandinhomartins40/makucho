@@ -124,6 +124,26 @@ const s = (quadros: number) => (quadros / FPS).toFixed(4);
  * montado produz video errado em silencio, e conferir o vetor de
  * argumentos e mais confiavel do que assistir ao resultado.
  */
+/**
+ * `atempo` para qualquer velocidade de 0,25x a 4x: um filtro so aceita
+ * de 0,5 a 2 com qualidade, entao a velocidade vira uma cadeia (0,25x =
+ * 0,5 x 0,5; 3x = 2 x 1,5).
+ */
+export function cadeiaDeAtempo(velocidade: number): string {
+  const partes: string[] = [];
+  let resto = velocidade;
+  while (resto > 2) {
+    partes.push('atempo=2');
+    resto /= 2;
+  }
+  while (resto < 0.5) {
+    partes.push('atempo=0.5');
+    resto /= 0.5;
+  }
+  partes.push(`atempo=${Number(resto.toFixed(4))}`);
+  return partes.join(',');
+}
+
 export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   const { plano } = opcoes;
   const agenda = agendaDoPlano(plano, opcoes.clipsDesligados);
@@ -173,14 +193,17 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
    * CPU a zero e 1,4 GB retidos.
    */
   const pedaco = (i: number, de: number, ate: number, rotulo: string): void => {
-    const { clip, quadros } = trechos[i]!;
+    const { clip, quadros, velocidade } = trechos[i]!;
     const n = ate - de;
-    const entrada = novaEntrada(clip.sourceStartMs + (de * 1000) / FPS, (n * 1000) / FPS);
+    // Com velocidade, cada quadro da timeline anda `velocidade` no original.
+    const entrada = novaEntrada(clip.sourceStartMs + ((de * 1000) / FPS) * velocidade, ((n * 1000) / FPS) * velocidade);
 
-    // `setpts=PTS-STARTPTS` zera o relogio do pedaco; o `tpad` +
-    // `trim=end_frame` fixam o numero exato de quadros.
+    // `setpts=PTS-STARTPTS` zera o relogio do pedaco (dividido pela
+    // velocidade: 2x anda o dobro por segundo); o `tpad` + `trim=end_frame`
+    // fixam o numero exato de quadros.
+    const relogio = velocidade === 1 ? 'PTS-STARTPTS' : `(PTS-STARTPTS)/${velocidade}`;
     const base =
-      `[${entrada}:v]setpts=PTS-STARTPTS,fps=${FPS},` +
+      `[${entrada}:v]setpts=${relogio},fps=${FPS},` +
       `tpad=stop_mode=clone:stop=${FPS},trim=end_frame=${n},setpts=PTS-STARTPTS`;
 
     const quadroVertical = `q${rotulo}`;
@@ -242,7 +265,11 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   const pecas: string[] = [];
   if (!opcoes.quadrosParaMascara) agenda.audio.forEach((p, k) => {
     const dur = (p.duracaoMs / 1000).toFixed(3);
-    const entrada = novaEntrada(p.sourceInicioMs, p.duracaoMs);
+    // A peca le `duracao * velocidade` do original e o `atempo` a estica
+    // ou encolhe mantendo o tom da voz (a exportacao do navegador faz o
+    // mesmo com WSOLA).
+    const lido = p.duracaoMs * p.velocidade;
+    const entrada = novaEntrada(p.sourceInicioMs, lido);
     const fades = [
       p.fadeInMs > 0 ? `afade=t=in:d=${(p.fadeInMs / 1000).toFixed(3)}` : '',
       p.fadeOutMs > 0
@@ -250,7 +277,8 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
         : '',
     ].filter(Boolean);
     partes.push(
-      `[${entrada}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,` +
+      `[${entrada}:a]atrim=0:${(lido / 1000).toFixed(3)},asetpts=PTS-STARTPTS,` +
+        (p.velocidade === 1 ? '' : `${cadeiaDeAtempo(p.velocidade)},`) +
         `aformat=sample_rates=48000:channel_layouts=stereo,apad=whole_dur=${dur},atrim=0:${dur},` +
         (p.ganhoDb ? `volume=${p.ganhoDb}dB,` : '') +
         (fades.length ? `${fades.join(',')},` : '') +

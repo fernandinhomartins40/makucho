@@ -7,7 +7,7 @@
 // assistir ao resultado, e não precisa do binário instalado.
 // ============================================================
 
-import { montarArgumentos, duracaoDoResultado, filtroDaTransicao } from '../src/render';
+import { montarArgumentos, duracaoDoResultado, filtroDaTransicao, cadeiaDeAtempo } from '../src/render';
 import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
 
@@ -468,6 +468,18 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('acompanhando: a posição soma a trilha da cabeça (desde o início da máscara)', f.includes('(t-1.0000)') && f.includes('0.30000+'));
   const semTrilha = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: animado, midias });
   t('sem trilha (sem máscara), a camada fica parada no lugar dela', (semTrilha[semTrilha.indexOf('-filter_complex') + 1]!.match(/rotate=/g) ?? []).length === 1);
+}
+
+// ---------- Velocidade do trecho ----------
+t('atempo: 2x é um filtro só', cadeiaDeAtempo(2) === 'atempo=2');
+t('atempo: 0,25x vira 0,5 x 0,5', cadeiaDeAtempo(0.25) === 'atempo=0.5,atempo=0.5');
+t('atempo: 3x vira 2 x 1,5', cadeiaDeAtempo(3) === 'atempo=2,atempo=1.5');
+{
+  const rapido: EditPlanV1 = { ...plano, clips: plano.clips.map((c, i) => (i === 0 ? { ...c, speed: 2 } : c)) };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: rapido });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('2x: o vídeo do trecho anda com setpts dividido', f.includes('setpts=(PTS-STARTPTS)/2,'));
+  t('2x: a voz do trecho passa pelo atempo', f.includes('atempo=2,'));
 }
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);

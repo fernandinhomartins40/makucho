@@ -11,7 +11,7 @@
 //   efeitos    o zoom de cada trecho e os efeitos sonoros.
 // ============================================================
 
-import { corEhNeutra, definicaoDaAparencia, montarBlocos, resolverEstiloDaLegenda } from '@makucho/studio-contracts';
+import { corEhNeutra, definicaoDaAparencia, montarBlocos, resolverEstiloDaLegenda, duracaoNaTimeline } from '@makucho/studio-contracts';
 import type { Agenda, EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 
@@ -96,7 +96,7 @@ export function cortes(plan: EditPlanV1): CorteNaFaixa[] {
   let acumulado = 0;
   plan.clips.forEach((c, i) => {
     if (i > 0) lista.push({ clipId: c.id, ms: acumulado, transicao: porClipe.get(i) ?? null });
-    acumulado += c.sourceEndMs - c.sourceStartMs;
+    acumulado += duracaoNaTimeline(c);
   });
   return lista;
 }
@@ -105,7 +105,7 @@ export function efeitos(plan: EditPlanV1): EfeitoNaFaixa[] {
   const lista: EfeitoNaFaixa[] = [];
   let acumulado = 0;
   for (const c of plan.clips) {
-    const dur = c.sourceEndMs - c.sourceStartMs;
+    const dur = duracaoNaTimeline(c);
     if (c.effect) {
       lista.push({
         id: `fx-${c.id}`,

@@ -80,7 +80,7 @@ export function palavrasDaFala(transcricao: Transcricao | null | undefined, plan
   const agenda = agendaDoPlano(plan);
   const trecho = agenda.trechos.find((t) => ms >= t.inicioMs && ms < t.inicioMs + t.duracaoMs);
   if (!trecho) return '';
-  const fonte = trecho.clip.sourceStartMs + (ms - trecho.inicioMs);
+  const fonte = trecho.clip.sourceStartMs + (ms - trecho.inicioMs) * trecho.velocidade;
   const palavras = transcricao.segmentos
     .flatMap((s) => s.palavras)
     .filter((p) => p.endMs >= fonte - 2000 && p.startMs <= fonte + 2000)

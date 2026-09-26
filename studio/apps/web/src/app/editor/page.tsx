@@ -36,8 +36,7 @@ import {
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
   ROTULO_DE_ESTADO,
   tirarPausas,
-  agendaDoPlano,
-} from '@makucho/studio-contracts';
+  agendaDoPlano, duracaoNaTimeline } from '@makucho/studio-contracts';
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
@@ -597,6 +596,8 @@ function Editor({ projectId }: { projectId: string }) {
     setItemSelecionado(null);
     if (alvo) setSelecionado(alvo);
     setFolha('inspector');
+    // Velocidade: a folha abre já no controle.
+    if (a === 'velocidade') setTimeout(() => document.getElementById('velocidade-do-trecho')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 260);
   };
 
   // ---------- Mídias que a montagem separou, para aprovar ----------
@@ -674,7 +675,7 @@ function Editor({ projectId }: { projectId: string }) {
       plano
         ? plano.clips
             .filter((c) => !desligados.has(c.id))
-            .reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0)
+            .reduce((t, c) => t + duracaoNaTimeline(c), 0)
         : 0,
     [plano, desligados],
   );
@@ -1080,7 +1081,7 @@ function Editor({ projectId }: { projectId: string }) {
                     for (const c of plano.clips) {
                       if (desligados.has(c.id)) continue;
                       if (c.id === id) break;
-                      acumulado += c.sourceEndMs - c.sourceStartMs;
+                      acumulado += duracaoNaTimeline(c);
                     }
                     setPosicaoMs(acumulado);
                   }
@@ -1157,7 +1158,6 @@ function Editor({ projectId }: { projectId: string }) {
             onFormato={() => naAcao('recorte')}
             onResolucao={() => setExportarAberto(true)}
             onAcao={naAcao}
-            semVelocidade
           />
           <Palco
             plan={planoVisivel ?? plano}
@@ -1258,6 +1258,7 @@ function Editor({ projectId }: { projectId: string }) {
             quadros={quadrosDoVideo}
             onAbrirIa={() => abrirPainel('ia')}
             onAjustes={() => naAcao('ajustar')}
+            onVelocidade={() => naAcao('velocidade')}
             onTirarPausas={tirarAsPausas}
             onAbrirBiblioteca={(categoria) => {
               // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).

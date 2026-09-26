@@ -437,6 +437,13 @@ export function Palco({
 
         if (necessario && i !== null) {
           const alvo = sourceNoInstante(agenda, i, ms);
+          // Velocidade do trecho: o player anda mais rápido ou devagar,
+          // com a voz no mesmo tom (o render faz o mesmo com atempo).
+          const velocidade = agenda.trechos[i]?.velocidade ?? 1;
+          if (v.playbackRate !== velocidade) {
+            v.preservesPitch = true;
+            v.playbackRate = velocidade;
+          }
           // Tocando, só corrige desvio real (buscar a cada quadro trava);
           // parado, vai ao quadro exato.
           const desvio = Math.abs(v.currentTime - alvo);

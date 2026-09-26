@@ -82,7 +82,7 @@ export function PainelDeLegendas({ plano, transcricao, carregando, onOperacao, p
         if (seg.endMs <= ini || seg.startMs >= fim) continue;
         const palavras = seg.palavras
           .filter((p) => p.startMs >= ini && p.startMs < fim)
-          .map((p) => ({ palavra: p, inicioMs: t.inicioMs + (p.startMs - ini), fimMs: t.inicioMs + (Math.min(p.endMs, fim) - ini) }));
+          .map((p) => ({ palavra: p, inicioMs: t.inicioMs + (p.startMs - ini) / t.velocidade, fimMs: t.inicioMs + (Math.min(p.endMs, fim) - ini) / t.velocidade }));
         if (!palavras.length) continue;
         lista.push({ chave: `${k}-${seg.id}`, inicioMs: palavras[0]!.inicioMs, fimMs: palavras[palavras.length - 1]!.fimMs, palavras });
       }

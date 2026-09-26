@@ -429,7 +429,7 @@ export function Timeline({
     if (!t) return null;
     const dentro = posicaoMs - t.inicioMs;
     if (dentro <= 0 || dentro >= t.duracaoMs) return null;
-    return clipeAtual.sourceStartMs + dentro;
+    return clipeAtual.sourceStartMs + dentro * t.velocidade;
   }, [clipeAtual, agenda, posicaoMs]);
 
   const podeDividir = pontoNoOriginal !== null;
@@ -808,6 +808,7 @@ export function Timeline({
                         onSelecionar?.(t.clip.id);
                       }}
                       onIniciarArraste={iniciarArraste('clipe', t.clip.id, t.inicioMs)}
+                      velocidade={t.velocidade}
                       sourceInicioMs={t.clip.sourceStartMs}
                       sourceDuracaoMs={t.clip.sourceEndMs - t.clip.sourceStartMs}
                       quadros={quadros}
@@ -1337,6 +1338,7 @@ function ClipeNaFaixa({
   sourceInicioMs,
   sourceDuracaoMs,
   quadros,
+  velocidade = 1,
 }: {
   id: string;
   funcao: string;
@@ -1354,6 +1356,7 @@ function ClipeNaFaixa({
   /** Quanto do original o trecho usa (difere da duração com velocidade). */
   sourceDuracaoMs: number;
   quadros?: (sourceMs: number) => string | null;
+  velocidade?: number;
 }) {
   const cor = corDaFuncao(funcao);
   const largura = Math.max(2, msParaPx(duracaoMs, zoom));
@@ -1421,6 +1424,7 @@ function ClipeNaFaixa({
         <span className="clipe__chip" style={{ background: cor }}>
           {nomeDaFuncao(funcao)}
           <span style={{ opacity: 0.75, fontWeight: 500 }}>{(duracaoMs / 1000).toFixed(1)}s</span>
+          {velocidade !== 1 && <span className="clipe__velocidade">{String(velocidade).replace('.', ',')}x</span>}
         </span>
       </span>
       {selos.length > 0 && (

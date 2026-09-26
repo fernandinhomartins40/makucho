@@ -16,6 +16,7 @@
 // pico máximo de -1,5 dB -- a conta do `loudnorm`, simplificada.
 // ============================================================
 
+import { esticarSemMudarTom } from './esticar';
 import type { EditPlanV1, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import { agendaDoPlano, ehEfeitoSonoroEmbutido, palavrasNaTimeline } from '@makucho/studio-contracts';
 import { ALL_FORMATS, AudioBufferSink, Input, UrlSource } from 'mediabunny';
@@ -113,9 +114,10 @@ export async function mixarAudio(e: EntradaDaMixagem): Promise<AudioBuffer> {
   let feitos = 0;
   for (const p of agenda.audio) {
     if (e.sinal?.aborted) throw new DOMException('cancelado', 'AbortError');
-    const buf = await e.voz.trecho(p.sourceInicioMs / 1000, p.duracaoMs / 1000, e.sinal);
+    const bruto = await e.voz.trecho(p.sourceInicioMs / 1000, (p.duracaoMs * p.velocidade) / 1000, e.sinal);
     e.aoProgredir?.(++feitos / total);
-    if (!buf) continue;
+    if (!bruto) continue;
+    const buf = p.velocidade === 1 ? bruto : esticarSemMudarTom(ctx, bruto, p.velocidade);
     const fonte = ctx.createBufferSource();
     fonte.buffer = buf;
     const g = ctx.createGain();

@@ -12,6 +12,7 @@
 // poder restaurar o que foi descartado.
 // ============================================================
 
+import { duracaoNaTimeline } from '@makucho/studio-contracts';
 import { useState } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { corDaFuncao, nomeDaFuncao, tempo } from './funcoes';
@@ -56,7 +57,7 @@ export function PainelDaIA({
         {plan.clips.map((clipe, i) => {
           const ativo = clipe.id === selecionado;
           const ligado = !desligados.has(clipe.id);
-          const segundos = (clipe.sourceEndMs - clipe.sourceStartMs) / 1000;
+          const segundos = duracaoNaTimeline(clipe) / 1000;
 
           return (
             <article

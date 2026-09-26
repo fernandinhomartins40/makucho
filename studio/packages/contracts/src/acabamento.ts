@@ -21,6 +21,7 @@
 // so sem titulo e chamada, que exigem escrever texto.
 // ============================================================
 
+import { duracaoNaTimeline } from './edit-plan';
 import { z } from 'zod';
 import type { EditPlanV1, TipoDeTransicao } from './edit-plan';
 import { editPlanV1Schema, tipoDeTransicaoSchema } from './edit-plan';
@@ -149,7 +150,7 @@ export function aplicarAcabamento(
   dicas: DicasDeAcabamento = {},
 ): EditPlanV1 {
   const prefs = contexto.preferencias ?? {};
-  const total = plano.clips.reduce((t, c) => t + (c.sourceEndMs - c.sourceStartMs), 0);
+  const total = plano.clips.reduce((t, c) => t + duracaoNaTimeline(c), 0);
   const n = plano.clips.length;
 
   // ---------- Legenda ----------
@@ -179,7 +180,7 @@ export function aplicarAcabamento(
     const { effect: _anterior, ...semEfeito } = c;
     if (!comZoom) return semEfeito;
 
-    const duracao = c.sourceEndMs - c.sourceStartMs;
+    const duracao = duracaoNaTimeline(c);
     // A abertura ganha movimento: e onde a pessoa decide se fica.
     if (i === 0) return duracao >= MINIMO_PARA_ZOOM_LENTO_MS ? { ...semEfeito, effect: 'zoom_lento' as const } : semEfeito;
 
@@ -195,7 +196,7 @@ export function aplicarAcabamento(
   const inicioDoTrecho: number[] = [];
   clips.reduce((acc, c) => {
     inicioDoTrecho.push(acc);
-    return acc + (c.sourceEndMs - c.sourceStartMs);
+    return acc + duracaoNaTimeline(c);
   }, 0);
 
   const pedidas = new Map<number, TipoDeTransicao>();

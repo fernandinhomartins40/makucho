@@ -92,6 +92,13 @@ export const clipSchema = z
     audio: audioDoTrechoSchema.optional(),
     /** Filtro e ajustes de cor do trecho (cor.ts). */
     color: corDoTrechoSchema.optional(),
+    /**
+     * Velocidade do trecho: 0,25x (câmera lenta) a 4x. O trecho usa o
+     * mesmo pedaço do original, mas ocupa (fim - início) / speed na
+     * timeline; a voz muda de ritmo sem mudar de tom (atempo no render,
+     * preservesPitch na prévia). Ausente = 1x.
+     */
+    speed: z.number().min(0.25).max(4).optional(),
   })
   .refine((clip) => clip.sourceEndMs > clip.sourceStartMs, {
     message: 'sourceEndMs deve ser maior que sourceStartMs',
@@ -99,6 +106,22 @@ export const clipSchema = z
   });
 
 export type Clip = z.infer<typeof clipSchema>;
+
+/** As velocidades que a interface oferece (o schema aceita qualquer uma entre 0,25 e 4). */
+export const VELOCIDADES_DO_TRECHO = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+
+/** A velocidade de um trecho (1 quando não definida). */
+export function velocidadeDoTrecho(clip: { speed?: number | undefined }): number {
+  return clip.speed && clip.speed > 0 ? clip.speed : 1;
+}
+
+/**
+ * Quanto o trecho ocupa na TIMELINE: o pedaço do original dividido pela
+ * velocidade. É a conta que toda posição do vídeo final usa.
+ */
+export function duracaoNaTimeline(clip: { sourceStartMs: number; sourceEndMs: number; speed?: number | undefined }): number {
+  return Math.round((clip.sourceEndMs - clip.sourceStartMs) / velocidadeDoTrecho(clip));
+}
 
 // ---------- Legendas ----------
 //
@@ -548,7 +571,7 @@ export const editPlanV1Schema = z
     for (let i = 1; i < ordered.length; i += 1) {
       const previous = ordered[i - 1]!;
       const current = ordered[i]!;
-      const previousEnd = previous.timelineStartMs + (previous.sourceEndMs - previous.sourceStartMs);
+      const previousEnd = previous.timelineStartMs + duracaoNaTimeline(previous);
 
       if (current.timelineStartMs < previousEnd) {
         ctx.addIssue({
@@ -562,10 +585,7 @@ export const editPlanV1Schema = z
   // ---- A soma dos clips corresponde a duracao declarada ----
   // Tolerancia de um frame (33ms a 30fps) para arredondamento.
   .superRefine((plan, ctx) => {
-    const total = plan.clips.reduce(
-      (sum, clip) => sum + (clip.sourceEndMs - clip.sourceStartMs),
-      0,
-    );
+    const total = plan.clips.reduce((sum, clip) => sum + duracaoNaTimeline(clip), 0);
 
     if (Math.abs(total - plan.targetDurationMs) > 34) {
       ctx.addIssue({

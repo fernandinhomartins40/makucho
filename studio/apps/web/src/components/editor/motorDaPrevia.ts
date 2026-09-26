@@ -58,7 +58,7 @@ export function trechoNoInstante(agenda: Agenda, ms: number): number {
 /** Onde, no original, o trecho `indice` está quando a timeline marca `ms`. */
 export function sourceNoInstante(agenda: Agenda, indice: number, ms: number): number {
   const t = agenda.trechos[indice]!;
-  return Math.max(0, t.clip.sourceStartMs + (ms - t.inicioMs)) / 1000;
+  return Math.max(0, t.clip.sourceStartMs + (ms - t.inicioMs) * t.velocidade) / 1000;
 }
 
 function zoomDoTrecho(agenda: Agenda, indice: number, ms: number): number {
