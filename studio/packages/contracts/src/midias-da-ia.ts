@@ -91,6 +91,11 @@ export interface ResultadoDaBusca {
   /** A página do item na fonte (crédito). */
   pagina: string;
   licenca: LicencaDaMidia;
+  /**
+   * O quanto a imagem COMBINA com a cena (0-100), medido pela IA que
+   * olha a miniatura (CLIP). Ausente quando a visão não rodou.
+   */
+  afinidade?: number;
 }
 
 export const buscaDeMidiaSchema = z.object({
@@ -145,6 +150,14 @@ export interface MomentoVisual {
   texto?: string;
   /** O trecho da fala, para a pessoa reconhecer o momento no painel. */
   fala?: string;
+  /**
+   * A imagem ideal descrita em inglês, como uma legenda de foto ("a gold
+   * bitcoin coin on a dark background"): é com ela que a IA que olha as
+   * miniaturas mede qual combina mais.
+   */
+  cena?: string;
+  /** Por que a imagem ajuda ali, em português, para a pessoa entender. */
+  porque?: string;
 }
 
 const cortar = (v: unknown, n: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
@@ -184,6 +197,8 @@ export function lerMomentosVisuais(bruto: string, duracaoDoVideoMs: number): { o
     const fim = Math.min(duracaoDoVideoMs, inicio + Math.min(DURACAO_MAXIMA, Math.max(DURACAO_MINIMA, Number.isFinite(pedidoFim) ? pedidoFim - inicio : 2500)));
     const texto = cortar(x.texto, 60);
     const fala = cortar(x.fala, 200);
+    const cena = cortar(x.cena ?? x.scene, 160);
+    const porque = cortar(x.porque ?? x.motivo, 140);
     momentos.push({
       inicioMs: inicio,
       fimMs: fim,
@@ -193,6 +208,8 @@ export function lerMomentosVisuais(bruto: string, duracaoDoVideoMs: number): { o
       composicao: composicao === 'tela_cheia_com_titulo' && !texto ? 'tela_cheia' : composicao,
       ...(texto && composicao === 'tela_cheia_com_titulo' ? { texto } : {}),
       ...(fala ? { fala } : {}),
+      ...(cena ? { cena } : {}),
+      ...(porque ? { porque } : {}),
     });
   }
   momentos.sort((a, b) => a.inicioMs - b.inicioMs);

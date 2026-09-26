@@ -38,6 +38,8 @@ interface Props {
   /** Mídias que a montagem com IA separou, para aprovar. */
   midiasSeparadas?: MidiasSeparadas | null;
   onMidiasConcluidas?: () => void;
+  /** Leva o vídeo até um momento (o botão de tempo das sugestões). */
+  onVerNoVideo?: (ms: number) => void;
 }
 
 /** Como mostrar um resultado da busca, pelo que ele é. */
@@ -93,7 +95,7 @@ const LAYOUTS: ReadonlyArray<readonly [LayoutDeMidia, string, string]> = [
   ['dividir_baixo', 'Dividir', 'Metade de baixo da tela'],
 ];
 
-export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados, midiasSeparadas, onMidiasConcluidas }: Props) {
+export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados, midiasSeparadas, onMidiasConcluidas, onVerNoVideo }: Props) {
   const [lista, setLista] = useState<Asset[] | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -260,6 +262,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
         onOperacoes={onOperacoes}
         separadas={midiasSeparadas ?? null}
         {...(onMidiasConcluidas ? { onConcluir: onMidiasConcluidas } : {})}
+        {...(onVerNoVideo ? { onVerNoVideo } : {})}
       />
 
       <p className="biblioteca__alvo">

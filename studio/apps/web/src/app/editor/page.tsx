@@ -1067,6 +1067,11 @@ function Editor({ projectId }: { projectId: string }) {
                 desligados={[...desligados]}
                 midiasSeparadas={midiasSeparadas?.momentos.length ? midiasSeparadas : null}
                 onMidiasConcluidas={concluirMidiasSeparadas}
+                onVerNoVideo={(ms) => {
+                  setPosicaoMs(ms);
+                  // No celular a folha cobre o vídeo: fecha para ver.
+                  if (window.matchMedia('(max-width: 899px)').matches) setFolha(null);
+                }}
                 {...(marcaDoVideo ? { marca: marcaDoVideo } : {})}
               />
               {projeto && <PainelDeMidia projeto={projeto} />}

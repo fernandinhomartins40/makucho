@@ -24,6 +24,7 @@ import {
   openverseImagem,
   pixabayImagem,
 } from '../src/modules/banco-de-midia/fontes';
+import { afinidade, cosseno, mediaDosTextos, pixelsParaTensor } from '../src/modules/banco-de-midia/visao/clip';
 
 let ok = 0,
   fail = 0;
@@ -134,6 +135,18 @@ for (const composicao of ['icone_ao_lado', 'tela_cheia', 'tela_cheia_com_titulo'
 t('toda composição vira operações que o plano aceita', passou);
 const comTitulo = operacoesDaComposicao({ inicioMs: 2000, fimMs: 5000, conceito: 'x', termos: ['x'], tipo: 'foto', composicao: 'tela_cheia_com_titulo', texto: '20% ao mês' }, { ...midia, transparente: false });
 t('tela cheia com título: mídia + texto por cima', comTitulo.length === 2 && comTitulo[1]!.op === 'adicionar_overlay');
+
+// ---------- A IA que enxerga (CLIP): cena lida e notas ----------
+const comCena = lerMomentosVisuais(
+  JSON.stringify({ momentos: [{ inicioMs: 3000, fimMs: 5000, conceito: 'bitcoin', termos: ['bitcoin'], tipo: 'logo', composicao: 'cartao', cena: 'a gold bitcoin coin 3d icon', porque: 'mostra o bitcoin' }] }),
+  30000,
+);
+t('momentos: a cena ideal e o porquê chegam ao servidor', comCena.ok && comCena.momentos[0]!.cena === 'a gold bitcoin coin 3d icon' && comCena.momentos[0]!.porque === 'mostra o bitcoin');
+t('afinidade: cosseno do CLIP vira 0-100 com teto e piso', afinidade(0.1) === 0 && afinidade(0.4) === 100 && afinidade(0.25) === 50);
+const media = mediaDosTextos([Float32Array.from([1, 0]), Float32Array.from([0, 3])]);
+t('textos: a média normalizada fica entre os dois', Math.abs(cosseno(media, media) - 1) < 1e-6 && Math.abs(media[0]! - media[1]!) < 1e-6);
+const branco = pixelsParaTensor(new Uint8Array(224 * 224 * 3).fill(255));
+t('imagem: branco normalizado como o CLIP (canal R ~1,93)', branco.length === 3 * 224 * 224 && Math.abs(branco[0]! - 1.9303) < 1e-3);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

@@ -178,7 +178,10 @@ services:
       start_period: 120s
     volumes:
       - studio_media:/app/storage/media
-    mem_limit: 192m
+    # 192m bastava para a API; a IA que enxerga as mídias (CLIP, numa
+    # thread que fecha quando para) sobe a ~500m durante a escolha das
+    # imagens e volta ao normal depois. Teto, não reserva (ver MEMORIA).
+    mem_limit: 768m
     networks:
       - studio-net
       # Alcanca o Postgres do portal (ADR 0004).

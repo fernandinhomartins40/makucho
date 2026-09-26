@@ -17,6 +17,7 @@ import type { MomentoVisual, ResultadoDaBusca, TipoDaBusca } from '@makucho/stud
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
+import { VisaoService } from '../banco-de-midia/visao/visao.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AiService } from './ai.service';
 import { PromptsService } from './prompts.service';
@@ -25,6 +26,12 @@ import { PromptsService } from './prompts.service';
 const MAX_TOKENS_DAS_MIDIAS = 2500;
 /** Opções mostradas por momento. */
 const OPCOES_POR_MOMENTO = 4;
+/** Candidatas que a IA que enxerga olha por momento (~0,2 s cada). */
+const CANDIDATAS_POR_MOMENTO = 10;
+/** Abaixo disso a candidata não tem a ver com a cena: sai se houver outras. */
+const AFINIDADE_MINIMA = 15;
+/** A melhor abaixo disso: vale tentar o tipo reserva também. */
+const AFINIDADE_FRACA = 30;
 
 /** Quando o tipo pedido não acha nada, o próximo que costuma achar. */
 const TIPO_RESERVA: Partial<Record<TipoDaBusca, TipoDaBusca>> = {
@@ -50,6 +57,7 @@ export class MidiasService {
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
     private readonly banco: BancoDeMidiaService,
+    private readonly visao: VisaoService,
   ) {}
 
   async sugerir(tenant: TenantContext, projectId: string, desligados: readonly string[] = []) {
@@ -157,18 +165,43 @@ export class MidiasService {
     return { ok: true };
   }
 
-  /** As opções de um momento: termo a termo até achar, e o tipo reserva se nada. */
+  /**
+   * As opções de um momento: busca termo a termo, ordena pelo texto e
+   * então a IA que ENXERGA olha as melhores candidatas e as reordena
+   * pelo quanto parecem a cena. Se nada do tipo pedido combina (ou nada
+   * acha), tenta o tipo reserva e fica com o que combinar mais.
+   */
   private async opcoesDoMomento(tenant: TenantContext, m: MomentoVisual, avisos: Set<string>): Promise<MomentoComOpcoes> {
+    let melhor: MomentoComOpcoes = { ...m, tipoAchado: m.tipo, opcoes: [] };
     for (const tipo of [m.tipo, TIPO_RESERVA[m.tipo]].filter((t): t is TipoDaBusca => Boolean(t))) {
       const achados: ResultadoDaBusca[] = [];
       for (const termo of m.termos) {
         const r = await this.banco.buscar(tenant, { q: termo, tipo });
         r.avisos.forEach((a) => avisos.add(a));
         for (const x of r.resultados) if (!achados.some((y) => y.fonte === x.fonte && y.id === x.id)) achados.push(x);
-        if (achados.length >= OPCOES_POR_MOMENTO * 2) break;
+        if (achados.length >= CANDIDATAS_POR_MOMENTO) break;
       }
-      if (achados.length) return { ...m, tipoAchado: tipo, opcoes: ranquearResultados(achados, m.termos, tipo).slice(0, OPCOES_POR_MOMENTO) };
+      if (!achados.length) continue;
+      const candidatas = ranquearResultados(achados, m.termos, tipo).slice(0, CANDIDATAS_POR_MOMENTO);
+      const opcoes = await this.olhar(m, tipo, candidatas);
+      const nota = (o: ResultadoDaBusca[]) => o[0]?.afinidade ?? -1;
+      if (!melhor.opcoes.length || nota(opcoes) > nota(melhor.opcoes)) melhor = { ...m, tipoAchado: tipo, opcoes };
+      // Sem visão (nota -1) ou já combinando bem: não precisa do reserva.
+      if (nota(opcoes) < 0 || nota(opcoes) >= AFINIDADE_FRACA) break;
     }
-    return { ...m, tipoAchado: m.tipo, opcoes: [] };
+    return melhor;
+  }
+
+  /** A IA que enxerga reordena as candidatas pela cena; sem ela, fica a ordem do texto. */
+  private async olhar(m: MomentoVisual, tipo: TipoDaBusca, candidatas: ResultadoDaBusca[]): Promise<ResultadoDaBusca[]> {
+    const estilo = tipo === 'icone3d' ? 'a 3d icon of' : tipo === 'logo' ? 'the logo of' : tipo === 'icone' ? 'an icon of' : tipo === 'ilustracao' ? 'an illustration of' : 'a photo of';
+    const textos = [...(m.cena ? [m.cena] : []), ...m.termos.slice(0, 2).map((t) => `${estilo} ${t}`)];
+    const notas = await this.visao.notas(textos, candidatas.map((c) => c.miniatura));
+    if (!notas) return candidatas.slice(0, OPCOES_POR_MOMENTO);
+    // A ordem do texto desempata (e dá um leve empurrão à primeira).
+    const com = candidatas.map((c, i) => ({ c: { ...c, ...(notas[i] != null ? { afinidade: notas[i]! } : {}) }, n: (notas[i] ?? 0) + Math.max(0, 6 - i) }));
+    com.sort((a, b) => b.n - a.n);
+    const boas = com.filter((x) => (x.c.afinidade ?? 0) >= AFINIDADE_MINIMA);
+    return (boas.length >= 2 ? boas : com).slice(0, OPCOES_POR_MOMENTO).map((x) => x.c);
   }
 }

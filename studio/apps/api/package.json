@@ -27,6 +27,7 @@
     "cookie-parser": "^1.4.7",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
+    "onnxruntime-web": "1.30.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",

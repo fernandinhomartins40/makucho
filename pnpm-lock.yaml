@@ -341,6 +341,9 @@ importers:
       ioredis:
         specifier: ^5.4.1
         version: 5.11.1
+      onnxruntime-web:
+        specifier: 1.30.0
+        version: 1.30.0
       passport:
         specifier: ^0.7.0
         version: 0.7.0
