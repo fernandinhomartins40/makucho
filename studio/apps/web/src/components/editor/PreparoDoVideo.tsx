@@ -29,6 +29,7 @@ import {
   IconeAjustarZoom,
   IconeTexto,
   IconeNotificacao,
+  IconeMidia,
 } from '../icones';
 
 type Estado = 'INGESTING' | 'TRANSCRIBING' | 'ANALYZING' | 'PRONTO' | string;
@@ -52,7 +53,7 @@ const ETAPAS = [
   { chave: 'recebido', titulo: 'Vídeo recebido', texto: 'O arquivo chegou inteiro ao servidor.' },
   { chave: 'INGESTING', titulo: 'Preparando o vídeo', texto: 'Prévia leve, áudio separado e pausas detectadas.' },
   { chave: 'TRANSCRIBING', titulo: 'Ouvindo a sua fala', texto: 'Cada palavra com o tempo exato em que foi dita.' },
-  { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'Gancho, cortes, legenda, zoom e transições.' },
+  { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'Gancho, cortes, legenda, zoom, transições e imagens para você aprovar.' },
 ];
 
 const MENSAGENS: Record<string, string[]> = {
@@ -65,6 +66,7 @@ const MENSAGENS: Record<string, string[]> = {
     'Escolhendo a legenda que combina com o tom…',
     'Marcando os momentos fortes para o zoom…',
     'Escrevendo o título de abertura…',
+    'Buscando imagens e ícones que ilustram a fala…',
   ],
 };
 
@@ -74,6 +76,7 @@ const GANHOS = [
   { a: 55, Icone: IconeCortar, texto: 'Cortes no ritmo certo' },
   { a: 82, Icone: IconeAjustarZoom, texto: 'Zoom e transições' },
   { a: 95, Icone: IconeTexto, texto: 'Título e chamada' },
+  { a: 97, Icone: IconeMidia, texto: 'Imagens para aprovar' },
 ];
 
 export function PreparoDoVideo({ estado, progresso, miniaturaUrl, duracaoDaGravacaoMs, comemorando }: Props) {

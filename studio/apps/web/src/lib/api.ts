@@ -800,6 +800,8 @@ export interface MidiasSeparadas {
   avisos: string[];
   semOpcoes: string[];
   geradoEm?: string;
+  /** A montagem tentou e não separou nada: o motivo, para a tela dizer. */
+  erro?: string;
 }
 
 export const bancoDeMidia = {

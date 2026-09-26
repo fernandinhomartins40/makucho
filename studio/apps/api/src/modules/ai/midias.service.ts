@@ -119,23 +119,35 @@ export class MidiasService {
     const prefs = (perfil?.videoDefaults ?? {}) as { midiasDaIa?: boolean };
     if (prefs.midiasDaIa === false) return 0;
     const tenant: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
-    const r = await this.sugerir(tenant, projectId);
+    const geradoEm = new Date().toISOString();
+    // Sem sugestão, o editor precisa saber POR QUE (a IA falhou, nenhuma
+    // fonte trouxe opção): o registro fica, com `momentos` vazio e o motivo.
+    let registro: { momentos: MomentoComOpcoes[]; avisos: string[]; semOpcoes: string[]; geradoEm: string; erro?: string };
+    try {
+      const r = await this.sugerir(tenant, projectId);
+      registro = { momentos: r.momentos, avisos: r.avisos, semOpcoes: r.semOpcoes, geradoEm };
+      if (!r.momentos.length) {
+        registro.erro = r.semOpcoes.length
+          ? `a IA marcou ${r.semOpcoes.length} momentos, mas nenhuma fonte trouxe opção`
+          : 'a IA não achou momentos que pedem imagem nesta fala';
+      }
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : String(e);
+      this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${motivo}`);
+      registro = { momentos: [], avisos: [], semOpcoes: [], geradoEm, erro: motivo };
+    }
     await this.prisma.project.update({
       where: { id: projectId },
-      data: {
-        mediaSuggestions: r.momentos.length
-          ? ({ momentos: r.momentos, avisos: r.avisos, semOpcoes: r.semOpcoes, geradoEm: new Date().toISOString() } as unknown as Prisma.InputJsonValue)
-          : Prisma.DbNull,
-      },
+      data: { mediaSuggestions: registro as unknown as Prisma.InputJsonValue },
     });
-    return r.momentos.length;
+    return registro.momentos.length;
   }
 
   /** As mídias separadas na montagem, esperando aprovação (ou null). */
   async pendentes(tenant: TenantContext, projectId: string) {
     const p = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId: tenant.workspaceId }, select: { mediaSuggestions: true } });
     if (!p) throw new NotFoundException('projeto não encontrado');
-    return (p.mediaSuggestions ?? null) as { momentos: MomentoComOpcoes[]; avisos: string[]; semOpcoes: string[]; geradoEm: string } | null;
+    return (p.mediaSuggestions ?? null) as { momentos: MomentoComOpcoes[]; avisos: string[]; semOpcoes: string[]; geradoEm: string; erro?: string } | null;
   }
 
   /** Aprovadas (as escolhidas já entraram pelo editor) ou dispensadas: some o aviso. */

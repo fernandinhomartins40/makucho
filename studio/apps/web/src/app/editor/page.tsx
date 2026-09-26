@@ -44,6 +44,7 @@ import type { ItemDaTimeline } from '../../components/timeline/camadas';
 import type { ProgressoDoPreparo } from '@makucho/studio-contracts';
 import { PainelDaIA } from '../../components/editor/PainelDaIA';
 import { PainelDaBiblioteca, type CategoriaDaBiblioteca } from '../../components/biblioteca/PainelDaBiblioteca';
+import { PainelDeMidias } from '../../components/biblioteca/PainelDeMidias';
 import { AtalhosDoEditor } from '../../components/editor/AtalhosDoEditor';
 import { PainelDeRefino } from '../../components/editor/PainelDeRefino';
 import { PainelDeLegendas } from '../../components/editor/PainelDeLegendas';
@@ -545,8 +546,7 @@ function Editor({ projectId }: { projectId: string }) {
   }, [projectId]);
   useEffect(carregarMidiasSeparadas, [carregarMidiasSeparadas]);
   const abrirMidiasSeparadas = () => {
-    setCategoriaDaBiblioteca('midia');
-    setAba('biblioteca');
+    setAba('midia');
     if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
   };
   const concluirMidiasSeparadas = useCallback(() => {
@@ -986,11 +986,19 @@ function Editor({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               ) : (
-                !semIa && (
+                <>
+                  {midiasSeparadas?.erro && (
+                    <div className="aviso aviso--atencao">
+                      <IconeAviso size={15} />
+                      <span style={{ fontSize: 12 }}>
+                        A montagem não separou imagens: {midiasSeparadas.erro}. Peça de novo no botão abaixo.
+                      </span>
+                    </div>
+                  )}
                   <button type="button" className="botao botao--secundario" style={{ width: '100%' }} onClick={abrirMidiasSeparadas}>
                     <IconeMidia size={16} /> Ilustrar a fala com imagens, ícones 3D e vídeos
                   </button>
-                )
+                </>
               )}
             </div>
           )}
@@ -1046,7 +1054,24 @@ function Editor({ projectId }: { projectId: string }) {
               )}
             />
           )}
-          {aba === 'midia' && projeto && <PainelDeMidia projeto={projeto} />}
+          {aba === 'midia' && (
+            <>
+              <PainelDeMidias
+                plan={plano}
+                posicaoMs={posicaoMs}
+                onOperacao={executar}
+                onOperacoes={executarVarias}
+                onSelecionarItem={(item) => setItemSelecionado(item)}
+                urlDoAsset={apiAssets.url}
+                transcricao={transcricao}
+                desligados={[...desligados]}
+                midiasSeparadas={midiasSeparadas?.momentos.length ? midiasSeparadas : null}
+                onMidiasConcluidas={concluirMidiasSeparadas}
+                {...(marcaDoVideo ? { marca: marcaDoVideo } : {})}
+              />
+              {projeto && <PainelDeMidia projeto={projeto} />}
+            </>
+          )}
           {aba === 'legendas' && (
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} desligados={desligados} />
           )}
@@ -1151,8 +1176,12 @@ function Editor({ projectId }: { projectId: string }) {
             onda={onda}
             onTirarPausas={tirarAsPausas}
             onAbrirBiblioteca={(categoria) => {
-              setCategoriaDaBiblioteca(categoria === 'trilha' ? 'trilha' : categoria);
-              setAba('biblioteca');
+              // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).
+              if (categoria === 'midia') setAba('midia');
+              else {
+                setCategoriaDaBiblioteca(categoria === 'trilha' ? 'trilha' : categoria);
+                setAba('biblioteca');
+              }
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
             }}
             onMostrarAtalhos={() => setAtalhosAbertos(true)}
@@ -1473,7 +1502,7 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
       <header className="painel__cabecalho">
         <span className="linha" style={{ gap: 'var(--e2)' }}>
           <IconeMidia size={20} />
-          <strong style={{ fontSize: 17 }}>Mídia do projeto</strong>
+          <strong style={{ fontSize: 17 }}>Gravação original</strong>
         </span>
       </header>
       <div style={{ padding: 'var(--e4)', display: 'grid', gap: 'var(--e4)' }}>
