@@ -308,6 +308,8 @@ export interface RoteiroDaIaNaTela {
   roteiro: RoteiroParaSalvar;
   tecnicas: Array<{ nome: string; onde: string }>;
   resposta: string;
+  /** Na edição: cada mudança numa linha curta, para a pessoa aprovar. */
+  mudancas?: string[];
   custoCentavos: number;
 }
 
@@ -680,7 +682,7 @@ export const ia = {
   /** Revisa o roteiro da tela por um pedido livre ("gancho mais forte", "encurta"). */
   editarRoteiro: (dados: {
     pedido: string;
-    roteiro: { title: string; targetDurationMs?: number; blocks: Array<{ role: string; goal?: string; text: string }> };
+    roteiro: { title: string; framework?: string; targetDurationMs?: number; blocks: Array<{ role: string; goal?: string; text: string }> };
     blocoSelecionado?: number | null;
     anterior?: { pedido: string; resposta: string };
   }) => api<RoteiroDaIaNaTela>('/scripts/ai/editar', { metodo: 'POST', corpo: dados }),

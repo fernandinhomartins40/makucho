@@ -11,8 +11,11 @@
 // melhor (e antes, só o tema chegava à IA).
 //
 // Depois, o roteiro é editável à mão e por pedido livre à IA ("gancho
-// mais forte", "encurta pra 30s", "mais informal"), com desfazer. Salva
-// sozinho, e leva ao teleprompter.
+// mais forte", "encurta pra 30s", "mais informal"). A IA recebe o roteiro
+// inteiro e revisa o todo; a resposta NÃO entra direto: aparece como
+// proposta, com o que mudou marcado palavra a palavra, e a pessoa aprova
+// (tudo ou bloco a bloco) ou recusa. Com desfazer. Salva sozinho, e leva
+// ao teleprompter.
 // ============================================================
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +24,7 @@ import { useSearchParams } from 'next/navigation';
 import { Topbar } from '../../components/shell/Topbar';
 import { Folha } from '../../components/shell/Folha';
 import { ia, roteiros as apiRoteiros, type RoteiroNaLista, type RoteiroParaSalvar } from '../../lib/api';
+import { alinharBlocos, diferencaDeTexto, type Par } from '../../lib/diffDeRoteiro';
 import {
   IconeIA,
   IconeRelogio,
@@ -88,6 +92,7 @@ const COR: Record<Papel, string> = {
 
 const PAPEIS = Object.keys(ROTULO) as Papel[];
 const ehPapel = (v: string): v is Papel => (PAPEIS as string[]).includes(v);
+const ESTRUTURAS = ['authority_education', 'viral_education', 'storytelling', 'pas', 'sales'];
 
 const PALAVRAS_POR_SEGUNDO = 2.5;
 const palavrasDe = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
@@ -230,14 +235,17 @@ function Roteiros() {
     if (!estado.blocos.some((b) => b.texto.trim())) return;
     setSalvamento('salvando');
     const t = setTimeout(async () => {
+      const blocos = estado.blocos
+        .filter((b) => b.texto.trim())
+        .map((b, i) => ({ role: b.papel as string, goal: b.intencao.slice(0, 120) || undefined, text: b.texto.trim().slice(0, 2000), position: i }));
+      // O servidor exige um gancho: sem nenhum, o primeiro bloco abre.
+      if (!blocos.some((b) => b.role === 'hook')) blocos[0]!.role = 'hook';
       const corpo: RoteiroParaSalvar = {
-        title: estado.titulo.trim() || 'Roteiro sem título',
+        title: estado.titulo.trim().slice(0, 160) || 'Roteiro sem título',
         mode: 'FULL',
-        framework: estado.framework || 'authority_education',
+        framework: ESTRUTURAS.includes(estado.framework) ? estado.framework : 'authority_education',
         targetDurationMs: Math.min(180_000, Math.max(15_000, estado.duracaoMs || 45_000)),
-        blocks: estado.blocos
-          .filter((b) => b.texto.trim())
-          .map((b, i) => ({ role: b.papel, goal: b.intencao.slice(0, 120) || undefined, text: b.texto.trim(), position: i })),
+        blocks: blocos,
       };
       try {
         if (roteiroId) {
@@ -516,6 +524,8 @@ function EditorDeRoteiro({
   const [resposta, setResposta] = useState<string | null>(null);
   const [anterior, setAnterior] = useState<{ pedido: string; resposta: string } | null>(null);
   const [copiado, setCopiado] = useState(false);
+  // O que a IA propôs, esperando a pessoa aprovar (nada muda antes disso).
+  const [proposta, setProposta] = useState<Proposta | null>(null);
 
   const palavras = useMemo(() => estado.blocos.reduce((t, b) => t + palavrasDe(b.texto), 0), [estado.blocos]);
   const segundos = palavras / PALAVRAS_POR_SEGUNDO;
@@ -558,29 +568,70 @@ function EditorDeRoteiro({
     setPedindo(true);
     setResposta(null);
     onAviso(null);
+    // Com uma proposta aberta, o novo pedido ajusta a proposta.
+    const base = proposta?.estado ?? estado;
     try {
       const r = await ia.editarRoteiro({
         pedido: limpo,
+        // O roteiro INTEIRO vai como contexto: a IA revisa o todo, não um bloco.
         roteiro: {
-          title: estado.titulo,
-          targetDurationMs: estado.duracaoMs,
-          blocks: estado.blocos.map((b) => ({ role: b.papel, goal: b.intencao || undefined, text: b.texto })),
+          title: base.titulo.slice(0, 160),
+          ...(ESTRUTURAS.includes(base.framework) ? { framework: base.framework } : {}),
+          targetDurationMs: Math.min(600_000, Math.max(5_000, base.duracaoMs || 45_000)),
+          blocks: base.blocos
+            .filter((b) => b.texto.trim())
+            .slice(0, 30)
+            .map((b) => ({ role: b.papel, goal: b.intencao.slice(0, 200) || undefined, text: b.texto.slice(0, 2000) })),
         },
-        blocoSelecionado: indiceSelecionado >= 0 ? indiceSelecionado : null,
-        ...(anterior ? { anterior } : {}),
+        ...(anterior ? { anterior: { pedido: anterior.pedido.slice(0, 2000), resposta: anterior.resposta.slice(0, 600) } } : {}),
       });
-      digitando.current = null;
-      onMudar(daIa(r.roteiro));
-      if (r.tecnicas.length) onTecnicas(r.tecnicas);
-      setResposta(r.resposta || 'Pronto, o roteiro foi ajustado.');
+      const novo = daIa(r.roteiro);
+      const pares = alinharBlocos(
+        estado.blocos,
+        novo.blocos,
+        (b) => b.texto,
+        (a, b) => a.papel === b.papel,
+      );
+      setProposta({
+        estado: novo,
+        pares,
+        aceitos: pares.map((p) => p.tipo !== 'igual'),
+        tecnicas: r.tecnicas,
+        resposta: r.resposta || 'Ajustei o roteiro.',
+        mudancas: r.mudancas ?? [],
+        pedido: limpo,
+      });
       setAnterior({ pedido: limpo, resposta: r.resposta });
       setPedido('');
-      setSelecionado(null);
     } catch (e) {
       onAviso(e instanceof Error ? e.message : 'a IA não conseguiu ajustar agora.');
     } finally {
       setPedindo(false);
     }
+  };
+
+  /** Aplica as mudanças marcadas; as desmarcadas ficam como estavam. */
+  const aplicarProposta = () => {
+    if (!proposta) return;
+    const blocos: Bloco[] = [];
+    proposta.pares.forEach((p, i) => {
+      const aceito = proposta.aceitos[i];
+      if (p.tipo === 'igual') blocos.push(p.velho);
+      else if (aceito && p.novo) blocos.push(p.velho ? { ...p.novo, id: p.velho.id } : p.novo);
+      else if (!aceito && p.velho) blocos.push(p.velho);
+    });
+    if (!blocos.length) return;
+    const algumAceito = proposta.aceitos.some(Boolean);
+    digitando.current = null;
+    onMudar(
+      algumAceito
+        ? { ...estado, titulo: proposta.estado.titulo || estado.titulo, framework: proposta.estado.framework, duracaoMs: proposta.estado.duracaoMs, blocos }
+        : estado,
+    );
+    if (algumAceito && proposta.tecnicas.length) onTecnicas(proposta.tecnicas);
+    setResposta(algumAceito ? proposta.resposta : null);
+    setProposta(null);
+    setSelecionado(null);
   };
 
   const copiar = async () => {
@@ -641,6 +692,20 @@ function EditorDeRoteiro({
         </details>
       )}
 
+      {proposta ? (
+        <RevisaoDaIa
+          atual={estado}
+          proposta={proposta}
+          onMarcar={(i, v) => setProposta((p) => (p ? { ...p, aceitos: p.aceitos.map((a, j) => (j === i ? v : a)) } : p))}
+          onTodos={(v) => setProposta((p) => (p ? { ...p, aceitos: p.pares.map((par) => par.tipo !== 'igual' && v) } : p))}
+          onAplicar={aplicarProposta}
+          onRecusar={() => {
+            setProposta(null);
+            setResposta(null);
+          }}
+        />
+      ) : (
+        <>
       <ol className="roteiro__blocos">
         {estado.blocos.map((b, i) => (
           <li
@@ -684,6 +749,8 @@ function EditorDeRoteiro({
       <button type="button" className="roteiro__adicionar" onClick={adicionar}>
         <IconeMais size={14} /> Adicionar bloco
       </button>
+        </>
+      )}
 
       {/* ---------- Peça à IA ---------- */}
       <div className="roteiro-ia">
@@ -697,12 +764,9 @@ function EditorDeRoteiro({
             )}
           </p>
         )}
-        {indiceSelecionado >= 0 && (
-          <p className="roteiro-ia__alvo">
-            Ajustando o bloco {indiceSelecionado + 1} ({ROTULO[estado.blocos[indiceSelecionado]!.papel]})
-            <button type="button" aria-label="Ajustar o roteiro todo" onClick={() => setSelecionado(null)}>
-              <IconeFechar size={12} /> roteiro todo
-            </button>
+        {pedindo && (
+          <p className="roteiro-ia__alvo" role="status">
+            A IA está relendo o roteiro inteiro e revisando o que o pedido pede…
           </p>
         )}
         <form
@@ -716,7 +780,7 @@ function EditorDeRoteiro({
           <input
             value={pedido}
             maxLength={2000}
-            placeholder={indiceSelecionado >= 0 ? 'O que mudar neste bloco?' : 'Peça à IA: "deixa o gancho mais forte", "encurta pra 30s"...'}
+            placeholder={proposta ? 'Quer mudar algo nesta proposta? Peça aqui' : 'Peça à IA: "deixa o gancho mais forte", "encurta pra 30s", "fala do preço no bloco 3"...'}
             onChange={(e) => setPedido(e.target.value)}
             disabled={pedindo}
             aria-label="Pedido para a IA ajustar o roteiro"
@@ -725,7 +789,7 @@ function EditorDeRoteiro({
             {pedindo ? 'Ajustando…' : 'Ajustar'}
           </button>
         </form>
-        {!pedindo && (
+        {!pedindo && !proposta && (
           <div className="roteiro-ia__rapidos">
             {RAPIDOS.map((r) => (
               <button key={r} type="button" onClick={() => void pedirIa(r)}>
@@ -736,6 +800,182 @@ function EditorDeRoteiro({
         )}
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// Revisão da proposta da IA: o que mudou, bloco a bloco, para aprovar
+// ============================================================
+
+interface Proposta {
+  estado: Estado;
+  pares: Par<Bloco>[];
+  /** Por par: usar a versão da IA? (os iguais não contam) */
+  aceitos: boolean[];
+  tecnicas: Array<{ nome: string; onde: string }>;
+  resposta: string;
+  mudancas: string[];
+  pedido: string;
+}
+
+const SELO_DO_PAR: Record<Par<Bloco>['tipo'], string> = { igual: 'Sem mudança', alterado: 'Alterado', novo: 'Bloco novo', removido: 'Removido' };
+
+function RevisaoDaIa({
+  atual,
+  proposta,
+  onMarcar,
+  onTodos,
+  onAplicar,
+  onRecusar,
+}: {
+  atual: Estado;
+  proposta: Proposta;
+  onMarcar: (i: number, v: boolean) => void;
+  onTodos: (v: boolean) => void;
+  onAplicar: () => void;
+  onRecusar: () => void;
+}) {
+  const [mostrarIguais, setMostrarIguais] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+  // A proposta chega com a pessoa lá embaixo, na barra da IA: leva ao topo dela.
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [proposta.pedido, proposta.estado]);
+  const mudados = proposta.pares.filter((p) => p.tipo !== 'igual').length;
+  const marcados = proposta.pares.filter((p, i) => p.tipo !== 'igual' && proposta.aceitos[i]).length;
+  const tempo = (e: Estado | Bloco[]) => mmss((Array.isArray(e) ? e : e.blocos).reduce((t, b) => t + palavrasDe(b.texto), 0) / PALAVRAS_POR_SEGUNDO);
+  const tituloMudou = proposta.estado.titulo.trim() && proposta.estado.titulo.trim() !== atual.titulo.trim();
+
+  return (
+    <section ref={ref} className="revisao-ia" aria-label="Mudanças propostas pela IA" style={{ scrollMarginTop: 72 }}>
+      <header className="revisao-ia__topo">
+        <span className="revisao-ia__icone" aria-hidden>
+          <IconeIA size={18} weight="fill" />
+        </span>
+        <div>
+          <h2>A IA propõe {mudados === 1 ? '1 mudança' : `${mudados} mudanças`}</h2>
+          <p>
+            Pedido: <em>&ldquo;{proposta.pedido}&rdquo;</em>. {proposta.resposta}
+          </p>
+        </div>
+      </header>
+
+      {proposta.mudancas.length > 0 && (
+        <ul className="revisao-ia__lista">
+          {proposta.mudancas.map((m) => (
+            <li key={m}>
+              <IconeCheck size={13} /> {m}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="revisao-ia__resumo">
+        <span>
+          Duração: ~{tempo(atual)} → <strong>~{tempo(proposta.estado)}</strong>
+        </span>
+        {tituloMudou && (
+          <span>
+            Título: <del>{atual.titulo}</del> <ins>{proposta.estado.titulo}</ins>
+          </span>
+        )}
+        <span className="revisao-ia__legenda">
+          <ins>texto novo</ins> <del>texto que sai</del>
+        </span>
+      </div>
+
+      {mudados === 0 ? (
+        <p className="revisao-ia__vazio">A IA devolveu o roteiro sem mudanças. Tente descrever o pedido de outro jeito.</p>
+      ) : (
+        <div className="revisao-ia__marcar">
+          <span>
+            {marcados} de {mudados} marcadas
+          </span>
+          <button type="button" onClick={() => onTodos(true)}>
+            Marcar todas
+          </button>
+          <button type="button" onClick={() => onTodos(false)}>
+            Desmarcar todas
+          </button>
+          {mudados < proposta.pares.length && (
+            <button type="button" onClick={() => setMostrarIguais((v) => !v)}>
+              {mostrarIguais ? 'Esconder' : 'Mostrar'}{' '}
+              {proposta.pares.length - mudados === 1 ? 'o bloco sem mudança' : `os ${proposta.pares.length - mudados} blocos sem mudança`}
+            </button>
+          )}
+        </div>
+      )}
+
+      <ol className="revisao-ia__blocos">
+        {proposta.pares.map((p, i) => {
+          if (p.tipo === 'igual' && !mostrarIguais) return null;
+          const bloco = p.novo ?? p.velho!;
+          const aceito = p.tipo !== 'igual' && proposta.aceitos[i];
+          const papelMudou = p.tipo === 'alterado' && p.velho.papel !== p.novo.papel;
+          return (
+            <li
+              key={`${i}-${bloco.id}`}
+              className="revisao-bloco"
+              data-tipo={p.tipo}
+              data-aceito={aceito || undefined}
+              style={{ ['--cor-papel' as string]: COR[bloco.papel] }}
+            >
+              <div className="revisao-bloco__cabeca">
+                <span className="revisao-bloco__papel">
+                  {papelMudou ? (
+                    <>
+                      <del>{ROTULO[p.velho!.papel]}</del> → {ROTULO[p.novo!.papel]}
+                    </>
+                  ) : (
+                    ROTULO[bloco.papel]
+                  )}
+                </span>
+                <span className="revisao-bloco__selo" data-tipo={p.tipo}>
+                  {SELO_DO_PAR[p.tipo]}
+                </span>
+                {p.tipo !== 'igual' && (
+                  <label className="revisao-bloco__usar">
+                    <input type="checkbox" checked={aceito} onChange={(e) => onMarcar(i, e.target.checked)} />
+                    {p.tipo === 'removido' ? 'Remover' : 'Usar'}
+                  </label>
+                )}
+              </div>
+              {p.novo?.intencao && <p className="roteiro-bloco__intencao">{p.novo.intencao}</p>}
+              <p className="revisao-bloco__texto">
+                {p.tipo === 'alterado' ? (
+                  diferencaDeTexto(p.velho.texto, p.novo.texto).map((t, k) => {
+                    // O espaço que separa fica fora do destaque.
+                    const espaco = t.texto.startsWith(' ') ? ' ' : '';
+                    const palavras = t.texto.trimStart();
+                    return (
+                      <span key={k}>
+                        {espaco}
+                        {t.tipo === 'mais' ? <ins>{palavras}</ins> : t.tipo === 'menos' ? <del>{palavras}</del> : palavras}
+                      </span>
+                    );
+                  })
+                ) : p.tipo === 'novo' ? (
+                  <ins>{p.novo.texto}</ins>
+                ) : p.tipo === 'removido' ? (
+                  <del>{p.velho.texto}</del>
+                ) : (
+                  bloco.texto
+                )}
+              </p>
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="revisao-ia__acoes">
+        <button type="button" className="botao botao--primario" disabled={mudados > 0 && marcados === 0} onClick={onAplicar}>
+          <IconeCheck size={15} /> {marcados === mudados ? 'Aprovar mudanças' : `Aprovar ${marcados} de ${mudados}`}
+        </button>
+        <button type="button" className="botao botao--fantasma" onClick={onRecusar}>
+          <IconeFechar size={14} /> Recusar e manter como estava
+        </button>
+      </div>
+    </section>
   );
 }
 

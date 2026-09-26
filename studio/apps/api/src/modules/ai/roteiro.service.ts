@@ -207,6 +207,7 @@ export class RoteiroService {
       roteiro: roteiroDaIaParaEntrada(lido.roteiro),
       tecnicas: lido.roteiro.tecnicas,
       resposta: lido.roteiro.resposta,
+      mudancas: lido.roteiro.mudancas,
       custoCentavos,
     };
   }

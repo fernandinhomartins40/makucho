@@ -8822,3 +8822,238 @@ body[data-redimensionando] * {
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- Roteiros: revisão da proposta da IA ---------- */
+.revisao-ia {
+  display: grid;
+  gap: var(--e3);
+  padding: var(--e4);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: var(--r-cartao);
+  background: color-mix(in srgb, var(--primary) 5%, var(--surface-1));
+}
+
+.revisao-ia__topo {
+  display: flex;
+  gap: var(--e3);
+  align-items: flex-start;
+}
+
+.revisao-ia__icone {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  color: var(--accent);
+}
+
+.revisao-ia__topo h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.revisao-ia__topo p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.revisao-ia__lista {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.revisao-ia__lista li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.revisao-ia__lista svg {
+  flex: none;
+  color: var(--success);
+}
+
+.revisao-ia__resumo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px var(--e4);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.revisao-ia__legenda {
+  margin-left: auto;
+}
+
+.revisao-ia__vazio {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13.5px;
+}
+
+.revisao-ia__marcar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--e3);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.revisao-ia__marcar button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.revisao-ia__blocos {
+  display: grid;
+  gap: var(--e2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.revisao-bloco {
+  display: grid;
+  gap: 6px;
+  padding: var(--e3) var(--e3) var(--e3) var(--e4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cor-papel);
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  transition: opacity var(--transicao), border-color var(--transicao);
+}
+
+.revisao-bloco[data-tipo='igual'] {
+  opacity: 0.6;
+}
+
+.revisao-bloco:not([data-tipo='igual']):not([data-aceito]) {
+  opacity: 0.55;
+}
+
+.revisao-bloco[data-aceito] {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-left-color: var(--cor-papel);
+}
+
+.revisao-bloco__cabeca {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--e3);
+}
+
+.revisao-bloco__papel {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cor-papel);
+}
+
+.revisao-bloco__papel del {
+  color: var(--text-secondary);
+}
+
+.revisao-bloco__selo {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--text-secondary) 16%, transparent);
+  color: var(--text-secondary);
+}
+
+.revisao-bloco__selo[data-tipo='alterado'] {
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--accent);
+}
+
+.revisao-bloco__selo[data-tipo='novo'] {
+  background: color-mix(in srgb, var(--success) 20%, transparent);
+  color: var(--success);
+}
+
+.revisao-bloco__selo[data-tipo='removido'] {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+.revisao-bloco__usar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.revisao-bloco__usar input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.revisao-bloco__texto {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.revisao-ia ins,
+.revisao-ia del {
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.revisao-ia ins {
+  background: color-mix(in srgb, var(--success) 22%, transparent);
+  color: inherit;
+  text-decoration: none;
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--success) 70%, transparent);
+}
+
+.revisao-ia del {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: color-mix(in srgb, var(--danger) 70%, var(--text-secondary));
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 80%, transparent);
+}
+
+.revisao-ia__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--e2);
+}
+
+@media (max-width: 599px) {
+  .revisao-ia {
+    padding: var(--e3);
+  }
+  .revisao-ia__legenda {
+    margin-left: 0;
+  }
+  .revisao-ia__acoes .botao {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
