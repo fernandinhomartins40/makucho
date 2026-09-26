@@ -7840,3 +7840,390 @@ body[data-redimensionando] * {
     font-size: 12.5px;
   }
 }
+
+/* =====================================================================
+   Estúdio: câmera no formato do vídeo + teleprompter que rola sozinho,
+   ou só o teleprompter (tela cheia, para ler gravando com outro aparelho).
+   ===================================================================== */
+.estudio__cabeca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+}
+
+.estudio__gravando {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.estudio__gravando .estudio__ponto {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulsar 1.4s infinite;
+}
+
+.estudio__gravando .estudio__ponto[data-pausado] {
+  animation: none;
+  background: var(--warning);
+}
+
+.prompter-segmentos {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.prompter-segmentos button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.prompter-segmentos button[aria-checked="true"] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.prompter-segmentos button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Grade: câmera 9:16 à esquerda, teleprompter à direita ---------- */
+@media (min-width: 900px) {
+  .estudio__grade {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--e4);
+  }
+  .estudio[data-formato="horizontal"] .estudio__grade {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+  .estudio__camera {
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+}
+
+.estudio__quadro {
+  position: relative;
+  height: 100%;
+  max-height: 100%;
+  aspect-ratio: 9 / 16;
+  max-width: 100%;
+  border-radius: var(--r-cartao);
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--border);
+}
+
+.estudio[data-formato="horizontal"] .estudio__quadro {
+  height: auto;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+.estudio__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Espelho só na prévia (como o app de câmera); o arquivo sai certo. */
+  transform: scaleX(-1);
+}
+
+.estudio__video--revisao {
+  object-fit: contain;
+  transform: none;
+}
+
+.estudio__ligando {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.estudio__contagem {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(4 23 53 / 55%);
+  font-size: 96px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.estudio__roteiro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e3);
+  min-height: 0;
+}
+
+.estudio__roteiro-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.estudio__bloco-atual {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.estudio__prompter {
+  flex: 1;
+  min-height: 260px;
+}
+
+.prompter-controles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--e2);
+}
+
+.prompter-controles__velocidade {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.prompter-controles__velocidade button {
+  width: 32px;
+  height: 30px;
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.prompter-controles__velocidade span {
+  min-width: 46px;
+  text-align: center;
+}
+
+.prompter-controles__tamanho {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prompter-controles__tamanho .deslizante {
+  width: 96px;
+}
+
+.prompter-controles [aria-pressed="true"] {
+  color: var(--accent);
+}
+
+/* ---------- O teleprompter ---------- */
+.teleprompter {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-cartao);
+  background: var(--surface-2);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  /* O texto some suavemente nas bordas: o olho fica na linha. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 80%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12%, #000 80%, transparent 100%);
+}
+
+.teleprompter[data-espelhado] {
+  transform: scaleX(-1);
+}
+
+.teleprompter__texto {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 0 clamp(16px, 4%, 48px);
+  font-weight: 650;
+  line-height: 1.45;
+  color: var(--text-primary);
+  will-change: transform;
+}
+
+.teleprompter__bloco {
+  margin-bottom: 1em;
+}
+
+.teleprompter__bloco p {
+  margin: 0;
+}
+
+.teleprompter__rotulo {
+  display: block;
+  margin-bottom: 0.2em;
+  font-size: max(11px, 0.36em);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.teleprompter__fim {
+  margin: 1em 0 60vh;
+  text-align: center;
+  font-size: 0.5em;
+  color: var(--text-secondary);
+}
+
+/* A linha de leitura: o que passa por aqui é o que se fala agora. */
+.teleprompter__linha {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--linha-de-leitura);
+  z-index: 2;
+  height: 0;
+  border-top: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  pointer-events: none;
+}
+
+.teleprompter__linha::before,
+.teleprompter__linha::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  border: 7px solid transparent;
+}
+
+.teleprompter__linha::before {
+  left: 0;
+  border-left-color: var(--accent);
+}
+
+.teleprompter__linha::after {
+  right: 0;
+  border-right-color: var(--accent);
+}
+
+/* ---------- Só teleprompter ---------- */
+.estudio--prompter {
+  gap: var(--e3);
+}
+
+.estudio__palco-prompter {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.estudio__palco-prompter .teleprompter {
+  flex: 1;
+  background: #000;
+}
+
+.estudio__palco-prompter .teleprompter__texto {
+  color: #fff;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.estudio--prompter:fullscreen {
+  padding: var(--e4);
+  background: #000;
+}
+
+.estudio--prompter .prompter-controles {
+  justify-content: center;
+}
+
+/* ---------- Celular ---------- */
+@media (max-width: 899px) {
+  .estudio__quadro {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+  }
+  .estudio[data-formato="horizontal"] .estudio__quadro {
+    height: 100%;
+    aspect-ratio: auto;
+  }
+  .estudio__roteiro {
+    gap: 0;
+  }
+  .estudio__roteiro .teleprompter {
+    height: 32dvh;
+    min-height: 0;
+    flex: none;
+    background: transparent;
+  }
+  .estudio__roteiro .teleprompter__texto {
+    color: #fff;
+    text-shadow: 0 1px 6px rgb(0 0 0 / 85%);
+  }
+  .estudio__topo .prompter-segmentos button {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .estudio__topo .prompter-segmentos svg {
+    display: none;
+  }
+  .estudio--prompter {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: flex;
+    flex-direction: column;
+    padding: calc(var(--e3) + var(--seguro-topo)) var(--e3) calc(var(--e3) + var(--seguro-baixo));
+    background: #000;
+    color: #fff;
+  }
+  .estudio--prompter .prompter-segmentos button {
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+  .estudio__ajustes-folha .prompter-controles {
+    padding-top: var(--e3);
+    border-top: 1px solid var(--border);
+  }
+}

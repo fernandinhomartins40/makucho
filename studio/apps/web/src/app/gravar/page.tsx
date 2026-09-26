@@ -27,6 +27,8 @@ import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
 import { Folha } from '../../components/shell/Folha';
 import { useGravacao } from '../../lib/useGravacao';
+import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVertical';
+import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
 import {
   enviar,
   duracaoDe,
@@ -64,6 +66,7 @@ import {
   IconeDescer,
   IconeFechar,
   IconeParametros,
+  IconeDesfazer,
 } from '../../components/icones';
 
 interface BlocoDoRoteiro {
@@ -72,21 +75,31 @@ interface BlocoDoRoteiro {
   texto: string;
 }
 
+// Os treze papéis do roteiro, em português (antes eram seis, em
+// maiúsculas: "proof" e "pattern_interrupt" apareciam crus na tela).
 const ROTULO: Record<string, string> = {
-  HOOK: 'Hook',
-  PROBLEM: 'Problema',
-  AUTHORITY: 'Autoridade',
-  CTA: 'CTA',
-  CONTEXT: 'Contexto',
-  SOLUTION: 'Solução',
+  hook: 'Gancho',
+  problem: 'Problema',
+  context: 'Contexto',
+  curiosity_gap: 'Curiosidade',
+  authority: 'Autoridade',
+  introduction: 'Apresentação',
+  proof: 'Prova',
+  insight: 'Insight',
+  solution: 'Solução',
+  pattern_interrupt: 'Virada',
+  payoff: 'Recompensa',
+  offer: 'Oferta',
+  cta: 'Chamada',
 };
+const rotuloDoPapel = (papel: string) => ROTULO[papel.toLowerCase()] ?? papel;
 
 // Um roteiro de apoio para quem chega sem roteiro salvo. O
 // teleprompter vazio seria pior: a pessoa não saberia o que ele faz.
 const ROTEIRO_PADRAO: BlocoDoRoteiro[] = [
   {
     role: 'HOOK',
-    rotulo: 'Hook',
+    rotulo: 'Gancho',
     texto: 'Comece pela frase mais forte: o problema ou o resultado que prende quem assiste.',
   },
   {
@@ -101,7 +114,7 @@ const ROTEIRO_PADRAO: BlocoDoRoteiro[] = [
   },
   {
     role: 'CTA',
-    rotulo: 'CTA',
+    rotulo: 'Chamada',
     texto: 'Feche com uma ação clara: salvar, comentar, chamar no WhatsApp.',
   },
 ];
@@ -144,7 +157,7 @@ function NovoVideo() {
       setRoteiro(
         [...doProjeto.blocks]
           .sort((a, b) => a.position - b.position)
-          .map((b) => ({ role: b.role, rotulo: ROTULO[b.role] ?? b.role, texto: b.text })),
+          .map((b) => ({ role: b.role, rotulo: rotuloDoPapel(b.role), texto: b.text })),
       );
       setTemRoteiroProprio(true);
       setScriptId(id);
@@ -895,6 +908,28 @@ function formatarDuracao(ms: number): string {
 
 type EstadoDosDispositivos = 'verificando' | 'prontos' | 'negado' | 'ausente';
 
+type ModoDoEstudio = 'camera' | 'teleprompter';
+
+const CHAVE_DO_ESTUDIO = 'studio:teleprompter';
+
+function lerPreferencias(): { velocidade: number; tamanho: number; espelhado: boolean; formato: FormatoDaGravacao } {
+  const padrao = { velocidade: 1, tamanho: 34, espelhado: false, formato: 'vertical' as FormatoDaGravacao };
+  try {
+    return { ...padrao, ...JSON.parse(localStorage.getItem(CHAVE_DO_ESTUDIO) ?? '{}') };
+  } catch {
+    return padrao;
+  }
+}
+
+/**
+ * Estúdio: gravar lendo o teleprompter com a câmera, ou só o
+ * teleprompter (para ler enquanto grava com outro aparelho).
+ *
+ * O teleprompter rola sozinho no ritmo de fala: na gravação, anda
+ * enquanto grava e para junto na pausa; no modo só teleprompter, com o
+ * play. A câmera aparece no formato do vídeo (9:16), e o que aparece é
+ * o que fica gravado (useFluxoVertical).
+ */
 function EstudioDeGravacao({
   roteiro,
   onEnviar,
@@ -904,12 +939,15 @@ function EstudioDeGravacao({
   onEnviar: (blob: Blob, mime: string, segundos: number) => void;
   onSair: () => void;
 }) {
+  const [modo, setModo] = useState<ModoDoEstudio>('camera');
   // Celular: ajustes (câmera, microfone, texto, contagem) numa folha,
   // para a tela ficar com a câmera, o roteiro e o botão de gravar.
   const [ajustesAbertos, setAjustesAbertos] = useState(false);
   const fecharAjustes = useCallback(() => setAjustesAbertos(false), []);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const fluxoRef = useRef<MediaStream | null>(null);
+  const estudioRef = useRef<HTMLDivElement>(null);
+  const prompterRef = useRef<ControleDoTeleprompter>(null);
 
   const [fluxo, setFluxo] = useState<MediaStream | null>(null);
   const [dispositivos, setDispositivos] = useState<EstadoDosDispositivos>('verificando');
@@ -923,16 +961,31 @@ function EstudioDeGravacao({
   // em uso (só exibe): mostrar o id em uso não pode reabrir o fluxo.
   const [escolha, setEscolha] = useState<{ camera: string; microfone: string }>({ camera: '', microfone: '' });
 
-  const [bloco, setBloco] = useState(0);
-  const [tamanhoDoTexto, setTamanhoDoTexto] = useState(28);
+  const [preferencias, setPreferencias] = useState(lerPreferencias);
+  const { velocidade, tamanho, espelhado, formato } = preferencias;
+  const mudarPreferencia = (m: Partial<typeof preferencias>) =>
+    setPreferencias((p) => {
+      const novo = { ...p, ...m };
+      try {
+        localStorage.setItem(CHAVE_DO_ESTUDIO, JSON.stringify(novo));
+      } catch {
+        // Sem armazenamento: vale nesta visita.
+      }
+      return novo;
+    });
   const [comContagem, setComContagem] = useState(true);
+  const [ensaiando, setEnsaiando] = useState(false);
+  const [blocoAtual, setBlocoAtual] = useState(0);
+  const [progresso, setProgresso] = useState(0);
+  const [telaCheia, setTelaCheia] = useState(false);
 
-  const gravacao = useGravacao(fluxo);
+  const fluxoParaGravar = useFluxoVertical(fluxo, formato);
+  const gravacao = useGravacao(fluxoParaGravar);
   const gravando = gravacao.estado === 'gravando' || gravacao.estado === 'pausado';
+  const rolando = modo === 'camera' ? gravacao.estado === 'gravando' || (ensaiando && !gravando) : ensaiando;
 
   // O <video> da câmera é desmontado durante a revisão. Ligar o fluxo
-  // pela ref de callback faz a imagem voltar ao regravar — antes, a
-  // tela ficava preta depois do primeiro "Regravar".
+  // pela ref de callback faz a imagem voltar ao regravar.
   const ligarVideo = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
     if (el && fluxoRef.current && el.srcObject !== fluxoRef.current) {
@@ -940,8 +993,25 @@ function EstudioDeGravacao({
     }
   }, []);
 
-  // ---------- Câmera e microfone ----------
+  // Começou a gravar (depois da contagem): o texto volta ao começo.
+  const estadoAnterior = useRef(gravacao.estado);
   useEffect(() => {
+    const antes = estadoAnterior.current;
+    estadoAnterior.current = gravacao.estado;
+    if (gravacao.estado === 'gravando' && (antes === 'contando' || antes === 'parado')) {
+      setEnsaiando(false);
+      prompterRef.current?.reiniciar();
+    }
+  }, [gravacao.estado]);
+
+  // ---------- Câmera e microfone (só no modo com câmera) ----------
+  useEffect(() => {
+    if (modo !== 'camera') {
+      fluxoRef.current?.getTracks().forEach((t) => t.stop());
+      fluxoRef.current = null;
+      setFluxo(null);
+      return;
+    }
     let cancelado = false;
 
     async function pedirAcesso() {
@@ -972,7 +1042,6 @@ function EstudioDeGravacao({
         setDispositivos('prontos');
         setErroDeAcesso(null);
 
-        // Os nomes dos dispositivos só aparecem depois da permissão.
         const lista = await navigator.mediaDevices.enumerateDevices();
         if (cancelado) return;
         setCameras(lista.filter((d) => d.kind === 'videoinput'));
@@ -981,18 +1050,15 @@ function EstudioDeGravacao({
         setMicrofoneId(obtido.getAudioTracks()[0]?.getSettings().deviceId ?? '');
       } catch (e) {
         if (cancelado) return;
-
-        // Permissão negada e dispositivo ausente têm saídas diferentes:
-        // uma é reabrir a permissão, a outra é conectar um equipamento.
         const nome = (e as Error).name;
         if (nome === 'NotAllowedError' || nome === 'SecurityError') {
           setDispositivos('negado');
           setErroDeAcesso(
-            'O navegador bloqueou a câmera. Autorize o acesso no cadeado ao lado do endereço e tente de novo — ou volte e envie um arquivo.',
+            'O navegador bloqueou a câmera. Autorize o acesso no cadeado ao lado do endereço e tente de novo — ou use "Só teleprompter".',
           );
         } else if (nome === 'NotFoundError' || nome === 'DevicesNotFoundError') {
           setDispositivos('ausente');
-          setErroDeAcesso('Nenhuma câmera encontrada. Conecte uma, ou volte e envie um arquivo.');
+          setErroDeAcesso('Nenhuma câmera encontrada. Conecte uma, ou use "Só teleprompter".');
         } else {
           setDispositivos('ausente');
           setErroDeAcesso(`Não foi possível acessar a câmera (${nome}).`);
@@ -1001,12 +1067,10 @@ function EstudioDeGravacao({
     }
 
     void pedirAcesso();
-
     return () => {
       cancelado = true;
     };
-    // O id escolhido reabre o fluxo com o dispositivo novo.
-  }, [escolha]);
+  }, [escolha, modo]);
 
   // Liberar as faixas ao sair apaga a luz da webcam.
   useEffect(() => {
@@ -1014,13 +1078,10 @@ function EstudioDeGravacao({
   }, []);
 
   // ---------- Medidor do microfone ----------
-  // Descobrir que o microfone estava mudo depois de oito minutos custa
-  // a gravação inteira: o medidor mostra que o som está chegando.
   useEffect(() => {
     if (!fluxo || fluxo.getAudioTracks().length === 0) return;
     const Contexto = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Contexto) return;
-
     const contexto = new Contexto();
     const fonte = contexto.createMediaStreamSource(fluxo);
     const analisador = contexto.createAnalyser();
@@ -1028,7 +1089,6 @@ function EstudioDeGravacao({
     fonte.connect(analisador);
     const dados = new Uint8Array(analisador.fftSize);
     let quadro = 0;
-
     const medir = () => {
       analisador.getByteTimeDomainData(dados);
       let pico = 0;
@@ -1037,114 +1097,204 @@ function EstudioDeGravacao({
       quadro = requestAnimationFrame(medir);
     };
     medir();
-
     return () => {
       cancelAnimationFrame(quadro);
       void contexto.close();
     };
   }, [fluxo]);
 
-  // ---------- Teclado do teleprompter ----------
+  // ---------- Tela cheia (modo só teleprompter) ----------
+  useEffect(() => {
+    const aoMudar = () => setTelaCheia(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', aoMudar);
+    return () => document.removeEventListener('fullscreenchange', aoMudar);
+  }, []);
+  const alternarTelaCheia = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void estudioRef.current?.requestFullscreen().catch(() => undefined);
+  };
+
+  // ---------- Teclado ----------
+  // Espaço: rolar/parar (ensaio ou só teleprompter). Setas: voltar ou
+  // adiantar o texto. + e -: velocidade.
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
       const alvo = e.target as HTMLElement;
-      if (alvo instanceof HTMLInputElement || alvo instanceof HTMLTextAreaElement || alvo instanceof HTMLSelectElement || alvo instanceof HTMLButtonElement) {
-        return;
-      }
-      if (e.key === 'ArrowRight' || e.key === ' ') {
+      if (alvo instanceof HTMLInputElement || alvo instanceof HTMLTextAreaElement || alvo instanceof HTMLSelectElement || alvo instanceof HTMLButtonElement) return;
+      if (e.key === ' ' && !gravando) {
         e.preventDefault();
-        setBloco((b) => Math.min(roteiro.length - 1, b + 1));
-      }
-      if (e.key === 'ArrowLeft') {
+        setEnsaiando((v) => !v);
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
         e.preventDefault();
-        setBloco((b) => Math.max(0, b - 1));
+        prompterRef.current?.empurrar(-1);
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        prompterRef.current?.empurrar(1);
+      } else if (e.key === '+' || e.key === '=') {
+        mudarPreferencia({ velocidade: Math.min(2.5, Math.round((velocidade + 0.1) * 10) / 10) });
+      } else if (e.key === '-') {
+        mudarPreferencia({ velocidade: Math.max(0.4, Math.round((velocidade - 0.1) * 10) / 10) });
       }
     };
     window.addEventListener('keydown', aoTeclar);
     return () => window.removeEventListener('keydown', aoTeclar);
-  }, [roteiro.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gravando, velocidade]);
 
   const tempo = `${Math.floor(gravacao.segundos / 60)
     .toString()
     .padStart(2, '0')}:${(gravacao.segundos % 60).toString().padStart(2, '0')}`;
+  const onProgresso = useCallback((b: number, f: number) => {
+    setBlocoAtual((atual) => (atual === b ? atual : b));
+    setProgresso((atual) => (Math.abs(atual - f) < 0.01 ? atual : f));
+  }, []);
+  const onFim = useCallback(() => {
+    if (modo === 'teleprompter') setEnsaiando(false);
+  }, [modo]);
 
+  // ---------- Controles do texto (os dois modos) ----------
+  const controlesDoTexto = (
+    <div className="prompter-controles">
+      {(modo === 'teleprompter' || !gravando) && (
+        <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => setEnsaiando((v) => !v)} aria-pressed={ensaiando}>
+          {ensaiando ? <IconePausar size={14} weight="fill" /> : <IconeTocar size={14} weight="fill" />}
+          {ensaiando ? 'Pausar' : modo === 'teleprompter' ? 'Rolar' : 'Ensaiar'}
+        </button>
+      )}
+      <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Voltar ao começo" title="Voltar ao começo" onClick={() => prompterRef.current?.reiniciar()}>
+        <IconeDesfazer size={15} />
+      </button>
+      <span className="prompter-controles__velocidade" title="Velocidade da rolagem (+ e − no teclado)">
+        <button type="button" aria-label="Mais devagar" onClick={() => mudarPreferencia({ velocidade: Math.max(0.4, Math.round((velocidade - 0.1) * 10) / 10) })}>
+          −
+        </button>
+        <span>{velocidade.toFixed(1).replace('.', ',')}×</span>
+        <button type="button" aria-label="Mais rápido" onClick={() => mudarPreferencia({ velocidade: Math.min(2.5, Math.round((velocidade + 0.1) * 10) / 10) })}>
+          +
+        </button>
+      </span>
+      <label className="prompter-controles__tamanho" title="Tamanho do texto">
+        <IconeTexto size={15} />
+        <input
+          type="range"
+          className="deslizante"
+          min={20}
+          max={72}
+          value={tamanho}
+          aria-label="Tamanho do texto do teleprompter"
+          onChange={(e) => mudarPreferencia({ tamanho: Number(e.target.value) })}
+        />
+      </label>
+      {modo === 'teleprompter' && (
+        <>
+          <button type="button" className="botao botao--fantasma botao--pequeno" aria-pressed={espelhado} onClick={() => mudarPreferencia({ espelhado: !espelhado })} title="Para teleprompter com vidro">
+            Espelhar
+          </button>
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={alternarTelaCheia}>
+            {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  const teleprompter = (
+    <Teleprompter
+      ref={prompterRef}
+      blocos={roteiro}
+      rolando={rolando}
+      velocidade={velocidade}
+      tamanho={tamanho}
+      espelhado={modo === 'teleprompter' && espelhado}
+      linha={modo === 'teleprompter' ? 0.35 : 0.22}
+      onProgresso={onProgresso}
+      onFim={onFim}
+      className="estudio__prompter"
+    />
+  );
+
+  // ---------- Modo só teleprompter ----------
+  if (modo === 'teleprompter') {
+    return (
+      <div className="estudio estudio--prompter" ref={estudioRef}>
+        <div className="estudio__cabeca">
+          <SeletorDeModo modo={modo} onModo={setModo} desabilitado={false} />
+          <span className="estudio__bloco-atual">
+            {roteiro[blocoAtual]?.rotulo} · {Math.round(progresso * 100)}%
+          </span>
+          <button type="button" className="botao-icone so-celular" aria-label="Fechar" onClick={onSair}>
+            <IconeFechar size={20} />
+          </button>
+        </div>
+        <div className="estudio__palco-prompter">{teleprompter}</div>
+        {controlesDoTexto}
+      </div>
+    );
+  }
+
+  // ---------- Modo gravar lendo ----------
   const ajustes = (
     <>
-            <SeletorDeDispositivo
-              Icone={IconeCamera}
-              rotulo="Câmera"
-              opcoes={cameras}
-              valor={cameraId}
-              desabilitado={gravando || dispositivos === 'verificando'}
-              onTrocar={(id) => setEscolha((e) => ({ ...e, camera: id }))}
-            />
-            <SeletorDeDispositivo
-              Icone={IconeMicrofone}
-              rotulo="Microfone"
-              opcoes={microfones}
-              valor={microfoneId}
-              desabilitado={gravando || dispositivos === 'verificando'}
-              onTrocar={(id) => setEscolha((e) => ({ ...e, microfone: id }))}
-            />
-
-            <span
-              className="linha"
-              style={{ gap: 6, fontSize: 12 }}
-              title="Nível do microfone"
-              aria-label={`Nível do microfone: ${Math.round(nivel * 100)}%`}
-            >
-              <span className="texto-secundario">Som</span>
-              <span
-                aria-hidden
-                style={{ width: 70, height: 6, borderRadius: 3, background: 'var(--surface-2)', overflow: 'hidden' }}
-              >
-                <span
-                  style={{
-                    display: 'block',
-                    height: '100%',
-                    width: `${Math.round(nivel * 100)}%`,
-                    background: nivel > 0.9 ? 'var(--warning)' : 'var(--success)',
-                    transition: 'width 80ms linear',
-                  }}
-                />
-              </span>
-            </span>
-
-            <label className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
-              <IconeTexto size={16} />
-              Tamanho
-              <input
-                type="range"
-                className="deslizante"
-                style={{ width: 90 }}
-                min={18}
-                max={44}
-                value={tamanhoDoTexto}
-                aria-label="Tamanho do texto do teleprompter"
-                onChange={(e) => setTamanhoDoTexto(Number(e.target.value))}
-              />
-            </label>
-
-            <span className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
-              <IconeRelogio size={16} />
-              Contagem
-              <button
-                type="button"
-                role="switch"
-                aria-checked={comContagem}
-                aria-label="Contagem regressiva antes de gravar"
-                className="chave"
-                onClick={() => setComContagem((v) => !v)}
-                disabled={gravando}
-              >
-                <span className="chave__bola" aria-hidden />
-              </button>
-            </span>
+      <SeletorDeDispositivo
+        Icone={IconeCamera}
+        rotulo="Câmera"
+        opcoes={cameras}
+        valor={cameraId}
+        desabilitado={gravando || dispositivos === 'verificando'}
+        onTrocar={(id) => setEscolha((e) => ({ ...e, camera: id }))}
+      />
+      <SeletorDeDispositivo
+        Icone={IconeMicrofone}
+        rotulo="Microfone"
+        opcoes={microfones}
+        valor={microfoneId}
+        desabilitado={gravando || dispositivos === 'verificando'}
+        onTrocar={(id) => setEscolha((e) => ({ ...e, microfone: id }))}
+      />
+      <span className="linha" style={{ gap: 6, fontSize: 12 }} title="Nível do microfone" aria-label={`Nível do microfone: ${Math.round(nivel * 100)}%`}>
+        <span className="texto-secundario">Som</span>
+        <span aria-hidden style={{ width: 70, height: 6, borderRadius: 3, background: 'var(--surface-2)', overflow: 'hidden' }}>
+          <span
+            style={{
+              display: 'block',
+              height: '100%',
+              width: `${Math.round(nivel * 100)}%`,
+              background: nivel > 0.9 ? 'var(--warning)' : 'var(--success)',
+              transition: 'width 80ms linear',
+            }}
+          />
+        </span>
+      </span>
+      <span className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
+        Formato
+        <span className="prompter-segmentos" role="radiogroup" aria-label="Formato do vídeo">
+          {(['vertical', 'horizontal'] as const).map((f) => (
+            <button key={f} type="button" role="radio" aria-checked={formato === f} disabled={gravando} onClick={() => mudarPreferencia({ formato: f })}>
+              {f === 'vertical' ? '9:16' : '16:9'}
+            </button>
+          ))}
+        </span>
+      </span>
+      <span className="linha" style={{ gap: 'var(--e2)', fontSize: 13 }}>
+        <IconeRelogio size={16} />
+        Contagem
+        <button
+          type="button"
+          role="switch"
+          aria-checked={comContagem}
+          aria-label="Contagem regressiva antes de gravar"
+          className="chave"
+          onClick={() => setComContagem((v) => !v)}
+          disabled={gravando}
+        >
+          <span className="chave__bola" aria-hidden />
+        </button>
+      </span>
     </>
   );
 
   return (
-    <div className="estudio" data-estado={gravacao.estado}>
+    <div className="estudio" data-estado={gravacao.estado} data-formato={formato} ref={estudioRef}>
       {/* Só no celular: a tela de gravação é cheia, e sair é por aqui. */}
       <div className="estudio__topo so-celular">
         <button type="button" className="estudio__redondo" aria-label="Fechar a câmera" onClick={onSair} disabled={gravando}>
@@ -1156,17 +1306,21 @@ function EstudioDeGravacao({
             {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
           </span>
         ) : (
-          <span className="estudio__tempo">Teleprompter</span>
+          <SeletorDeModo modo={modo} onModo={setModo} desabilitado={gravando} />
         )}
-        <button
-          type="button"
-          className="estudio__redondo"
-          aria-label="Ajustes da gravação"
-          onClick={() => setAjustesAbertos(true)}
-          disabled={gravando}
-        >
+        <button type="button" className="estudio__redondo" aria-label="Ajustes da gravação" onClick={() => setAjustesAbertos(true)} disabled={gravando}>
           <IconeParametros size={20} />
         </button>
+      </div>
+
+      <div className="estudio__cabeca so-largo">
+        <SeletorDeModo modo={modo} onModo={setModo} desabilitado={gravando} />
+        {gravando && (
+          <span className="estudio__gravando" role="status" aria-live="polite">
+            <span aria-hidden className="estudio__ponto" data-pausado={gravacao.estado === 'pausado' || undefined} />
+            {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
+          </span>
+        )}
       </div>
 
       {erroDeAcesso && (
@@ -1183,171 +1337,45 @@ function EstudioDeGravacao({
       )}
 
       <div className="estudio__grade">
-        {/* ---------- Câmera ---------- */}
+        {/* ---------- Câmera, no formato do vídeo ---------- */}
         <section className="estudio__camera">
-          {gravacao.estado === 'revisando' && gravacao.urlDaPrevia ? (
-            <video
-              src={gravacao.urlDaPrevia}
-              controls
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
-          ) : (
-            <video
-              ref={ligarVideo}
-              autoPlay
-              playsInline
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
-            />
-          )}
+          <div className="estudio__quadro">
+            {gravacao.estado === 'revisando' && gravacao.urlDaPrevia ? (
+              // `key` diferente: sem ela o React reaproveita o <video> da
+              // câmera, que continua com o fluxo ao vivo preso nele -- e a
+              // revisão mostrava a câmera, não a gravação.
+              <video key="revisao" src={gravacao.urlDaPrevia} controls playsInline className="estudio__video estudio__video--revisao" />
+            ) : (
+              <video key="camera" ref={ligarVideo} autoPlay playsInline muted className="estudio__video" />
+            )}
 
-          {dispositivos === 'verificando' && gravacao.estado !== 'revisando' && (
-            <div
-              role="status"
-              style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-secondary)' }}
-            >
-              Ligando a câmera…
-            </div>
-          )}
+            {dispositivos === 'verificando' && gravacao.estado !== 'revisando' && (
+              <div role="status" className="estudio__ligando">
+                Ligando a câmera…
+              </div>
+            )}
 
-          {gravacao.estado !== 'revisando' && dispositivos === 'prontos' && (
-            <>
-              {/* Área segura: o que sobrevive ao corte 9:16. */}
-              <div
-                aria-hidden
-                className="so-largo"
-                style={{
-                  position: 'absolute',
-                  inset: '4% 34%',
-                  border: '1px dashed rgb(255 255 255 / 45%)',
-                  borderRadius: 6,
-                  pointerEvents: 'none',
-                }}
-              />
-              <span
-                className="so-largo"
-                style={{
-                  position: 'absolute',
-                  bottom: 'var(--e4)',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  padding: '5px 12px',
-                  borderRadius: 999,
-                  background: 'rgb(4 23 53 / 82%)',
-                  fontSize: 12,
-                  color: 'var(--text-secondary)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Fique dentro da área tracejada: é o que aparece no vídeo vertical
-              </span>
-            </>
-          )}
-
-          {gravando && (
-            <div
-              className="linha so-largo"
-              role="status"
-              aria-live="polite"
-              style={{
-                position: 'absolute',
-                top: 'var(--e4)',
-                left: 'var(--e4)',
-                gap: 8,
-                padding: '6px 12px',
-                borderRadius: 999,
-                background: 'rgb(4 23 53 / 85%)',
-              }}
-            >
-              <span
-                aria-hidden
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: '50%',
-                  background: 'var(--danger)',
-                  animation: gravacao.estado === 'gravando' ? 'pulsar 1.4s infinite' : undefined,
-                }}
-              />
-              <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
-                {gravacao.estado === 'pausado' ? 'Pausado' : 'Gravando'} · {tempo}
-              </span>
-            </div>
-          )}
-
-          {gravacao.estado === 'contando' && (
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'grid',
-                placeItems: 'center',
-                background: 'rgb(4 23 53 / 55%)',
-                fontSize: 96,
-                fontWeight: 800,
-              }}
-              role="status"
-              aria-live="assertive"
-            >
-              {gravacao.contagem || 'Já!'}
-            </div>
-          )}
-        </section>
-
-        {/* ---------- Roteiro ---------- */}
-        <section className="cartao estudio__roteiro" style={{ display: 'flex', flexDirection: 'column' }}>
-          <div className="linha entre so-largo" style={{ marginBottom: 'var(--e3)' }}>
-            <h2 className="linha" style={{ gap: 'var(--e2)' }}>
-              <IconeRoteiro size={18} />
-              Roteiro
-            </h2>
-            <span className="texto-secundario" style={{ fontSize: 13 }}>
-              {roteiro.length} blocos
-            </span>
-          </div>
-
-          <div className="linha estudio__blocos" style={{ gap: 'var(--e2)', marginBottom: 'var(--e4)', flexWrap: 'wrap' }}>
-            {roteiro.map((b, i) => (
-              <button
-                key={i}
-                type="button"
-                className={`botao botao--pequeno ${i === bloco ? '' : 'botao--secundario'}`}
-                onClick={() => setBloco(i)}
-                aria-pressed={i === bloco}
-                style={{ flex: 1 }}
-              >
-                {b.rotulo}
-              </button>
-            ))}
-          </div>
-
-          <div
-            className="crescer estudio__texto"
-            style={{
-              padding: 'var(--e4)',
-              borderRadius: 'var(--r-cartao)',
-              background: 'var(--surface-2)',
-              fontSize: tamanhoDoTexto,
-              lineHeight: 1.45,
-              fontWeight: 600,
-              overflowY: 'auto',
-              minHeight: 160,
-            }}
-          >
-            {roteiro[bloco]?.texto}
-          </div>
-
-          <div className="linha entre estudio__rodape-roteiro" style={{ marginTop: 'var(--e3)' }}>
-            <span className="texto-secundario" style={{ fontSize: 13 }}>
-              {bloco + 1} / {roteiro.length}
-            </span>
-            <span className="linha texto-secundario" style={{ gap: 4, fontSize: 13 }}>
-              Setas ou espaço para avançar
-              <IconeAvancar size={14} />
-            </span>
+            {gravacao.estado === 'contando' && (
+              <div className="estudio__contagem" role="status" aria-live="assertive">
+                {gravacao.contagem || 'Já!'}
+              </div>
+            )}
           </div>
         </section>
+
+        {/* ---------- Teleprompter ---------- */}
+        {gravacao.estado !== 'revisando' && (
+          <section className="cartao estudio__roteiro">
+            <div className="estudio__roteiro-topo so-largo">
+              <span className="estudio__bloco-atual">
+                <IconeRoteiro size={16} /> {roteiro[blocoAtual]?.rotulo}
+              </span>
+              <span className="texto-secundario">{Math.round(progresso * 100)}%</span>
+            </div>
+            {teleprompter}
+            <div className="so-largo">{controlesDoTexto}</div>
+          </section>
+        )}
       </div>
 
       {/* ---------- Controles ---------- */}
@@ -1358,23 +1386,15 @@ function EstudioDeGravacao({
               <IconeCheck size={18} color="var(--success)" />
               <span>
                 Gravação de {tempo}
-                {gravacao.resultado && (
-                  <span className="texto-secundario"> · {formatarBytes(gravacao.resultado.size)}</span>
-                )}
+                {gravacao.resultado && <span className="texto-secundario"> · {formatarBytes(gravacao.resultado.size)}</span>}
               </span>
             </span>
-
-            {/* Regravar vem ANTES de enviar: a primeira tomada quase
-                nunca é a boa. */}
+            {/* Regravar vem ANTES de enviar: a primeira tomada quase nunca é a boa. */}
             <button type="button" className="botao botao--secundario" onClick={gravacao.descartar}>
               <IconeLixeira size={16} />
               Regravar
             </button>
-            <button
-              type="button"
-              className="botao"
-              onClick={() => gravacao.resultado && onEnviar(gravacao.resultado, gravacao.mimeType, gravacao.segundos)}
-            >
+            <button type="button" className="botao" onClick={() => gravacao.resultado && onEnviar(gravacao.resultado, gravacao.mimeType, gravacao.segundos)}>
               <IconeEnviar size={16} />
               Usar esta gravação
             </button>
@@ -1382,14 +1402,9 @@ function EstudioDeGravacao({
         ) : (
           <>
             <span className="estudio__ajustes">{ajustes}</span>
-
             <span className="auto linha estudio__acoes" style={{ gap: 'var(--e3)' }}>
               {gravando && (
-                <button
-                  type="button"
-                  className="botao botao--secundario estudio__pausar"
-                  onClick={gravacao.estado === 'pausado' ? gravacao.retomar : gravacao.pausar}
-                >
+                <button type="button" className="botao botao--secundario estudio__pausar" onClick={gravacao.estado === 'pausado' ? gravacao.retomar : gravacao.pausar}>
                   {gravacao.estado === 'pausado' ? (
                     <>
                       <IconeTocar size={16} weight="fill" />
@@ -1403,13 +1418,12 @@ function EstudioDeGravacao({
                   )}
                 </button>
               )}
-
               <button
                 type="button"
                 className="botao estudio__gravar"
                 data-gravando={gravando || undefined}
                 aria-label={gravando ? 'Parar a gravação' : 'Começar a gravar'}
-                disabled={dispositivos !== 'prontos' || gravacao.estado === 'contando'}
+                disabled={dispositivos !== 'prontos' || gravacao.estado === 'contando' || !fluxoParaGravar}
                 onClick={() => (gravando ? gravacao.parar() : gravacao.iniciar(comContagem))}
                 style={{ background: gravando ? 'var(--danger)' : undefined }}
               >
@@ -1423,9 +1437,25 @@ function EstudioDeGravacao({
       </section>
 
       <Folha aberta={ajustesAbertos} aoFechar={fecharAjustes} titulo="Ajustes da gravação">
-        <div className="estudio__ajustes-folha">{ajustes}</div>
+        <div className="estudio__ajustes-folha">
+          {ajustes}
+          {controlesDoTexto}
+        </div>
       </Folha>
     </div>
+  );
+}
+
+function SeletorDeModo({ modo, onModo, desabilitado }: { modo: ModoDoEstudio; onModo: (m: ModoDoEstudio) => void; desabilitado: boolean }) {
+  return (
+    <span className="prompter-segmentos prompter-segmentos--modo" role="radiogroup" aria-label="Modo">
+      <button type="button" role="radio" aria-checked={modo === 'camera'} disabled={desabilitado} onClick={() => onModo('camera')}>
+        <IconeCamera size={15} /> Gravar lendo
+      </button>
+      <button type="button" role="radio" aria-checked={modo === 'teleprompter'} disabled={desabilitado} onClick={() => onModo('teleprompter')}>
+        <IconeRoteiro size={15} /> Só teleprompter
+      </button>
+    </span>
   );
 }
 
