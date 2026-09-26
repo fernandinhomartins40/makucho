@@ -39,7 +39,7 @@ import {
   IconeConfiguracoes,
 } from '../icones';
 
-type AbaDoInspector = 'video' | 'legendas' | 'efeitos';
+export type AbaDoInspector = 'video' | 'legendas' | 'efeitos';
 
 const NOME_DO_FRAMEWORK: Record<string, string> = {
   authority_education: 'Autoridade educacional',
@@ -93,6 +93,8 @@ interface Props {
   /** Onde está o cursor da timeline (keyframes do texto). */
   posicaoMs?: number;
   onSeek?: (ms: number) => void;
+  /** Abre numa aba (o "Recorte" do celular vai direto ao enquadramento). */
+  abaPedida?: { aba: AbaDoInspector; n: number } | null;
 }
 
 export function Inspector({
@@ -109,8 +111,12 @@ export function Inspector({
   onSelecionarItem,
   posicaoMs = 0,
   onSeek,
+  abaPedida,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
+  useEffect(() => {
+    if (abaPedida) setAba(abaPedida.aba);
+  }, [abaPedida]);
   const clipe = plan.clips.find((c) => c.id === clipId);
 
   return (

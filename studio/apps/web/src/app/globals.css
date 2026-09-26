@@ -11025,3 +11025,231 @@ button.momento-midia__tempo:hover {
   font-size: 12.5px;
   line-height: 1.45;
 }
+
+/* ============================================================
+   Editor no celular (referência do PWA): colunas ao lado do vídeo,
+   barra com nome em cada ação, película nos trechos e "+" no fim.
+   ============================================================ */
+
+.clipe__pelicula {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.clipe__pelicula img,
+.clipe__pelicula i {
+  flex: none;
+  height: 100%;
+  object-fit: cover;
+  border-right: 1px solid rgb(0 0 0 / 35%);
+}
+
+.clipe__pelicula i {
+  background: rgb(255 255 255 / 4%);
+}
+
+/* A película por baixo; o nome e os selos por cima, legíveis. */
+.clipe--trecho:has(.clipe__pelicula img) .clipe__frames {
+  opacity: 0;
+}
+
+.clipe--trecho:has(.clipe__pelicula) .clipe__selos {
+  padding: 2px;
+  border-radius: 999px;
+  background: rgb(2 6 23 / 55%);
+}
+
+.timeline__mais {
+  position: absolute;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.timeline__mais:hover,
+.timeline__mais[aria-expanded='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 20%, var(--surface-2));
+}
+
+.palco-lateral {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .editor {
+    grid-template-rows: minmax(0, 1fr) minmax(210px, 40dvh);
+  }
+
+  .editor__palco {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr) 62px;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'esq quadro dir'
+      'ctl ctl ctl';
+    align-items: stretch;
+    justify-items: center;
+    gap: 6px 8px;
+    padding: 6px 0 0;
+  }
+
+  .editor__palco > .palco__quadro {
+    grid-area: quadro;
+    height: min(100%, calc((100cqw - 140px) * 16 / 9));
+    align-self: center;
+  }
+
+  .editor__palco > .palco__controles {
+    grid-area: ctl;
+    width: 100%;
+  }
+
+  .palco-lateral.so-celular {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .palco-lateral::-webkit-scrollbar {
+    display: none;
+  }
+
+  .palco-lateral--esquerda {
+    grid-area: esq;
+  }
+
+  .palco-lateral--direita {
+    grid-area: dir;
+  }
+
+  .palco-lateral__botao {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    flex: none;
+    width: 100%;
+    padding: 7px 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 10.5px;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .palco-lateral__botao span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .palco-lateral__botao[aria-pressed='true'] {
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+    box-shadow: var(--brilho-primario);
+    color: #fff;
+  }
+
+  .palco-lateral__botao:active {
+    transform: scale(0.96);
+  }
+
+  /* À direita, as ações do trecho num cartão só (como na referência). */
+  .palco-lateral__grupo {
+    display: flex;
+    flex-direction: column;
+    padding: 4px 0;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface-1);
+  }
+
+  .palco-lateral__grupo .palco-lateral__botao {
+    border: 0;
+    background: none;
+    padding: 7px 2px;
+  }
+
+  .palco-lateral__seletor {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    flex: none;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 4px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* Barra da timeline: ícone em cima, nome embaixo. */
+  .timeline__barra {
+    gap: 2px;
+    padding-block: 6px;
+  }
+
+  .timeline__barra .timeline__acao {
+    flex-direction: column;
+    gap: 2px;
+    min-width: 54px;
+    min-height: 50px;
+    padding: 4px 6px;
+    font-size: 10.5px;
+  }
+
+  .timeline__barra .timeline__acao .timeline__acao-rotulo {
+    display: block;
+  }
+
+  .timeline__barra .timeline__acao.so-celular {
+    display: inline-flex;
+  }
+
+  .timeline__acao--ia {
+    color: #c084fc;
+  }
+
+  /* O que a referência tira da barra: "Adicionar" vira o "+" da faixa e
+     o zoom vira a pinça de dois dedos. */
+  .timeline__barra > .timeline__adicionar-menu,
+  .timeline__barra > .linha.auto {
+    display: none !important;
+  }
+}
+
+/* O menu do "+" também serve no computador (o "+" da faixa de vídeo). */
+.timeline__menu.timeline__adicionar-menu {
+  display: flex;
+}
+
+@media (max-width: 899px) {
+  /* O formato mora na coluna da direita: dentro do vídeo sobra só a zona segura. */
+  .palco__chips .chip:not(.chip--acionavel) {
+    display: none;
+  }
+}

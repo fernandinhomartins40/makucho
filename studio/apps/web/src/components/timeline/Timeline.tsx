@@ -70,6 +70,9 @@ import {
   IconeIA,
   IconeOlho,
   IconeOlhoFechado,
+  IconeParametros,
+  IconeVelocidade,
+  IconeTrilha as IconeMusica,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 import { ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
@@ -135,6 +138,12 @@ interface Props {
   /** Faixas escondidas pelo olho (saem da prévia e da exportação). */
   ocultas?: ReadonlySet<string>;
   onAlternarCamada?: (faixa: CamadaOcultavel) => void;
+  /** O quadro do original num ponto (ms), para a película dos trechos. */
+  quadros?: (sourceMs: number) => string | null;
+  /** Celular: a barra ganha IA, Velocidade e Ajustes com nome. */
+  onAbrirIa?: () => void;
+  onVelocidade?: () => void;
+  onAjustes?: () => void;
 }
 
 type Arraste = {
@@ -174,6 +183,10 @@ export function Timeline({
   onMostrarAtalhos,
   ocultas = VAZIO,
   onAlternarCamada,
+  quadros,
+  onAbrirIa,
+  onVelocidade,
+  onAjustes,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -571,14 +584,32 @@ export function Timeline({
         area.scrollLeft += e.deltaY;
       }
     };
+    // Dois dedos: pinça muda o zoom (no celular não há Ctrl+roda).
+    let pinca: { d: number; z: number } | null = null;
+    const distancia = (e: TouchEvent) => Math.hypot(e.touches[0]!.clientX - e.touches[1]!.clientX, e.touches[0]!.clientY - e.touches[1]!.clientY);
+    const comecar = (e: TouchEvent) => {
+      pinca = e.touches.length === 2 ? { d: Math.max(1, distancia(e)), z: zoomRef.current } : null;
+    };
+    const terminar = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinca = null;
+    };
     // Arrastando um item no toque, o dedo não pode rolar a área junto.
     const toque = (e: TouchEvent) => {
+      if (pinca && e.touches.length === 2) {
+        if (e.cancelable) e.preventDefault();
+        setZoom(Math.min(8, Math.max(0.25, pinca.z * (distancia(e) / pinca.d))));
+        return;
+      }
       if (arrasteRef.current && e.cancelable) e.preventDefault();
     };
     area.addEventListener('wheel', roda, { passive: false });
+    area.addEventListener('touchstart', comecar, { passive: true });
+    area.addEventListener('touchend', terminar, { passive: true });
     area.addEventListener('touchmove', toque, { passive: false });
     return () => {
       area.removeEventListener('wheel', roda);
+      area.removeEventListener('touchstart', comecar);
+      area.removeEventListener('touchend', terminar);
       area.removeEventListener('touchmove', toque);
     };
   }, []);
@@ -626,8 +657,12 @@ export function Timeline({
         <Acao Icone={IconeLixeira} rotulo="Excluir" desabilitado={semSelecao || plan.clips.length === 1} atalho="Del" onClick={excluirTrecho} />
 
         <span className="timeline__separador" aria-hidden />
+        {/* Celular: o que a imagem de referência pede na barra, com nome. */}
+        {onAbrirIa && <Acao Icone={IconeIA} rotulo="IA" classe="so-celular timeline__acao--ia" onClick={onAbrirIa} dica="Pedir um ajuste para a IA" />}
+        {onVelocidade && <Acao Icone={IconeVelocidade} rotulo="Velocidade" classe="so-celular" desabilitado={!onOperacao} onClick={onVelocidade} dica="Velocidade do trecho" />}
+        {onAjustes && <Acao Icone={IconeParametros} rotulo="Ajustes" classe="so-celular" onClick={onAjustes} dica="Propriedades do que está selecionado" />}
         {onTirarPausas && (
-          <Acao Icone={IconeIA} rotulo="Tirar pausas" comNome desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
+          <Acao Icone={IconeIA} rotulo="Tirar pausas" comNome classe="so-largo" desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
         )}
         <span className="timeline__adicionar-largo">
           <Acao Icone={IconeMais} rotulo="Legenda" comNome desabilitado={!onOperacao} onClick={novaLegenda} dica="Nova legenda no cursor" />
@@ -679,6 +714,11 @@ export function Timeline({
       {/* O menu "Adicionar" do celular: fora da barra (que rola e o cortaria). */}
       {menuAdicionar && (
         <div className="timeline__menu timeline__adicionar-menu" role="menu" onClick={() => setMenuAdicionar(false)}>
+          {onAbrirBiblioteca && (
+            <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('midia')}>
+              <IconeMidia size={16} /> Imagem ou vídeo
+            </button>
+          )}
           <button type="button" role="menuitem" onClick={novaLegenda}>
             <IconeLegenda size={16} /> Legenda no cursor
           </button>
@@ -688,6 +728,16 @@ export function Timeline({
           {onAbrirBiblioteca && (
             <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('sons')}>
               <IconeSom size={16} /> Efeito sonoro
+            </button>
+          )}
+          {onAbrirBiblioteca && (
+            <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('trilha')}>
+              <IconeMusica size={16} /> Trilha de fundo
+            </button>
+          )}
+          {onTirarPausas && (
+            <button type="button" role="menuitem" onClick={onTirarPausas}>
+              <IconeIA size={16} /> Tirar as pausas (IA)
             </button>
           )}
         </div>
@@ -758,8 +808,29 @@ export function Timeline({
                         onSelecionar?.(t.clip.id);
                       }}
                       onIniciarArraste={iniciarArraste('clipe', t.clip.id, t.inicioMs)}
+                      sourceInicioMs={t.clip.sourceStartMs}
+                      sourceDuracaoMs={t.clip.sourceEndMs - t.clip.sourceStartMs}
+                      quadros={quadros}
                     />
                   ))}
+
+                {/* O "+" no fim do vídeo: acrescentar mídia, texto, som... */}
+                {id === 'video' && onOperacao && (
+                  <button
+                    type="button"
+                    className="timeline__mais"
+                    style={{ left: msParaPx(duracaoMs, zoom) + 8, height: altura - 16 }}
+                    aria-label="Adicionar ao vídeo"
+                    aria-haspopup="menu"
+                    aria-expanded={menuAdicionar}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuAdicionar((v) => !v);
+                    }}
+                  >
+                    <IconeMais size={20} />
+                  </button>
+                )}
 
                 {/* Cada emenda entre trechos: corte seco ou transição. */}
                 {id === 'video' &&
@@ -1077,9 +1148,11 @@ function Acao({
   dica,
   onClick,
   comNome,
+  classe,
 }: {
   Icone: Icon;
   rotulo: string;
+  classe?: string;
   desabilitado?: boolean;
   atalho?: string;
   dica?: string;
@@ -1090,7 +1163,7 @@ function Acao({
   return (
     <button
       type="button"
-      className="botao botao--fantasma botao--pequeno"
+      className={`botao botao--fantasma botao--pequeno timeline__acao${classe ? ` ${classe}` : ''}`}
       disabled={desabilitado}
       onClick={onClick}
       // O rótulo some em telas estreitas (só o ícone): o nome continua aqui.
@@ -1261,6 +1334,9 @@ function ClipeNaFaixa({
   arrastavel,
   onSelecionar,
   onIniciarArraste,
+  sourceInicioMs,
+  sourceDuracaoMs,
+  quadros,
 }: {
   id: string;
   funcao: string;
@@ -1274,9 +1350,18 @@ function ClipeNaFaixa({
   arrastavel: boolean;
   onSelecionar: () => void;
   onIniciarArraste: (e: React.PointerEvent) => void;
+  sourceInicioMs: number;
+  /** Quanto do original o trecho usa (difere da duração com velocidade). */
+  sourceDuracaoMs: number;
+  quadros?: (sourceMs: number) => string | null;
 }) {
   const cor = corDaFuncao(funcao);
   const largura = Math.max(2, msParaPx(duracaoMs, zoom));
+  // A película: um quadro 9:16 por "lajota", do começo ao fim do trecho.
+  const alturaDoQuadro = altura - 8;
+  const lajota = Math.max(18, Math.round((alturaDoQuadro * 9) / 16));
+  const nLajotas = quadros ? Math.min(60, Math.ceil(largura / lajota)) : 0;
+  const pelicula = Array.from({ length: nLajotas }, (_, i) => quadros!(sourceInicioMs + ((i + 0.5) / Math.max(1, nLajotas)) * sourceDuracaoMs));
   const selos: Array<{ chave: string; Icone: Icon; texto: string; dica: string }> = [];
   if (recursos?.transicao) selos.push({ chave: 'tr', Icone: IconeTransicao, texto: recursos.transicao, dica: `Entra com transição: ${recursos.transicao}` });
   if (recursos?.efeito) selos.push({ chave: 'fx', Icone: IconeEfeito, texto: recursos.efeito, dica: `Efeito: ${recursos.efeito}` });
@@ -1320,6 +1405,18 @@ function ClipeNaFaixa({
         aria-hidden
         style={{ backgroundImage: `repeating-linear-gradient(90deg, ${cor}55 0 32px, ${cor}22 32px 34px)` }}
       />
+      {nLajotas > 0 && (
+        <span className="clipe__pelicula" aria-hidden>
+          {pelicula.map((src, i) =>
+            src ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={src} alt="" style={{ width: lajota }} />
+            ) : (
+              <i key={i} style={{ width: lajota }} />
+            ),
+          )}
+        </span>
+      )}
       <span className="clipe__topo">
         <span className="clipe__chip" style={{ background: cor }}>
           {nomeDaFuncao(funcao)}

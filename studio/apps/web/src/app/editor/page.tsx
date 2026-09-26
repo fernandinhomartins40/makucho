@@ -36,7 +36,11 @@ import {
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
   ROTULO_DE_ESTADO,
   tirarPausas,
+  agendaDoPlano,
 } from '@makucho/studio-contracts';
+import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
+import type { AbaDoInspector } from '../../components/editor/Inspector';
+import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
 import { AvisoDeFechamento } from '../../components/editor/AvisoDeFechamento';
@@ -535,6 +539,65 @@ function Editor({ projectId }: { projectId: string }) {
       setAnalisando(false);
     }
   }, [analisando, projectId, carregarPlano, carregarProjeto]);
+
+  // A película da timeline: quadros tirados da prévia leve.
+  const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0);
+
+  // ---------- Celular: as colunas ao lado do vídeo ----------
+  const [abaDoInspector, setAbaDoInspector] = useState<{ aba: AbaDoInspector; n: number } | null>(null);
+  const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
+  const abrirPainel = (a: AbaDoEditor) => {
+    setAba(a);
+    if (noCelular()) setFolha('painel');
+  };
+  const abrirBiblioteca = (c: CategoriaDaBiblioteca) => {
+    setCategoriaDaBiblioteca(c);
+    abrirPainel('biblioteca');
+  };
+  /** O trecho que as ações da direita mudam: o selecionado, ou o que está sob o cursor. */
+  const trechoAlvo = (): string | null => {
+    if (selecionado) return selecionado;
+    if (!plano) return null;
+    const ag = agendaDoPlano(plano, [...desligados]);
+    const t = ag.trechos.find((x) => posicaoMs >= x.inicioMs && posicaoMs < x.inicioMs + x.duracaoMs) ?? ag.trechos[ag.trechos.length - 1];
+    return t?.clip.id ?? null;
+  };
+  const naFerramenta = (f: FerramentaDoPalco) => {
+    if (f === 'midia') return abrirPainel('midia');
+    const categoria: Record<Exclude<FerramentaDoPalco, 'midia'>, CategoriaDaBiblioteca> = {
+      audio: 'trilha',
+      texto: 'textos',
+      stickers: 'stickers',
+      efeitos: 'efeitos',
+      transicoes: 'transicoes',
+      filtros: 'cor',
+      mais: 'estilos',
+    };
+    abrirBiblioteca(categoria[f]);
+  };
+  const naAcao = (a: AcaoDoPalco) => {
+    const alvo = trechoAlvo();
+    if (a === 'recorte') {
+      setSelecionado(null);
+      setItemSelecionado(null);
+      setAbaDoInspector((x) => ({ aba: 'video', n: (x?.n ?? 0) + 1 }));
+      return setFolha('inspector');
+    }
+    if (a === 'cor') {
+      if (alvo) setSelecionado(alvo);
+      return abrirBiblioteca('cor');
+    }
+    if (a === 'volume' && alvo) {
+      setSelecionado(null);
+      setItemSelecionado({ tipo: 'audio', id: alvo });
+      return setFolha('inspector');
+    }
+    if (a === 'mais') return setFolha('inspector');
+    // Ajustar e velocidade: as propriedades do trecho.
+    setItemSelecionado(null);
+    if (alvo) setSelecionado(alvo);
+    setFolha('inspector');
+  };
 
   // ---------- Mídias que a montagem separou, para aprovar ----------
   const [midiasSeparadas, setMidiasSeparadas] = useState<MidiasSeparadas | null>(null);
@@ -1084,6 +1147,18 @@ function Editor({ projectId }: { projectId: string }) {
         </section>
 
         <main className="editor__palco">
+          <FerramentasDoPalco
+            ativa={folha === 'painel' ? (aba === 'midia' ? 'midia' : null) : null}
+            onEscolher={naFerramenta}
+          />
+          <AcoesDoPalco
+            formato={plano.canvas.aspectRatio}
+            resolucao="1080P"
+            onFormato={() => naAcao('recorte')}
+            onResolucao={() => setExportarAberto(true)}
+            onAcao={naAcao}
+            semVelocidade
+          />
           <Palco
             plan={planoVisivel ?? plano}
             proxyUrl={temProxy ? urlDoVideo(projectId) : undefined}
@@ -1156,6 +1231,7 @@ function Editor({ projectId }: { projectId: string }) {
             onSelecionarItem={(item) => setItemSelecionado(item)}
             posicaoMs={posicaoMs}
             onSeek={setPosicaoMs}
+            abaPedida={abaDoInspector}
           />
         </aside>
 
@@ -1179,6 +1255,9 @@ function Editor({ projectId }: { projectId: string }) {
             onSelecionar={setSelecionado}
             palavras={palavrasDaTranscricao}
             onda={onda}
+            quadros={quadrosDoVideo}
+            onAbrirIa={() => abrirPainel('ia')}
+            onAjustes={() => naAcao('ajustar')}
             onTirarPausas={tirarAsPausas}
             onAbrirBiblioteca={(categoria) => {
               // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).

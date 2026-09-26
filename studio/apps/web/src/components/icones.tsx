@@ -22,6 +22,10 @@
 
 import {
   CaretUp,
+  Gauge,
+  Sticker,
+  CirclesThree,
+  SquaresFour,
   Palette,
   FolderOpen,
   Article,
@@ -188,3 +192,12 @@ export const IconeElementos = Shapes;
 export const IconeTransicao = ArrowsLeftRight;
 export const IconeTrilha = MusicNote;
 export const IconeSom = SpeakerSimpleHigh;
+
+// ---------- Editor no celular: as colunas ao lado do vídeo ----------
+export const IconeVelocidade = Gauge;
+export const IconeSticker = Sticker;
+export const IconeFiltro = CirclesThree;
+export const IconeRecorte = Crop;
+export const IconeEnquadrar = CornersOut;
+export const IconeMaisFerramentas = SquaresFour;
+export const IconeAudio2 = MusicNotes;
