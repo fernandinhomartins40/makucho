@@ -37,7 +37,7 @@ export class AnaliseController {
     assertOwnership(tenant, projeto, 'projeto');
     if (!projeto) throw new BadRequestException('projeto não encontrado');
 
-    const resultado = await this.proposta.gerar(tenant.workspaceId, id, { comReserva: false });
+    const resultado = await this.proposta.gerar(tenant.workspaceId, id);
 
     if (!resultado.ok) {
       // Um projeto que ja tem proposta continua com ela: a falha de uma

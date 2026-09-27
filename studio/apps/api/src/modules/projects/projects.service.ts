@@ -332,9 +332,8 @@ export class ProjectsService {
 
     // Transcrição pronta: a falha foi na proposta, e refazer mídia e
     // transcrição gastaria minutos de CPU para chegar ao mesmo ponto.
-    const transcrito = await this.prisma.transcriptSegment.count({
-      where: { transcription: { projectId: id } },
-    });
+    // Vídeo sem fala tem transcrição sem segmentos: também já passou dessa etapa.
+    const transcrito = await this.prisma.transcription.count({ where: { projectId: id } });
 
     if (transcrito > 0) {
       if (!(await this.filas.analisar(id))) {

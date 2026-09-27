@@ -70,10 +70,15 @@ const CONFIANCA_BAIXA = 0.6;
  */
 // Com raciocinio ligado, os tokens de pensamento contam na saida: o
 // teto sobe para a resposta nao ser cortada no meio do JSON.
-const MAX_TOKENS = 16000;
+const MAX_TOKENS = 32000;
 
-/** Sem raciocinio, a resposta e so o JSON: 60 trechos cabem com folga. */
-const MAX_TOKENS_SEM_RACIOCINIO = 6000;
+/**
+ * Sem raciocinio, a resposta e so o JSON. O teto antigo (6 mil) cortava
+ * a resposta de videos longos no meio -- e o corte caia na montagem sem
+ * IA. A IA e barata (centavos por video): o teto so impede resposta sem
+ * fim, nunca uma resposta legitima.
+ */
+const MAX_TOKENS_SEM_RACIOCINIO = 32000;
 
 @Injectable()
 export class AnaliseService {

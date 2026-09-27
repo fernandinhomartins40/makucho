@@ -24,7 +24,7 @@ import { AiService } from './ai.service';
 import { PromptsService } from './prompts.service';
 
 /** A fala inteira de um vídeo de 3 min, mais os momentos, cabe folgado. */
-const MAX_TOKENS_DAS_MIDIAS = 2500;
+const MAX_TOKENS_DAS_MIDIAS = 8000;
 /** Opções mostradas por momento. */
 const OPCOES_POR_MOMENTO = 4;
 /** Candidatas que a IA que enxerga olha por momento (~0,2 s cada). */
@@ -191,7 +191,7 @@ export class MidiasService {
           'Fala:',
           fala,
         ].join('\n'),
-        maxTokens: 300,
+        maxTokens: 1000,
         promptVersion: versao,
         raciocinio: 'desligado',
       });

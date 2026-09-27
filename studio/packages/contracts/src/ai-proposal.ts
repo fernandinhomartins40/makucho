@@ -110,8 +110,10 @@ export const aiProposalV1Schema = z
     // Ausente nas propostas antigas; o prompt atual sempre pede.
     analysis: analiseDaIaSchema.optional(),
     framework: frameworkSchema,
-    targetDurationMs: msSchema.min(5000).max(180000),
-    segments: z.array(proposedSegmentSchema).min(1).max(60),
+    // Vídeos longos (aula, live cortada) passam de 3 min e de 60 trechos:
+    // recusar a resposta por isso jogava fora uma montagem válida.
+    targetDurationMs: msSchema.min(5000).max(900000),
+    segments: z.array(proposedSegmentSchema).min(1).max(150),
     // Observacoes para o usuario, nunca instrucoes para o sistema.
     warnings: z.array(z.string().max(300)).max(20),
     // Blocos que o roteiro previa e a gravacao nao tem. Declarar a

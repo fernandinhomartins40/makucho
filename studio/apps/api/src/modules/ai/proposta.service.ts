@@ -19,20 +19,12 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import {
-  FILA_ANALISE,
-  PREFIXO_DAS_FILAS,
-  compilarProposta,
-  montarPropostaSemIa,
-  editPlanV1Schema,
-  tirarPausas,
-} from '@makucho/studio-contracts';
+import { FILA_ANALISE, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
 import type { EditPlanV1, SemanticIssue } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { FilaService } from '../../common/fila.service';
-import { AcabamentoService } from './acabamento.service';
 import { MidiasService } from './midias.service';
 import { AnaliseService } from './analise.service';
 
@@ -44,7 +36,14 @@ export interface ResultadoDaProposta {
   avisos: string[];
   problemas: SemanticIssue[];
   erro?: string;
+  /** A falha pode passar sozinha (rede, tempo, resposta cortada). */
+  temporario?: boolean;
 }
+
+/** Tentativas COM a IA antes de pedir à pessoa para tentar de novo. */
+const TENTATIVAS_DA_IA = 3;
+/** Espera entre elas (cresce a cada tentativa). */
+const ESPERA_ENTRE_TENTATIVAS_MS = 15_000;
 
 /** De quanto em quanto tempo procura projeto parado em "analisando". */
 const VARREDURA_MS = 60_000;
@@ -63,7 +62,6 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly analise: AnaliseService,
     private readonly planos: EditPlansService,
-    private readonly acabamento: AcabamentoService,
     private readonly filas: FilaService,
     private readonly midias: MidiasService,
   ) {}
@@ -135,81 +133,67 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * O caminho automático: sempre termina com o projeto fora de
-   * "analisando" — com proposta, ou com uma falha que explica o motivo.
+   * O caminho automático: a IA monta. Uma falha passageira (rede, tempo
+   * esgotado, resposta cortada) ganha novas tentativas COM a IA; se não
+   * der, o projeto sai de "analisando" com o motivo na tela e o botão
+   * "Tentar de novo". Não há montagem sem IA: numa ferramenta de IA, ela
+   * entregava "tudo Contexto" e parecia que a IA tinha esquecido o que sabe.
    */
   async automatica(projectId: string): Promise<ResultadoDaProposta | null> {
     const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
     if (!projeto || projeto.state !== 'ANALYZING') return null;
 
-    try {
-      await this.filas.publicarProgresso(projectId, 'montando', 5);
-      const r = await this.gerar(projeto.workspaceId, projectId, { comReserva: true });
-      await this.filas.publicarProgresso(projectId, 'montando', 100);
-      return r;
-    } catch (e) {
-      const mensagem = e instanceof Error ? e.message : String(e);
-      this.log.error(`proposta do projeto ${projectId} falhou: ${mensagem}`);
-      await this.prisma.project.update({
-        where: { id: projectId },
-        data: {
-          state: 'FAILED_RETRYABLE',
-          publicError: 'Não foi possível montar a proposta de edição. Tente de novo.',
-        },
-      });
-      return null;
+    let ultimoErro = 'a IA não respondeu';
+    for (let tentativa = 1; tentativa <= TENTATIVAS_DA_IA; tentativa += 1) {
+      try {
+        await this.filas.publicarProgresso(projectId, 'montando', 5);
+        const r = await this.gerar(projeto.workspaceId, projectId);
+        if (r.ok) {
+          await this.filas.publicarProgresso(projectId, 'montando', 100);
+          return r;
+        }
+        ultimoErro = r.erro ?? ultimoErro;
+        if (!r.temporario) break;
+      } catch (e) {
+        ultimoErro = e instanceof Error ? e.message : String(e);
+      }
+      this.log.warn(`proposta do projeto ${projectId}: tentativa ${tentativa} falhou (${ultimoErro})`);
+      if (tentativa < TENTATIVAS_DA_IA) await new Promise((ok) => setTimeout(ok, ESPERA_ENTRE_TENTATIVAS_MS * tentativa));
     }
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: {
+        state: 'FAILED_RETRYABLE',
+        publicError: `A IA não conseguiu montar o vídeo (${ultimoErro.replace(/\.$/, '').slice(0, 300)}). Toque em "Tentar de novo".`,
+      },
+    });
+    return null;
   }
 
-  /**
-   * Gera, salva e ativa a proposta.
-   *
-   * Com `comReserva`, qualquer falha da IA cai na montagem automática.
-   * Sem ela, a falha volta para quem pediu.
-   */
-  async gerar(
-    workspaceId: string,
-    projectId: string,
-    opcoes: { comReserva: boolean },
-  ): Promise<ResultadoDaProposta> {
-    // Pedido manual ("refazer a análise") quer uma resposta nova, não a
-    // guardada; o automático aceita o cache.
-    const resultado = await this.analise.analisar(workspaceId, projectId, { semCache: !opcoes.comReserva });
-
-    let plano: unknown;
-    let resposta: ResultadoDaProposta;
-
-    if (resultado.ok) {
-      plano = resultado.plano;
-      resposta = {
-        ok: true,
-        // A montagem pelas cenas sai por regra quando a IA não responde:
-        // o aviso e o motivo dizem isso, como na montagem sem IA da fala.
-        origem: resultado.origem ?? 'ia',
-        confianca: resultado.confianca,
-        avisos: resultado.avisos,
-        problemas: resultado.problemas,
-      };
-    } else if (opcoes.comReserva) {
-      const reserva = await this.montarSemIa(workspaceId, projectId, resultado.erro);
-      if (!reserva) {
-        throw new Error(`sem proposta da IA (${resultado.erro}) e sem fala para montar`);
-      }
-      plano = reserva.plano;
-      resposta = { ok: true, origem: 'automatica', confianca: 1, avisos: reserva.avisos, problemas: [] };
-    } else {
-      return { ok: false, origem: 'ia', confianca: 0, avisos: [], problemas: [], erro: resultado.erro };
+  /** Gera, salva e ativa a proposta da IA. Uma falha volta para quem pediu. */
+  async gerar(workspaceId: string, projectId: string): Promise<ResultadoDaProposta> {
+    const resultado = await this.analise.analisar(workspaceId, projectId, { semCache: true });
+    if (!resultado.ok) {
+      return { ok: false, origem: 'ia', confianca: 0, avisos: [], problemas: [], erro: resultado.erro, temporario: resultado.temporario };
     }
+    const plano = resultado.plano;
+    const resposta: ResultadoDaProposta = {
+      ok: true,
+      origem: 'ia',
+      confianca: resultado.confianca,
+      avisos: resultado.avisos,
+      problemas: resultado.problemas,
+    };
 
     const sistema: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
-    await this.planos.salvar(sistema, projectId, plano, resposta.origem === 'ia' ? 'ai' : 'user');
+    await this.planos.salvar(sistema, projectId, plano, 'ai');
 
-    // Com a IA de pé, a montagem já separa as mídias que ilustram a fala
-    // (ícones 3D, logos, fotos, vídeos) -- para APROVAR no editor, não
-    // aplicadas. Sem IA (montagem automática), não há quem escolha; sem
-    // fala (montagem pelas cenas), não há fala a ilustrar.
+    // A montagem já separa as mídias que ilustram a fala (ícones 3D,
+    // logos, fotos, vídeos) -- para APROVAR no editor, não aplicadas.
+    // Sem fala (montagem pelas cenas), não há fala a ilustrar.
     const pelasCenas = (plano as EditPlanV1).clips.every((c) => c.origin === 'cena');
-    if (resposta.origem === 'ia' && !pelasCenas) {
+    if (!pelasCenas) {
       await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
       const n = await this.midias.separarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
         this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
@@ -218,74 +202,8 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       if (n > 0) resposta.avisos = [...resposta.avisos, `A IA separou ${n} ${n === 1 ? 'mídia' : 'mídias'} para ilustrar a fala: aprove no painel da IA.`];
     }
     await this.ativar(projectId);
-
-    // O motivo fica no projeto: a tela diz POR QUE a IA não montou
-    // (chave recusada, sem crédito, rede), e não só que não montou.
-    await this.prisma.project
-      .update({
-        where: { id: projectId },
-        data: {
-          aiFallbackReason:
-            resposta.origem === 'ia' ? null : resultado.ok ? (resultado.motivo ?? null)?.slice(0, 500) ?? null : resultado.erro.slice(0, 500),
-        },
-      })
-      .catch(() => undefined);
-
+    await this.prisma.project.update({ where: { id: projectId }, data: { aiFallbackReason: null } }).catch(() => undefined);
     return resposta;
-  }
-
-  /** Monta a proposta sem IA a partir da transcrição salva. */
-  private async montarSemIa(workspaceId: string, projectId: string, motivo: string) {
-    const transcricao = await this.prisma.transcription.findUnique({
-      where: { projectId },
-      include: {
-        segments: {
-          orderBy: { position: 'asc' },
-          include: { words: { select: { id: true, startMs: true, endMs: true, word: true } } },
-        },
-      },
-    });
-    const original = await this.prisma.mediaSource.findFirst({
-      where: { projectId, kind: 'ORIGINAL' },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!transcricao || !original?.durationMs) return null;
-
-    const segmentos = transcricao.segments.map((s) => ({
-      id: s.id,
-      startMs: s.startMs,
-      endMs: s.endMs,
-      text: s.text,
-      minWordConfidence: s.confidence ?? 1,
-    }));
-
-    const aviso =
-      `A IA não montou esta proposta (${motivo.replace(/\.$/, '')}). ` +
-      'O vídeo foi montado com toda a fala, sem as pausas longas — corte o que quiser na timeline.';
-
-    const proposta = montarPropostaSemIa(segmentos, original.durationMs, aviso);
-    if (!proposta) return null;
-
-    // Sem IA, o video sai acabado do mesmo jeito: legenda, zoom, logo e
-    // trilha vem do Kit de marca, por regra -- nenhum token gasto.
-    const compilado = compilarProposta({
-      proposta,
-      projectId,
-      sourceMediaId: original.id,
-      sourceDurationMs: original.durationMs,
-      segmentos,
-      acabamento: await this.acabamento.contexto(workspaceId),
-    });
-    if (!compilado.ok) return null;
-
-    // Cortes encostados na fala, como na proposta da IA.
-    const palavras = transcricao.segments.flatMap((sg) => sg.words);
-    const apertado = tirarPausas(compilado.plano as EditPlanV1, palavras);
-    const plano =
-      apertado.removidoMs >= 150 && editPlanV1Schema.safeParse(apertado.plano).success ? apertado.plano : compilado.plano;
-
-    return { plano, avisos: compilado.avisos };
   }
 
   /**

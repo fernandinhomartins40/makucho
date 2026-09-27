@@ -8,9 +8,8 @@
 //   presta) -> DeepSeek (escolhe, ordena, escreve os textos) ->
 //   compilador (montagem-visual.ts) -> EditPlan
 //
-// Sem IA disponível (sem chave, teto do mês, resposta ruim), a mesma
-// montagem sai por regra: as cenas boas em ordem, no ritmo da receita.
-// O vídeo nunca fica sem proposta por falta de fala.
+// Sem montagem por regra no lugar da IA: se a IA falhar, a proposta
+// tenta de novo com ela (proposta.service) e, no fim, mostra o motivo.
 // ============================================================
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -22,7 +21,6 @@ import {
   cenasDosCortes,
   compilarMontagemVisual,
   lerPropostaVisual,
-  montagemVisualSemIa,
   perfilDoAudioSchema,
   ramoOuOutro,
   tipoDeVideoPadrao,
@@ -110,43 +108,27 @@ export class MontagemVisualService {
     });
     await this.olhar(cenas, base.map((c) => c.quadro), ramo);
 
-    // ---------- A IA monta; sem ela, a regra ----------
+    // ---------- A IA monta (sem ela, não há montagem: é uma ferramenta de IA) ----------
     const acabamento = await this.acabamento.contexto(workspaceId);
-    let proposta: PropostaVisual | null = null;
-    let motivo: string | undefined;
-    if (opcoes.comIa !== false) {
-      const r = await this.pedirAIa({ workspaceId, projectId, cenas, tipo, ramo, audio, resumo, titulo: projeto.title, duracao, temTrilha: Boolean(acabamento?.musicaAssetId), temLogo: Boolean(acabamento?.logoAssetId), semCache: Boolean(opcoes.semCache) });
-      if (r.ok) proposta = r.proposta;
-      else motivo = r.erro;
-    }
-    const origem: 'ia' | 'automatica' = proposta ? 'ia' : 'automatica';
-    proposta ??= montagemVisualSemIa({ cenas, tipo, ramo, resumo, titulo: projeto.title });
-
-    const compilar = (p: PropostaVisual) =>
-      compilarMontagemVisual({ proposta: p, cenas, projectId, sourceMediaId: original.id, sourceDurationMs: duracao, tipo, audio, segmentos, ...(acabamento ? { acabamento } : {}) });
-    let compilado = compilar(proposta);
-    let origemFinal = origem;
-    if (!compilado.ok && origem === 'ia') {
-      // A proposta da IA não fechou (índice de cena que não existe): a regra.
+    const r = await this.pedirAIa({ workspaceId, projectId, cenas, tipo, ramo, audio, resumo, titulo: projeto.title, duracao, temTrilha: Boolean(acabamento?.musicaAssetId), temLogo: Boolean(acabamento?.logoAssetId), semCache: Boolean(opcoes.semCache) });
+    if (!r.ok) return { ok: false, erro: r.erro };
+    const proposta = r.proposta;
+    const compilado = compilarMontagemVisual({ proposta, cenas, projectId, sourceMediaId: original.id, sourceDurationMs: duracao, tipo, audio, segmentos, ...(acabamento ? { acabamento } : {}) });
+    if (!compilado.ok) {
       this.log.warn(`montagem pelas cenas da IA recusada no projeto ${projectId}: ${compilado.erro}`);
-      motivo = `a proposta da IA não pôde ser usada (${compilado.erro})`;
-      compilado = compilar(montagemVisualSemIa({ cenas, tipo, ramo, resumo, titulo: projeto.title }));
-      origemFinal = 'automatica';
+      return { ok: false, erro: `a proposta da IA não pôde ser usada (${compilado.erro})` };
     }
-    if (!compilado.ok) return { ok: false, erro: compilado.erro };
 
     const avisos = [
       `${audio ? ROTULO_DO_AUDIO[audio.tipo] : 'Sem narração'}: o vídeo foi montado pelas cenas (${RECEITAS[tipo].rotulo.toLowerCase()}).`,
       ...compilado.avisos,
     ];
-    if (origemFinal === 'automatica' && motivo) avisos.push(`A IA não montou (${motivo.replace(/\.$/, '')}); as cenas entraram na ordem da gravação.`);
     return {
       ok: true,
       plano: compilado.plano,
       avisos,
-      origem: origemFinal,
+      origem: 'ia',
       tipo,
-      ...(motivo && origemFinal === 'automatica' ? { motivo } : {}),
       ...(proposta.analysis?.topic ? { resumoDaIa: proposta.analysis.topic } : {}),
     };
   }
@@ -218,7 +200,7 @@ export class MontagemVisualService {
         chamada: 'montar_por_cenas',
         sistema,
         usuario,
-        maxTokens: 3000,
+        maxTokens: 8000,
         promptVersion: versao,
         semCache: e.semCache,
         raciocinio: 'desligado',

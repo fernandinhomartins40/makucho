@@ -54,7 +54,9 @@ import { PromptsService } from './prompts.service';
  * três ou quatro (os atalhos `estilo_de_texto` e `aplicar_pacote`
  * valem por dezenas). O teto é o que impede um laço de gerar o máximo.
  */
-const MAX_TOKENS_DO_COMANDO = 1500;
+// Um pedido amplo ("deixa tudo mais bonito") mexe em muitos itens: o
+// teto não pode cortar a lista de operações no meio.
+const MAX_TOKENS_DO_COMANDO = 8000;
 
 /** O kit completo (visual, acabamento e ~20 prompts) cabe em ~3 mil tokens. */
 const MAX_TOKENS_DA_MARCA = 4000;
