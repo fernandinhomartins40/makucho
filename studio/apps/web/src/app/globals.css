@@ -13433,3 +13433,49 @@ button.midia-cartao__previa:disabled {
     opacity: 0.3;
   }
 }
+
+/* A logo dá para arrastar na prévia (e selecionar para editar). */
+.palco__logo--movel {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.palco__logo--movel[data-selecionado] {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+
+/* Escolher a logo do vídeo entre as versões da marca. */
+.logos-do-item {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+
+.logos-do-item__opcao {
+  display: grid;
+  place-items: center;
+  height: 56px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 0 0 / 12px 12px;
+  cursor: pointer;
+}
+
+.logos-do-item__opcao[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.logos-do-item__opcao {
+  overflow: hidden;
+}
+
+.logos-do-item__opcao img {
+  display: block;
+  width: 100%;
+  height: 44px;
+  object-fit: contain;
+}

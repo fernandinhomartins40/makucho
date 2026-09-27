@@ -494,5 +494,24 @@ t('atempo: 3x vira 2 x 1,5', cadeiaDeAtempo(3) === 'atempo=2,atempo=1.5');
   t('narração sem arquivo fica de fora (o vídeo sai)', !semArquivo[semArquivo.indexOf('-filter_complex') + 1]!.includes('[nr0]'));
 }
 
+// ============================================================
+// Logo personalizada: outro arquivo, tamanho, lugar livre, visibilidade
+// ============================================================
+
+{
+  const comLogo: EditPlanV1 = {
+    ...plano,
+    overlays: [
+      { id: 'lg', component: 'LogoBug', assetId: 'logo2', variant: 'sd', timelineStartMs: 0, durationMs: 5000, style: { sizeScale: 2, x: 0.5, y: 0.3, bgOpacity: 0.5 } },
+    ],
+  };
+  const a = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: comLogo, imagens: { logo2: '/storage/logo-escura.png' } });
+  const f = a[a.indexOf('-filter_complex') + 1]!;
+  t('logo trocada: o arquivo novo entra', a.includes('/storage/logo-escura.png'));
+  t('logo no dobro do tamanho', f.includes('scale=367:307:force_original_aspect_ratio=decrease'));
+  t('logo no lugar arrastado (centro em x/y)', f.includes('overlay=x=540-w/2:y=576-h/2'));
+  t('logo com a visibilidade escolhida', f.includes('colorchannelmixer=aa=0.50'));
+}
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

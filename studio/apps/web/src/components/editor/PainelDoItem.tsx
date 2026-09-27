@@ -847,9 +847,28 @@ function MovimentoDaMidia({
 
 function TrilhaDeFundo({ plan, onOperacao, onFechar }: { plan: EditPlanV1; onOperacao: (op: TimelineOperation) => void; onFechar: () => void }) {
   const m = plan.music;
+  const [trilhas, setTrilhas] = useState<Array<{ id: string; nome: string }>>([]);
+  useEffect(() => {
+    void apiAssets
+      .listar('MUSIC')
+      .then((l) => setTrilhas(l.map((a) => ({ id: a.id, nome: a.originalName }))))
+      .catch(() => setTrilhas([]));
+  }, []);
   if (!m) return <p className="texto-secundario">O vídeo não tem trilha. Escolha uma na Biblioteca → Trilha.</p>;
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      {trilhas.length > 1 && (
+        <label className="campo" style={{ marginBottom: 0 }}>
+          <span className="campo__rotulo">Qual trilha</span>
+          <select className="campo__selecao" value={m.assetId} onChange={(ev) => onOperacao({ op: 'trocar_musica', assetId: ev.target.value, gainDb: m.gainDb, duckUnderVoice: m.duckUnderVoice })}>
+            {trilhas.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <Deslizante rotulo="Volume" valor={m.gainDb} min={-40} max={0} passo={1} unidade=" dB" onSoltar={(v) => onOperacao({ op: 'configurar_musica', gainDb: v })} />
       <Segmentado
         rotulo="Abaixar na fala"
@@ -1209,6 +1228,8 @@ function Elemento({
         </>
       )}
 
+      {o.component === 'LogoBug' && <LogoDoItem plan={plan} overlayId={overlayId} onOperacao={onOperacao} />}
+
       <button
         type="button"
         className="botao botao--perigo botao--pequeno"
@@ -1220,6 +1241,88 @@ function Elemento({
       >
         <IconeLixeira size={15} /> Remover
       </button>
+    </div>
+  );
+}
+
+/** Os cantos da logo, como centro (x/y de 0 a 1): o mesmo lugar do render. */
+const CANTOS_DA_LOGO: Record<string, { x: number; y: number; rotulo: string }> = {
+  se: { x: 0.14, y: 0.115, rotulo: 'Em cima, à esquerda' },
+  sd: { x: 0.86, y: 0.115, rotulo: 'Em cima, à direita' },
+  ie: { x: 0.14, y: 0.66, rotulo: 'Embaixo, à esquerda' },
+  id: { x: 0.86, y: 0.66, rotulo: 'Embaixo, à direita' },
+};
+
+/**
+ * A logo do vídeo: trocar por outra da marca (a versão para fundo escuro,
+ * o ícone), tamanho, lugar, transparência e quanto tempo fica.
+ */
+function LogoDoItem({ plan, overlayId, onOperacao }: { plan: EditPlanV1; overlayId: string; onOperacao: (op: TimelineOperation) => void }) {
+  const o = plan.overlays.find((x) => x.id === overlayId);
+  const [logos, setLogos] = useState<Array<{ id: string; nome: string }> | null>(null);
+  useEffect(() => {
+    void apiAssets
+      .listar()
+      .then((l) => setLogos(l.filter((a) => a.kind.startsWith('LOGO')).map((a) => ({ id: a.id, nome: a.originalName }))))
+      .catch(() => setLogos([]));
+  }, []);
+  if (!o) return null;
+  const e = o.style ?? {};
+  const escala = e.sizeScale ?? 1;
+  const total = plan.clips.reduce((t, c) => t + Math.round((c.sourceEndMs - c.sourceStartMs) / (c.speed ?? 1)), 0);
+  const canto = Object.entries(CANTOS_DA_LOGO).find(([, c]) => e.x !== undefined && Math.abs(c.x - e.x) < 0.02 && Math.abs(c.y - (e.y ?? -1)) < 0.02)?.[0];
+  const lugar = e.x === undefined ? (o.variant ?? 'sd') : (canto ?? 'livre');
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Qual logo</span>
+        {logos === null ? (
+          <p className="texto-secundario">Carregando…</p>
+        ) : logos.length === 0 ? (
+          <p className="campo__ajuda">Envie as versões da logo em Minha marca (a principal, para fundo escuro, o ícone).</p>
+        ) : (
+          <div className="logos-do-item">
+            {logos.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                className="logos-do-item__opcao"
+                aria-pressed={o.assetId === l.id}
+                title={l.nome}
+                onClick={() => o.assetId !== l.id && onOperacao({ op: 'editar_overlay', overlayId, assetId: l.id })}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={apiAssets.url(l.id)} alt={l.nome} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <Deslizante rotulo="Tamanho" valor={Math.round(escala * 100)} min={40} max={300} passo={5} unidade="%" onSoltar={(v) => onOperacao({ op: 'editar_overlay', overlayId, style: { sizeScale: v / 100 } })} />
+      <Segmentado
+        rotulo="Lugar"
+        valor={lugar}
+        opcoes={[...Object.entries(CANTOS_DA_LOGO).map(([id, c]) => [id, c.rotulo] as [string, string]), ...(lugar === 'livre' ? [['livre', 'Onde arrastei'] as [string, string]] : [])]}
+        onTrocar={(v) => {
+          const c = CANTOS_DA_LOGO[v];
+          if (c) onOperacao({ op: 'editar_overlay', overlayId, variant: v, style: { x: c.x, y: c.y } });
+        }}
+      />
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>Ou arraste a logo na prévia para qualquer lugar.</p>
+      <Deslizante
+        rotulo="Visibilidade"
+        valor={Math.round((e.bgOpacity ?? 0.92) * 100)}
+        min={10}
+        max={100}
+        passo={5}
+        unidade="%"
+        onSoltar={(v) => onOperacao({ op: 'editar_overlay', overlayId, style: { bgOpacity: v / 100 } })}
+      />
+      {(o.timelineStartMs > 0 || o.durationMs < total - 200) && (
+        <button type="button" className="botao botao--secundario botao--pequeno" style={{ justifySelf: 'start' }} onClick={() => onOperacao({ op: 'editar_overlay', overlayId, timelineStartMs: 0, durationMs: Math.max(300, total) })}>
+          Mostrar do começo ao fim
+        </button>
+      )}
     </div>
   );
 }

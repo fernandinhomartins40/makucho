@@ -1146,7 +1146,8 @@ export function Palco({
   );
 
   // ---------- Logo e imagens ----------
-  const imagensVisiveis = plan.overlays.filter(
+  // Do plano da prévia: arrastar a logo mostra ela andando antes de soltar.
+  const imagensVisiveis = planoDaPrevia.overlays.filter(
     (o) =>
       (o.component === 'LogoBug' || o.component === 'ImageOverlay') &&
       o.assetId &&
@@ -1235,7 +1236,30 @@ export function Palco({
           imagensVisiveis.map((o) =>
             o.component === 'LogoBug' ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className={`palco__logo palco__logo--${o.variant ?? 'sd'}`} />
+              <img
+                key={o.id}
+                src={urlDoAsset(o.assetId!)}
+                alt=""
+                draggable={false}
+                data-selecionado={destaqueSelecionado === o.id || undefined}
+                className={`palco__logo palco__logo--${o.variant ?? 'sd'}${onMoverDestaque ? ' palco__logo--movel' : ''}`}
+                style={{
+                  maxWidth: `${17 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
+                  maxHeight: `${8 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
+                  opacity: Math.min(1, Math.max(0.1, o.style?.bgOpacity ?? 0.92)),
+                  ...(o.style?.x !== undefined && o.style?.y !== undefined
+                    ? { left: `${o.style.x * 100}%`, top: `${o.style.y * 100}%`, right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' }
+                    : {}),
+                }}
+                onPointerDown={(e) => {
+                  // Arrastar a logo na prévia: pega o centro de onde ela está.
+                  const quadro = quadroRef.current;
+                  if (!quadro || !onMoverDestaque) return;
+                  const q = quadro.getBoundingClientRect();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  arrastarTexto(o.id, (r.left + r.width / 2 - q.left) / q.width, (r.top + r.height / 2 - q.top) / q.height)(e);
+                }}
+              />
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className="palco__imagem-sobreposta" />

@@ -479,14 +479,20 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     const fim = Math.min((o.timelineStartMs + o.durationMs) / 1000, duracaoTotalS).toFixed(3);
 
     if (o.component === 'LogoBug') {
-      // Caixa de 17% da largura por 8% da altura: um logo largo ou
-      // alto cabe sem distorcer, e nenhum cobre o rosto.
-      const lw = Math.round(W * 0.17);
-      const lh = Math.round(H * 0.08);
+      // Caixa de 17% da largura por 8% da altura (vezes o tamanho que a
+      // pessoa escolheu): um logo largo ou alto cabe sem distorcer.
+      const escala = Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1));
+      const lw = Math.round(W * 0.17 * escala);
+      const lh = Math.round(H * 0.08 * escala);
       const margem = Math.round(W * 0.05);
-      const [x, y] = posicaoDoLogo(o.variant, W, H, margem);
+      // Posição livre (x/y = o centro da logo, de 0 a 1) ou um dos cantos.
+      const [x, y] =
+        o.style?.x !== undefined && o.style?.y !== undefined
+          ? [`${Math.round(o.style.x * W)}-w/2`, `${Math.round(o.style.y * H)}-h/2`]
+          : posicaoDoLogo(o.variant, W, H, margem);
+      const opacidade = Math.min(1, Math.max(0.1, o.style?.bgOpacity ?? 0.92)).toFixed(2);
       partes.push(
-        `[${indice}:v]scale=${lw}:${lh}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=0.92[img${indice}]`,
+        `[${indice}:v]scale=${lw}:${lh}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${opacidade}[img${indice}]`,
       );
       partes.push(`[${video}][img${indice}]overlay=x=${x}:y=${y}:enable='between(t,${inicio},${fim})'[o${indice}]`);
     } else {

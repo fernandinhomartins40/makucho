@@ -363,6 +363,8 @@ export const editarOverlaySchema = z.object({
   op: z.literal('editar_overlay'),
   overlayId: idSchema,
   text: z.string().min(1).max(200).optional(),
+  /** Trocar o arquivo (outra logo da marca, outra imagem): só logo e imagem. */
+  assetId: idSchema.optional(),
   variant: z.string().max(40).optional(),
   timelineStartMs: msSchema.optional(),
   durationMs: z.number().int().min(300).max(600_000).optional(),
@@ -1122,6 +1124,10 @@ export function aplicarOperacao(
         Object.fromEntries(Object.entries(e).filter(([, v]) => v !== undefined)) as EstiloDoTexto;
       if (!novo.overlays.some((o) => o.id === operacao.overlayId)) {
         return { ok: false, erro: 'elemento nao encontrado' };
+      }
+      const alvo = novo.overlays.find((o) => o.id === operacao.overlayId)!;
+      if (operacao.assetId && !['LogoBug', 'ImageOverlay'].includes(alvo.component)) {
+        return { ok: false, erro: 'só logo e imagem trocam de arquivo' };
       }
       const { op: _op, overlayId, style, replaceStyle, ...mudancas } = operacao;
       const definidas = Object.fromEntries(
