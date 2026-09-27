@@ -12667,3 +12667,179 @@ html:not([data-dicas]) :is(
   white-space: normal;
   text-align: left;
 }
+
+/* ============================================================
+   Computador, jeito CapCut online: coluna de categorias, painel ao
+   lado (recolhível), vídeo no centro, propriedades à direita e a
+   barra da timeline com play e tempo no meio.
+   ============================================================ */
+.biblioteca__abas {
+  display: none !important;
+}
+
+.proporcao {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .editor {
+    --col-painel: clamp(280px, 23vw, 420px);
+    --col-props: clamp(260px, 21vw, 360px);
+    grid-template-columns: 76px var(--col-painel) minmax(0, 1fr) var(--col-props) !important;
+  }
+
+  .editor[data-painel='fechado'] {
+    --col-painel: 0px;
+  }
+
+  .editor[data-painel='fechado'] .editor__ia {
+    display: none !important;
+  }
+
+  .editor .editor__palco > .palco__controles {
+    display: none !important;
+  }
+
+  .editor__rail {
+    gap: 2px;
+    padding: 8px 4px;
+  }
+
+  .editor__rail .ferramenta {
+    width: 64px;
+    padding: 7px 0 6px;
+    gap: 3px;
+    border-radius: 12px;
+  }
+
+  .editor__rail .ferramenta__rotulo {
+    font-size: 10.5px;
+  }
+
+  .editor .editor__palco {
+    position: relative;
+  }
+
+  .proporcao {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 5;
+    display: block;
+  }
+
+  .proporcao__botao {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .proporcao__botao:hover,
+  .proporcao__botao[aria-expanded='true'] {
+    border-color: var(--primary);
+  }
+
+  .proporcao__menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    display: grid;
+    gap: 8px;
+    width: 300px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg-sidebar);
+    box-shadow: 0 16px 36px rgb(0 0 0 / 45%);
+  }
+
+  .proporcao__menu > strong {
+    font-size: 13px;
+  }
+
+  /* Barra da timeline: ferramentas | play e tempo | zoom. */
+  .timeline__barra {
+    display: grid !important;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+  }
+
+  .timeline__barra > .timeline__acao,
+  .timeline__barra > .timeline__separador,
+  .timeline__barra > .timeline__adicionar-largo,
+  .timeline__barra > .timeline__adicionar-menu {
+    grid-row: 1;
+  }
+
+  .timeline__barra {
+    display: flex !important;
+  }
+
+  .timeline__play {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 auto;
+  }
+
+  .timeline__play-botao {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--text-primary);
+    color: var(--bg-canvas);
+    cursor: pointer;
+  }
+
+  .timeline__play-tempo {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timeline__play-tempo b {
+    color: var(--text-primary);
+  }
+
+  /* As ações do trecho só com ícone (o nome no título), e os "+" saem:
+     a coluna de categorias e o "+" da faixa acrescentam. */
+  .timeline__barra .timeline__acao .timeline__acao-rotulo:not(.timeline__acao-rotulo--fixo),
+  .timeline__barra .timeline__acao .timeline__tecla,
+  .timeline__barra > .timeline__adicionar-largo {
+    display: none !important;
+  }
+
+  .timeline__barra > .timeline__play + .linha.auto {
+    margin-left: 0;
+  }
+}
+
+/* Telas médias: as propriedades só com algo selecionado. */
+@media (min-width: 900px) and (max-width: 1279px) {
+  .editor[data-props='sem'] {
+    --col-props: 0px;
+  }
+
+  .editor[data-props='sem'] .editor__inspector {
+    display: none !important;
+  }
+}
+
+/* Cada painel no seu lugar da grade (sem isso, recolher o painel da
+   esquerda mandava as propriedades para a coluna vazia). */
+@media (min-width: 900px) {
+  .editor__inspector {
+    grid-area: inspector;
+  }
+}

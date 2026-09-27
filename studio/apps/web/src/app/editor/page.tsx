@@ -41,11 +41,12 @@ import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPa
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
-import { EditorSimples, type DestinoSimples } from '../../components/editor/EditorSimples';
+import type { DestinoSimples } from '../../components/editor/EditorSimples';
 import { EtiquetaDoItem, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
 import { BarraMovel, type AcaoMovel } from '../../components/editor/BarraMovel';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
-import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
+import { RailDeFerramentas, type AbaDoEditor, type CategoriaDaColuna } from '../../components/editor/RailDeFerramentas';
+import { ProporcaoDoVideo } from '../../components/editor/ProporcaoDoVideo';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
 import { AvisoDeFechamento } from '../../components/editor/AvisoDeFechamento';
 import type { ItemDaTimeline } from '../../components/timeline/camadas';
@@ -581,10 +582,30 @@ function Editor({ projectId }: { projectId: string }) {
       // Vale só nesta visita.
     }
   };
-  const simples = modo === 'simples';
+  // Um editor só, completo (o jeito do CapCut): o "simples" ficou para trás.
+  const simples = false as boolean;
+  void modo;
+  void alternarModo;
 
   // O que foi copiado na etiqueta do item (cola no cursor).
   const [copiado, setCopiado] = useState<ItemCopiado | null>(null);
+
+  // ---------- Coluna de categorias (computador) ----------
+  const [painelAberto, setPainelAberto] = useState(true);
+  const colunaAtiva: CategoriaDaColuna | null = !painelAberto
+    ? null
+    : aba === 'ia' || aba === 'midia' || aba === 'legendas'
+      ? aba
+      : aba === 'biblioteca'
+        ? (categoriaDaBiblioteca as CategoriaDaColuna)
+        : null;
+  const escolherNaColuna = (c: CategoriaDaColuna) => {
+    if (c === colunaAtiva) return setPainelAberto(false);
+    setPainelAberto(true);
+    if (c === 'ia' || c === 'midia' || c === 'legendas') return setAba(c);
+    setCategoriaDaBiblioteca(c as CategoriaDaBiblioteca);
+    setAba('biblioteca');
+  };
 
   // ---------- Narração ----------
   const [gravadorDe, setGravadorDe] = useState<number | null>(null);
@@ -595,6 +616,7 @@ function Editor({ projectId }: { projectId: string }) {
   const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
   const abrirPainel = (a: AbaDoEditor) => {
     setAba(a);
+    setPainelAberto(true);
     if (noCelular() || simples) setFolha('painel');
   };
   const abrirBiblioteca = (c: CategoriaDaBiblioteca) => {
@@ -1018,16 +1040,7 @@ function Editor({ projectId }: { projectId: string }) {
             <IconeRefazer size={19} />
           </button>
 
-          <button
-            type="button"
-            className="botao botao--fantasma editor__modo"
-            aria-pressed={!simples}
-            onClick={alternarModo}
-            title={simples ? 'Timeline completa, faixas e todas as propriedades' : 'Só o essencial'}
-          >
-            <IconeParametros size={16} />
-            <span className="so-largo">{simples ? 'Modo avançado' : 'Modo simples'}</span>
-          </button>
+
 
           <button
             type="button"
@@ -1116,15 +1129,8 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo={modo}>
-        <RailDeFerramentas
-          aba={aba}
-          onTrocar={(nova) => {
-            setAba(nova);
-            // Tocar de novo na ferramenta aberta fecha a folha.
-            setFolha((f) => (f === 'painel' && nova === aba ? null : 'painel'));
-          }}
-        />
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado ? 'com' : 'sem'}>
+        <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
 
         {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
@@ -1304,6 +1310,7 @@ function Editor({ projectId }: { projectId: string }) {
           className="editor__palco"
           style={{ ['--quadro-ar' as string]: `${plano.canvas.width} / ${plano.canvas.height}`, ['--quadro-hw' as string]: String(plano.canvas.height / plano.canvas.width) }}
         >
+          <ProporcaoDoVideo formato={plano.canvas.aspectRatio} onEscolher={(f) => executar({ op: 'definir_formato', aspectRatio: f })} />
           <FerramentasDoPalco
             ativa={folha === 'painel' ? (aba === 'midia' ? 'midia' : null) : null}
             onEscolher={naFerramenta}
@@ -1436,49 +1443,6 @@ function Editor({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {simples && (
-          <EditorSimples
-            plan={plano}
-            desligados={desligados}
-            posicaoMs={posicaoMs}
-            quadros={quadrosDoVideo}
-            semIa={semIa}
-            onPedir={pedirAIa}
-            onIrPara={setPosicaoMs}
-            onAlternarTrecho={alternarTrecho}
-            onAbrir={abrirNoSimples}
-            topo={
-              <>
-                {semIa && (
-                  <div className="aviso aviso--atencao">
-                    <IconeAviso size={15} />
-                    <span className="crescer" style={{ fontSize: 12.5 }}>Montado sem IA: toda a fala, sem as pausas.</span>
-                    <button type="button" className="botao botao--primario botao--pequeno" disabled={analisando} onClick={() => void analisar()}>
-                      {analisando ? 'Analisando…' : 'Montar com IA'}
-                    </button>
-                  </div>
-                )}
-                {avisosDaIa.map((a) => (
-                  <div key={a} className="aviso aviso--atencao">
-                    <IconeAviso size={15} />
-                    <span style={{ fontSize: 12.5 }}>{a}</span>
-                  </div>
-                ))}
-                {midiasSeparadas?.momentos?.length ? (
-                  <div className="aviso aviso--info">
-                    <IconeMidia size={15} />
-                    <span className="crescer" style={{ fontSize: 12.5 }}>
-                      A IA separou {midiasSeparadas.momentos.length} {midiasSeparadas.momentos.length === 1 ? 'imagem' : 'imagens'} para o vídeo.
-                    </span>
-                    <button type="button" className="botao botao--primario botao--pequeno" onClick={abrirMidiasSeparadas}>
-                      Ver e aprovar
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            }
-          />
-        )}
         <section className="editor__timeline" aria-label="Linha do tempo">
             <DivisorDaTimeline editorRef={editorRef} />
             <Timeline
@@ -1497,6 +1461,8 @@ function Editor({ projectId }: { projectId: string }) {
               onAjustes={() => naAcao('ajustar')}
               onVelocidade={() => naAcao('velocidade')}
               central={celular}
+            tocando={tocandoNaPrevia}
+            onAlternarReproducao={temProxy ? () => setComandoAlternar((n) => n + 1) : undefined}
             onSilenciarTudo={() => executarAcaoMovel('silenciar')}
             somOriginalMudo={somOriginalMudo}
             onGravarNarracao={() => {

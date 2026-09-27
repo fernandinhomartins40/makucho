@@ -74,6 +74,9 @@ import {
   IconeVelocidade,
   IconeTrilha as IconeMusica,
   IconeMicrofone,
+  IconeTocar,
+  IconePausar,
+  IconeTelaCheia,
 } from '../icones';
 import type { Icon } from '@phosphor-icons/react';
 import { ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
@@ -158,6 +161,9 @@ interface Props {
   /** Atalhos do começo da faixa de vídeo (modo central). */
   onSilenciarTudo?: () => void;
   somOriginalMudo?: boolean;
+  /** Play e tempo no meio da barra (computador, como no CapCut). */
+  tocando?: boolean;
+  onAlternarReproducao?: () => void;
 }
 
 type Arraste = {
@@ -205,6 +211,8 @@ export function Timeline({
   central = false,
   onSilenciarTudo,
   somOriginalMudo = false,
+  tocando = false,
+  onAlternarReproducao,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -749,6 +757,17 @@ export function Timeline({
           </button>
         </span>
 
+        {onAlternarReproducao && (
+          <span className="timeline__play">
+            <button type="button" className="timeline__play-botao" onClick={onAlternarReproducao} aria-label={tocando ? 'Pausar' : 'Reproduzir'} title="Tocar ou pausar (Espaço)">
+              {tocando ? <IconePausar size={16} weight="fill" /> : <IconeTocar size={16} weight="fill" />}
+            </button>
+            <span className="timeline__play-tempo">
+              <b>{tempo(Math.min(posicaoMs, duracaoMs))}</b> | {tempo(duracaoMs)}
+            </span>
+          </span>
+        )}
+
         <div className="linha auto" style={{ gap: 'var(--e2)' }}>
           {onMostrarAtalhos && (
             <button type="button" className="botao-icone botao-icone--pequeno so-largo" onClick={onMostrarAtalhos} aria-label="Atalhos de teclado" title="Atalhos de teclado (?)">
@@ -773,6 +792,9 @@ export function Timeline({
           <button type="button" className="botao botao--secundario botao--pequeno" onClick={ajustar} aria-label="Ajustar o zoom ao vídeo inteiro" title="Ajustar o zoom ao vídeo inteiro">
             <IconeAjustarZoom size={15} />
             <span className="timeline__acao-rotulo">Ajustar</span>
+          </button>
+          <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Tela cheia" title="Tela cheia" onClick={() => void document.querySelector<HTMLElement>('.palco__quadro')?.requestFullscreen?.()}>
+            <IconeTelaCheia size={17} />
           </button>
         </div>
       </div>

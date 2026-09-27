@@ -1,19 +1,15 @@
 'use client';
 
 // ============================================================
-// Rail de ferramentas — extrema esquerda do editor.
+// Coluna de categorias — extrema esquerda do editor (computador).
 //
-// Troca o que o painel ao lado mostra. É o equivalente ao rail do
-// OpenCut, com uma diferença: a primeira aba não é "mídia
-// importada", é a proposta da IA. O trabalho começa dela.
+// O jeito do CapCut online: cada categoria (IA, Imagens, Texto,
+// Legendas, Música...) abre o painel dela logo ao lado; tocar de novo
+// na categoria aberta recolhe o painel e o vídeo ganha a largura. Uma
+// categoria por coisa: a biblioteca não repete as abas por dentro.
 //
-// Rótulo sob o ícone: o guia pede que ícone sozinho só apareça onde
-// o significado é universal. "Elementos" e "Marca" não são.
-//
-// No celular o rail vira a barra de abas do rodapé: cada ferramenta
-// abre o painel numa folha que sobe de baixo, e "Ajustes" abre as
-// propriedades do trecho (o inspector, que no computador fica à
-// direita).
+// No celular a coluna não aparece: a barra de baixo (BarraMovel) faz o
+// mesmo papel, com níveis.
 // ============================================================
 
 import type { Icon } from '@phosphor-icons/react';
@@ -22,55 +18,50 @@ import {
   IconeMidia,
   IconeLegenda,
   IconeMarca,
-  IconeParametros,
-  IconeBiblioteca,
+  IconeTexto,
+  IconeTrilha,
+  IconeSom,
+  IconeEfeito,
+  IconeTransicao,
+  IconeFiltro,
+  IconeSticker,
+  IconeMaisFerramentas,
 } from '../icones';
 
 export type AbaDoEditor = 'ia' | 'biblioteca' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
 
-// A ordem do trabalho: o que a IA fez, o que dá para acrescentar, o
-// texto da fala, os arquivos e a marca.
-const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
+/** O que cada botão da coluna abre (a biblioteca, numa categoria). */
+export type CategoriaDaColuna = 'ia' | 'midia' | 'textos' | 'legendas' | 'trilha' | 'sons' | 'efeitos' | 'transicoes' | 'cor' | 'stickers' | 'estilos' | 'marca';
+
+const ITENS: Array<{ id: CategoriaDaColuna; rotulo: string; Icone: Icon }> = [
   { id: 'ia', rotulo: 'IA', Icone: IconeIA },
-  { id: 'biblioteca', rotulo: 'Biblioteca', Icone: IconeBiblioteca },
-  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
   { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia },
+  { id: 'textos', rotulo: 'Texto', Icone: IconeTexto },
+  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
+  { id: 'trilha', rotulo: 'Música', Icone: IconeTrilha },
+  { id: 'sons', rotulo: 'Sons', Icone: IconeSom },
+  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito },
+  { id: 'transicoes', rotulo: 'Transições', Icone: IconeTransicao },
+  { id: 'cor', rotulo: 'Filtros', Icone: IconeFiltro },
+  { id: 'stickers', rotulo: 'Enfeites', Icone: IconeSticker },
+  { id: 'estilos', rotulo: 'Estilos', Icone: IconeMaisFerramentas },
+  { id: 'marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 
 interface Props {
-  aba: AbaDoEditor;
-  onTrocar: (aba: AbaDoEditor) => void;
-  /** Só no celular: abre as propriedades do trecho. */
-  onAjustes?: () => void;
-  ajustesAbertos?: boolean;
+  ativa: CategoriaDaColuna | null;
+  onEscolher: (c: CategoriaDaColuna) => void;
 }
 
-export function RailDeFerramentas({ aba, onTrocar, onAjustes, ajustesAbertos }: Props) {
+export function RailDeFerramentas({ ativa, onEscolher }: Props) {
   return (
-    <nav className="editor__rail" aria-label="Ferramentas do editor">
-      {ABAS.map(({ id, rotulo, Icone }) => (
-        <button
-          key={id}
-          type="button"
-          className="ferramenta"
-          aria-pressed={aba === id}
-          onClick={() => onTrocar(id)}
-        >
-          <Icone size={22} weight={aba === id ? 'fill' : 'regular'} />
+    <nav className="editor__rail" aria-label="Categorias do editor">
+      {ITENS.map(({ id, rotulo, Icone }) => (
+        <button key={id} type="button" className="ferramenta" aria-pressed={ativa === id} onClick={() => onEscolher(id)} title={rotulo}>
+          <Icone size={21} weight={ativa === id ? 'fill' : 'regular'} />
           <span className="ferramenta__rotulo">{rotulo}</span>
         </button>
       ))}
-      {onAjustes && (
-        <button
-          type="button"
-          className="ferramenta ferramenta--ajustes so-celular"
-          aria-pressed={Boolean(ajustesAbertos)}
-          onClick={onAjustes}
-        >
-          <IconeParametros size={22} weight={ajustesAbertos ? 'fill' : 'regular'} />
-          <span className="ferramenta__rotulo">Ajustes</span>
-        </button>
-      )}
     </nav>
   );
 }
