@@ -34,10 +34,10 @@ import { IconeAviso, IconeCelular, IconeCheck, IconeIA, IconeMidia, IconeNuvem, 
 type Aba = 'ia' | 'midia' | 'armazenamento' | 'app';
 
 const ABAS: ReadonlyArray<{ id: Aba; rotulo: string; ajuda: string; Icone: typeof IconeIA }> = [
-  { id: 'ia', rotulo: 'Inteligência artificial', ajuda: 'Chave e consumo do mês', Icone: IconeIA },
-  { id: 'midia', rotulo: 'Banco de mídia', ajuda: 'Pexels, Pixabay e fontes abertas', Icone: IconeMidia },
-  { id: 'armazenamento', rotulo: 'Armazenamento', ajuda: 'Espaço usado', Icone: IconeNuvem },
-  { id: 'app', rotulo: 'Aplicativo', ajuda: 'Ícone, nome e instalação', Icone: IconeCelular },
+  { id: 'ia', rotulo: 'IA', ajuda: 'Conexão e gasto do mês', Icone: IconeIA },
+  { id: 'midia', rotulo: 'Imagens grátis', ajuda: 'Mais bancos de fotos e vídeos', Icone: IconeMidia },
+  { id: 'armazenamento', rotulo: 'Espaço', ajuda: 'Quanto você já usou', Icone: IconeNuvem },
+  { id: 'app', rotulo: 'App', ajuda: 'Ícone e instalação', Icone: IconeCelular },
 ];
 
 export default function ConfiguracoesPage() {
@@ -307,7 +307,7 @@ function SecaoDeIa() {
       <section className="cartao config__cartao" aria-labelledby="titulo-consumo">
         <header className="config__cabeca">
           <div>
-            <h3 id="titulo-consumo">Consumo deste mês</h3>
+            <h3 id="titulo-consumo">Gasto da IA neste mês</h3>
             <p className="dica">Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
           </div>
         </header>
@@ -513,7 +513,7 @@ function SecaoDoBanco() {
       <section className="cartao config__cartao" aria-labelledby="titulo-abertas">
         <header className="config__cabeca">
           <div>
-            <h3 id="titulo-abertas">Fontes abertas (já ativas, sem chave)</h3>
+            <h3 id="titulo-abertas">Já funcionando, sem cadastro</h3>
             <p>A busca do editor e as mídias sugeridas pela IA também usam estas fontes, todas de licença livre para uso comercial:</p>
           </div>
           <Selo ativo sim="Ativas" nao="" />

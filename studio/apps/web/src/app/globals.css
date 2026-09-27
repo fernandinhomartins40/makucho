@@ -12034,3 +12034,90 @@ html:not([data-dicas]) :is(
     display: none;
   }
 }
+
+/* ---------- Minha marca: um passo na frente, o manual recolhido ---------- */
+.configurar-ia__envio {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: var(--e3);
+  padding: var(--e5) var(--e4);
+  border: 2px dashed color-mix(in srgb, var(--primary) 55%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  text-align: center;
+  cursor: pointer;
+}
+
+.configurar-ia__envio:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.configurar-ia__envio strong {
+  font-size: 17px;
+}
+
+.configurar-ia__envio span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.configurar-ia__envio[data-enviando] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.configurar-ia__sobre {
+  grid-column: 1 / -1;
+}
+
+.configurar-ia__sobre summary {
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.configurar-ia__sobre[open] summary {
+  margin-bottom: 8px;
+}
+
+.marca-manual {
+  display: grid;
+  gap: var(--e4);
+}
+
+.marca-manual > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  cursor: pointer;
+  list-style: none;
+}
+
+.marca-manual > summary::-webkit-details-marker {
+  display: none;
+}
+
+.marca-manual > summary::before {
+  content: '▸';
+  color: var(--text-secondary);
+}
+
+.marca-manual[open] > summary::before {
+  content: '▾';
+}
+
+.marca-manual > summary span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* As partes da marca ocupam só a própria altura. */
+.kit-de-marca {
+  align-content: start;
+}

@@ -25,6 +25,9 @@ interface Props {
   onAplicar: (s: SugestaoDeMarca) => void;
   /** Vai para a aba Identidade, para enviar a logo principal. */
   onEnviarLogo: () => void;
+  /** Envia a logo principal daqui mesmo (o passo único da marca). */
+  onEnviarLogoArquivo?: (arquivo: File) => void;
+  enviandoLogo?: boolean;
 }
 
 const NOME_DA_COR: Record<keyof SugestaoDeMarca['cores'], string> = {
@@ -37,7 +40,7 @@ const NOME_DA_COR: Record<keyof SugestaoDeMarca['cores'], string> = {
 
 const POSICAO: Record<string, string> = { sd: 'canto de cima, à direita', se: 'canto de cima, à esquerda', id: 'canto de baixo, à direita', ie: 'canto de baixo, à esquerda' };
 
-export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }: Props) {
+export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo, onEnviarLogoArquivo, enviandoLogo }: Props) {
   const [segmento, setSegmento] = useState('');
   const [sobre, setSobre] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -85,12 +88,30 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
       </div>
 
       {logos.length === 0 ? (
-        <div className="configurar-ia__falta">
-          <span>Primeiro, envie a logo principal: é dela que a IA tira as cores.</span>
-          <button type="button" className="botao botao--primario botao--pequeno" onClick={onEnviarLogo}>
-            Enviar a logo
-          </button>
-        </div>
+        onEnviarLogoArquivo ? (
+          <label className="configurar-ia__envio" data-enviando={enviandoLogo || undefined}>
+            <input
+              type="file"
+              accept="image/png,image/svg+xml,image/webp"
+              className="visualmente-oculto"
+              disabled={enviandoLogo}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onEnviarLogoArquivo(f);
+                e.target.value = '';
+              }}
+            />
+            <strong>{enviandoLogo ? 'Enviando a logo…' : 'Envie sua logo'}</strong>
+            <span>PNG, SVG ou WebP. A IA tira dela as cores e o estilo.</span>
+          </label>
+        ) : (
+          <div className="configurar-ia__falta">
+            <span>Primeiro, envie a logo principal: é dela que a IA tira as cores.</span>
+            <button type="button" className="botao botao--primario botao--pequeno" onClick={onEnviarLogo}>
+              Enviar a logo
+            </button>
+          </div>
+        )
       ) : (
         <div className="configurar-ia__campos">
           <label className="campo" style={{ margin: 0 }}>
@@ -107,10 +128,10 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
               onChange={(e) => setSegmento(e.target.value)}
             />
           </label>
-          <label className="campo configurar-ia__sobre" style={{ margin: 0 }}>
-            <span className="campo__rotulo">
-              Conte mais sobre a marca <span className="texto-secundario">(opcional)</span>
-            </span>
+          <details className="configurar-ia__sobre">
+            <summary>Contar mais sobre a marca (opcional)</summary>
+          <label className="campo" style={{ margin: 0 }}>
+            <span className="visualmente-oculto">Conte mais sobre a marca</span>
             <textarea
               className="campo__entrada"
               rows={2}
@@ -120,9 +141,10 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
               onChange={(e) => setSobre(e.target.value)}
             />
           </label>
+          </details>
           <button type="button" className="botao botao--primario configurar-ia__botao" disabled={carregando} onClick={() => void configurar()}>
             <IconeIA size={16} weight="fill" />
-            {carregando ? 'Montando o kit… (até 1 min)' : 'Configurar com IA'}
+            {carregando ? 'A IA está montando… (até 1 min)' : 'Montar minha marca'}
           </button>
         </div>
       )}
@@ -130,7 +152,7 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
 
       {sugestao && (
         <div className="configurar-ia__resultado" role="status">
-          <h3>O kit sugerido para a sua marca</h3>
+          <h3>Sua marca, montada pela IA</h3>
           {sugestao.aviso && <p className="campo__ajuda" style={{ color: 'var(--warning)', margin: 0 }}>{sugestao.aviso}</p>}
           <p className="configurar-ia__porque">
             <strong>{sugestao.tom}.</strong> {sugestao.justificativa}
@@ -144,7 +166,7 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
               </span>
             ))}
           </div>
-          <ul className="configurar-ia__muda">
+          <ul className="configurar-ia__muda dica">
             <li>
               <IconeCheck size={14} /> Fontes: <strong>{sugestao.fonteTitulo}</strong> nos títulos e <strong>{sugestao.fonteCorpo}</strong> no resto
             </li>
@@ -172,7 +194,7 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
                 setSugestao(null);
               }}
             >
-              Usar este kit
+              Usar esta marca
             </button>
             <button type="button" className="botao botao--fantasma" onClick={() => setSugestao(null)}>
               Descartar

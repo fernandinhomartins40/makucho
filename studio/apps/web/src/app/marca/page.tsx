@@ -113,6 +113,8 @@ export default function MarcaPage() {
   const [sujo, setSujo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [aviso, setAviso] = useState<{ tom: 'info' | 'erro'; texto: string } | null>(null);
+  // Um link direto para uma parte (#videos, #criar...) abre o manual nela.
+  const [manual, setManual] = useState(() => typeof window !== 'undefined' && window.location.hash.length > 1);
 
   const irPara = (a: Aba) => {
     setAba(a);
@@ -357,10 +359,12 @@ export default function MarcaPage() {
           <strong style={{ fontSize: 15 }}>Minha marca</strong>
         }
       >
-        <button type="button" className="botao auto" disabled={!sujo || salvando} onClick={() => void salvar()}>
-          <IconeSalvo size={16} />
-          {salvando ? 'Salvando…' : sujo ? 'Salvar alterações' : 'Tudo salvo'}
-        </button>
+        {(sujo || salvando) && (
+          <button type="button" className="botao auto" disabled={salvando} onClick={() => void salvar()}>
+            <IconeSalvo size={16} />
+            {salvando ? 'Salvando…' : 'Salvar alterações'}
+          </button>
+        )}
       </Topbar>
 
       <div className="conteudo kit-de-marca">
@@ -379,9 +383,21 @@ export default function MarcaPage() {
             setSujo(true);
           }}
           onAplicar={aplicarSugestao}
-          onEnviarLogo={() => irPara('identidade')}
+          onEnviarLogo={() => {
+            setManual(true);
+            irPara('identidade');
+          }}
+          onEnviarLogoArquivo={(f) => void enviarAsset('LOGO', f)}
+          enviandoLogo={enviando === 'LOGO'}
         />
 
+        {/* O manual (logos, cores, fontes, legendas, biblioteca, prompts)
+            fica recolhido: o caminho do leigo é o passo único acima. */}
+        <details className="marca-manual" open={manual} onToggle={(e) => setManual((e.currentTarget as HTMLDetailsElement).open)}>
+          <summary>
+            <strong>Ajustar manualmente</strong>
+            <span>Logos, cores, fontes, legendas, arquivos e prompts</span>
+          </summary>
         <nav className="kit-de-marca__abas" role="tablist" aria-label="Partes do kit de marca">
           {ABAS.map(({ id, rotulo, ajuda, Icone }) => (
             <button key={id} type="button" role="tab" aria-selected={aba === id} className="kit-de-marca__aba" onClick={() => irPara(id)}>
@@ -710,6 +726,7 @@ export default function MarcaPage() {
             </aside>
           )}
         </div>
+        </details>
       </div>
 
       {sujo && (
