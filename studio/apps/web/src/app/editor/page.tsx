@@ -634,7 +634,6 @@ function Editor({ projectId }: { projectId: string }) {
     if (c === colunaAtiva) return setPainelAberto(false);
     setPainelAberto(true);
     // Legendas: corrigir as palavras à esquerda, o estilo à direita.
-    if (c === 'legendas') pedirAbaDoInspector('legendas');
     if (c === 'ia' || c === 'midia' || c === 'legendas' || c === 'ajustes') return setAba(c);
     setCategoriaDaBiblioteca(c as CategoriaDaBiblioteca);
     setAba('biblioteca');
@@ -646,12 +645,17 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ---------- Celular: as colunas ao lado do vídeo ----------
   const [abaDoInspector, setAbaDoInspector] = useState<{ aba: AbaDoInspector; n: number } | null>(null);
-  // Computador (jeito do CapCut): as propriedades aparecem com algo
-  // selecionado ou quando pedidas (Ajustes, Legendas); o X recolhe.
-  const [propsAbertas, setPropsAbertas] = useState(false);
+  // Computador (jeito do CapCut): as Propriedades da direita são só do
+  // item SELECIONADO. O que é do vídeo todo (formato, legendas, efeitos)
+  // abre em "Ajustes", no painel da esquerda, como as outras categorias.
   const pedirAbaDoInspector = (a: AbaDoInspector) => {
     setAbaDoInspector((x) => ({ aba: a, n: (x?.n ?? 0) + 1 }));
-    setPropsAbertas(true);
+    if (!window.matchMedia('(max-width: 899px)').matches) {
+      setSelecionado(null);
+      setItemSelecionado(null);
+      setAba('ajustes');
+      setPainelAberto(true);
+    }
   };
   const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
   const abrirPainel = (a: AbaDoEditor) => {
@@ -1171,7 +1175,7 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado || propsAbertas ? 'com' : 'sem'}>
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado ? 'com' : 'sem'}>
         {!celular && cabecalho}
         <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
         {/* A alça na borda do painel: recolhe e devolve (computador). */}
@@ -1370,7 +1374,7 @@ function Editor({ projectId }: { projectId: string }) {
                 refazendoAcabamento={refazendoAcabamento}
                 posicaoMs={posicaoMs}
                 onSeek={setPosicaoMs}
-                abaPedida={AJUSTES_DO_VIDEO}
+                abaPedida={abaDoInspector ?? AJUSTES_DO_VIDEO}
                 onCorrigirLegendas={() => setAba('legendas')}
               />
             </div>
@@ -1516,7 +1520,6 @@ function Editor({ projectId }: { projectId: string }) {
             onSeek={setPosicaoMs}
             abaPedida={abaDoInspector}
             onRecolher={() => {
-              setPropsAbertas(false);
               setSelecionado(null);
               setItemSelecionado(null);
             }}
