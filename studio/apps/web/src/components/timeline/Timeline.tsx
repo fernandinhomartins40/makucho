@@ -166,6 +166,7 @@ interface Props {
   /** Play e tempo no meio da barra (computador, como no CapCut). */
   tocando?: boolean;
   onAlternarReproducao?: () => void;
+  onTelaCheia?: () => void;
 }
 
 type Arraste = {
@@ -215,6 +216,7 @@ export function Timeline({
   somOriginalMudo = false,
   tocando = false,
   onAlternarReproducao,
+  onTelaCheia,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -832,9 +834,11 @@ export function Timeline({
             <IconeAjustarZoom size={15} />
             <span className="timeline__acao-rotulo">Ajustar</span>
           </button>
-          <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Tela cheia" title="Tela cheia" onClick={() => void document.querySelector<HTMLElement>('.palco__quadro')?.requestFullscreen?.()}>
-            <IconeTelaCheia size={17} />
-          </button>
+          {onTelaCheia && (
+            <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Tela cheia" title="Tela cheia" onClick={onTelaCheia}>
+              <IconeTelaCheia size={17} />
+            </button>
+          )}
         </div>
       </div>
 

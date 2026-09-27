@@ -65,6 +65,7 @@ import { publicarPosicao } from '../../lib/relogioAoVivo';
 import {
   IconeTocar,
   IconePausar,
+  IconeFechar,
   IconeAnterior,
   IconeProximo,
   IconeVideo,
@@ -88,6 +89,8 @@ interface Props {
   comandoTocar?: number;
   /** Muda a cada Espaço: toca ou pausa de onde está. */
   comandoAlternar?: number;
+  /** Cada incremento abre a tela cheia do editor. */
+  comandoTelaCheia?: number;
   /** Avisa quando começa ou para de tocar. */
   onTocando?: (tocando: boolean) => void;
   /** Cores e fontes do Kit de marca, para legenda e textos. */
@@ -123,6 +126,7 @@ export function Palco({
   transcricao,
   comandoTocar,
   comandoAlternar,
+  comandoTelaCheia,
   onTocando,
   marca,
   urlDoAsset,
@@ -688,6 +692,50 @@ export function Palco({
     else tocarDe(relogioRef.current.ms);
   }, [comandoAlternar, tocando, pausar, tocarDe]);
 
+  // ---------- Tela cheia do editor ----------
+  // A do navegador (requestFullscreen) esticava o quadro e mostrava o
+  // aviso do Chrome ("para sair da tela cheia..."), que não fecha nem
+  // tem o nosso estilo. Esta é nossa: o quadro cresce na proporção
+  // certa sobre um fundo preto, com play, pausa, tempo e fechar. O
+  // "voltar" do celular e o Esc também fecham.
+  const [cheia, setCheia] = useState(false);
+  const [controlesDaCheia, setControlesDaCheia] = useState(true);
+  const telaCheiaAnterior = useRef(comandoTelaCheia);
+  useEffect(() => {
+    if (comandoTelaCheia === undefined || comandoTelaCheia === telaCheiaAnterior.current) return;
+    telaCheiaAnterior.current = comandoTelaCheia;
+    setCheia(true);
+  }, [comandoTelaCheia]);
+  const fecharCheia = useCallback(() => {
+    if ((window.history.state as { palcoCheio?: boolean } | null)?.palcoCheio) window.history.back();
+    else setCheia(false);
+  }, []);
+  useEffect(() => {
+    if (!cheia) return;
+    const raiz = document.documentElement;
+    raiz.dataset.palcoCheio = '';
+    window.history.pushState({ ...(window.history.state as object | null), palcoCheio: true }, '');
+    const aoVoltar = () => setCheia(false);
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') fecharCheia();
+    };
+    window.addEventListener('popstate', aoVoltar);
+    window.addEventListener('keydown', aoTeclar);
+    return () => {
+      delete raiz.dataset.palcoCheio;
+      window.removeEventListener('popstate', aoVoltar);
+      window.removeEventListener('keydown', aoTeclar);
+    };
+  }, [cheia, fecharCheia]);
+  // Tocando, os controles somem depois de um tempo; um toque traz de volta.
+  useEffect(() => {
+    if (!cheia) return;
+    setControlesDaCheia(true);
+    if (!tocando) return;
+    const t = setTimeout(() => setControlesDaCheia(false), 2500);
+    return () => clearTimeout(t);
+  }, [cheia, tocando, controlesDaCheia]);
+
   useEffect(() => onTocando?.(tocando), [tocando, onTocando]);
 
   // Gravação de narração: começa a tocar (mudo) do ponto dela e para junto.
@@ -1108,7 +1156,8 @@ export function Palco({
 
   return (
     <>
-      <div className="palco__quadro" ref={quadroRef} data-formato={plan.canvas.aspectRatio}>
+      {cheia && <div className="palco__cheia-fundo" aria-hidden onClick={() => setControlesDaCheia(true)} />}
+      <div className="palco__quadro" ref={quadroRef} data-formato={plan.canvas.aspectRatio} data-cheia={cheia || undefined}>
         <div className="palco__chips">
           <span className="chip" title={`Formato ${plan.canvas.aspectRatio}`}>
             <IconeCelular size={14} />
@@ -1432,6 +1481,36 @@ export function Palco({
         )}
 
         {trilhaUrl && <audio ref={trilhaRef} src={trilhaUrl} loop preload="auto" muted={mudo} />}
+
+        {cheia && (
+          <div
+            className="palco__cheia"
+            data-visivel={controlesDaCheia || !tocando || undefined}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setControlesDaCheia((v) => !v);
+            }}
+          >
+            <button type="button" className="palco__cheia-fechar" aria-label="Fechar a tela cheia" onClick={fecharCheia}>
+              <IconeFechar size={22} />
+            </button>
+            <button type="button" className="palco__cheia-play" aria-label={tocando ? 'Pausar' : 'Reproduzir'} onClick={alternar}>
+              {tocando ? <IconePausar size={30} weight="fill" /> : <IconeTocar size={30} weight="fill" />}
+            </button>
+            <div className="palco__cheia-barra">
+              <span>{tempo(Math.min(posicaoMs, duracaoMs))}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(1, duracaoMs)}
+                step={100}
+                value={Math.min(posicaoMs, duracaoMs)}
+                aria-label="Posição no vídeo"
+                onChange={(e) => onPosicao(Number(e.target.value))}
+              />
+              <span>{tempo(duracaoMs)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="palco__controles">
@@ -1469,7 +1548,7 @@ export function Palco({
           type="button"
           className="botao-icone"
           aria-label="Tela cheia"
-          onClick={() => void quadroRef.current?.requestFullscreen?.()}
+          onClick={() => setCheia(true)}
         >
           <IconeTelaCheia size={18} />
         </button>

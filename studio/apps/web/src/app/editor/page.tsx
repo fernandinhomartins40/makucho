@@ -147,6 +147,8 @@ function Editor({ projectId }: { projectId: string }) {
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [comandoTocar, setComandoTocar] = useState(0);
   const [comandoAlternar, setComandoAlternar] = useState(0);
+  const [comandoTelaCheia, setComandoTelaCheia] = useState(0);
+  const abrirTelaCheia = () => setComandoTelaCheia((n) => n + 1);
   const [atalhosAbertos, setAtalhosAbertos] = useState(false);
   const [categoriaDaBiblioteca, setCategoriaDaBiblioteca] = useState<CategoriaDaBiblioteca>('textos');
   const [aviso, setAviso] = useState<string | null>(null);
@@ -600,8 +602,16 @@ function Editor({ projectId }: { projectId: string }) {
         ? (categoriaDaBiblioteca as CategoriaDaColuna)
         : null;
   const escolherNaColuna = (c: CategoriaDaColuna) => {
+    if (c === 'ajustes') {
+      if (propsAbertas && !selecionado && !itemSelecionado) return setPropsAbertas(false);
+      setSelecionado(null);
+      setItemSelecionado(null);
+      return pedirAbaDoInspector('video');
+    }
     if (c === colunaAtiva) return setPainelAberto(false);
     setPainelAberto(true);
+    // Legendas: corrigir as palavras à esquerda, o estilo à direita.
+    if (c === 'legendas') pedirAbaDoInspector('legendas');
     if (c === 'ia' || c === 'midia' || c === 'legendas') return setAba(c);
     setCategoriaDaBiblioteca(c as CategoriaDaBiblioteca);
     setAba('biblioteca');
@@ -613,6 +623,13 @@ function Editor({ projectId }: { projectId: string }) {
 
   // ---------- Celular: as colunas ao lado do vídeo ----------
   const [abaDoInspector, setAbaDoInspector] = useState<{ aba: AbaDoInspector; n: number } | null>(null);
+  // Computador (jeito do CapCut): as propriedades aparecem com algo
+  // selecionado ou quando pedidas (Ajustes, Legendas); o X recolhe.
+  const [propsAbertas, setPropsAbertas] = useState(false);
+  const pedirAbaDoInspector = (a: AbaDoInspector) => {
+    setAbaDoInspector((x) => ({ aba: a, n: (x?.n ?? 0) + 1 }));
+    setPropsAbertas(true);
+  };
   const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
   const abrirPainel = (a: AbaDoEditor) => {
     setAba(a);
@@ -649,7 +666,7 @@ function Editor({ projectId }: { projectId: string }) {
     if (a === 'recorte') {
       setSelecionado(null);
       setItemSelecionado(null);
-      setAbaDoInspector((x) => ({ aba: 'video', n: (x?.n ?? 0) + 1 }));
+      pedirAbaDoInspector('video');
       return setFolha('inspector');
     }
     if (a === 'cor') {
@@ -676,7 +693,7 @@ function Editor({ projectId }: { projectId: string }) {
       // Primeiro o que o leigo quer: ligar e escolher o estilo; corrigir palavras fica a um toque.
       setSelecionado(null);
       setItemSelecionado(null);
-      setAbaDoInspector((x) => ({ aba: 'legendas', n: (x?.n ?? 0) + 1 }));
+      pedirAbaDoInspector('legendas');
       return setFolha('inspector');
     }
     if (d === 'imagens') return abrirPainel('midia');
@@ -1129,8 +1146,8 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado ? 'com' : 'sem'}>
-        <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado || propsAbertas ? 'com' : 'sem'}>
+        <RailDeFerramentas ativa={colunaAtiva} ajustesAbertos={propsAbertas && !selecionado && !itemSelecionado} onEscolher={escolherNaColuna} />
 
         {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
@@ -1183,7 +1200,7 @@ function Editor({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12 }}>{a}</span>
                 </div>
               ))}
-              {!semIa && <PedirAIa onEnviar={pedirAIa} />}
+              {!semIa && <PedirAIa onEnviar={pedirAIa} extras={midiasSeparadas?.momentos.length ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
               {midiasSeparadas?.momentos.length ? (
                 <div className="midias-separadas" role="status">
                   <div className="midias-separadas__topo">
@@ -1198,7 +1215,6 @@ function Editor({ projectId }: { projectId: string }) {
                       <img key={`${m.inicioMs}-${m.conceito}`} src={m.opcoes[0]?.miniatura} alt="" data-transparente={m.opcoes[0]?.transparente || undefined} />
                     ))}
                   </div>
-                  <p>Ícones 3D, logos, fotos e vídeos nos momentos certos. Nada entrou no vídeo ainda: revise e aprove.</p>
                   <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
                     <button type="button" className="botao botao--primario botao--pequeno" onClick={abrirMidiasSeparadas}>
                       Revisar e aprovar
@@ -1218,9 +1234,6 @@ function Editor({ projectId }: { projectId: string }) {
                       </span>
                     </div>
                   )}
-                  <button type="button" className="botao botao--secundario" style={{ width: '100%' }} onClick={abrirMidiasSeparadas}>
-                    <IconeMidia size={16} /> Ilustrar a fala com imagens, ícones 3D e vídeos
-                  </button>
                 </>
               )}
             </div>
@@ -1247,8 +1260,9 @@ function Editor({ projectId }: { projectId: string }) {
                 }}
                 onAlternar={alternarTrecho}
                 onOperacao={executar}
-              />
-              <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />
+              >
+                <PainelDeRefino projectId={projectId} plan={plano} onOperacao={executar} />
+              </PainelDaIA>
             </div>
           )}
           {aba === 'ia' && !semIa && (
@@ -1278,7 +1292,7 @@ function Editor({ projectId }: { projectId: string }) {
             />
           )}
           {aba === 'midia' && (
-            <>
+            <div className="painel-de-midias">
               <PainelDeMidias
                 plan={plano}
                 posicaoMs={posicaoMs}
@@ -1298,7 +1312,7 @@ function Editor({ projectId }: { projectId: string }) {
                 {...(marcaDoVideo ? { marca: marcaDoVideo } : {})}
               />
               {projeto && <PainelDeMidia projeto={projeto} />}
-            </>
+            </div>
           )}
           {aba === 'legendas' && (
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} desligados={desligados} />
@@ -1331,6 +1345,7 @@ function Editor({ projectId }: { projectId: string }) {
             transcricao={transcricao}
             comandoTocar={comandoTocar}
             comandoAlternar={comandoAlternar}
+            comandoTelaCheia={comandoTelaCheia}
             marca={marcaDoVideo}
             urlDoAsset={apiAssets.url}
             destaqueSelecionado={itemSelecionado?.tipo === 'elemento' ? itemSelecionado.id : null}
@@ -1381,7 +1396,7 @@ function Editor({ projectId }: { projectId: string }) {
           {/* Celular: tela cheia, play no meio, desfazer e refazer (o CapCut
               põe aqui; o topo fica só com fechar, qualidade e exportar). */}
           <div className="controles-moveis so-celular">
-            <button type="button" className="botao-icone" aria-label="Tela cheia" onClick={() => void document.querySelector<HTMLElement>('.palco__quadro')?.requestFullscreen?.()}>
+            <button type="button" className="botao-icone" aria-label="Tela cheia" onClick={abrirTelaCheia}>
               <IconeTelaCheia size={20} />
             </button>
             <button type="button" className="controles-moveis__play" aria-label={tocandoNaPrevia ? 'Pausar' : 'Reproduzir'} disabled={!temProxy} onClick={() => setComandoAlternar((n) => n + 1)}>
@@ -1416,6 +1431,11 @@ function Editor({ projectId }: { projectId: string }) {
             posicaoMs={posicaoMs}
             onSeek={setPosicaoMs}
             abaPedida={abaDoInspector}
+            onRecolher={() => {
+              setPropsAbertas(false);
+              setSelecionado(null);
+              setItemSelecionado(null);
+            }}
             onCorrigirLegendas={() => {
               setAba('legendas');
               setFolha('painel');
@@ -1463,6 +1483,7 @@ function Editor({ projectId }: { projectId: string }) {
               central={celular}
             tocando={tocandoNaPrevia}
             onAlternarReproducao={temProxy ? () => setComandoAlternar((n) => n + 1) : undefined}
+            onTelaCheia={temProxy ? abrirTelaCheia : undefined}
             onSilenciarTudo={() => executarAcaoMovel('silenciar')}
             somOriginalMudo={somOriginalMudo}
             onGravarNarracao={() => {
@@ -1834,13 +1855,13 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
   const temMiniatura = projeto.mediaSources.some((m) => m.kind === 'THUMBNAIL');
 
   return (
-    <>
-      <header className="painel__cabecalho">
+    <details className="gravacao-original">
+      <summary className="painel__cabecalho">
         <span className="linha" style={{ gap: 'var(--e2)' }}>
-          <IconeMidia size={20} />
-          <strong style={{ fontSize: 17 }}>Gravação original</strong>
+          <IconeMidia size={18} />
+          <strong style={{ fontSize: 15 }}>Gravação original</strong>
         </span>
-      </header>
+      </summary>
       <div style={{ padding: 'var(--e4)', display: 'grid', gap: 'var(--e4)' }}>
         {temMiniatura && (
           <img
@@ -1861,7 +1882,7 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
         ) : (
           <p className="texto-secundario">Nenhum vídeo enviado.</p>
         )}
-        <p className="texto-secundario" style={{ fontSize: 12 }}>
+        <p className="campo__ajuda">
           O editor toca uma prévia leve; o vídeo final é gerado a partir do original, na qualidade
           em que foi gravado.
         </p>
@@ -1870,7 +1891,7 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
           Substituir o vídeo
         </Link>
       </div>
-    </>
+    </details>
   );
 }
 

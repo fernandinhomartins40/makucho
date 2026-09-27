@@ -15,14 +15,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Composicao, EditPlanV1, KenBurns, LayoutDeMidia, MarcaDoVideo, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
-import { NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
+import { NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
 import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
 import { assets as apiAssets, bancoDeMidia, type Asset, type MidiasSeparadas, type Transcricao } from '../../lib/api';
 import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import { SugestoesDeMidia } from './SugestoesDeMidia';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
-import { IconeEnviar } from '../icones';
+import { IconeEnviar, IconeMais } from '../icones';
 
 interface Props {
   plan: EditPlanV1;
@@ -48,15 +48,6 @@ function composicoesDoResultado(r: ResultadoDaBusca): Composicao[] {
   if (r.transparente) return ['icone_ao_lado', 'cartao', 'tela_cheia'];
   return ['moldura', 'tela_cheia', 'janela'];
 }
-
-const NOME_CURTO: Record<Composicao, string> = {
-  icone_ao_lado: 'Ao lado',
-  tela_cheia: 'Tela cheia',
-  tela_cheia_com_titulo: 'Com título',
-  moldura: 'Moldura',
-  cartao: 'Cartão',
-  janela: 'Janela',
-};
 
 /** Os Ken Burns do slideshow, em sequência: cada foto com um movimento. */
 const MOVIMENTOS: readonly KenBurns[] = ['aproximar', 'para_esquerda', 'afastar', 'para_direita'];
@@ -88,12 +79,6 @@ export function palavrasDaFala(transcricao: Transcricao | null | undefined, plan
     .filter((p) => p.length > 3 && !PALAVRAS_VAZIAS.has(p));
   return [...new Set(palavras)].sort((a, b) => b.length - a.length).slice(0, 3).join(' ');
 }
-
-const LAYOUTS: ReadonlyArray<readonly [LayoutDeMidia, string, string]> = [
-  ['tela_cheia', 'Tela cheia', 'B-roll: cobre o vídeo, a fala continua'],
-  ['pip', 'Janela', 'Uma janela no canto (picture-in-picture)'],
-  ['dividir_baixo', 'Dividir', 'Metade de baixo da tela'],
-];
 
 export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSelecionarItem, urlDoAsset, transcricao, marca, desligados, midiasSeparadas, onMidiasConcluidas, onVerNoVideo }: Props) {
   const [lista, setLista] = useState<Asset[] | null>(null);
@@ -265,7 +250,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
         {...(onVerNoVideo ? { onVerNoVideo } : {})}
       />
 
-      <p className="biblioteca__alvo">
+      <p className="campo__ajuda">
         Entra no cursor ({tempo(noCursor)}) na faixa Mídia. B-roll em vídeo entra mudo: a fala continua por baixo.
       </p>
       <input
@@ -279,7 +264,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
           if (arquivo) void enviar(arquivo);
         }}
       />
-      <button type="button" className="botao botao--primario" style={{ width: '100%' }} disabled={enviando} onClick={() => entradaRef.current?.click()}>
+      <button type="button" className="botao botao--secundario" style={{ width: '100%' }} disabled={enviando} onClick={() => entradaRef.current?.click()}>
         <IconeEnviar size={16} /> {enviando ? 'Enviando…' : 'Enviar imagem ou vídeo'}
       </button>
       {erro && <p className="campo__erro">{erro}</p>}
@@ -292,7 +277,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
           void buscar();
         }}
       >
-        <span className="campo__rotulo">Buscar em bancos de licença livre</span>
+        <span className="campo__rotulo">Buscar imagens e vídeos</span>
         <div className="busca-no-banco__tipos" role="radiogroup" aria-label="O que buscar">
           {TIPOS_DA_BUSCA.map((t) => (
             <button key={t} type="button" role="radio" aria-checked={tipoDaBusca === t} onClick={() => setTipoDaBusca(t)}>
@@ -303,7 +288,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
         <div className="linha" style={{ gap: 6 }}>
           <input
             className="campo__entrada crescer"
-            placeholder={tipoDaBusca === 'logo' ? 'Ex.: bitcoin, instagram, whatsapp' : 'Ex.: money, rocket, city at night (em inglês acha mais)'}
+            placeholder={tipoDaBusca === 'logo' ? 'Ex.: bitcoin, instagram, whatsapp' : 'Em inglês acha mais: money, rocket…'}
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             aria-label="O que buscar"
@@ -335,36 +320,37 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
           <div className="grade-de-midias grade-de-midias--banco">
             {resultados.map((r) => (
               <div key={`${r.fonte}-${r.id}`} className="midia-cartao">
-                <div className={`midia-cartao__previa${r.transparente ? ' midia-cartao__previa--transparente' : ' midia-cartao__previa--vertical'}`}>
+                {/* Tocar adiciona no cursor (o jeito do CapCut); o
+                    tamanho e a posição mudam depois, no item. */}
+                <button
+                  type="button"
+                  className={`midia-cartao__previa${r.transparente ? ' midia-cartao__previa--transparente' : ' midia-cartao__previa--vertical'}`}
+                  disabled={trazendo !== null}
+                  title={`Adicionar: ${r.titulo} · ${NOME_DA_FONTE[r.fonte]} · ${r.licenca.nome}`}
+                  onClick={() => {
+                    const c = composicoesDoResultado(r)[0];
+                    if (c) void trazer(r, c);
+                  }}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={r.miniatura} alt={r.titulo} loading="lazy" />
                   {r.duracaoMs !== null && <span className="midia-cartao__selo">{Math.round(r.duracaoMs / 1000)} s</span>}
-                </div>
-                <a className="midia-cartao__nome" href={r.pagina} target="_blank" rel="noreferrer" title={`${r.titulo} · ${r.licenca.nome}`}>
-                  {NOME_DA_FONTE[r.fonte]}
-                  {r.licenca.exigeCredito && r.autor ? ` · ${r.autor}` : ''}
-                </a>
-                <div className="midia-cartao__acoes">
-                  {composicoesDoResultado(r).map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className="botao botao--secundario botao--pequeno"
-                      title={NOME_DA_COMPOSICAO[c]}
-                      disabled={trazendo !== null}
-                      onClick={() => void trazer(r, c)}
-                    >
-                      {trazendo === `${r.fonte}:${r.id}` ? '…' : NOME_CURTO[c]}
-                    </button>
-                  ))}
-                </div>
+                  <span className="midia-cartao__mais" aria-hidden>
+                    {trazendo === `${r.fonte}:${r.id}` ? '…' : <IconeMais size={14} weight="bold" />}
+                  </span>
+                </button>
+                {r.licenca.exigeCredito && r.autor && (
+                  <a className="midia-cartao__nome" href={r.pagina} target="_blank" rel="noreferrer" title={`${r.titulo} · ${r.licenca.nome}`}>
+                    {NOME_DA_FONTE[r.fonte]} · {r.autor}
+                  </a>
+                )}
               </div>
             ))}
           </div>
         ))}
 
       <span className="campo__rotulo" style={{ marginTop: 'var(--e3)', display: 'block' }}>
-        Do workspace
+        Suas mídias
       </span>
       {escolhidas.length > 0 && (
         <div className="montagens" role="group" aria-label="Montagens com as fotos escolhidas">
@@ -408,6 +394,11 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={urlDoAsset(a.id)} alt="" loading="lazy" />
                 )}
+                <button type="button" className="midia-cartao__tocar" title={`Adicionar ${a.originalName} no cursor`} aria-label={`Adicionar ${a.originalName} no cursor`} onClick={() => adicionar(a, 'tela_cheia')}>
+                  <span className="midia-cartao__mais" aria-hidden>
+                    <IconeMais size={14} weight="bold" />
+                  </span>
+                </button>
                 {a.kind === 'VIDEO' && <span className="midia-cartao__selo">vídeo</span>}
                 {a.kind === 'IMAGE' && (
                   <label className="midia-cartao__marcar" title="Escolher para slideshow, colagem ou antes e depois">
@@ -415,16 +406,6 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
                     {escolhidas.includes(a.id) && <span>{escolhidas.indexOf(a.id) + 1}</span>}
                   </label>
                 )}
-              </div>
-              <span className="midia-cartao__nome" title={a.originalName}>
-                {a.originalName}
-              </span>
-              <div className="midia-cartao__acoes">
-                {LAYOUTS.map(([layout, rotulo, dica]) => (
-                  <button key={layout} type="button" className="botao botao--secundario botao--pequeno" title={dica} onClick={() => adicionar(a, layout)}>
-                    {rotulo}
-                  </button>
-                ))}
               </div>
             </div>
           ))}

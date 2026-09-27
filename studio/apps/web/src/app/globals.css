@@ -12808,8 +12808,9 @@ html:not([data-dicas]) :is(
   }
 }
 
-/* Telas médias: as propriedades só com algo selecionado. */
-@media (min-width: 900px) and (max-width: 1279px) {
+/* Computador (jeito do CapCut): as propriedades só com algo selecionado
+   ou quando pedidas; o vídeo ganha a largura. */
+@media (min-width: 900px) {
   .editor[data-props='sem'] {
     --col-props: 0px;
   }
@@ -12825,4 +12826,251 @@ html:not([data-dicas]) :is(
   .editor__inspector {
     grid-area: inspector;
   }
+}
+
+/* ============================================================
+   Tela cheia do editor (nossa, sem a do navegador): o quadro cresce na
+   proporção certa sobre o preto, com play, pausa, tempo e fechar.
+   ============================================================ */
+html[data-palco-cheio] {
+  overflow: hidden;
+}
+
+/* Os ancestrais do quadro não podem prender o "fixed" (container,
+   transform, filtro). */
+html[data-palco-cheio] :has(.palco__quadro[data-cheia]) {
+  container-type: normal !important;
+  contain: none !important;
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  will-change: auto !important;
+}
+
+.palco__cheia-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+}
+
+html[data-palco-cheio] .palco__quadro[data-cheia],
+html[data-palco-cheio] .editor .editor__palco > .palco__quadro[data-cheia] {
+  position: fixed !important;
+  inset: 0;
+  z-index: 1001;
+  margin: auto;
+  width: min(100vw, calc(100dvh / var(--quadro-hw, 1.7778))) !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: 100dvh;
+  aspect-ratio: var(--quadro-ar, 9 / 16);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.palco__quadro[data-cheia] :is(.palco__chips, .palco__zonas, .palco__alca-destaque) {
+  display: none !important;
+}
+
+.palco__cheia {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 45%), transparent 22%, transparent 70%, rgb(0 0 0 / 60%));
+}
+
+.palco__cheia[data-visivel] {
+  opacity: 1;
+}
+
+.palco__cheia:not([data-visivel]) > * {
+  pointer-events: none;
+}
+
+.palco__cheia-fechar {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 45%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.palco__cheia-play {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  cursor: pointer;
+}
+
+.palco__cheia-barra {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.palco__cheia-barra input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.palco__cheia-fechar:focus-visible,
+.palco__cheia-play:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ---------- Trechos do vídeo: recolhidos, uma linha cada ---------- */
+.trechos-recolhidos > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.trechos-recolhidos > summary::-webkit-details-marker {
+  display: none;
+}
+
+.trechos-recolhidos > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 150ms ease;
+  flex: none;
+}
+
+.trechos-recolhidos[open] > summary::after {
+  transform: rotate(-135deg) translateX(-2px);
+}
+
+.trechos-recolhidos .trecho {
+  padding-block: 8px;
+}
+
+.trechos-recolhidos .trecho__miniatura {
+  width: 40px;
+  height: 52px;
+}
+
+.trechos-recolhidos .trecho__origem {
+  font-size: 11px;
+}
+
+/* ---------- Mídias: tocar adiciona ---------- */
+button.midia-cartao__previa {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button.midia-cartao__previa:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.midia-cartao__tocar {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.midia-cartao__marcar {
+  z-index: 2;
+}
+
+.midia-cartao__mais {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+
+/* ---------- Gravação original: recolhida ---------- */
+.gravacao-original > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.gravacao-original > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* O painel de mídias com respiro nas laterais (encostava na borda). */
+.painel-de-midias {
+  display: grid;
+  gap: var(--e3);
+  padding: var(--e3) var(--e4) var(--e5);
+  min-width: 0;
+}
+
+.painel-de-midias .gravacao-original > summary {
+  padding-inline: 0;
+}
+
+.gravacao-original > summary::after,
+.trechos-recolhidos > summary::after {
+  margin-left: auto;
+}
+
+.gravacao-original > summary {
+  display: flex;
+  align-items: center;
+}
+
+.gravacao-original > summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 150ms ease;
+  flex: none;
+}
+
+.gravacao-original[open] > summary::after {
+  transform: rotate(-135deg) translateX(-2px);
 }

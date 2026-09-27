@@ -37,6 +37,7 @@ import {
   IconeAvancar,
   IconeVoltar,
   IconeConfiguracoes,
+  IconeFechar,
 } from '../icones';
 
 export type AbaDoInspector = 'video' | 'legendas' | 'efeitos';
@@ -95,6 +96,8 @@ interface Props {
   onSeek?: (ms: number) => void;
   /** Abre numa aba (o "Recorte" do celular vai direto ao enquadramento). */
   abaPedida?: { aba: AbaDoInspector; n: number } | null;
+  /** Computador: recolhe o painel (e tira a seleção). */
+  onRecolher?: () => void;
   /** Legendas: leva à lista de palavras para corrigir. */
   onCorrigirLegendas?: () => void;
 }
@@ -115,6 +118,7 @@ export function Inspector({
   onSeek,
   abaPedida,
   onCorrigirLegendas,
+  onRecolher,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   useEffect(() => {
@@ -129,6 +133,11 @@ export function Inspector({
           <IconeConfiguracoes size={19} />
           <strong style={{ fontSize: 17 }}>Propriedades</strong>
         </span>
+        {onRecolher && (
+          <button type="button" className="botao-icone botao-icone--pequeno so-largo" aria-label="Fechar as propriedades" title="Fechar" onClick={onRecolher}>
+            <IconeFechar size={16} />
+          </button>
+        )}
       </header>
 
       <div className="painel__corpo">

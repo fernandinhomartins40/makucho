@@ -174,6 +174,7 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
 
   return (
     <section className="sugestoes-midia" aria-labelledby="sugestoes-midia-titulo">
+      {linhas && (
       <header className="sugestoes-midia__topo">
         <span className="sugestoes-midia__icone" aria-hidden>
           <IconeIA size={16} weight="fill" />
@@ -183,34 +184,12 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
           <p className="dica">Ícones 3D, logos, fotos e vídeos de bancos livres, nos momentos certos do vídeo.</p>
         </div>
       </header>
-
-      {/* Como funciona: três passos, sempre à vista enquanto não há lista. */}
-      {!linhas && (
-        <ol className="sugestoes-midia__passos" aria-label="Como funciona">
-          <li data-ativo={buscando && etapa === 0 ? '' : undefined}>
-            <b>1</b>
-            <span>
-              <strong>A IA lê a sua fala</strong> e marca onde uma imagem ajuda
-            </span>
-          </li>
-          <li data-ativo={buscando && etapa >= 1 ? '' : undefined}>
-            <b>2</b>
-            <span>
-              <strong>Olha as imagens</strong> dos bancos e escolhe as que mais combinam
-            </span>
-          </li>
-          <li>
-            <b>3</b>
-            <span>
-              <strong>Você confere</strong> a prévia, troca o que quiser e aprova
-            </span>
-          </li>
-        </ol>
       )}
+
 
       {!linhas && (
         <button type="button" className="botao botao--primario" style={{ width: '100%' }} disabled={buscando} onClick={() => void sugerir()}>
-          <IconeIA size={16} weight="fill" /> {buscando ? ETAPAS_DA_BUSCA[etapa] : 'Sugerir imagens para este vídeo'}
+          <IconeIA size={16} weight="fill" /> {buscando ? ETAPAS_DA_BUSCA[etapa] : 'Sugerir imagens com IA'}
         </button>
       )}
       {buscando && (
@@ -221,7 +200,7 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
         </div>
       )}
       {!linhas && !buscando && (
-        <p className="sugestoes-midia__auto">
+        <p className="sugestoes-midia__auto campo__ajuda">
           A montagem com IA já separa as imagens para você aprovar; aqui você pede outra leva quando quiser.{' '}
           <Link href="/marca#videos">Ligar ou desligar em Marca &gt; Vídeos</Link>
         </p>

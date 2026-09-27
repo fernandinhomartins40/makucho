@@ -13,7 +13,7 @@
 // ============================================================
 
 import { duracaoNaTimeline } from '@makucho/studio-contracts';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { EditPlanV1, TimelineOperation } from '@makucho/studio-contracts';
 import { corDaFuncao, nomeDaFuncao, tempo } from './funcoes';
 import { IconeAviso, IconeMenu } from '../icones';
@@ -26,6 +26,8 @@ interface Props {
   onSelecionar: (clipId: string | null) => void;
   onAlternar: (clipId: string) => void;
   onOperacao: (op: TimelineOperation) => void;
+  /** O que vem no fim da lista (refinar os cortes). */
+  children?: ReactNode;
 }
 
 export function PainelDaIA({
@@ -35,6 +37,7 @@ export function PainelDaIA({
   onSelecionar,
   onAlternar,
   onOperacao,
+  children,
 }: Props) {
   const [menu, setMenu] = useState<string | null>(null);
   const minutos = Math.max(1, Math.round(plan.sourceDurationMs / 60_000));
@@ -43,14 +46,16 @@ export function PainelDaIA({
   // Sem "% de confiança": para quem não edita vídeo o número não diz o
   // que fazer. O que precisa de atenção aparece no próprio trecho
   // ("Revisar sentido").
+  // Recolhido: é consulta. Aberto, cada trecho é uma linha (nome,
+  // duração e a chave); o motivo da IA fica no toque longo (title).
   return (
-    <>
-      <header className="ia-secao__cabecalho">
+    <details className="trechos-recolhidos">
+      <summary className="ia-secao__cabecalho">
         <h2 className="ia-secao__titulo">Trechos do vídeo</h2>
         <span className="ia-secao__meta">
-          {ligados === plan.clips.length ? `${plan.clips.length} trechos` : `${ligados} de ${plan.clips.length} no vídeo`} · de {minutos} min gravados
+          {ligados === plan.clips.length ? `${plan.clips.length} trechos` : `${ligados} de ${plan.clips.length}`} · {minutos} min
         </span>
-      </header>
+      </summary>
       <p className="ia-secao__ajuda">Toque num trecho para vê-lo. A chave tira ou devolve o trecho ao vídeo.</p>
 
       <div className="painel__corpo pilha">
@@ -87,17 +92,15 @@ export function PainelDaIA({
                 className="trecho__texto"
                 onClick={() => onSelecionar(ativo ? null : clipe.id)}
                 aria-pressed={ativo}
+                title={`${clipe.reason} (da gravação: ${tempo(clipe.sourceStartMs)} – ${tempo(clipe.sourceEndMs)})`}
               >
                 <strong style={{ fontSize: 14 }}>
                   {i + 1}. {nomeDaFuncao(clipe.role)}
                 </strong>
-                <p className="trecho__motivo">{clipe.reason}</p>
-
-                {/* De onde saiu na gravação: a promessa de integridade
-                    editorial só é verificável se a origem estiver à
-                    vista. */}
+                {/* De onde saiu na gravação: a origem continua à vista,
+                    curta (o motivo inteiro vai no title). */}
                 <span className="trecho__origem">
-                  Da gravação: {tempo(clipe.sourceStartMs)} – {tempo(clipe.sourceEndMs)}
+                  {tempo(clipe.sourceStartMs)} – {tempo(clipe.sourceEndMs)}
                 </span>
 
                 {clipe.semanticRisk === 'high' && (
@@ -159,8 +162,8 @@ export function PainelDaIA({
             </article>
           );
         })}
-
+        {children}
       </div>
-    </>
+    </details>
   );
 }

@@ -27,7 +27,7 @@ export interface RespostaDaIa {
 
 type Envio = (texto: string, anterior?: { pedido: string; resposta: string }) => Promise<RespostaDaIa | null>;
 
-export function PedirAIa({ onEnviar }: { onEnviar: Envio }) {
+export function PedirAIa({ onEnviar, extras = [] }: { onEnviar: Envio; extras?: Array<{ rotulo: string; onClick: () => void }> }) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resposta, setResposta] = useState<RespostaDaIa | null>(null);
@@ -87,6 +87,11 @@ export function PedirAIa({ onEnviar }: { onEnviar: Envio }) {
           {EXEMPLOS.map((e) => (
             <button key={e} type="button" className="pedir-ia__exemplo" onClick={() => void enviar(e)}>
               {e}
+            </button>
+          ))}
+          {extras.map((x) => (
+            <button key={x.rotulo} type="button" className="pedir-ia__exemplo" onClick={x.onClick}>
+              {x.rotulo}
             </button>
           ))}
         </div>
