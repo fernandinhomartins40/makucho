@@ -30,7 +30,7 @@ interface Props {
   plan: EditPlanV1;
   desligados: ReadonlySet<string>;
   posicaoMs: number;
-  quadros?: (sourceMs: number) => string | null;
+  quadros?: import('../../lib/quadrosDoVideo').QuadrosDoVideo;
   semIa: boolean;
   onPedir: (texto: string, anterior?: { pedido: string; resposta: string }) => Promise<RespostaDaIa | null>;
   onIrPara: (ms: number) => void;

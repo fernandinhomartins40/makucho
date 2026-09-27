@@ -61,6 +61,7 @@ import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
 import { tempo } from './funcoes';
+import { publicarPosicao } from '../../lib/relogioAoVivo';
 import {
   IconeTocar,
   IconePausar,
@@ -570,11 +571,16 @@ export function Palco({
     () => (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 250 : 90),
     [],
   );
+  // O editor (React) só recebe a posição de tempos em tempos: cada aviso
+  // re-renderiza a página inteira. O cursor, o tempo e a rolagem da
+  // timeline andam a cada quadro pelo relógio ao vivo, fora do React.
+  const intervaloDoEditor = 500;
   useEffect(() => {
     if (!tocando) return;
     let quadro = 0;
     let anterior = performance.now();
     let ultimoAviso = 0;
+    let ultimoAvisoDoEditor = 0;
 
     const passo = (agora: number) => {
       const relogio = relogioRef.current;
@@ -606,9 +612,13 @@ export function Palco({
       // atualizações por segundo: cada uma re-renderiza o editor. No
       // celular, 4 por segundo (o cursor da timeline desliza por CSS
       // entre uma e outra): o processador fica para o vídeo.
+      publicarPosicao(relogio.ms);
       if (agora - ultimoAviso > intervaloDoAviso) {
         ultimoAviso = agora;
         setSourceMs(sourceNoInstante(agenda, indiceRef.current, relogio.ms) * 1000);
+      }
+      if (agora - ultimoAvisoDoEditor > intervaloDoEditor) {
+        ultimoAvisoDoEditor = agora;
         ultimaPosicaoRef.current = relogio.ms;
         onPosicao(relogio.ms);
       }

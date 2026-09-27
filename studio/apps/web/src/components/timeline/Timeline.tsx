@@ -29,7 +29,9 @@
 // EditPlan (@makucho/studio-contracts).
 // ============================================================
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { QuadrosDoVideo } from '../../lib/quadrosDoVideo';
+import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
 import { NOME_DO_LAYOUT, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela, definicaoDoSticker } from '@makucho/studio-contracts';
 import {
@@ -144,7 +146,7 @@ interface Props {
   ocultas?: ReadonlySet<string>;
   onAlternarCamada?: (faixa: CamadaOcultavel) => void;
   /** O quadro do original num ponto (ms), para a película dos trechos. */
-  quadros?: (sourceMs: number) => string | null;
+  quadros?: QuadrosDoVideo;
   /** Celular: a barra ganha IA, Velocidade e Ajustes com nome. */
   onAbrirIa?: () => void;
   onVelocidade?: () => void;
@@ -567,6 +569,43 @@ export function Timeline({
     if (x < area.scrollLeft || x > area.scrollLeft + visivel - 40) area.scrollLeft = Math.max(0, x - visivel * 0.25);
   }, [posicaoMs, zoom, arrastando, central]);
 
+  // Tocando: o relógio ao vivo move o cursor (transform, sem layout), o
+  // tempo e a rolagem a cada quadro, sem re-renderizar a timeline. O
+  // React só acerta tudo de novo quando a posição chega a ele.
+  const playheadRef = useRef<HTMLDivElement>(null);
+  const tempoDaBarraRef = useRef<HTMLElement>(null);
+  const tempoCentralRef = useRef<HTMLElement>(null);
+  const arrastandoRef = useRef(arrastando);
+  arrastandoRef.current = arrastando;
+  useEffect(
+    () =>
+      ouvirPosicao((ms) => {
+        const agora = Math.min(ms, duracaoMs);
+        const x = msParaPx(agora, zoomRef.current);
+        if (playheadRef.current) playheadRef.current.style.transform = `translateX(${x}px)`;
+        const texto = tempo(agora);
+        for (const el of [tempoDaBarraRef.current, tempoCentralRef.current]) {
+          // O nó de texto que o React já controla (trocar o textContent
+          // soltaria o nó dele, e o tempo parado ficaria errado).
+          const no = el?.firstChild;
+          if (no && no.nodeValue !== texto) no.nodeValue = texto;
+        }
+        const area = rolagemRef.current;
+        if (!area || arrastandoRef.current) return;
+        if (central) {
+          const alvo = Math.round(x);
+          if (Math.abs(area.scrollLeft - alvo) < 1) return;
+          rolagemProgramada.current = alvo;
+          area.scrollLeft = alvo;
+          return;
+        }
+        const rotulo = area.querySelector<HTMLElement>('.timeline__canto')?.offsetWidth ?? 0;
+        const visivel = area.clientWidth - rotulo;
+        if (x < area.scrollLeft || x > area.scrollLeft + visivel - 40) area.scrollLeft = Math.max(0, x - visivel * 0.25);
+      }),
+    [central, duracaoMs],
+  );
+
   // Rolar sem mexer nos itens: arrastar um espaço vazio da faixa (ou com
   // o botão do meio em qualquer lugar) rola a timeline para os lados; a
   // roda com Ctrl dá zoom no ponto do mouse; sem rolagem vertical, a roda
@@ -763,7 +802,7 @@ export function Timeline({
               {tocando ? <IconePausar size={16} weight="fill" /> : <IconeTocar size={16} weight="fill" />}
             </button>
             <span className="timeline__play-tempo">
-              <b>{tempo(Math.min(posicaoMs, duracaoMs))}</b> | {tempo(duracaoMs)}
+              <b ref={tempoDaBarraRef}>{tempo(Math.min(posicaoMs, duracaoMs))}</b> | {tempo(duracaoMs)}
             </span>
           </span>
         )}
@@ -841,7 +880,7 @@ export function Timeline({
       {central && (
         <>
           <span className="timeline__tempo" aria-live="off">
-            <b>{tempo(Math.min(posicaoMs, duracaoMs))}</b> / {tempo(duracaoMs)}
+            <b ref={tempoCentralRef}>{tempo(Math.min(posicaoMs, duracaoMs))}</b> / {tempo(duracaoMs)}
           </span>
           <span className="timeline__agulha" aria-hidden />
         </>
@@ -1278,7 +1317,7 @@ export function Timeline({
           })}
 
           {/* Playhead (no modo central a agulha é fixa, fora da rolagem). */}
-          {!central && <div className="timeline__playhead" aria-hidden style={{ left: `calc(var(--rotulo-da-faixa) + ${msParaPx(posicaoMs, zoom)}px)` }} />}
+          {!central && <div ref={playheadRef} className="timeline__playhead" aria-hidden style={{ transform: `translateX(${msParaPx(posicaoMs, zoom)}px)` }} />}
         </div>
       </div>
       </div>
@@ -1481,6 +1520,55 @@ function ItemSimples({
 }
 
 /**
+ * A película de um trecho num <canvas> só, desenhada a partir da folha de
+ * quadros (sprite sheet). Memo: a reprodução re-renderiza a timeline
+ * várias vezes por segundo, e a tira só redesenha quando chegam quadros
+ * novos, o zoom muda ou o corte do trecho muda -- nunca por tocar.
+ */
+const Pelicula = memo(function Pelicula({
+  quadros,
+  n,
+  lajota,
+  altura,
+  sourceInicioMs,
+  sourceDuracaoMs,
+}: {
+  quadros: QuadrosDoVideo;
+  n: number;
+  lajota: number;
+  altura: number;
+  sourceInicioMs: number;
+  sourceDuracaoMs: number;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(n * lajota * dpr);
+    canvas.height = Math.round(altura * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    let algum = false;
+    for (let i = 0; i < n; i++) {
+      const x = i * lajota;
+      if (quadros.desenhar(ctx, sourceInicioMs + ((i + 0.5) / n) * sourceDuracaoMs, x, 0, lajota, altura)) algum = true;
+      else {
+        ctx.fillStyle = 'rgb(255 255 255 / 4%)';
+        ctx.fillRect(x, 0, lajota, altura);
+      }
+      // O risco entre um quadro e outro (a "película").
+      ctx.fillStyle = 'rgb(0 0 0 / 35%)';
+      ctx.fillRect(x + lajota - 1, 0, 1, altura);
+    }
+    if (algum) canvas.dataset.cheia = '';
+    else delete canvas.dataset.cheia;
+  }, [quadros, n, lajota, altura, sourceInicioMs, sourceDuracaoMs]);
+  return <canvas ref={ref} className="clipe__pelicula" aria-hidden style={{ width: n * lajota }} />;
+});
+
+/**
  * Um trecho na faixa de vídeo, com os SELOS do que está aplicado nele:
  * efeito, transição de entrada, legendas, textos, elementos, sons e o
  * som do trecho -- de relance, o que a IA fez ali.
@@ -1518,7 +1606,7 @@ function ClipeNaFaixa({
   sourceInicioMs: number;
   /** Quanto do original o trecho usa (difere da duração com velocidade). */
   sourceDuracaoMs: number;
-  quadros?: (sourceMs: number) => string | null;
+  quadros?: QuadrosDoVideo;
   velocidade?: number;
 }) {
   const cor = corDaFuncao(funcao);
@@ -1527,7 +1615,6 @@ function ClipeNaFaixa({
   const alturaDoQuadro = altura - 8;
   const lajota = Math.max(18, Math.round((alturaDoQuadro * 9) / 16));
   const nLajotas = quadros ? Math.min(60, Math.ceil(largura / lajota)) : 0;
-  const pelicula = Array.from({ length: nLajotas }, (_, i) => quadros!(sourceInicioMs + ((i + 0.5) / Math.max(1, nLajotas)) * sourceDuracaoMs));
   const selos: Array<{ chave: string; Icone: Icon; texto: string; dica: string }> = [];
   if (recursos?.transicao) selos.push({ chave: 'tr', Icone: IconeTransicao, texto: recursos.transicao, dica: `Entra com transição: ${recursos.transicao}` });
   if (recursos?.efeito) selos.push({ chave: 'fx', Icone: IconeEfeito, texto: recursos.efeito, dica: `Efeito: ${recursos.efeito}` });
@@ -1571,17 +1658,8 @@ function ClipeNaFaixa({
         aria-hidden
         style={{ backgroundImage: `repeating-linear-gradient(90deg, ${cor}55 0 32px, ${cor}22 32px 34px)` }}
       />
-      {nLajotas > 0 && (
-        <span className="clipe__pelicula" aria-hidden>
-          {pelicula.map((src, i) =>
-            src ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={src} alt="" style={{ width: lajota }} />
-            ) : (
-              <i key={i} style={{ width: lajota }} />
-            ),
-          )}
-        </span>
+      {quadros && nLajotas > 0 && (
+        <Pelicula quadros={quadros} n={nLajotas} lajota={lajota} altura={alturaDoQuadro} sourceInicioMs={sourceInicioMs} sourceDuracaoMs={sourceDuracaoMs} />
       )}
       <span className="clipe__topo">
         <span className="clipe__chip" style={{ background: cor }}>

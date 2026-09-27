@@ -2,27 +2,41 @@
 // Quadros do vídeo para a tira da timeline (a "película" de cada trecho).
 //
 // Tirados da PRÉVIA leve, no próprio aparelho: um <video> fora da tela
-// pula de ponto em ponto e cada quadro vira um JPEG pequeno. Sem
-// servidor, sem custo -- e a tira mostra o que a pessoa gravou, que é
-// como se reconhece um trecho de relance (o nome "Gancho" não diz qual).
+// pula de ponto em ponto e cada quadro é desenhado numa FOLHA única
+// (sprite sheet, como fazem os editores de vídeo na web): nada de JPEG
+// por quadro -- toDataURL codificava no processador principal -- nem de
+// dezenas de <img> por trecho. A timeline desenha a tira de cada trecho
+// num <canvas> só, a partir da folha, e só redesenha quando algo muda.
 //
 // Guardado por URL enquanto a página vive: trocar de aba ou de tela não
 // refaz o trabalho. Os quadros chegam aos poucos (a tira se completa
 // enquanto a pessoa já edita).
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 /** Um quadro a cada tanto do ORIGINAL; vídeo longo espaça mais. */
 const MAX_QUADROS = 120;
 const LARGURA = 54;
 const ALTURA = 96;
+/** A folha: 12 quadros por linha (648 x 960 px no máximo). */
+const COLUNAS = 12;
 
 interface Estado {
   passoMs: number;
-  quadros: Map<number, string>;
+  folha: HTMLCanvasElement | null;
+  /** Posição de cada quadro já tirado na folha (índice do passo). */
+  prontos: Set<number>;
+  versao: number;
   ouvintes: Set<() => void>;
-  pronto: boolean;
+}
+
+/** O que a timeline recebe: desenha o quadro de um ponto do original. */
+export interface QuadrosDoVideo {
+  /** Muda quando chegam quadros novos (a tira redesenha só então). */
+  versao: number;
+  /** Desenha o quadro mais próximo de `sourceMs`; false se ainda não saiu. */
+  desenhar(ctx: CanvasRenderingContext2D, sourceMs: number, x: number, y: number, w: number, h: number): boolean;
 }
 
 const porUrl = new Map<string, Estado>();
@@ -40,7 +54,7 @@ function extrair(url: string, duracaoMs: number): Estado {
   const existente = porUrl.get(url);
   if (existente) return existente;
   const passoMs = Math.max(1000, Math.ceil(duracaoMs / MAX_QUADROS / 1000) * 1000);
-  const estado: Estado = { passoMs, quadros: new Map(), ouvintes: new Set(), pronto: false };
+  const estado: Estado = { passoMs, folha: null, prontos: new Set(), versao: 0, ouvintes: new Set() };
   porUrl.set(url, estado);
   if (typeof document === 'undefined') return estado;
 
@@ -51,11 +65,10 @@ function extrair(url: string, duracaoMs: number): Estado {
   // segundo plano, concorrendo com o vídeo que a pessoa assiste.
   video.preload = 'metadata';
   video.src = url;
-  const canvas = document.createElement('canvas');
-  canvas.width = LARGURA;
-  canvas.height = ALTURA;
-  const ctx = canvas.getContext('2d');
-  const avisar = () => estado.ouvintes.forEach((f) => f());
+  const avisar = () => {
+    estado.versao++;
+    estado.ouvintes.forEach((f) => f());
+  };
 
   const buscar = (s: number) =>
     new Promise<void>((ok) => {
@@ -75,29 +88,42 @@ function extrair(url: string, duracaoMs: number): Estado {
       video.addEventListener('error', () => falha(new Error('prévia indisponível')), { once: true });
     });
     const total = Number.isFinite(video.duration) ? video.duration * 1000 : duracaoMs;
+    const quantos = Math.max(1, Math.ceil(total / passoMs));
+    const folha = document.createElement('canvas');
+    folha.width = LARGURA * Math.min(COLUNAS, quantos);
+    folha.height = ALTURA * Math.ceil(quantos / COLUNAS);
+    const ctx = folha.getContext('2d');
+    if (!ctx) return;
+    estado.folha = folha;
     let desde = 0;
     // Deixa o editor abrir primeiro.
     await esperar(1500);
-    for (let ms = 0; ms < total; ms += passoMs) {
+    for (let i = 0; i < quantos; i++) {
       while (pausada) await esperar(400);
       // Um quadro por vez, com folga: nunca uma rajada no processador.
       await esperar(60);
-      await buscar((ms + passoMs / 2) / 1000);
-      if (!ctx) break;
+      await buscar((i * passoMs + passoMs / 2) / 1000);
       // Cobre o quadro 9:16 (vídeo deitado é cortado no centro).
       const vw = video.videoWidth || LARGURA;
       const vh = video.videoHeight || ALTURA;
       const escala = Math.max(LARGURA / vw, ALTURA / vh);
       const w = vw * escala;
       const h = vh * escala;
-      ctx.drawImage(video, (LARGURA - w) / 2, (ALTURA - h) / 2, w, h);
-      estado.quadros.set(ms, canvas.toDataURL('image/jpeg', 0.62));
-      if (++desde >= 6) {
+      const x0 = (i % COLUNAS) * LARGURA;
+      const y0 = Math.floor(i / COLUNAS) * ALTURA;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0, y0, LARGURA, ALTURA);
+      ctx.clip();
+      ctx.drawImage(video, x0 + (LARGURA - w) / 2, y0 + (ALTURA - h) / 2, w, h);
+      ctx.restore();
+      estado.prontos.add(i);
+      // Avisos espaçados: cada um redesenha as tiras da timeline.
+      if (++desde >= 8) {
         desde = 0;
         avisar();
       }
     }
-    estado.pronto = true;
     avisar();
     video.removeAttribute('src');
     video.load();
@@ -109,25 +135,34 @@ function extrair(url: string, duracaoMs: number): Estado {
 }
 
 /**
- * O quadro mais próximo de um ponto do ORIGINAL (ms), ou null enquanto
- * ainda não saiu. Re-renderiza quando chegam novos quadros.
+ * Os quadros do original para a película dos trechos. O objeto só muda
+ * quando chegam quadros novos: a reprodução, que re-renderiza o editor
+ * várias vezes por segundo, não redesenha nenhuma tira.
  */
-export function useQuadrosDoVideo(url: string | undefined, duracaoMs: number): ((sourceMs: number) => string | null) | undefined {
-  const [, setVersao] = useState(0);
+export function useQuadrosDoVideo(url: string | undefined, duracaoMs: number): QuadrosDoVideo | undefined {
+  const [versao, setVersao] = useState(0);
   const [estado, setEstado] = useState<Estado | null>(null);
   useEffect(() => {
     if (!url || duracaoMs <= 0) return;
     const e = extrair(url, duracaoMs);
     setEstado(e);
-    const ouvir = () => setVersao((v) => v + 1);
+    setVersao(e.versao);
+    const ouvir = () => setVersao(e.versao);
     e.ouvintes.add(ouvir);
     return () => {
       e.ouvintes.delete(ouvir);
     };
   }, [url, duracaoMs]);
-  if (!estado) return undefined;
-  return (sourceMs: number) => {
-    const chave = Math.max(0, Math.floor(sourceMs / estado.passoMs) * estado.passoMs);
-    return estado.quadros.get(chave) ?? null;
-  };
+  return useMemo(() => {
+    if (!estado) return undefined;
+    return {
+      versao,
+      desenhar(ctx, sourceMs, x, y, w, h) {
+        const i = Math.max(0, Math.floor(sourceMs / estado.passoMs));
+        if (!estado.folha || !estado.prontos.has(i)) return false;
+        ctx.drawImage(estado.folha, (i % COLUNAS) * LARGURA, Math.floor(i / COLUNAS) * ALTURA, LARGURA, ALTURA, x, y, w, h);
+        return true;
+      },
+    };
+  }, [estado, versao]);
 }
