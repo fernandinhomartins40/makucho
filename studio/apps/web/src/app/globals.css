@@ -13074,3 +13074,156 @@ button.midia-cartao__previa:disabled {
 .gravacao-original[open] > summary::after {
   transform: rotate(-135deg) translateX(-2px);
 }
+
+/* =====================================================================
+   Computador: a estrutura do CapCut online.
+   A coluna de categorias e o painel vão do topo ao pé da tela; o topo,
+   o vídeo e a timeline ficam só na parte da direita. Nada de cartões
+   soltos: superfícies coladas, separadas por uma linha fina, e o vídeo
+   numa área aberta, grande, no centro.
+   ===================================================================== */
+@media (min-width: 900px) {
+  .editor[data-modo='completo'] {
+    --col-rail: 72px;
+    position: relative;
+    grid-template-columns: var(--col-rail) var(--col-painel) minmax(0, 1fr) var(--col-props) !important;
+    grid-template-rows: auto minmax(0, 1fr) minmax(210px, 34%) !important;
+    grid-template-areas:
+      'rail ia topo topo'
+      'rail ia palco inspector'
+      'rail ia timeline timeline' !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    background: var(--bg-canvas);
+  }
+
+  .editor[data-modo='completo'][data-timeline-manual] {
+    grid-template-rows: auto minmax(0, 1fr) var(--altura-timeline) !important;
+  }
+
+  .editor[data-modo='completo'] > .topbar--editor {
+    grid-area: topo;
+    min-width: 0;
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-canvas);
+  }
+
+  /* Coluna de categorias: altura toda, colada no painel. */
+  .editor[data-modo='completo'] .editor__rail {
+    grid-area: rail;
+    border-right: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  /* Painel: colado, altura toda, sem cartão. */
+  .editor[data-modo='completo'] .editor__ia {
+    margin: 0 !important;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--surface-1);
+    box-shadow: none;
+  }
+
+  /* A alça "‹" no meio da borda do painel. */
+  .editor__alca {
+    position: absolute;
+    z-index: 30;
+    top: 50%;
+    left: calc(var(--col-rail) + var(--col-painel) - 1px);
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 56px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-left: 0;
+    border-radius: 0 8px 8px 0;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transform: translateY(-50%);
+  }
+
+  .editor__alca:hover {
+    color: var(--text-primary);
+    background: var(--surface-3, var(--surface-2));
+  }
+
+  /* O vídeo: área aberta, grande, no centro. */
+  .editor[data-modo='completo'] .editor__palco {
+    padding: 16px 24px !important;
+    background: var(--bg-canvas);
+  }
+
+  .editor[data-modo='completo'] .editor__palco > .palco__quadro {
+    height: min(100%, calc(100cqw * var(--quadro-hw, 1.7778))) !important;
+    border-radius: 6px;
+  }
+
+  /* O formato já está no botão "Proporção": o chip no vídeo sai. */
+  .editor[data-modo='completo'] .palco__chips > .chip:not(.chip--acionavel) {
+    display: none;
+  }
+
+  .editor[data-modo='completo'] .proporcao {
+    top: 14px;
+    left: 16px;
+  }
+
+  /* Propriedades: coladas à direita, sem cartão. */
+  .editor[data-modo='completo'] .editor__inspector {
+    margin: 0 !important;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Timeline: só na parte da direita, colada, com a linha de cima. */
+  .editor[data-modo='completo'] .editor__timeline {
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Trilhas enxutas: só o ícone (e o olho) no começo de cada uma. */
+  .editor[data-modo='completo'] .timeline__rolagem {
+    --rotulo-da-faixa: 64px !important;
+  }
+
+  .editor[data-modo='completo'] .timeline__faixa {
+    justify-content: center;
+    gap: 6px;
+    padding: 0 6px;
+  }
+
+  .editor[data-modo='completo'] .timeline__nome {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Os selos do trecho aparecem ao passar o mouse ou com ele selecionado. */
+  .editor[data-modo='completo'] .clipe--trecho:not([data-selecionado]):not(:hover) .clipe__selos {
+    opacity: 0;
+  }
+
+  .editor[data-modo='completo'] .clipe__selos {
+    transition: opacity 120ms ease;
+  }
+}
+
+/* Painel recolhido: a alça encosta na coluna. */
+@media (min-width: 900px) {
+  .editor[data-modo='completo'][data-painel='fechado'] .editor__alca {
+    left: calc(var(--col-rail) - 1px);
+  }
+}

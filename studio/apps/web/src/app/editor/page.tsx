@@ -1116,7 +1116,9 @@ function Editor({ projectId }: { projectId: string }) {
 
   return (
     <>
-      {cabecalho}
+      {/* No computador o topo vai para dentro da grade (só sobre o vídeo e
+          a timeline, como no CapCut); no celular fica em cima de tudo. */}
+      {celular && cabecalho}
 
       {plano && (
         <DialogoDeExportacao
@@ -1147,7 +1149,18 @@ function Editor({ projectId }: { projectId: string }) {
       )}
 
       <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado || propsAbertas ? 'com' : 'sem'}>
+        {!celular && cabecalho}
         <RailDeFerramentas ativa={colunaAtiva} ajustesAbertos={propsAbertas && !selecionado && !itemSelecionado} onEscolher={escolherNaColuna} />
+        {/* A alça na borda do painel: recolhe e devolve (computador). */}
+        <button
+          type="button"
+          className="editor__alca so-largo"
+          aria-label={painelAberto ? 'Recolher o painel' : 'Abrir o painel'}
+          title={painelAberto ? 'Recolher o painel' : 'Abrir o painel'}
+          onClick={() => setPainelAberto((v) => !v)}
+        >
+          <span aria-hidden>{painelAberto ? '‹' : '›'}</span>
+        </button>
 
         {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
