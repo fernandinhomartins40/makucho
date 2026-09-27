@@ -52,3 +52,5 @@ export * from './ai-marca';
 export * from './kit-criativo';
 export * from './midias-da-ia';
 export * from './ai-roteiro-livre';
+export * from './adaptativo';
+export * from './montagem-visual';

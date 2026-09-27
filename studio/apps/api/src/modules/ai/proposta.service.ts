@@ -183,7 +183,9 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       plano = resultado.plano;
       resposta = {
         ok: true,
-        origem: 'ia',
+        // A montagem pelas cenas sai por regra quando a IA não responde:
+        // o aviso e o motivo dizem isso, como na montagem sem IA da fala.
+        origem: resultado.origem ?? 'ia',
         confianca: resultado.confianca,
         avisos: resultado.avisos,
         problemas: resultado.problemas,
@@ -204,8 +206,10 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
 
     // Com a IA de pé, a montagem já separa as mídias que ilustram a fala
     // (ícones 3D, logos, fotos, vídeos) -- para APROVAR no editor, não
-    // aplicadas. Sem IA (montagem automática), não há quem escolha.
-    if (resposta.origem === 'ia') {
+    // aplicadas. Sem IA (montagem automática), não há quem escolha; sem
+    // fala (montagem pelas cenas), não há fala a ilustrar.
+    const pelasCenas = (plano as EditPlanV1).clips.every((c) => c.origin === 'cena');
+    if (resposta.origem === 'ia' && !pelasCenas) {
       await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
       const n = await this.midias.separarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
         this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
@@ -220,7 +224,10 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.project
       .update({
         where: { id: projectId },
-        data: { aiFallbackReason: resposta.origem === 'ia' || resultado.ok ? null : resultado.erro.slice(0, 500) },
+        data: {
+          aiFallbackReason:
+            resposta.origem === 'ia' ? null : resultado.ok ? (resultado.motivo ?? null)?.slice(0, 500) ?? null : resultado.erro.slice(0, 500),
+        },
       })
       .catch(() => undefined);
 

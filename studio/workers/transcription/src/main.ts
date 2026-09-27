@@ -23,6 +23,8 @@ import {
   FILA_TRANSCRICAO,
   PREFIXO_DAS_FILAS,
   SILENCIO_MINIMO_MS,
+  classificarAudio,
+  ehAlucinacaoDoWhisper,
   transcriptionResultSchema,
 } from '@makucho/studio-contracts';
 import { comLockGlobal, publicarProgresso } from '@makucho/studio-worker-core';
@@ -136,14 +138,10 @@ function rodarWhisper(
       if (encerrado) return;
 
       // 3 é o código combinado com o script para "áudio sem fala".
-      // Vale mensagem própria: é um caso real — microfone errado,
-      // gravação muda — e não um defeito do sistema.
+      // Não é erro: vídeo de produto, vitrine, promoção com música. O
+      // projeto segue para a montagem pelas cenas (montagem-visual.ts).
       if (codigo === 3) {
-        rejeitar(
-          new ErroDoUsuario(
-            'Não identificamos fala neste vídeo. Confira se o microfone estava ativo na gravação.',
-          ),
-        );
+        resolver({ semFala: true });
         return;
       }
 
@@ -211,19 +209,40 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   // O Zod aqui não é cerimônia: o que vem do modelo é dado externo, e
   // um segmento com `endMs` menor que `startMs` viraria um clipe de
   // duração negativa na timeline três telas adiante.
-  const conferido = transcriptionResultSchema.safeParse(bruto);
-  if (!conferido.success) {
-    throw new Error(`transcrição fora do contrato: ${conferido.error.issues[0]?.message}`);
+  const semFala = (bruto as { semFala?: boolean } | null)?.semFala === true;
+  let resultado: { language: string; model: string; confidence?: number; segments: Array<{ startMs: number; endMs: number; text: string; confidence?: number; position: number; words: Array<{ word: string; startMs: number; endMs: number; confidence: number }> }> };
+  if (semFala) {
+    resultado = { language: 'pt', model: process.env.WHISPER_MODEL ?? 'small', segments: [] };
+  } else {
+    const conferido = transcriptionResultSchema.safeParse(bruto);
+    if (!conferido.success) {
+      throw new Error(`transcrição fora do contrato: ${conferido.error.issues[0]?.message}`);
+    }
+    resultado = conferido.data;
   }
-  const resultado = conferido.data;
 
-  // ---------- Silêncios ----------
+  // ---------- Que áudio é este? ----------
   //
-  // O worker de mídia os detectou e deixou num arquivo, porque
+  // As frases típicas que o Whisper inventa em música ("Legendas pela
+  // comunidade Amara.org") saem; o que sobra, com os silêncios, diz se o
+  // vídeo é narrado, tem fala em parte, só música/ambiente ou é mudo.
+  // Sem narração, frases soltas (rádio, letra de música) também saem:
+  // não podem guiar o corte nem virar legenda.
+  const silencios = await lerSilencios(dirname(audio.storageKey));
+  const comFala = resultado.segments.filter((s) => !ehAlucinacaoDoWhisper(s.text));
+  const descartados = resultado.segments.length - comFala.length + Number((bruto as { discarded?: number } | null)?.discarded ?? 0);
+  const original = await prisma.mediaSource.findFirst({ where: { projectId, kind: 'ORIGINAL' }, orderBy: { createdAt: 'desc' } });
+  const duracaoMs = original?.durationMs ?? audio.durationMs ?? Math.max(1, ...resultado.segments.map((s) => s.endMs));
+  const perfil = classificarAudio({ duracaoMs, segmentos: comFala, silencios, descartados });
+  const segmentosFinais = (perfil.tipo === 'fala' || perfil.tipo === 'fala_parcial' ? comFala : []).map((s, i) => ({ ...s, position: i }));
+  console.log(`[transcricao] projeto ${projectId}: áudio "${perfil.tipo}" (fala em ${Math.round(perfil.coberturaDeFala * 100)}% do vídeo, ${descartados} descartados)`);
+  const cenas = await lerCenas(dirname(audio.storageKey));
+
+  // ---------- Silêncios e cenas ----------
+  //
+  // O worker de mídia os detectou e deixou em arquivos, porque
   // `DetectedRegion` pende de uma `Transcription` que não existia
   // naquele momento. Agora existe, e as regiões podem ser gravadas.
-  const silencios = await lerSilencios(dirname(audio.storageKey));
-
   await prisma.$transaction(async (tx) => {
     const transcricao = await tx.transcription.create({
       data: {
@@ -234,7 +253,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       },
     });
 
-    for (const seg of resultado.segments) {
+    for (const seg of segmentosFinais) {
       const criado = await tx.transcriptSegment.create({
         data: {
           transcriptionId: transcricao.id,
@@ -274,12 +293,23 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       });
     }
 
-    // ANALYZING é o próximo estado; a Fase 5b pega daqui. Enquanto a
-    // IA não existe, o projeto para aqui — e isso é visível na tela,
-    // em vez de ficar preso em "Transcrevendo" sem explicação.
+    if (cenas.length > 0) {
+      await tx.detectedRegion.createMany({
+        data: cenas.map((c) => ({
+          transcriptionId: transcricao.id,
+          kind: 'scene',
+          startMs: c.inicioMs,
+          endMs: c.fimMs,
+          metadata: { quadro: c.quadro },
+        })),
+      });
+    }
+
+    // ANALYZING é o próximo estado; a Fase 5b pega daqui. O perfil do
+    // áudio decide o caminho da montagem: pela fala ou pelas cenas.
     await tx.project.update({
       where: { id: projectId },
-      data: { state: 'ANALYZING', publicError: null },
+      data: { state: 'ANALYZING', publicError: null, audioProfile: perfil },
     });
   });
 
@@ -296,11 +326,26 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   }
 
   console.log(
-    `[transcricao] projeto ${projectId}: ${resultado.segments.length} segmentos, ` +
+    `[transcricao] projeto ${projectId}: ${segmentosFinais.length} segmentos, ${cenas.length} cenas, ` +
       `${silencios.length} silêncios, idioma ${resultado.language}`,
   );
 
   await job.updateProgress(100);
+}
+
+/** Lê as cenas que o worker de mídia deixou ao lado do áudio. */
+async function lerCenas(prefixo: string): Promise<Array<{ inicioMs: number; fimMs: number; quadro: string }>> {
+  try {
+    const lido: unknown = JSON.parse(await readFile(caminhoDe(`${prefixo}/cenas.json`), 'utf8'));
+    if (!Array.isArray(lido)) return [];
+    return lido.filter(
+      (c): c is { inicioMs: number; fimMs: number; quadro: string } =>
+        typeof c?.inicioMs === 'number' && typeof c?.fimMs === 'number' && c.fimMs > c.inicioMs && typeof c?.quadro === 'string',
+    );
+  } catch {
+    // Sem cenas, a montagem pelas cenas usa janelas fixas do vídeo.
+    return [];
+  }
 }
 
 /** Lê o mapa que o worker de mídia deixou ao lado do áudio. */

@@ -25,8 +25,14 @@ import {
   compilarProposta,
   confiancaDoPlano,
   detectarRetomadas,
+  RAMOS,
+  RECEITAS,
   hasBlockingIssues,
+  montaPelasCenas,
   parseAiProposal,
+  perfilDoAudioSchema,
+  ramoOuOutro,
+  tipoDeVideoPadrao,
   removerRetomadasEscolhidas,
   editPlanV1Schema,
   tirarPausas,
@@ -39,10 +45,13 @@ import type {
   ContextoDoAcabamento,
   SegmentoDaTranscricao,
   SemanticIssue,
+  TipoDeVideo,
+  RamoDeNegocio,
 } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
+import { MontagemVisualService } from './montagem-visual.service';
 import { PromptsService } from './prompts.service';
 import { RoteiroService } from './roteiro.service';
 
@@ -76,6 +85,7 @@ export class AnaliseService {
     private readonly prompts: PromptsService,
     private readonly acabamento: AcabamentoService,
     private readonly roteiros: RoteiroService,
+    private readonly montagemVisual: MontagemVisualService,
   ) {}
 
   /**
@@ -97,9 +107,40 @@ export class AnaliseService {
         problemas: SemanticIssue[];
         /** O que a IA entendeu do vídeo (assunto, promessa, estrutura). */
         entendimento?: AnaliseDaIa;
+        /** Montado por regra (a IA não montou) e por quê. */
+        origem?: 'ia' | 'automatica';
+        motivo?: string;
       }
     | { ok: false; erro: string; temporario: boolean }
   > {
+    // ---------- Que vídeo é este? ----------
+    //
+    // Sem narração (produto, vitrine, promoção com música, vídeo mudo),
+    // a fala não guia o corte: a montagem é pelas CENAS. Com narração,
+    // segue a seleção pela fala, com a receita do tipo de vídeo e o
+    // ramo do negócio no contexto.
+    const adaptacao = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { audioProfile: true, videoKind: true, contentBrief: true, objective: true, workspace: { select: { businessType: true } } },
+    });
+    const audioLido = perfilDoAudioSchema.safeParse(adaptacao?.audioProfile);
+    const audio = audioLido.success ? audioLido.data : null;
+    if (montaPelasCenas(audio)) {
+      const r = await this.montagemVisual.montar(workspaceId, projectId, { semCache: Boolean(opcoes.semCache) });
+      if (!r.ok) return { ok: false, erro: r.erro, temporario: true };
+      return {
+        ok: true,
+        plano: r.plano,
+        avisos: r.avisos,
+        confianca: 100,
+        problemas: [],
+        origem: r.origem,
+        ...(r.motivo ? { motivo: r.motivo } : {}),
+      };
+    }
+    const ramo = ramoOuOutro(adaptacao?.workspace.businessType);
+    const tipo = tipoDeVideoPadrao({ escolhido: adaptacao?.videoKind, audio, resumo: adaptacao?.contentBrief ?? adaptacao?.objective, ramo });
+
     const transcricao = await this.prisma.transcription.findUnique({
       where: { projectId },
       include: {
@@ -180,6 +221,9 @@ export class AnaliseService {
       titulo: projeto?.title,
       objetivo: projeto?.objective,
       roteiro: projeto?.script ?? null,
+      tipo,
+      ramo: adaptacao?.workspace.businessType ? ramo : null,
+      resumo: adaptacao?.contentBrief ?? null,
     });
 
     // ---------- Duas tentativas: barata, e com raciocinio so se precisar ----------
@@ -370,6 +414,9 @@ export class AnaliseService {
     titulo?: string | null;
     objetivo?: string | null;
     roteiro?: { title: string; blocks: Array<{ role: string; goal: string | null; text: string }> } | null;
+    tipo?: TipoDeVideo;
+    ramo?: RamoDeNegocio | null;
+    resumo?: string | null;
   }): string {
     const linhas = e.segmentos.map((s, i) => {
       const notas: string[] = [];
@@ -384,6 +431,11 @@ export class AnaliseService {
     });
 
     const contexto: string[] = [];
+    // A receita do tipo de vídeo e o negócio: o mesmo protocolo serve a
+    // um influencer e a uma loja que narra a promoção do dia.
+    if (e.tipo && e.tipo !== 'fala_camera') contexto.push(`Tipo de vídeo: ${RECEITAS[e.tipo].rotulo}. ${RECEITAS[e.tipo].orientacao}`);
+    if (e.ramo) contexto.push(`Negócio: ${RAMOS[e.ramo].rotulo}. Chamada típica: "${RAMOS[e.ramo].chamadaPadrao}".`);
+    if (e.resumo) contexto.push(`O que tem neste vídeo (escrito por quem gravou): "${e.resumo.replace(/\s+/g, ' ').slice(0, 400)}"`);
     const titulo = e.titulo && !/^vídeo sem título$/i.test(e.titulo) ? e.titulo : null;
     if (titulo) contexto.push(`Título do projeto: ${titulo}`);
     if (e.objetivo) contexto.push(`Objetivo: ${e.objetivo}`);
@@ -413,7 +465,9 @@ export class AnaliseService {
     if (e.acabamento?.logoAssetId) marca.push('tem logo no canto');
     if (e.acabamento?.musicaAssetId) marca.push('tem trilha de fundo');
 
-    const pedido = e.duracaoAlvoMs ?? (p ? Math.round((p.targetDurationMinMs + p.targetDurationMaxMs) / 2) : 60_000);
+    const pedido =
+      e.duracaoAlvoMs ??
+      (e.tipo && e.tipo !== 'fala_camera' ? RECEITAS[e.tipo].duracaoAlvoMs : p ? Math.round((p.targetDurationMinMs + p.targetDurationMaxMs) / 2) : 60_000);
     // O alvo nunca passa da gravação: com 20 s gravados e 60 s pedidos,
     // a IA tentaria "esticar" e manteria o que devia sair. Aí o alvo é
     // cortar o que não serve -- uns 85% do que foi gravado, no máximo.

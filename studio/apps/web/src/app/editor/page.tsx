@@ -36,7 +36,8 @@ import {
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
   ROTULO_DE_ESTADO,
   tirarPausas,
-  agendaDoPlano, duracaoNaTimeline, PRESETS_DE_TEXTO } from '@makucho/studio-contracts';
+  agendaDoPlano, duracaoNaTimeline, PRESETS_DE_TEXTO, ROTULO_DO_AUDIO, RECEITAS, tipoDeVideoSchema, type TipoDeVideo } from '@makucho/studio-contracts';
+import { TipoDoVideo } from '../../components/editor/TipoDoVideo';
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
@@ -103,6 +104,9 @@ import {
   IconePausar,
   IconeTelaCheia,
   IconeMarca,
+  IconeTrilha,
+  IconeTexto,
+  IconeMicrofone,
 } from '../../components/icones';
 
 export default function EditorPage() {
@@ -531,6 +535,19 @@ function Editor({ projectId }: { projectId: string }) {
   }, [titulo, projeto, projectId]);
 
   // ---------- IA ----------
+  // Que vídeo é (e o que a IA não vê): editáveis no "Refazer a análise".
+  const [tipoDoVideo, setTipoDoVideo] = useState<TipoDeVideo | null>(null);
+  const [resumoDoVideo, setResumoDoVideo] = useState('');
+  useEffect(() => {
+    if (!projeto) return;
+    const lido = tipoDeVideoSchema.safeParse(projeto.videoKind);
+    setTipoDoVideo(lido.success ? lido.data : null);
+    setResumoDoVideo(projeto.contentBrief ?? '');
+    // Só quando o projeto muda (não a cada recarga do mesmo).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projeto?.id]);
+  const pelasCenas = Boolean(projeto?.audioProfile && projeto.audioProfile.tipo !== 'fala');
+
   const analisar = useCallback(async () => {
     if (analisando) return;
     setAnalisando(true);
@@ -549,6 +566,18 @@ function Editor({ projectId }: { projectId: string }) {
       setAnalisando(false);
     }
   }, [analisando, projectId, carregarPlano, carregarProjeto]);
+
+  const refazerComOTipo = async () => {
+    const resumo = resumoDoVideo.trim().slice(0, 400) || null;
+    if ((projeto?.videoKind ?? null) !== tipoDoVideo || (projeto?.contentBrief ?? null) !== resumo) {
+      try {
+        await apiProjetos.atualizar(projectId, { videoKind: tipoDoVideo, contentBrief: resumo });
+      } catch (e) {
+        return setErro(e instanceof Error ? e.message : 'não foi possível salvar o tipo do vídeo.');
+      }
+    }
+    await analisar();
+  };
 
   // A película da timeline: quadros tirados da prévia leve.
   const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0);
@@ -1207,7 +1236,24 @@ function Editor({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12 }}>{a}</span>
                 </div>
               ))}
-              {!semIa && <PedirAIa onEnviar={pedirAIa} extras={midiasSeparadas?.momentos.length ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
+              {pelasCenas && projeto?.audioProfile && (
+                <div className="aviso-cenas" role="status">
+                  <strong>{ROTULO_DO_AUDIO[projeto.audioProfile.tipo]}</strong>
+                  <span>Montei pelas cenas{tipoDoVideo ? ` (${RECEITAS[tipoDoVideo].rotulo.toLowerCase()})` : ''}. Deixe mais vivo:</span>
+                  <div className="aviso-cenas__acoes">
+                    <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => abrirBiblioteca('trilha')}>
+                      <IconeTrilha size={15} /> Música
+                    </button>
+                    <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => abrirBiblioteca('textos')}>
+                      <IconeTexto size={15} /> Textos
+                    </button>
+                    <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => setGravadorDe(Math.round(posicaoMs))}>
+                      <IconeMicrofone size={15} /> Narrar
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!semIa && <PedirAIa onEnviar={pedirAIa} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
               {midiasSeparadas?.momentos.length ? (
                 <div className="midias-separadas" role="status">
                   <div className="midias-separadas__topo">
@@ -1273,7 +1319,16 @@ function Editor({ projectId }: { projectId: string }) {
             </div>
           )}
           {aba === 'ia' && !semIa && (
-            <SobreOVideo entendimento={projeto?.entendimentoDaIa ?? null} analisando={analisando} onRefazer={() => void analisar()} />
+            <SobreOVideo
+              entendimento={pelasCenas ? null : (projeto?.entendimentoDaIa ?? null)}
+              analisando={analisando}
+              onRefazer={() => void refazerComOTipo()}
+              audio={projeto?.audioProfile?.tipo ?? null}
+              tipo={tipoDoVideo}
+              onTipo={setTipoDoVideo}
+              resumo={resumoDoVideo}
+              onResumo={setResumoDoVideo}
+            />
           )}
           {aba === 'biblioteca' && (
             <PainelDaBiblioteca
@@ -1623,10 +1678,20 @@ function SobreOVideo({
   entendimento: e,
   analisando,
   onRefazer,
+  audio,
+  tipo,
+  onTipo,
+  resumo,
+  onResumo,
 }: {
   entendimento: ProjetoDetalhado['entendimentoDaIa'] | null;
   analisando: boolean;
   onRefazer: () => void;
+  audio: keyof typeof ROTULO_DO_AUDIO | null;
+  tipo: TipoDeVideo | null;
+  onTipo: (t: TipoDeVideo | null) => void;
+  resumo: string;
+  onResumo: (r: string) => void;
 }) {
   return (
     <details className="ia-sobre">
@@ -1654,8 +1719,10 @@ function SobreOVideo({
           </dd>
         </dl>
       )}
+      {audio && <p className="ia-sobre__audio">Áudio: {ROTULO_DO_AUDIO[audio]}</p>}
       <div className="ia-sobre__refazer">
-        <p>Não ficou bom? A IA pode analisar a gravação de novo e escolher outros trechos. A edição atual continua salva.</p>
+        <p>Não ficou bom? Diga que vídeo é e o que tem nele: a IA monta de novo. A edição atual continua salva.</p>
+        <TipoDoVideo tipo={tipo} onTipo={onTipo} resumo={resumo} onResumo={onResumo} id="resumo-no-editor" />
         <button type="button" className="botao botao--secundario botao--pequeno" disabled={analisando} onClick={onRefazer}>
           <IconeIA size={14} weight="fill" />
           {analisando ? 'Analisando…' : 'Refazer a análise'}

@@ -24,6 +24,7 @@ import type { PreferenciasDeVideo, SugestaoDeMarca, TipoDeTransicao } from '@mak
 import { FAMILIAS_DE_FONTE, PRESETS_DE_LEGENDA, PRESETS_DE_TEXTO, TIPO_DA_SECAO, comArquivosNoItem, itensDoKit, presetDaLegenda } from '@makucho/studio-contracts';
 import type { SecaoDoKit } from '@makucho/studio-contracts';
 import { ConfigurarComIa } from '../../components/marca/ConfigurarComIa';
+import { SeuNegocio } from '../../components/marca/SeuNegocio';
 import { LogosDaMarca, VARIANTES_DA_LOGO } from '../../components/marca/LogosDaMarca';
 import { BibliotecaDaMarca, type TipoDaBiblioteca } from '../../components/marca/BibliotecaDaMarca';
 import { KitCriativo } from '../../components/marca/KitCriativo';
@@ -390,6 +391,8 @@ export default function MarcaPage() {
           onEnviarLogoArquivo={(f) => void enviarAsset('LOGO', f)}
           enviandoLogo={enviando === 'LOGO'}
         />
+
+        <SeuNegocio />
 
         {/* O manual (logos, cores, fontes, legendas, biblioteca, prompts)
             fica recolhido: o caminho do leigo é o passo único acima. */}

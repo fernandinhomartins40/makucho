@@ -18,12 +18,14 @@
 import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
-import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
+import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS, cenasDosCortes } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
+  detectarCortesDeCena,
   detectarSilencios,
   extrairAudio,
+  gerarAudioMudo,
   gerarProxy,
   gerarThumbnail,
   juntarVideos,
@@ -330,7 +332,11 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 
       // ---------- Áudio para transcrição ----------
       const audioTmp = espaco.arquivo('audio.wav');
-      await extrairAudio(entrada, audioTmp);
+      // Vídeo sem trilha de som (produto filmado sem microfone, vídeo
+      // exportado de app): um áudio mudo do mesmo tamanho, para o resto
+      // do caminho seguir -- a transcrição o reconhece como "mudo".
+      if (probe.audioCodec) await extrairAudio(entrada, audioTmp);
+      else await gerarAudioMudo(audioTmp, probe.durationMs);
       await verificarLimite(espaco);
       await publicar(audioTmp, `${prefixoNoStorage}/audio.wav`);
 
@@ -364,6 +370,36 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
       await publicar(mapa, `${prefixoNoStorage}/silencios.json`);
 
       console.log(`[midia] ${silencios.length} silêncios no projeto ${projectId}`);
+      await avancar(job, 90);
+
+      // ---------- Cenas ----------
+      //
+      // Para o vídeo sem narração (produto, vitrine, promoção), quem guia
+      // o corte é a imagem: os cortes de câmera viram cenas, e um quadro
+      // de cada vai para a visão da IA dizer o que ele mostra. Fica num
+      // arquivo, como os silêncios, até a transcrição existir. Uma falha
+      // aqui não para o vídeo: sem cenas, a montagem usa janelas fixas.
+      try {
+        const proxy = caminhoDe(`${prefixoNoStorage}/proxy.mp4`);
+        const cortes = await detectarCortesDeCena(proxy);
+        const cenas = cenasDosCortes(cortes, probe.durationMs);
+        const lista: Array<{ inicioMs: number; fimMs: number; quadro: string }> = [];
+        for (const [i, c] of cenas.entries()) {
+          const nome = `cena-${String(i + 1).padStart(2, '0')}.jpg`;
+          const tmp = espaco.arquivo(nome);
+          // O meio da cena: a câmera já parou de mexer.
+          await gerarThumbnail(proxy, tmp, Math.round((c.inicioMs + c.fimMs) / 2), 256);
+          await publicar(tmp, `${prefixoNoStorage}/cenas/${nome}`);
+          lista.push({ ...c, quadro: `${prefixoNoStorage}/cenas/${nome}` });
+          void renovar();
+        }
+        const arquivo = espaco.arquivo('cenas.json');
+        await writeFile(arquivo, JSON.stringify(lista), 'utf8');
+        await publicar(arquivo, `${prefixoNoStorage}/cenas.json`);
+        console.log(`[midia] ${lista.length} cenas (${cortes.length} cortes) no projeto ${projectId}`);
+      } catch (e) {
+        console.warn(`[midia] cenas não detectadas no projeto ${projectId}: ${(e as Error).message.slice(0, 200)}`);
+      }
       await avancar(job, 95);
     }, `midia-${projectId}`);
   });

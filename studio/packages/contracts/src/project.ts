@@ -11,6 +11,7 @@
 // ============================================================
 
 import { z } from 'zod';
+import { tipoDeVideoSchema } from './adaptativo';
 import { frameworkSchema, projectStateSchema } from './vocabulary';
 
 const idSchema = z.string().min(1).max(64);
@@ -33,6 +34,10 @@ export const projectInputSchema = z.object({
     .max(DURACAO_MAXIMA_MS)
     .nullable()
     .optional(),
+  /** Que vídeo é (falando, produto, promoção...): a receita da montagem. */
+  videoKind: tipoDeVideoSchema.nullable().optional(),
+  /** "O que tem neste vídeo?": o que a IA não vê (preço, oferta, prazo). */
+  contentBrief: z.string().trim().max(400).nullable().optional(),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;

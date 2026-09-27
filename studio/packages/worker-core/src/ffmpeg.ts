@@ -446,4 +446,53 @@ export function lerSilencios(saida: string): Array<{ inicioMs: number; fimMs: nu
   return silencios;
 }
 
+// ---------- Vídeo sem som ----------
+
+/**
+ * Áudio mudo com a duração do vídeo, no formato da transcrição.
+ *
+ * Vídeo de produto gravado sem microfone (ou exportado de app sem
+ * trilha de som) não tem stream de áudio: a extração falharia e o
+ * projeto inteiro pararia. Com um áudio mudo, o resto do caminho segue
+ * igual -- e a classificação o reconhece como "mudo".
+ */
+export async function gerarAudioMudo(saida: string, duracaoMs: number, sinal?: AbortSignal): Promise<void> {
+  await executar(
+    'ffmpeg',
+    ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', (Math.max(1, duracaoMs) / 1000).toFixed(3), '-c:a', 'pcm_s16le', saida],
+    { sinal, timeoutMs: 5 * 60 * 1000 },
+  );
+}
+
+// ---------- Cenas ----------
+
+/**
+ * Os cortes de cena do vídeo, em ms.
+ *
+ * O filtro `select` com `scene` compara cada quadro com o anterior e
+ * deixa passar os que mudam muito -- um corte de câmera, outro produto.
+ * Roda numa cópia pequena (160 px): a nota de cena não precisa de
+ * detalhe, e o tempo cai para uma fração.
+ */
+export async function detectarCortesDeCena(entrada: string, limiar = 0.3, sinal?: AbortSignal): Promise<number[]> {
+  const saida = await executar(
+    'ffmpeg',
+    // -nostats: sem as linhas de progresso, o log guarda só os cortes.
+    ['-nostats', '-i', entrada, '-an', '-vf', `scale=160:-2,select='gt(scene,${limiar})',showinfo`, '-f', 'null', '-'],
+    { sinal, timeoutMs: 10 * 60 * 1000 },
+  );
+  return lerCortesDeCena(saida);
+}
+
+/** Lê os tempos (pts_time) do `showinfo`. Testável sem o binário. */
+export function lerCortesDeCena(saida: string): number[] {
+  const cortes: number[] = [];
+  for (const linha of saida.split('\n')) {
+    if (!linha.includes('showinfo')) continue;
+    const m = /pts_time:\s*([\d.]+)/.exec(linha);
+    if (m?.[1]) cortes.push(Math.round(Number(m[1]) * 1000));
+  }
+  return cortes;
+}
+
 export { executar as executarBinario };

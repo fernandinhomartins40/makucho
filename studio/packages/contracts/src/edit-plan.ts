@@ -103,8 +103,12 @@ export const clipSchema = z
     role: clipRoleSchema,
     // Sem ao menos um segmento de transcricao, a fala nao tem origem
     // comprovavel: e exatamente o caso que a regra de integridade
-    // editorial proibe (contexto mestre, secao 5).
-    transcriptSegmentIds: z.array(idSchema).min(1),
+    // editorial proibe (contexto mestre, secao 5). A excecao e o trecho
+    // de CENA (montagem-visual.ts): imagem sem fala -- produto, vitrine,
+    // bastidores --, que nao afirma fala nenhuma.
+    transcriptSegmentIds: z.array(idSchema),
+    /** "fala" (padrão) ou "cena": trecho escolhido pela imagem, sem fala. */
+    origin: z.enum(['fala', 'cena']).optional(),
     semanticRisk: semanticRiskSchema,
     reason: z.string().min(1).max(500),
     // Opcional: planos anteriores aos efeitos continuam validos.
@@ -123,6 +127,10 @@ export const clipSchema = z
   .refine((clip) => clip.sourceEndMs > clip.sourceStartMs, {
     message: 'sourceEndMs deve ser maior que sourceStartMs',
     path: ['sourceEndMs'],
+  })
+  .refine((clip) => clip.origin === 'cena' || clip.transcriptSegmentIds.length >= 1, {
+    message: 'trecho de fala sem segmento de transcrição',
+    path: ['transcriptSegmentIds'],
   });
 
 export type Clip = z.infer<typeof clipSchema>;

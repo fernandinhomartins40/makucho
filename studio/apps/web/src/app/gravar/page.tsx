@@ -29,6 +29,8 @@ import { Folha } from '../../components/shell/Folha';
 import { useGravacao } from '../../lib/useGravacao';
 import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVertical';
 import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
+import type { TipoDeVideo } from '@makucho/studio-contracts';
+import { TipoDoVideo } from '../../components/editor/TipoDoVideo';
 import {
   enviar,
   duracaoDe,
@@ -140,6 +142,9 @@ function NovoVideo() {
   const [etapa, setEtapa] = useState<Etapa>(parametros.get('modo') === 'camera' ? 'camera' : 'escolher');
   const [projeto, setProjeto] = useState<ProjetoDetalhado | null>(null);
   const [titulo, setTitulo] = useState('');
+  // Que vídeo é (null = automático) e o que a IA não vê (preço, oferta).
+  const [tipoDoVideo, setTipoDoVideo] = useState<TipoDeVideo | null>(null);
+  const [resumo, setResumo] = useState('');
   const [roteiro, setRoteiro] = useState<BlocoDoRoteiro[]>(ROTEIRO_PADRAO);
   const [temRoteiroProprio, setTemRoteiroProprio] = useState(false);
   const [scriptId, setScriptId] = useState<string | null>(roteiroDaUrl);
@@ -192,11 +197,16 @@ function NovoVideo() {
     async (nomeDoArquivo: string) => {
       if (projetoRef.current) return projetoRef.current;
       const nome = titulo.trim() || nomeDoArquivo.replace(/\.[^.]+$/, '') || 'Vídeo sem título';
-      const criado = await apiProjetos.criar({ title: nome.slice(0, 120), scriptId });
+      const criado = await apiProjetos.criar({
+        title: nome.slice(0, 120),
+        scriptId,
+        videoKind: tipoDoVideo,
+        contentBrief: resumo.trim() ? resumo.trim().slice(0, 400) : null,
+      });
       projetoRef.current = criado.id;
       return criado.id;
     },
-    [titulo, scriptId],
+    [titulo, scriptId, tipoDoVideo, resumo],
   );
 
   const atualizar = (chave: string, mudanca: Partial<ItemDoVideo>) =>
@@ -424,6 +434,10 @@ function NovoVideo() {
           <Composicao
             titulo={titulo}
             onTitulo={setTitulo}
+            tipoDoVideo={tipoDoVideo}
+            onTipoDoVideo={setTipoDoVideo}
+            resumo={resumo}
+            onResumo={setResumo}
             onGravar={() => setEtapa('camera')}
             onArquivos={(a) => void adicionarArquivos(a)}
             temRoteiroProprio={temRoteiroProprio}
@@ -486,6 +500,10 @@ function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
 function Composicao({
   titulo,
   onTitulo,
+  tipoDoVideo,
+  onTipoDoVideo,
+  resumo,
+  onResumo,
   onGravar,
   onArquivos,
   temRoteiroProprio,
@@ -501,6 +519,10 @@ function Composicao({
 }: {
   titulo: string;
   onTitulo: (v: string) => void;
+  tipoDoVideo: TipoDeVideo | null;
+  onTipoDoVideo: (t: TipoDeVideo | null) => void;
+  resumo: string;
+  onResumo: (r: string) => void;
   onGravar: () => void;
   onArquivos: (arquivos: File[]) => void;
   temRoteiroProprio: boolean;
@@ -550,6 +572,14 @@ function Composicao({
         />
         <span className="campo__ajuda">Opcional. Sem nome, usamos o nome do primeiro arquivo.</span>
       </label>
+
+      {/* Produto, promoção, bastidores: sem narração, a IA monta pelas
+          cenas; a escolha e o resumo só deixam a montagem mais certa. */}
+      {!temItens && (
+        <div style={{ maxWidth: 720 }}>
+          <TipoDoVideo tipo={tipoDoVideo} onTipo={onTipoDoVideo} resumo={resumo} onResumo={onResumo} />
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--e4)' }}>
         {/* ---------- Enviar ---------- */}

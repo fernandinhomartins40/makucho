@@ -81,6 +81,60 @@ export class VisaoService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /**
+   * O que cada quadro do vídeo mostra e se ele presta (montagem pelas
+   * cenas). Os rótulos competem entre si (zero-shot, como o CLIP foi
+   * treinado): a nota é a chance de cada um, de 0 a 100. Nitidez e
+   * brilho vêm do próprio quadro, sem modelo -- valem mesmo com a visão
+   * desligada.
+   */
+  async olharQuadros(
+    quadros: readonly Buffer[],
+    rotulos: readonly string[],
+  ): Promise<Array<{ rotulos: Array<{ texto: string; nota: number }>; nitidez: number; brilho: number } | null>> {
+    const qualidade = await Promise.all(quadros.map((b) => this.qualidade(b)));
+    const vistos: Array<Array<{ texto: string; nota: number }>> = quadros.map(() => []);
+    if (!this.desligada && rotulos.length && quadros.length && (await this.preparar())) {
+      try {
+        const pixels = await Promise.all(quadros.map((b) => this.pixelsDe(b)));
+        const validas = pixels.flatMap((p, i) => (p ? [{ p, i }] : []));
+        if (validas.length) {
+          const [embTextos, embImagens] = await this.emFila(async () => {
+            const t = await this.pedir({ tipo: 'textos', ids: rotulos.map((x) => this.tokenizador!(x)) });
+            const lote = new Float32Array(validas.length * validas[0]!.p.length);
+            validas.forEach((v, j) => lote.set(v.p, j * v.p.length));
+            const im = await this.pedir({ tipo: 'imagens', pixels: lote, n: validas.length });
+            return [t, im] as const;
+          });
+          validas.forEach((v, j) => {
+            // Softmax com a escala do CLIP (100): os rótulos disputam o quadro.
+            const logits = embTextos.map((t) => 100 * cosseno(t, embImagens[j]!));
+            const max = Math.max(...logits);
+            const exps = logits.map((l) => Math.exp(l - max));
+            const soma = exps.reduce((a, b) => a + b, 0);
+            vistos[v.i] = exps
+              .map((e, k) => ({ texto: rotulos[k]!, nota: Math.round((e / soma) * 100) }))
+              .sort((a, b) => b.nota - a.nota)
+              .slice(0, 3);
+          });
+        }
+      } catch (e) {
+        this.log.warn(`visão dos quadros falhou: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    return quadros.map((_, i) => (qualidade[i] ? { rotulos: vistos[i]!, ...qualidade[i]! } : null));
+  }
+
+  private async qualidade(b: Buffer): Promise<{ nitidez: number; brilho: number } | null> {
+    try {
+      const st = await sharp(b).stats();
+      const brilho = st.channels.slice(0, 3).reduce((t, c) => t + c.mean, 0) / Math.min(3, st.channels.length);
+      return { nitidez: Math.round(st.sharpness * 100) / 100, brilho: Math.round(brilho) };
+    } catch {
+      return null;
+    }
+  }
+
   // ---------- Modelo ----------
 
   private preparar(): Promise<boolean> {
@@ -175,6 +229,14 @@ export class VisaoService implements OnApplicationBootstrap, OnModuleDestroy {
       if (!r.ok) return null;
       const buf = Buffer.from(await r.arrayBuffer());
       if (!buf.length || buf.length > MAX_MINIATURA) return null;
+      return await this.pixelsDe(buf);
+    } catch {
+      return null;
+    }
+  }
+
+  private async pixelsDe(buf: Buffer): Promise<Float32Array | null> {
+    try {
       // Ícones transparentes sobre branco: é como o CLIP os viu no treino.
       const rgb = await sharp(buf, { density: 144 })
         .flatten({ background: '#ffffff' })

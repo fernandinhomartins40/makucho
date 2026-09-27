@@ -271,6 +271,8 @@ export function editorParaPlano(
       // o proprio schema do EditPlan recusa lista vazia.
       transcriptSegmentIds:
         elemento.transcriptSegmentIds ?? anterior?.transcriptSegmentIds ?? [],
+      // Trecho de cena (sem fala) continua de cena depois da edição.
+      ...(anterior?.origin ? { origin: anterior.origin } : {}),
       semanticRisk: elemento.semanticRisk ?? anterior?.semanticRisk ?? 'medium',
       // O motivo da IA sobrevive a edicao: e o que permite explicar a
       // escolha depois, mesmo que o usuario tenha ajustado as bordas.

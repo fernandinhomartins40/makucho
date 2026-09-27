@@ -8,7 +8,7 @@
 import { Body, Controller, Delete, Get, Put, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { resumoDeArmazenamento } from '@makucho/studio-contracts';
+import { RAMOS_DE_NEGOCIO, resumoDeArmazenamento } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -160,6 +160,25 @@ export class SettingsController {
       data: { ...scopedWhere(tenant), actorId: tenant.userId, action: 'stock_credential.removed', entityType: 'StockCredential', metadata: { provider } },
     });
     return { configured: false, provider };
+  }
+
+  // ---------- O negócio ----------
+  //
+  // O ramo (comércio, restaurante, criador...) ajusta a montagem: o tipo
+  // de vídeo sem fala, o que a visão procura nas cenas, a chamada final.
+
+  @Get('negocio')
+  async negocio(@CurrentTenant() tenant: TenantContext) {
+    const w = await this.prisma.workspace.findUnique({ where: { id: tenant.workspaceId }, select: { businessType: true } });
+    return { ramo: w?.businessType ?? null };
+  }
+
+  @Put('negocio')
+  async salvarNegocio(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertIsOwner(tenant);
+    const { ramo } = z.object({ ramo: z.enum(RAMOS_DE_NEGOCIO).nullable() }).parse(body);
+    await this.prisma.workspace.update({ where: { id: tenant.workspaceId }, data: { businessType: ramo } });
+    return { ramo };
   }
 
   // ---------- Armazenamento ----------

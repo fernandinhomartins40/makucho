@@ -22,6 +22,8 @@ import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
 import { MidiasService } from './midias.service';
+import { MontagemVisualService } from './montagem-visual.service';
+import { StorageService } from '../../common/storage.service';
 import { PromptsService } from './prompts.service';
 import { PropostaService } from './proposta.service';
 import { RefinoController } from './refino.controller';
@@ -38,6 +40,8 @@ import { UsoDeIaService } from './uso.service';
   providers: [
     AcabamentoService,
     MidiasService,
+    MontagemVisualService,
+    StorageService,
     AiService,
     AnaliseService,
     PropostaService,

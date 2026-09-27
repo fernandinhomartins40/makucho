@@ -13291,3 +13291,90 @@ button.midia-cartao__previa:disabled {
     color: var(--text-secondary);
   }
 }
+
+/* =====================================================================
+   IA adaptativa: tipo do vídeo, aviso de montagem pelas cenas, negócio.
+   ===================================================================== */
+.tipo-do-video {
+  display: grid;
+  gap: var(--e3);
+}
+
+.tipo-do-video__opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tipo-do-video__opcoes button {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tipo-do-video__opcoes button[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface-1));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tipo-do-video textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.aviso-cenas {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--r-controle, 12px);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+  font-size: 13px;
+}
+
+.aviso-cenas strong {
+  font-size: 14px;
+}
+
+.aviso-cenas__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.ia-sobre__audio {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ia-sobre__refazer .tipo-do-video {
+  margin: 8px 0 10px;
+}
+
+.seu-negocio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--e3);
+  margin-bottom: var(--e5);
+}
+
+.seu-negocio .campo {
+  flex: 0 1 560px;
+  margin: 0;
+}
+
+.seu-negocio__estado {
+  min-height: 1.2em;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

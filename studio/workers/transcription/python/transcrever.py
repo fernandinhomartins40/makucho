@@ -83,9 +83,23 @@ def main() -> int:
 
     saida = []
     posicao = 0
+    descartados = 0
 
     for seg in segmentos:
         texto = (seg.text or '').strip()
+
+        # Musica, radio e ruido de loja: o Whisper "ouve" frases que
+        # ninguem disse. Os limites sao os do proprio Whisper para "nao
+        # e fala" (no_speech_prob alto com log-prob baixo) e para
+        # repeticao em laco (compression_ratio alto). O que sair aqui
+        # nao vira legenda nem guia corte.
+        sem_fala = getattr(seg, 'no_speech_prob', 0.0) or 0.0
+        logprob = getattr(seg, 'avg_logprob', 0.0) or 0.0
+        compressao = getattr(seg, 'compression_ratio', 0.0) or 0.0
+        if (sem_fala > 0.6 and logprob < -1.0) or compressao > 2.4:
+            descartados += 1
+            log(f'descartado (sem fala {sem_fala:.2f}, logprob {logprob:.2f}, compressao {compressao:.2f}): {texto[:60]}')
+            continue
         # O contrato exige texto nao vazio, e o VAD as vezes devolve um
         # segmento so com pontuacao. Descartar aqui e melhor que ver o
         # Zod recusar a transcricao inteira por causa de um segmento.
@@ -144,16 +158,17 @@ def main() -> int:
         log(f'segmento {posicao}: {inicio}ms-{fim}ms')
 
     if not saida:
-        # O schema exige ao menos um segmento. Um audio sem fala e um
-        # caso real (gravacao mudo, microfone errado), e precisa de
-        # mensagem propria em vez de um erro de validacao do Zod.
-        log('nenhuma fala reconhecida no audio')
+        # Sem fala nenhuma: video de produto com musica, gravacao muda.
+        # O codigo 3 diz isso ao worker, que segue para a montagem pelas
+        # cenas (nao e erro).
+        log(f'nenhuma fala reconhecida no audio ({descartados} trechos descartados)')
         return 3
 
     resultado = {
         'language': getattr(info, 'language', idioma) or idioma,
         'model': modelo,
         'segments': saida,
+        'discarded': descartados,
     }
 
     media = [s['confidence'] for s in saida if 'confidence' in s]

@@ -234,6 +234,12 @@ export interface ProjetoDetalhado {
   editPlans: Array<{ id: string; version: number; createdAt: string }>;
   /** Por que a IA não montou a proposta atual, quando não montou. */
   aiFallbackReason?: string | null;
+  /** Que áudio o vídeo tem (medido na transcrição): guia a montagem. */
+  audioProfile?: { tipo: 'fala' | 'fala_parcial' | 'musica_ou_ambiente' | 'mudo'; coberturaDeFala: number; fracaoDeSilencio: number; descartados?: number } | null;
+  /** O tipo de vídeo escolhido (null = automático). */
+  videoKind?: string | null;
+  /** "O que tem neste vídeo?" */
+  contentBrief?: string | null;
   /** O que a IA entendeu do vídeo na última análise. */
   entendimentoDaIa?: {
     topic: string;
@@ -255,9 +261,9 @@ export interface ParteDoProjeto {
 export const projetos = {
   listar: (arquivados = false) => api<Projeto[]>(`/projects${arquivados ? '?arquivados=true' : ''}`),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
-  criar: (dados: { title: string; scriptId?: string | null }) =>
+  criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),
-  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null }>) =>
+  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null; videoKind: string | null; contentBrief: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
   /** Esconde da lista; os arquivos continuam no disco. */
   arquivar: (id: string) => api<Projeto>(`/projects/${id}/archive`, { metodo: 'POST' }),
@@ -583,6 +589,12 @@ export interface Armazenamento {
 
 export const armazenamento = {
   obter: () => api<Armazenamento>('/settings/storage'),
+};
+
+/** O ramo do negócio: ajusta a montagem (RAMOS_DE_NEGOCIO). */
+export const apiNegocio = {
+  obter: () => api<{ ramo: string | null }>('/settings/negocio'),
+  salvar: (ramo: string | null) => api<{ ramo: string | null }>('/settings/negocio', { metodo: 'PUT', corpo: { ramo } }),
 };
 
 // ============================================================

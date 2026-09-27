@@ -168,6 +168,8 @@ model Workspace {
   id        String   @id @default(cuid())
   name      String
   slug      String   @unique
+  // Ramo do negócio (RAMOS_DE_NEGOCIO): ajusta a montagem e as chamadas.
+  businessType String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -455,6 +457,13 @@ model Project {
   // aprovação no editor: { momentos, avisos, semOpcoes, geradoEm }. Nulo
   // depois de aprovar ou dispensar.
   mediaSuggestions Json?
+  // IA adaptativa (adaptativo.ts): o tipo do áudio medido na transcrição
+  // ({ tipo, coberturaDeFala, fracaoDeSilencio, descartados }), o tipo de
+  // vídeo escolhido (a receita da montagem) e o "O que tem neste vídeo?"
+  // -- o que a IA não vê (preço, oferta, prazo).
+  audioProfile Json?
+  videoKind    String?
+  contentBrief String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
