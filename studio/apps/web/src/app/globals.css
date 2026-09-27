@@ -13393,3 +13393,43 @@ button.midia-cartao__previa:disabled {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
   font-size: 13px;
 }
+
+/* Os passos da IA com ferramentas, ao vivo. */
+.pedir-ia__passos {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px;
+  list-style: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-1));
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.pedir-ia__passos li::before {
+  content: '✓ ';
+  color: var(--accent);
+}
+
+.pedir-ia__passos li[data-atual] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pedir-ia__passos li[data-atual]::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: pulsar-passo 1s ease-in-out infinite;
+}
+
+@keyframes pulsar-passo {
+  50% {
+    opacity: 0.3;
+  }
+}

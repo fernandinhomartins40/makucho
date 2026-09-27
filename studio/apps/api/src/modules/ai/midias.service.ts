@@ -13,7 +13,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@makucho/studio-database';
 import { COMPOSICOES, agendaDoPlano, falaParaMidias, lerMomentosVisuais, ranquearResultados } from '@makucho/studio-contracts';
-import type { Composicao } from '@makucho/studio-contracts';
+import type { Composicao, EditPlanV1 } from '@makucho/studio-contracts';
 import type { MomentoVisual, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
@@ -61,9 +61,9 @@ export class MidiasService {
     private readonly visao: VisaoService,
   ) {}
 
-  async sugerir(tenant: TenantContext, projectId: string, desligados: readonly string[] = []) {
-    const atual = await this.planos.atual(tenant, projectId);
-    const plano = atual.document;
+  async sugerir(tenant: TenantContext, projectId: string, desligados: readonly string[] = [], planoDaConversa?: EditPlanV1) {
+    // O agente passa o plano que está editando (ainda não salvo).
+    const plano = planoDaConversa ?? (await this.planos.atual(tenant, projectId)).document;
     const [palavras, projeto] = await Promise.all([
       this.prisma.transcriptWord.findMany({
         where: { segment: { transcription: { projectId } } },
@@ -162,9 +162,9 @@ export class MidiasService {
     tenant: TenantContext,
     projectId: string,
     pedido: { consulta: string; titulo: string; tags: string[]; tipo: TipoDaBusca; composicoes: Composicao[]; cursorMs: number; desligados: string[] },
+    planoDaConversa?: EditPlanV1,
   ): Promise<{ inicioMs: number; fimMs: number; composicao: Composicao; motivo: string } | { semIa: string }> {
-    const atual = await this.planos.atual(tenant, projectId);
-    const plano = atual.document;
+    const plano = planoDaConversa ?? (await this.planos.atual(tenant, projectId)).document;
     const palavras = await this.prisma.transcriptWord.findMany({
       where: { segment: { transcription: { projectId } } },
       select: { startMs: true, endMs: true, word: true },

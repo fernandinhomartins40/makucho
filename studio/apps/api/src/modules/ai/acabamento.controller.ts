@@ -7,7 +7,7 @@
 // Os dois criam uma versão nova do plano — desfazível.
 // ============================================================
 
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { COMPOSICOES, TIPOS_DA_BUSCA, entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
@@ -16,6 +16,7 @@ import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 import { AcabamentoService } from './acabamento.service';
 import { MidiasService } from './midias.service';
+import { AgenteService } from './agente.service';
 
 @ApiTags('ai')
 @Controller()
@@ -23,6 +24,7 @@ export class AcabamentoController {
   constructor(
     private readonly acabamento: AcabamentoService,
     private readonly midias: MidiasService,
+    private readonly agente: AgenteService,
   ) {}
 
   @Post('projects/:id/finishing')
@@ -80,10 +82,23 @@ export class AcabamentoController {
     return this.midias.concluir(tenant, id);
   }
 
+  /**
+   * "Peça à IA": o agente com ferramentas (lê, decide, edita, confere).
+   * STUDIO_AGENTE=off volta ao comando de uma jogada, para comparar.
+   */
   @Post('projects/:id/command')
-  comandar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() body: unknown) {
+  comandar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() body: unknown, @Query('fundo') fundo?: string) {
     assertCanWrite(tenant);
     const { texto, contexto } = pedidoDeComandoSchema.parse(body);
-    return this.acabamento.comandar(tenant, id, texto, contexto);
+    if (process.env.STUDIO_AGENTE === 'off') return this.acabamento.comandar(tenant, id, texto, contexto);
+    // ?fundo=1: responde na hora e o resultado chega pelo progresso.
+    if (fundo === '1') return this.agente.iniciar(tenant, id, texto, contexto);
+    return this.agente.executar(tenant, id, texto, contexto);
+  }
+
+  /** O que o agente está fazendo agora ("Lendo a fala", "Buscando imagens"...) e o resultado. */
+  @Get('projects/:id/command/progress')
+  progressoDoComando(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    return this.agente.progresso(tenant, id);
   }
 }

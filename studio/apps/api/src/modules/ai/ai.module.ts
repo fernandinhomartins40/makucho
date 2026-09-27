@@ -23,6 +23,7 @@ import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
 import { MidiasService } from './midias.service';
 import { MontagemVisualService } from './montagem-visual.service';
+import { AgenteService } from './agente.service';
 import { StorageService } from '../../common/storage.service';
 import { PromptsService } from './prompts.service';
 import { PropostaService } from './proposta.service';
@@ -41,6 +42,7 @@ import { UsoDeIaService } from './uso.service';
     AcabamentoService,
     MidiasService,
     MontagemVisualService,
+    AgenteService,
     StorageService,
     AiService,
     AnaliseService,

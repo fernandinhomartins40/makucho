@@ -8,7 +8,7 @@
 
 import { Logger } from '@nestjs/common';
 import { ErroDoProvedor } from './provedor';
-import type { PedidoAoProvedor, ProvedorDeIa, RespostaDoProvedor } from './provedor';
+import type { ChamadaDeFerramenta, PedidoAoProvedor, PedidoComFerramentas, ProvedorDeIa, RespostaComFerramentas, RespostaDoProvedor } from './provedor';
 
 const URL_BASE = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
 
@@ -142,6 +142,78 @@ export class DeepseekProvedor implements ProvedorDeIa {
         modelo: this.modelo,
       },
     };
+  }
+
+  /**
+   * Uma volta da conversa com ferramentas. Sem raciocínio: a decisão de
+ * qual ferramenta chamar é curta, e o raciocínio exigiria devolver o
+ * pensamento a cada volta (e custaria mais sem ganho medido).
+ */
+  async conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas> {
+  const relogio = AbortSignal.timeout(TIMEOUT_MS);
+  const sinal = pedido.sinal ? AbortSignal.any([pedido.sinal, relogio]) : relogio;
+  const eu = this;
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${URL_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${eu.apiKey}` },
+      body: JSON.stringify({
+        model: eu.modelo,
+        messages: pedido.mensagens,
+        tools: pedido.ferramentas,
+        tool_choice: 'auto',
+        max_tokens: pedido.maxTokens,
+        stream: false,
+        thinking: { type: 'disabled' },
+        temperature: 0.2,
+      }),
+      signal: sinal,
+    });
+  } catch (e) {
+    const abortado = e instanceof Error && e.name === 'AbortError';
+    throw new ErroDoProvedor(
+      `falha de rede ao chamar o deepseek: ${(e as Error).message}`,
+      abortado ? 'A IA demorou demais para responder. Tente de novo.' : 'Não foi possível falar com o serviço de IA. Tente de novo em alguns minutos.',
+      true,
+    );
+  }
+  if (!resposta.ok) {
+    const corpo = await resposta.text().catch(() => '');
+    eu.log.error(`deepseek (ferramentas) respondeu ${resposta.status}: ${corpo.slice(0, 400)}`);
+    let detalhe = '';
+    try {
+      detalhe = ((JSON.parse(corpo) as { error?: { message?: string } }).error?.message ?? '').replace(/sk-[A-Za-z0-9*._-]+/g, '[chave]').slice(0, 160);
+    } catch {
+      detalhe = '';
+    }
+    throw new ErroDoProvedor(
+      `deepseek respondeu ${resposta.status}`,
+      `${mensagemPara(resposta.status)}${detalhe ? ` (DeepSeek, ${resposta.status}: ${detalhe})` : ''}`,
+      resposta.status >= 500 || resposta.status === 429,
+    );
+  }
+  const dados = (await resposta.json().catch(() => null)) as {
+    choices?: Array<{ message?: { content?: string | null; tool_calls?: ChamadaDeFerramenta[] } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
+  } | null;
+  const msg = dados?.choices?.[0]?.message;
+  const texto = msg?.content ?? '';
+  const chamadas = (msg?.tool_calls ?? []).filter((c) => c?.function?.name);
+  if (!texto && !chamadas.length) {
+    throw new ErroDoProvedor('deepseek devolveu resposta vazia', 'A IA devolveu uma resposta vazia. Tente de novo.', true);
+  }
+  const entrada = JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length;
+  return {
+    texto,
+    chamadas,
+    consumo: {
+      inputTokens: dados?.usage?.prompt_tokens ?? Math.ceil(entrada / 4),
+      outputTokens: dados?.usage?.completion_tokens ?? Math.ceil((texto.length + JSON.stringify(chamadas).length) / 4),
+      tokensEmCache: dados?.usage?.prompt_cache_hit_tokens ?? 0,
+      modelo: eu.modelo,
+    },
+  };
   }
 }
 

@@ -75,6 +75,44 @@ export interface PedidoAoProvedor {
 export interface ProvedorDeIa {
   readonly nome: string;
   conversar(pedido: PedidoAoProvedor): Promise<RespostaDoProvedor>;
+  /** Conversa em que a IA pode chamar ferramentas (function calling). */
+  conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas>;
+}
+
+// ---------- Ferramentas (function calling, formato OpenAI) ----------
+
+/** Uma ferramenta que a IA pode chamar: nome, descrição e o esquema dos argumentos. */
+export interface DefinicaoDeFerramenta {
+  type: 'function';
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+/** A IA pediu para rodar uma ferramenta; os argumentos vêm como JSON em texto. */
+export interface ChamadaDeFerramenta {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export type MensagemDoAgente =
+  | { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: ChamadaDeFerramenta[] }
+  | { role: 'tool'; tool_call_id: string; content: string };
+
+export interface PedidoComFerramentas {
+  chamada: ChamadaDeIa;
+  mensagens: MensagemDoAgente[];
+  ferramentas: DefinicaoDeFerramenta[];
+  maxTokens: number;
+  sinal?: AbortSignal;
+}
+
+export interface RespostaComFerramentas {
+  /** O texto da IA (a resposta final, quando não há chamadas). */
+  texto: string;
+  /** As ferramentas que a IA quer rodar agora (vazio = terminou). */
+  chamadas: ChamadaDeFerramenta[];
+  consumo: ConsumoDaChamada;
 }
 
 /** Falha do provedor que o usuário precisa entender. */

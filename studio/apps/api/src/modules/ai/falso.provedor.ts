@@ -14,7 +14,7 @@
 // gastar crédito a cada recarga.
 // ============================================================
 
-import type { PedidoAoProvedor, ProvedorDeIa, RespostaDoProvedor } from './provedor';
+import type { PedidoAoProvedor, PedidoComFerramentas, ProvedorDeIa, RespostaComFerramentas, RespostaDoProvedor } from './provedor';
 
 /** As respostas que se pode pedir a ele. */
 export type Comportamento =
@@ -44,6 +44,24 @@ export class FalsoProvedor implements ProvedorDeIa {
         outputTokens: Math.ceil(texto.length / 4),
         modelo: 'falso',
       },
+    });
+  }
+
+  /**
+   * Agente falso: na primeira volta lê o projeto; depois de ver o
+   * resultado de uma ferramenta, responde e termina. Serve para o
+   * caminho do agente rodar inteiro sem chave, em desenvolvimento.
+   */
+  conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas> {
+    const jaUsou = pedido.mensagens.some((m) => m.role === 'tool');
+    const consumo = { inputTokens: Math.ceil(JSON.stringify(pedido.mensagens).length / 4), outputTokens: 20, modelo: 'falso' };
+    if (jaUsou || !pedido.ferramentas.some((f) => f.function.name === 'ver_projeto')) {
+      return Promise.resolve({ texto: 'Pronto: olhei o projeto e está tudo certo.', chamadas: [], consumo });
+    }
+    return Promise.resolve({
+      texto: '',
+      chamadas: [{ id: 'falso-1', type: 'function', function: { name: 'ver_projeto', arguments: '{}' } }],
+      consumo,
     });
   }
 

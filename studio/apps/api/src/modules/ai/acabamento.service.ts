@@ -187,8 +187,13 @@ export class AcabamentoService {
    */
   async refazer(tenant: TenantContext, projectId: string) {
     const atual = await this.planos.atual(tenant, projectId);
-    const contexto = await this.contexto(tenant.workspaceId);
-    const plano = atual.document;
+    const final = await this.acabamentoDoPlano(tenant.workspaceId, atual.document);
+    return this.planos.salvar(tenant, projectId, final, 'user');
+  }
+
+  /** O acabamento da marca aplicado a um plano (sem salvar): o agente usa. */
+  async acabamentoDoPlano(workspaceId: string, plano: EditPlanV1): Promise<EditPlanV1> {
+    const contexto = await this.contexto(workspaceId);
 
     // Os textos de tela (título, chamada, rodapé, cartões) são escritos
     // — pela pessoa ou pela IA — e o acabamento por regra não sabe
@@ -198,9 +203,7 @@ export class AcabamentoService {
     const escritos = plano.overlays.filter((o) =>
       ['LowerThird', 'QuoteCard', 'StatCard', 'ImageOverlay'].includes(o.component),
     );
-    const final = { ...acabado, overlays: [...acabado.overlays, ...escritos].slice(0, 40) };
-
-    return this.planos.salvar(tenant, projectId, final, 'user');
+    return { ...acabado, overlays: [...acabado.overlays, ...escritos].slice(0, 40) };
   }
 
   /**
@@ -279,7 +282,7 @@ export class AcabamentoService {
   }
 
   /** As cores do Kit de marca ativo (primária, destaque...). */
-  private async coresDaMarca(workspaceId: string): Promise<Record<string, string>> {
+  async coresDaMarca(workspaceId: string): Promise<Record<string, string>> {
     const perfil = await this.prisma.brandProfile.findFirst({
       where: { workspaceId, isActive: true },
       orderBy: { version: 'desc' },
@@ -293,7 +296,7 @@ export class AcabamentoService {
   }
 
   /** As palavras faladas, no tempo da timeline (para os sons desviarem). */
-  private async falaNaTimeline(projectId: string, plano: EditPlanV1): Promise<IntervaloDeFala[]> {
+  async falaNaTimeline(projectId: string, plano: EditPlanV1): Promise<IntervaloDeFala[]> {
     const palavras = await this.prisma.transcriptWord.findMany({
       where: { segment: { transcription: { projectId } } },
       select: { startMs: true, endMs: true },
@@ -307,7 +310,7 @@ export class AcabamentoService {
    * Pelos segmentos que o trecho declara cobrir: é o que permite à IA
    * entender "tira a parte do preço" sem receber a transcrição toda.
    */
-  private async falasDosTrechos(projectId: string, plano: EditPlanV1): Promise<Record<string, string>> {
+  async falasDosTrechos(projectId: string, plano: EditPlanV1): Promise<Record<string, string>> {
     const ids = [...new Set(plano.clips.flatMap((c) => c.transcriptSegmentIds))];
     if (ids.length === 0) return {};
 

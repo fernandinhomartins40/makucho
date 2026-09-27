@@ -414,6 +414,17 @@ export interface ResultadoDoComando {
   ignoradas: string[];
   plano: VersaoDoPlano;
   custoCentavos: number;
+  /** Os passos que o agente deu (ler, editar, conferir...). */
+  passos?: string[];
+}
+
+/** O agente trabalhando: os passos até agora e, no fim, o resultado (ou o erro). */
+export interface AndamentoDoComando {
+  passos: string[];
+  ativo: boolean;
+  em: number;
+  resultado?: ResultadoDoComando;
+  erro?: string;
 }
 
 export const planos = {
@@ -423,6 +434,15 @@ export const planos = {
   /** Pedido em linguagem natural: a IA devolve operações da timeline. */
   comando: (projectId: string, texto: string, contexto?: ContextoDoComando) =>
     api<ResultadoDoComando>(`/projects/${projectId}/command`, { metodo: 'POST', corpo: { texto, ...(contexto ? { contexto } : {}) } }),
+  /**
+   * O agente em segundo plano: responde na hora ({ iniciado }) e o
+   * resultado chega por `andamentoDoComando` -- um pedido com muitos
+   * passos passaria do tempo do proxy. Com o agente desligado no
+   * servidor, a resposta já é o resultado.
+   */
+  comandoEmFundo: (projectId: string, texto: string, contexto?: ContextoDoComando) =>
+    api<ResultadoDoComando | { iniciado: true }>(`/projects/${projectId}/command?fundo=1`, { metodo: 'POST', corpo: { texto, ...(contexto ? { contexto } : {}) } }),
+  andamentoDoComando: (projectId: string) => api<AndamentoDoComando>(`/projects/${projectId}/command/progress`),
   atual: (projectId: string) =>
     api<VersaoDoPlano>(`/projects/${projectId}/edit-plans`),
   historico: (projectId: string) =>

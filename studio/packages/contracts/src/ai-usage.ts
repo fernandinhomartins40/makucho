@@ -38,6 +38,8 @@ export const CHAMADAS_DE_IA = [
   'sugerir_midias',
   // #11: vídeo sem narração, montado pelas cenas (montagem-visual.ts).
   'montar_por_cenas',
+  // #12: o "Peça à IA" com ferramentas (a IA decide o que usar, em passos).
+  'agente_de_edicao',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -56,6 +58,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   editar_roteiro: 'Edição de roteiro',
   sugerir_midias: 'Mídias sugeridas',
   montar_por_cenas: 'Montagem pelas cenas',
+  agente_de_edicao: 'Edição com ferramentas',
 };
 
 // ---------- Modelos ----------
@@ -104,6 +107,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   editar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   sugerir_midias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   montar_por_cenas: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  agente_de_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /** Compatibilidade: so o modelo de cada chamada. */

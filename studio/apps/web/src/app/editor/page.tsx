@@ -460,25 +460,46 @@ function Editor({ projectId }: { projectId: string }) {
     return () => clearTimeout(t);
   }, [aviso]);
 
+  // Os passos do agente, ao vivo, enquanto ele trabalha no pedido.
+  const [passosDaIa, setPassosDaIa] = useState<string[]>([]);
   const pedirAIa = useCallback(
     async (texto: string, anterior?: { pedido: string; resposta: string }): Promise<RespostaDaIa | null> => {
       setErro(null);
+      setPassosDaIa([]);
       try {
         // O que a pessoa está vendo: dá sentido a "isso", "aqui" e às
         // respostas curtas ("sim", "todos") da conversa.
-        const r = await apiPlanos.comando(projectId, texto, {
-          ...(itemSelecionado ? { selecionado: { tipo: itemSelecionado.tipo, id: itemSelecionado.id } } : {}),
+        const selecionadoAgora = itemSelecionado
+          ? { tipo: itemSelecionado.tipo, id: itemSelecionado.id }
+          : selecionado
+            ? { tipo: 'trecho', id: selecionado }
+            : null;
+        const inicio = await apiPlanos.comandoEmFundo(projectId, texto, {
+          ...(selecionadoAgora ? { selecionado: selecionadoAgora } : {}),
           cursorMs: Math.max(0, Math.round(posicaoMs)),
           ...(anterior ? { anterior } : {}),
         });
+        let r = 'iniciado' in inicio ? null : inicio;
+        // O agente trabalha em segundo plano: acompanha os passos até o fim.
+        const limite = Date.now() + 5 * 60_000;
+        while (!r) {
+          await new Promise((ok) => setTimeout(ok, 800));
+          const a = await apiPlanos.andamentoDoComando(projectId);
+          setPassosDaIa(a.passos);
+          if (a.erro) throw new Error(a.erro);
+          if (!a.ativo && a.resultado) r = a.resultado;
+          if (Date.now() > limite) throw new Error('a IA está demorando demais; tente de novo.');
+        }
         if (r.aplicadas > 0) receberPlano(r.plano.document as EditPlanV1, texto);
         return { texto: r.resposta, ignoradas: r.ignoradas, aplicadas: r.aplicadas };
       } catch (e) {
         setErro(e instanceof Error ? e.message : 'a IA não conseguiu aplicar o pedido.');
         return null;
+      } finally {
+        setPassosDaIa([]);
       }
     },
-    [projectId, receberPlano, itemSelecionado, posicaoMs],
+    [projectId, receberPlano, itemSelecionado, selecionado, posicaoMs],
   );
 
   // Desfazer e refazer SALVAM a versão: antes só mudavam a tela, e a
@@ -1278,7 +1299,7 @@ function Editor({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               )}
-              {!semIa && <PedirAIa onEnviar={pedirAIa} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
+              {!semIa && <PedirAIa onEnviar={pedirAIa} passos={passosDaIa} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
               {midiasSeparadas?.momentos.length ? (
                 <div className="midias-separadas" role="status">
                   <div className="midias-separadas__topo">

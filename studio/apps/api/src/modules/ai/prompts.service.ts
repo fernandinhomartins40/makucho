@@ -57,6 +57,8 @@ export const VERSAO_DO_PROMPT = {
   montar_por_cenas: 'montagem-visual-v1',
   // Uma mídia escolhida na busca: a IA diz onde e como ela entra.
   posicionar_midia: 'posicionar-midia-v1',
+  // O "Peça à IA" com ferramentas (agente.service.ts).
+  agente_de_edicao: 'agente-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

@@ -133,6 +133,37 @@ export class MontagemVisualService {
     };
   }
 
+  /**
+   * As cenas do vídeo com o que a visão viu em cada uma (o agente usa
+   * para "olhar" o vídeo antes de decidir).
+   */
+  async cenasDescritas(workspaceId: string, projectId: string): Promise<CenaDoVideo[]> {
+    const [workspace, original, transcricao] = await Promise.all([
+      this.prisma.workspace.findUnique({ where: { id: workspaceId }, select: { businessType: true } }),
+      this.prisma.mediaSource.findFirst({ where: { projectId, kind: 'ORIGINAL' }, orderBy: { createdAt: 'desc' } }),
+      this.prisma.transcription.findUnique({
+        where: { projectId },
+        include: { segments: { orderBy: { position: 'asc' } }, regions: { where: { kind: 'scene' }, orderBy: { startMs: 'asc' } } },
+      }),
+    ]);
+    const duracao = original?.durationMs ?? 0;
+    if (!duracao) return [];
+    const regioes = (transcricao?.regions ?? []).filter((r) => r.endMs > r.startMs && r.startMs < duracao);
+    const base = regioes.length
+      ? regioes.map((r) => ({ inicioMs: r.startMs, fimMs: Math.min(r.endMs, duracao), quadro: (r.metadata as { quadro?: string } | null)?.quadro }))
+      : cenasDosCortes([], duracao).map((c) => ({ ...c, quadro: undefined }));
+    const cenas: CenaDoVideo[] = base.map((c, i) => {
+      const fala = (transcricao?.segments ?? [])
+        .filter((s) => Math.min(s.endMs, c.fimMs) - Math.max(s.startMs, c.inicioMs) > 200)
+        .map((s) => s.text)
+        .join(' ')
+        .slice(0, 140);
+      return { indice: i, inicioMs: c.inicioMs, fimMs: c.fimMs, ...(fala ? { fala } : {}) };
+    });
+    await this.olhar(cenas, base.map((c) => c.quadro), ramoOuOutro(workspace?.businessType));
+    return cenas;
+  }
+
   /** A visão olha o quadro de cada cena: o que mostra e se presta. */
   private async olhar(cenas: CenaDoVideo[], quadros: ReadonlyArray<string | undefined>, ramo: RamoDeNegocio) {
     const arquivos = await Promise.all(quadros.map((q) => (q ? this.storage.ler(q).catch(() => null) : Promise.resolve(null))));

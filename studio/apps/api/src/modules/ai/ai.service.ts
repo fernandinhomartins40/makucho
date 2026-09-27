@@ -27,7 +27,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
 import { FalsoProvedor } from './falso.provedor';
 import { ErroDoProvedor } from './provedor';
-import type { ProvedorDeIa } from './provedor';
+import type { ChamadaDeFerramenta, DefinicaoDeFerramenta, MensagemDoAgente, ProvedorDeIa } from './provedor';
 import { UsoDeIaService } from './uso.service';
 
 /** Ativa o provedor falso sem credencial, para desenvolvimento. */
@@ -228,6 +228,42 @@ export class AiService {
 
     await this.gravarNoCache(chave, resultado);
     return resultado;
+  }
+
+  /**
+   * Uma volta da conversa com ferramentas (o agente de edição). Sem cache:
+   * cada volta depende do que as ferramentas devolveram. A trava de custo
+   * e o registro de uso valem igual às outras chamadas.
+   */
+  async chamarComFerramentas(pedido: {
+    workspaceId: string;
+    chamada: ChamadaDeIa;
+    mensagens: MensagemDoAgente[];
+    ferramentas: DefinicaoDeFerramenta[];
+    maxTokens: number;
+    sinal?: AbortSignal;
+  }): Promise<{ texto: string; chamadas: ChamadaDeFerramenta[]; custoCentavos: number }> {
+    const modelo = MODELO_DO_AMBIENTE ?? CONFIG_POR_CHAMADA[pedido.chamada].modelo;
+    const provedor = await this.provedorDe(pedido.workspaceId, modelo);
+    const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
+    await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
+    const resposta = await provedor.conversarComFerramentas({
+      chamada: pedido.chamada,
+      mensagens: pedido.mensagens,
+      ferramentas: pedido.ferramentas,
+      maxTokens: pedido.maxTokens,
+      ...(pedido.sinal ? { sinal: pedido.sinal } : {}),
+    });
+    const custo = await this.uso.registrar(
+      pedido.workspaceId,
+      pedido.chamada,
+      modelo,
+      resposta.consumo.inputTokens,
+      resposta.consumo.outputTokens,
+      resposta.consumo.tokensEmCache ?? 0,
+    );
+    await this.prisma.aiCredential.updateMany({ where: { workspaceId: pedido.workspaceId }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
+    return { texto: resposta.texto, chamadas: resposta.chamadas, custoCentavos: custo };
   }
 
   /**

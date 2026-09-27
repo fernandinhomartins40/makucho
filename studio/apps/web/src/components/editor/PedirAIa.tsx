@@ -27,7 +27,16 @@ export interface RespostaDaIa {
 
 type Envio = (texto: string, anterior?: { pedido: string; resposta: string }) => Promise<RespostaDaIa | null>;
 
-export function PedirAIa({ onEnviar, extras = [] }: { onEnviar: Envio; extras?: Array<{ rotulo: string; onClick: () => void }> }) {
+export function PedirAIa({
+  onEnviar,
+  extras = [],
+  passos = [],
+}: {
+  onEnviar: Envio;
+  extras?: Array<{ rotulo: string; onClick: () => void }>;
+  /** O que a IA está fazendo agora (o agente com ferramentas). */
+  passos?: string[];
+}) {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resposta, setResposta] = useState<RespostaDaIa | null>(null);
@@ -81,6 +90,17 @@ export function PedirAIa({ onEnviar, extras = [] }: { onEnviar: Envio; extras?: 
           {enviando ? 'Fazendo…' : 'Aplicar'}
         </button>
       </form>
+
+      {/* Os passos da IA, ao vivo: ler, decidir, editar, conferir. */}
+      {enviando && passos.length > 0 && (
+        <ol className="pedir-ia__passos" aria-live="polite">
+          {passos.slice(-4).map((p, i, l) => (
+            <li key={`${p}-${i}`} data-atual={i === l.length - 1 || undefined}>
+              {p}
+            </li>
+          ))}
+        </ol>
+      )}
 
       {!resposta && !enviando && (
         <div className="pedir-ia__exemplos">
