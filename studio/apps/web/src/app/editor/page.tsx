@@ -42,6 +42,7 @@ import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import { EditorSimples, type DestinoSimples } from '../../components/editor/EditorSimples';
+import { EtiquetaDoItem, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
@@ -577,6 +578,9 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
   const simples = modo === 'simples';
+
+  // O que foi copiado na etiqueta do item (cola no cursor).
+  const [copiado, setCopiado] = useState<ItemCopiado | null>(null);
 
   // ---------- Narração ----------
   const [gravadorDe, setGravadorDe] = useState<number | null>(null);
@@ -1334,7 +1338,7 @@ function Editor({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {simples ? (
+        {simples && (
           <EditorSimples
             plan={plano}
             desligados={desligados}
@@ -1376,7 +1380,7 @@ function Editor({ projectId }: { projectId: string }) {
               </>
             }
           />
-        ) : (
+        )}
         <section className="editor__timeline" aria-label="Linha do tempo">
             <DivisorDaTimeline editorRef={editorRef} />
             <Timeline
@@ -1412,14 +1416,37 @@ function Editor({ projectId }: { projectId: string }) {
               itemSelecionado={itemSelecionado}
               onSelecionarItem={(item) => {
                 setItemSelecionado(item);
-                // No celular as propriedades ficam numa folha: abrir os
-                // estilos (clique duplo) já a abre.
-                if (item && item.tipo === 'elemento' && item.aba && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
-                else if (item && item.tipo !== 'elemento' && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+                // A etiqueta do item aparece junto dele; a folha de
+                // propriedades só abre sozinha no clique duplo (estilos).
+                if (item && item.tipo === 'elemento' && item.aba && (window.matchMedia('(max-width: 899px)').matches || simples)) setFolha('inspector');
               }}
             />
           </section>
-        )}
+
+        <EtiquetaDoItem
+          plan={plano}
+          alvo={itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado ? { tipo: 'clipe', id: selecionado } : null}
+          posicaoMs={posicaoMs}
+          copiado={copiado}
+          onCopiar={(c) => {
+            setCopiado(c);
+            setAviso(`${c.rotulo} copiado. Leve o cursor e use "Colar" em Mais opções.`);
+          }}
+          onOperacao={executar}
+          onOperacoes={executarVarias}
+          onEditar={(estilos) => {
+            if (estilos && itemSelecionado?.tipo === 'elemento') setItemSelecionado({ tipo: 'elemento', id: itemSelecionado.id, aba: 'estilos' });
+            if (noCelular() || simples) setFolha('inspector');
+          }}
+          onCor={() => {
+            setCategoriaDaBiblioteca('cor');
+            abrirPainel('biblioteca');
+          }}
+          onDesmarcar={() => {
+            setSelecionado(null);
+            setItemSelecionado(null);
+          }}
+        />
       </div>
     </>
   );

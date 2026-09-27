@@ -3,18 +3,16 @@
 // ============================================================
 // Editor simples: o que o leigo precisa, e nada mais.
 //
-// Abaixo do vídeo: pedir à IA (o caminho principal), os trechos numa
-// tira (tocar leva o vídeo até ele; a chave tira ou devolve) e cinco
-// botões grandes para o que mais se muda -- legenda, texto, imagens,
-// música e estilo. Cada botão abre UM painel. A timeline completa, as
-// faixas e as propriedades ficam no modo avançado, a um toque.
+// Entre o vídeo e a timeline: pedir à IA (o caminho principal) e seis
+// botões para o que mais se muda -- legenda, texto, imagens, música,
+// estilo e narração. Cada botão abre UM painel. Tocar num elemento da
+// timeline abre a etiqueta dele (EtiquetaDoItem). As colunas, as abas
+// e as propriedades fixas ficam no modo avançado.
 // ============================================================
 
 import type { Icon } from '@phosphor-icons/react';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano } from '@makucho/studio-contracts';
 import { PedirAIa, type RespostaDaIa } from './PedirAIa';
-import { corDaFuncao, nomeDaFuncao } from './funcoes';
 import { IconeLegenda, IconeTexto, IconeMidia, IconeTrilha, IconeCor, IconeMicrofone } from '../icones';
 
 export type DestinoSimples = 'legendas' | 'texto' | 'imagens' | 'musica' | 'estilo' | 'narracao';
@@ -42,43 +40,11 @@ interface Props {
   topo?: React.ReactNode;
 }
 
-export function EditorSimples({ plan, desligados, posicaoMs, quadros, semIa, onPedir, onIrPara, onAlternarTrecho, onAbrir, topo }: Props) {
-  // Posição de cada trecho (os desligados ficam na lista, apagados).
-  const agenda = agendaDoPlano(plan, [...desligados]);
-  const inicioDe = new Map(agenda.trechos.map((t) => [t.clip.id, t]));
-
+export function EditorSimples({ semIa, onPedir, onAbrir, topo }: Props) {
   return (
     <section className="editor-simples" aria-label="Editar o vídeo">
       {topo}
       {!semIa && <PedirAIa onEnviar={onPedir} />}
-
-      <div className="editor-simples__trechos" role="list" aria-label="Trechos do vídeo">
-        {plan.clips.map((c) => {
-          const t = inicioDe.get(c.id);
-          const ligado = !desligados.has(c.id);
-          const atual = t && posicaoMs >= t.inicioMs && posicaoMs < t.inicioMs + t.duracaoMs;
-          const capa = quadros?.((c.sourceStartMs + c.sourceEndMs) / 2);
-          return (
-            <div key={c.id} role="listitem" className="trecho-simples" data-ligado={ligado || undefined} data-atual={atual || undefined}>
-              <button type="button" className="trecho-simples__capa" onClick={() => t && onIrPara(t.inicioMs)} aria-label={`Ver ${nomeDaFuncao(c.role)}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {capa ? <img src={capa} alt="" /> : <span style={{ background: corDaFuncao(c.role) }} />}
-                <b style={{ background: corDaFuncao(c.role) }}>{nomeDaFuncao(c.role)}</b>
-              </button>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={ligado}
-                className="trecho-simples__chave"
-                onClick={() => onAlternarTrecho(c.id)}
-                aria-label={ligado ? `Tirar ${nomeDaFuncao(c.role)} do vídeo` : `Devolver ${nomeDaFuncao(c.role)} ao vídeo`}
-              >
-                {ligado ? 'No vídeo' : 'Fora'}
-              </button>
-            </div>
-          );
-        })}
-      </div>
 
       <nav className="editor-simples__botoes" aria-label="O que mudar">
         {BOTOES.map(({ id, rotulo, Icone }) => (
