@@ -658,6 +658,23 @@ function Editor({ projectId }: { projectId: string }) {
     }
   };
   const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
+
+  // Computador: selecionar um trecho ou item abre as PROPRIEDADES dele no
+  // painel da esquerda (nada abre à direita). Tirar a seleção (o X) volta
+  // à categoria em que a pessoa estava.
+  const voltarDasPropriedades = useRef<AbaDoEditor>('ia');
+  useEffect(() => {
+    if (celular) return;
+    if (selecionado || itemSelecionado) {
+      setAba((a) => {
+        if (a !== 'propriedades') voltarDasPropriedades.current = a;
+        return 'propriedades';
+      });
+      setPainelAberto(true);
+    } else {
+      setAba((a) => (a === 'propriedades' ? voltarDasPropriedades.current : a));
+    }
+  }, [selecionado, itemSelecionado, celular]);
   const abrirPainel = (a: AbaDoEditor) => {
     setAba(a);
     setPainelAberto(true);
@@ -705,7 +722,11 @@ function Editor({ projectId }: { projectId: string }) {
       setItemSelecionado({ tipo: 'audio', id: alvo });
       return setFolha('inspector');
     }
-    if (a === 'mais') return setFolha('inspector');
+    if (a === 'mais') {
+      if (noCelular()) return setFolha('inspector');
+      setAba('ajustes');
+      return setPainelAberto(true);
+    }
     // Ajustar e velocidade: as propriedades do trecho.
     setItemSelecionado(null);
     if (alvo) setSelecionado(alvo);
@@ -1175,7 +1196,7 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado ? 'com' : 'sem'}>
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props="sem">
         {!celular && cabecalho}
         <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
         {/* A alça na borda do painel: recolhe e devolve (computador). */}
@@ -1379,6 +1400,32 @@ function Editor({ projectId }: { projectId: string }) {
               />
             </div>
           )}
+          {/* Propriedades do item selecionado (computador). */}
+          {aba === 'propriedades' && (selecionado || itemSelecionado) && (
+            <div className="painel-de-ajustes">
+              <Inspector
+                plan={plano}
+                clipId={selecionado}
+                onOperacao={executar}
+                onOperacoes={executarVarias}
+                marca={marcaDoVideo}
+                recursos={recursos}
+                onRefazerAcabamento={() => void refazerAcabamento()}
+                refazendoAcabamento={refazendoAcabamento}
+                item={itemSelecionado}
+                onFecharItem={() => setItemSelecionado(null)}
+                onSelecionarItem={(item) => setItemSelecionado(item)}
+                posicaoMs={posicaoMs}
+                onSeek={setPosicaoMs}
+                abaPedida={abaDoInspector}
+                onRecolher={() => {
+                  setSelecionado(null);
+                  setItemSelecionado(null);
+                }}
+                onCorrigirLegendas={() => setAba('legendas')}
+              />
+            </div>
+          )}
           {aba === 'midia' && (
             <div className="painel-de-midias">
               <PainelDeMidias
@@ -1502,7 +1549,9 @@ function Editor({ projectId }: { projectId: string }) {
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
-          <Congelado ativo={(!celular && !simples) || folha === 'inspector'}>
+          {/* Só no celular (a gaveta de baixo): no computador as
+              propriedades abrem no painel da esquerda. */}
+          <Congelado ativo={folha === 'inspector'}>
           <CabecalhoDaFolha titulo="Ajustes" aoFechar={() => setFolha(null)} />
           <Inspector
             plan={plano}
@@ -1744,6 +1793,7 @@ const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
   marca: 'Marca',
   audio: 'Áudio',
   ajustes: 'Ajustes',
+  propriedades: 'Propriedades',
 };
 
 /** "Ajustes" abre já no formato e no enquadramento do vídeo. */
