@@ -133,10 +133,10 @@ export default function ProjetosPage() {
             pessoa veio buscar. */}
         <header className="inicio__topo">
           <h1>Meus vídeos</h1>
-          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+          <div className="inicio__acoes">
             <Link href="/gravar?modo=enviar" className="botao botao--secundario">
               <IconeEnviar size={16} />
-              Enviar vídeo pronto
+              Enviar<span className="so-largo">&nbsp;vídeo pronto</span>
             </Link>
             <Link href="/novo" className="botao">
               <IconeMais size={18} weight="bold" />
@@ -396,7 +396,7 @@ function CartaoDeProjeto({
           >
             {projeto.title}
           </h3>
-          <p className="texto-secundario linha" style={{ fontSize: 12, gap: 4, marginTop: 2 }}>
+          <p className="texto-secundario linha" style={{ fontSize: 12, gap: 4, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <IconeRelogio size={12} />
             {tempoRelativo(projeto.updatedAt)}
           </p>

@@ -12289,3 +12289,60 @@ html:not([data-dicas]) :is(
     height: 40px;
   }
 }
+
+/* Próximo passo: bolinhas e texto numa linha, botões na outra quando
+   não cabe (no celular o texto ficava numa coluna de uma palavra). */
+.guia-compacto__linha {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px var(--e3);
+}
+
+.guia-compacto__linha > .crescer {
+  min-width: 0;
+}
+
+.guia-compacto__acoes {
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+}
+
+@media (max-width: 699px) {
+  .guia-compacto__linha {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .guia-compacto__acoes {
+    grid-column: 1 / -1;
+  }
+
+  .guia-compacto__acoes .botao--primario {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+.inicio__acoes {
+  display: flex;
+  gap: var(--e2);
+}
+
+@media (max-width: 899px) {
+  /* Os dois botões lado a lado, do mesmo tamanho. */
+  .inicio__topo {
+    display: grid;
+    gap: var(--e3);
+  }
+
+  .inicio__acoes {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+  }
+
+  .inicio__acoes .botao {
+    justify-content: center;
+    white-space: nowrap;
+  }
+}

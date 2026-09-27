@@ -30,8 +30,10 @@ import { Armazenamento, Sair, itemAtivo } from './Sidebar';
 import { PassoAPasso, useGuiaDeInstalacao } from '../pwa/GuiaDeInstalacao';
 
 const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; destaque?: boolean; tambem?: string[] }> = [
+  // Cinco lugares, com Criar no meio (o "Mais" é o quinto, depois destes).
   { href: '/', rotulo: 'Vídeos', Icone: IconeProjetos },
-  { href: '/novo', rotulo: 'Criar', Icone: IconeGravar, destaque: true, tambem: ['/gravar', '/roteiros'] },
+  { href: '/roteiros', rotulo: 'Roteiros', Icone: IconeRoteiro },
+  { href: '/novo', rotulo: 'Criar', Icone: IconeGravar, destaque: true, tambem: ['/gravar'] },
   { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 
@@ -77,12 +79,6 @@ export function BarraInferior() {
 
       <Folha aberta={mais} aoFechar={fechar} titulo="Mais">
         <div className="pilha" style={{ gap: 'var(--e1)' }} onClick={(e) => (e.target as HTMLElement).closest('a') && fechar()}>
-          <Link href="/roteiros" className="nav-item">
-            <span className="nav-item__icone" aria-hidden>
-              <IconeRoteiro size={20} />
-            </span>
-            <span className="nav-item__rotulo">Meus roteiros</span>
-          </Link>
           <Link href="/configuracoes" className="nav-item">
             <span className="nav-item__icone" aria-hidden>
               <IconeConfiguracoes size={20} />

@@ -183,13 +183,15 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
             {feitos} de {passos.length} feitos · {proximo.texto}
           </span>
         </div>
-        <Link href={proximo.href} className="botao botao--primario botao--pequeno">
-          {proximo.acao}
-          <IconeAvancar size={14} />
-        </Link>
-        <button type="button" className="botao botao--fantasma botao--pequeno" aria-expanded={aberto} onClick={() => recolher(aberto)}>
-          {aberto ? 'Fechar' : 'Ver todos'}
-        </button>
+        <div className="guia-compacto__acoes">
+          <Link href={proximo.href} className="botao botao--primario botao--pequeno">
+            {proximo.acao}
+            <IconeAvancar size={14} />
+          </Link>
+          <button type="button" className="botao botao--fantasma botao--pequeno" aria-expanded={aberto} onClick={() => recolher(aberto)}>
+            {aberto ? 'Fechar' : 'Ver todos'}
+          </button>
+        </div>
       </div>
       {aberto && (
         <ol className="guia-compacto__lista">
