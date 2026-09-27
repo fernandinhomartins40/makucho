@@ -62,7 +62,6 @@ export default function ConfiguracoesPage() {
         <div className="config">
           <header className="config__titulo">
             <h1>Configurações</h1>
-            <p className="texto-secundario">Chaves, consumo, espaço e o app instalado.</p>
           </header>
           <nav className="abas-da-pagina" role="tablist" aria-label="Partes das configurações">
             {ABAS.map(({ id, rotulo, ajuda, Icone }) => (
@@ -202,8 +201,8 @@ function SecaoDeIa() {
       <section className="cartao config__cartao" aria-labelledby="titulo-ia">
         <header className="config__cabeca">
           <div>
-            <h3 id="titulo-ia">Chave da IA (DeepSeek)</h3>
-            <p>
+            <h3 id="titulo-ia">Conexão com a IA</h3>
+            <p className="dica">
               A IA escolhe os melhores trechos, sugere cortes e escreve roteiros. Sem chave, o Studio monta o vídeo com toda a fala, sem as pausas
               longas, e você corta na timeline.
             </p>
@@ -299,7 +298,7 @@ function SecaoDeIa() {
 
         {/* Sem campo de modelo: o Studio escolhe o modelo e o nível de
             raciocínio de cada função (o mais barato que dá conta dela). */}
-        <p className="campo__ajuda" style={{ margin: 0 }}>
+        <p className="dica" style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
           O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no acabamento dos cortes.
         </p>
       </section>
@@ -309,7 +308,7 @@ function SecaoDeIa() {
         <header className="config__cabeca">
           <div>
             <h3 id="titulo-consumo">Consumo deste mês</h3>
-            <p>Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
+            <p className="dica">Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
           </div>
         </header>
         {consumo.carregando ? (

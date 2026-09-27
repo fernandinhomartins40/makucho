@@ -34,8 +34,7 @@ const ABAS: Array<{ id: AbaDoEditor; rotulo: string; Icone: Icon }> = [
   { id: 'ia', rotulo: 'IA', Icone: IconeIA },
   { id: 'biblioteca', rotulo: 'Biblioteca', Icone: IconeBiblioteca },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
-  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
-  { id: 'marca', rotulo: 'Marca', Icone: IconeMarca },
+  { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia },
 ];
 
 interface Props {

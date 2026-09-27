@@ -19,9 +19,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import type { Icon } from '@phosphor-icons/react';
 import {
   IconeProjetos,
-  IconeRoteiro,
   IconeGravar,
-  IconeEditor,
   IconeMarca,
   IconeAjuda,
   IconeConfiguracoes,
@@ -38,13 +36,19 @@ interface ItemDeNavegacao {
   Icone: Icon;
 }
 
-const ITENS: ItemDeNavegacao[] = [
-  { href: '/', rotulo: 'Projetos', Icone: IconeProjetos },
-  { href: '/roteiros', rotulo: 'Roteiro', Icone: IconeRoteiro },
-  { href: '/gravar', rotulo: 'Gravar', Icone: IconeGravar },
-  { href: '/editor', rotulo: 'Editor', Icone: IconeEditor },
-  { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
+// Três lugares, na ordem da vida do vídeo. Roteiro e gravação são
+// passos de "Criar vídeo"; o editor abre de um vídeo (não é destino).
+export const ITENS_DA_NAVEGACAO: Array<ItemDeNavegacao & { tambem?: string[] }> = [
+  { href: '/', rotulo: 'Meus vídeos', Icone: IconeProjetos },
+  { href: '/novo', rotulo: 'Criar vídeo', Icone: IconeGravar, tambem: ['/gravar', '/roteiros'] },
+  { href: '/marca', rotulo: 'Minha marca', Icone: IconeMarca },
 ];
+
+/** A página atual pertence a este item? */
+export function itemAtivo(caminho: string, item: { href: string; tambem?: string[] }): boolean {
+  if (item.href === '/') return caminho === '/';
+  return [item.href, ...(item.tambem ?? [])].some((h) => caminho.startsWith(h));
+}
 
 const GB = 1024 ** 3;
 const QUOTA_TOTAL_BYTES = 10 * GB;
@@ -62,12 +66,12 @@ export function Sidebar() {
             <span className="sidebar__sub">Studio</span>
           </span>
         </Link>
-        <p className="sidebar__tagline">Seus vídeos, editados por IA</p>
       </div>
 
       <nav className="sidebar__nav" aria-label="Navegação principal">
-        {ITENS.map(({ href, rotulo, Icone }) => {
-          const ativo = href === '/' ? caminho === '/' : caminho.startsWith(href);
+        {ITENS_DA_NAVEGACAO.map((item) => {
+          const { href, rotulo, Icone } = item;
+          const ativo = itemAtivo(caminho, item);
 
           return (
             <Link
@@ -119,7 +123,7 @@ export function Sidebar() {
  * vídeos em edição fica em Marca, onde há espaço para explicar que
  * uma cede lugar e a outra não.
  */
-export function Armazenamento() {
+export function Armazenamento({ sempre = false }: { sempre?: boolean }) {
   const [usadoBytes, setUsadoBytes] = useState<number | null>(null);
 
   useEffect(() => {
@@ -137,6 +141,9 @@ export function Armazenamento() {
   if (usadoBytes === null) return null;
 
   const pct = Math.min(100, (usadoBytes / QUOTA_TOTAL_BYTES) * 100);
+  // Espaço só pede atenção quando está acabando (a partir de 80%); antes
+  // disso é um número que o leigo não precisa ler toda hora.
+  if (!sempre && pct < 80) return null;
   const gb = (b: number) => (b / GB).toFixed(1).replace('.', ',');
 
   return (

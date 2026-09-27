@@ -11,6 +11,7 @@
 // é a diferença entre fechar a aba tranquilo e perder trabalho.
 // ============================================================
 
+import { BotaoDeDicas } from './BotaoDeDicas';
 import Link from 'next/link';
 import { IconeBusca, IconeSalvo, IconeSalvando, IconeAviso } from '../icones';
 
@@ -121,6 +122,7 @@ export function Topbar({
 
       <div className="linha auto topbar__acoes" style={{ gap: 'var(--e2)' }}>
         {children}
+        <BotaoDeDicas />
       </div>
     </header>
   );

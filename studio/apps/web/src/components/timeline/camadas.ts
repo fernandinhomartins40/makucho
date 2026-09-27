@@ -61,7 +61,7 @@ export interface EfeitoNaFaixa {
 export const NOME_DO_ELEMENTO: Record<string, string> = {
   HookTitle: 'Título',
   CTA: 'Chamada',
-  Destaque: 'Destaque',
+  Destaque: 'Texto em destaque',
   LogoBug: 'Logo',
   ProgressBar: 'Barra de progresso',
   LowerThird: 'Rodapé',

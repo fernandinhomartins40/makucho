@@ -126,14 +126,24 @@ export default function ProjetosPage() {
 
   return (
     <>
-      <Topbar busca onBuscar={setBusca}>
-        <Link href="/ajuda" className="botao-icone" aria-label="Ajuda">
-          <IconeAjuda size={20} />
-        </Link>
-      </Topbar>
+      <Topbar busca onBuscar={setBusca} />
 
       <div className="conteudo">
-        <h1 className="titulo-da-pagina">Projetos</h1>
+        {/* Uma ação principal: criar. Os vídeos logo abaixo -- é o que a
+            pessoa veio buscar. */}
+        <header className="inicio__topo">
+          <h1>Meus vídeos</h1>
+          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+            <Link href="/gravar?modo=enviar" className="botao botao--secundario">
+              <IconeEnviar size={16} />
+              Enviar vídeo pronto
+            </Link>
+            <Link href="/novo" className="botao">
+              <IconeMais size={18} weight="bold" />
+              Criar vídeo
+            </Link>
+          </div>
+        </header>
 
         {erroDeAcao && (
           <div className="aviso aviso--erro" role="alert" style={{ marginBottom: 'var(--e4)' }}>
@@ -152,48 +162,14 @@ export default function ProjetosPage() {
           </div>
         )}
 
-        {/* ---------- Hero ---------- */}
-        <section className="hero" style={{ marginBottom: 'var(--e5)' }}>
-          <div style={{ maxWidth: 560 }}>
-            <h2 className="hero__titulo" style={{ letterSpacing: -1, marginBottom: 'var(--e3)' }}>
-              Crie vídeos melhores, mais rápido
-            </h2>
-            <p className="texto-secundario" style={{ fontSize: 16, marginBottom: 'var(--e5)' }}>
-              Planeje, grave e edite com IA. Do seu jeito, para o seu público.
-            </p>
-            <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
-              <Link href="/gravar" className="botao">
-                <IconeMais size={18} weight="bold" />
-                Novo vídeo
-              </Link>
-              <Link href="/gravar?modo=enviar" className="botao botao--secundario">
-                <IconeEnviar size={16} />
-                Enviar um vídeo pronto
-              </Link>
-            </div>
-          </div>
-
-          <picture className="hero__arte">
-            <source srcSet="/assets/makucho-studio/hero-clapperboard.webp" type="image/webp" />
-            <img
-              src="/assets/makucho-studio/hero-clapperboard.png"
-              alt=""
-              aria-hidden
-              width={768}
-              height={512}
-              style={{ width: '100%', height: 'auto', display: 'block' }}
-            />
-          </picture>
-        </section>
-
-        {/* O guia fica logo abaixo do hero: é o caminho do vídeo, não um apoio no canto. */}
+        {/* Primeiros passos: uma linha, e some quando tudo estiver feito. */}
         {!verArquivados && !carregando && <GuiaDoFluxo projetos={lista} />}
 
         <div className="projetos__grade">
           {/* ---------- Projetos recentes ---------- */}
           <section>
             <div className="linha entre" style={{ marginBottom: 'var(--e4)' }}>
-              <h2>Meus projetos recentes</h2>
+              <h2 className="visualmente-oculto">Projetos</h2>
               <span className="linha" style={{ gap: 'var(--e2)' }}>
                 {lista.length > 0 && (
                   <span className="texto-secundario" style={{ fontSize: 13 }}>
@@ -238,15 +214,11 @@ export default function ProjetosPage() {
                   <IconeVideo size={26} />
                 </div>
                 <div>
-                  <h3 style={{ marginBottom: 4 }}>Nenhum projeto ainda</h3>
-                  <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
-                    Comece gravando pelo teleprompter ou enviando um vídeo que você já
-                    tem.
-                  </p>
+                  <h3 style={{ marginBottom: 'var(--e3)' }}>Seu primeiro vídeo começa aqui</h3>
                   <div className="linha" style={{ gap: 'var(--e3)' }}>
-                    <Link href="/gravar" className="botao">
-                      <IconeGravar size={16} weight="fill" />
-                      Gravar agora
+                    <Link href="/novo" className="botao">
+                      <IconeMais size={16} weight="bold" />
+                      Criar vídeo
                     </Link>
                     <Link href="/gravar?modo=enviar" className="botao botao--secundario">
                       <IconeEnviar size={16} />
@@ -287,8 +259,7 @@ export default function ProjetosPage() {
               {aExcluir && (
                 <div style={{ display: 'grid', gap: 'var(--e4)' }}>
                   <p style={{ fontSize: 15, lineHeight: 1.5 }}>
-                    <strong>{aExcluir.title}</strong> será apagado de vez, com todos os vídeos enviados, a
-                    prévia, a transcrição, a edição e os vídeos exportados. Não dá para desfazer.
+                    <strong>{aExcluir.title}</strong> e tudo o que foi gravado e exportado nele serão apagados. Não dá para desfazer.
                   </p>
                   {estaProcessando(aExcluir.state as ProjectState) && (
                     <div className="aviso aviso--atencao">
@@ -296,10 +267,6 @@ export default function ProjetosPage() {
                       <span>O vídeo ainda está sendo processado; o processamento será interrompido.</span>
                     </div>
                   )}
-                  <p className="texto-secundario">
-                    O roteiro usado continua salvo em Roteiro. Se ainda for precisar do vídeo exportado,
-                    baixe antes.
-                  </p>
                   <div className="linha" style={{ gap: 'var(--e2)', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                     <button type="button" className="botao botao--secundario" disabled={excluindo} onClick={fecharConfirmacao}>
                       Cancelar

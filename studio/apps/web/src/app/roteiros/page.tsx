@@ -59,19 +59,19 @@ type Papel =
   | 'cta';
 
 const ROTULO: Record<Papel, string> = {
-  hook: 'Gancho',
+  hook: 'Abertura',
   problem: 'Problema',
   context: 'Contexto',
   curiosity_gap: 'Curiosidade',
   authority: 'Autoridade',
   introduction: 'Apresentação',
   proof: 'Prova',
-  insight: 'Insight',
+  insight: 'Ponto principal',
   solution: 'Solução',
   pattern_interrupt: 'Virada',
-  payoff: 'Recompensa',
+  payoff: 'Conclusão',
   offer: 'Oferta',
-  cta: 'Chamada (CTA)',
+  cta: 'Chamada',
 };
 
 const COR: Record<Papel, string> = {
@@ -290,12 +290,7 @@ function Roteiros() {
     <>
       <Topbar
         titulo={
-          <div>
-            <strong style={{ fontSize: 15, display: 'block' }}>Roteiros</strong>
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              Diga o que quer; a IA escreve com as técnicas que prendem atenção.
-            </span>
-          </div>
+          <strong style={{ fontSize: 15 }}>Roteiro</strong>
         }
         estado={estado ? salvamento : undefined}
       >
@@ -451,7 +446,7 @@ function NovoRoteiro({
       </span>
       <h1>Sobre o que é o seu vídeo?</h1>
       <p className="roteiro-novo__ajuda">
-        Escreva do seu jeito: o assunto, para quem é, onde vai postar, o objetivo e o tom. Quanto mais contexto, melhor o roteiro.
+        O assunto, para quem é e o tom. Quanto mais contexto, melhor.
       </p>
       <form
         className="roteiro-novo__form"

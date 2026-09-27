@@ -57,7 +57,6 @@ import { Inspector, type RecursosDaMarca } from '../../components/editor/Inspect
 import { PedirAIa, type RespostaDaIa } from '../../components/editor/PedirAIa';
 import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
-import { MarcaNoEditor } from '../../components/marca/MarcaNoEditor';
 import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
 import { useExportacoes } from '../../lib/exportacao/tarefas';
@@ -993,8 +992,6 @@ function Editor({ projectId }: { projectId: string }) {
             // Tocar de novo na ferramenta aberta fecha a folha.
             setFolha((f) => (f === 'painel' && nova === aba ? null : 'painel'));
           }}
-          onAjustes={() => setFolha((f) => (f === 'inspector' ? null : 'inspector'))}
-          ajustesAbertos={folha === 'inspector'}
         />
 
         {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
@@ -1168,7 +1165,6 @@ function Editor({ projectId }: { projectId: string }) {
           {aba === 'legendas' && (
             <PainelDeLegendas plano={plano} transcricao={transcricao} carregando={carregandoTranscricao} onOperacao={executar} posicaoMs={posicaoMs} onPosicao={setPosicaoMs} desligados={desligados} />
           )}
-          {aba === 'marca' && <MarcaNoEditor plan={plano} posicaoMs={posicaoMs} onOperacao={executar} />}
           </Congelado>
         </section>
 

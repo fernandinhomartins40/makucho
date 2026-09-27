@@ -354,12 +354,7 @@ export default function MarcaPage() {
     <>
       <Topbar
         titulo={
-          <div>
-            <strong style={{ fontSize: 15, display: 'block' }}>Kit de marca</strong>
-            <span className="texto-secundario" style={{ fontSize: 12 }}>
-              A cara de todos os seus vídeos, num lugar só.
-            </span>
-          </div>
+          <strong style={{ fontSize: 15 }}>Minha marca</strong>
         }
       >
         <button type="button" className="botao auto" disabled={!sujo || salvando} onClick={() => void salvar()}>
@@ -640,8 +635,7 @@ export default function MarcaPage() {
               <section className="cartao">
                 <h2>Biblioteca da marca</h2>
                 <p className="texto-secundario kit-de-marca__ajuda">
-                  Os arquivos da marca, prontos para os vídeos. Diga em uma frase para que serve cada um: é o que a IA do editor lê para usar o
-                  arquivo certo quando você pede. Não tem os arquivos? Crie em &ldquo;Criar com IA&rdquo;.
+                  Diga em uma frase para que serve cada arquivo: é o que a IA do editor lê.
                 </p>
                 <BibliotecaDaMarca
                   assets={arquivos}

@@ -39,23 +39,21 @@ export type FerramentaDoPalco = 'midia' | 'audio' | 'texto' | 'stickers' | 'efei
 export type AcaoDoPalco = 'ajustar' | 'velocidade' | 'cor' | 'volume' | 'recorte' | 'mais';
 
 const FERRAMENTAS: Array<{ id: FerramentaDoPalco; rotulo: string; Icone: Icon }> = [
-  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia },
-  { id: 'audio', rotulo: 'Áudio', Icone: IconeTrilha },
+  { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia },
+  { id: 'audio', rotulo: 'Música', Icone: IconeTrilha },
   { id: 'texto', rotulo: 'Texto', Icone: IconeTexto },
-  { id: 'stickers', rotulo: 'Stickers', Icone: IconeSticker },
+  { id: 'stickers', rotulo: 'Enfeites', Icone: IconeSticker },
   { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito },
   { id: 'transicoes', rotulo: 'Transições', Icone: IconeTransicao },
-  { id: 'filtros', rotulo: 'Filtros', Icone: IconeFiltro },
-  { id: 'mais', rotulo: 'Mais', Icone: IconeMaisFerramentas },
+  { id: 'filtros', rotulo: 'Cor', Icone: IconeFiltro },
+  { id: 'mais', rotulo: 'Estilos', Icone: IconeMaisFerramentas },
 ];
 
 const ACOES: Array<{ id: AcaoDoPalco; rotulo: string; Icone: Icon }> = [
   { id: 'ajustar', rotulo: 'Ajustar', Icone: IconeEnquadrar },
   { id: 'velocidade', rotulo: 'Velocidade', Icone: IconeVelocidade },
-  { id: 'cor', rotulo: 'Cor', Icone: IconeCor },
   { id: 'volume', rotulo: 'Volume', Icone: IconeVolume },
-  { id: 'recorte', rotulo: 'Recorte', Icone: IconeRecorte },
-  { id: 'mais', rotulo: 'Mais', Icone: IconeMaisOpcoes },
+  { id: 'recorte', rotulo: 'Preencher', Icone: IconeRecorte },
 ];
 
 export function FerramentasDoPalco({ ativa, onEscolher }: { ativa?: FerramentaDoPalco | null; onEscolher: (f: FerramentaDoPalco) => void }) {

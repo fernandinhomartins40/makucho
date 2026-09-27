@@ -7,19 +7,19 @@
 // ============================================================
 
 export const NOME_DA_FUNCAO: Record<string, string> = {
-  hook: 'Hook',
+  hook: 'Abertura',
   problem: 'Problema',
   context: 'Contexto',
   curiosity_gap: 'Curiosidade',
   authority: 'Autoridade',
   introduction: 'Apresentação',
   proof: 'Prova',
-  insight: 'Insight',
+  insight: 'Ponto principal',
   solution: 'Solução',
-  pattern_interrupt: 'Quebra de padrão',
-  payoff: 'Payoff',
+  pattern_interrupt: 'Virada',
+  payoff: 'Conclusão',
   offer: 'Oferta',
-  cta: 'CTA',
+  cta: 'Chamada',
 };
 
 export const COR_DA_FUNCAO: Record<string, string> = {

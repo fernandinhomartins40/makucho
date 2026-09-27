@@ -11516,3 +11516,289 @@ button.momento-midia__tempo:hover {
     transition: left 250ms linear;
   }
 }
+
+/* ---------- Início: vídeos primeiro, uma ação principal ---------- */
+.inicio__topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e3);
+  flex-wrap: wrap;
+  margin-bottom: var(--e4);
+}
+
+.inicio__topo h1 {
+  margin: 0;
+}
+
+.guia-compacto {
+  display: grid;
+  gap: var(--e3);
+  margin-bottom: var(--e4);
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+}
+
+.guia-compacto__linha {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  flex-wrap: wrap;
+}
+
+.guia-compacto__linha strong {
+  display: block;
+  font-size: 14.5px;
+}
+
+.guia-compacto__linha span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.guia-compacto__pontos {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guia-compacto__pontos li {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--surface-2);
+}
+
+.guia-compacto__pontos li[data-estado='feito'] {
+  background: var(--success);
+}
+
+.guia-compacto__pontos li[data-estado='atual'] {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.guia-compacto__lista {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guia-compacto__lista li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 13.5px;
+}
+
+.guia-compacto__lista li[data-estado='feito'] {
+  color: var(--text-secondary);
+}
+
+.guia-compacto__numero {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 11.5px;
+}
+
+.guia-compacto__lista li[data-estado='feito'] .guia-compacto__numero {
+  background: var(--success);
+  color: #fff;
+}
+
+.guia-compacto__lista li[data-estado='atual'] .guia-compacto__numero {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ---------- Criar vídeo: duas perguntas, respostas grandes ---------- */
+.criar {
+  display: grid;
+  gap: var(--e5);
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.criar h1 {
+  margin: 0;
+  font-size: clamp(24px, 4vw, 32px);
+  text-align: center;
+}
+
+.criar__passos {
+  display: flex;
+  justify-content: center;
+  gap: var(--e4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.criar__passos li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.criar__passos b {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-size: 11.5px;
+}
+
+.criar__passos li[data-estado='atual'] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.criar__passos li[data-estado='atual'] b {
+  background: var(--primary);
+  color: #fff;
+}
+
+.criar__passos li[data-estado='feito'] b {
+  background: var(--success);
+  color: #fff;
+}
+
+.criar__opcoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--e3);
+}
+
+.criar__opcao {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: var(--e5) var(--e4);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.criar__opcao:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+
+.criar__opcao[data-destaque] {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface-1));
+}
+
+.criar__opcao strong {
+  font-size: 16px;
+}
+
+.criar__opcao > span:last-child {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.criar__icone {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 4px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--primary) 20%, transparent);
+  color: var(--accent);
+}
+
+.criar__lista {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.criar__lista button {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.criar__lista button strong {
+  flex: 1;
+}
+
+.criar__lista button span {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.criar > .botao--fantasma {
+  justify-self: center;
+}
+
+/* ============================================================
+   Explicações sob demanda (BotaoDeDicas): o "como funciona" some e
+   aparece no "?". Avisos, erros e confirmações ficam sempre.
+   ============================================================ */
+html:not([data-dicas]) :is(
+    .campo__ajuda,
+    .exportar__ajuda,
+    .biblioteca__subtitulo,
+    .ia-secao__ajuda,
+    .roteiro-novo__ajuda,
+    .legendas__ajuda,
+    .kit-de-marca__ajuda,
+    .kit-de-marca__aba small,
+    .abas-da-pagina__aba small,
+    .cor-da-marca__texto small,
+    .dica
+  ) {
+  display: none !important;
+}
+
+[data-dicas-botao][aria-pressed='true'] {
+  color: var(--accent);
+}
+
+@media (max-width: 899px) {
+  /* Título e ações na mesma linha (o "?" não cai para baixo). */
+  .topbar__titulo {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .topbar:has(.topbar__titulo) {
+    flex-wrap: nowrap;
+  }
+}

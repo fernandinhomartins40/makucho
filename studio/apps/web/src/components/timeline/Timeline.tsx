@@ -87,15 +87,15 @@ type Faixa = 'video' | 'midia' | 'audio' | 'narracao' | 'legendas' | 'textos' | 
 // de vídeo cabia; com estas, três a quatro faixas ficam à vista.
 const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number; compacta: number }> = [
   { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64, compacta: 52 },
-  { id: 'midia', rotulo: 'Mídia', Icone: IconeMidia, altura: 36, compacta: 28 },
+  { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia, altura: 36, compacta: 28 },
   { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52, compacta: 38 },
   { id: 'narracao', rotulo: 'Narração', Icone: IconeMicrofone, altura: 40, compacta: 30 },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40, compacta: 30 },
   { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40, compacta: 30 },
-  { id: 'elementos', rotulo: 'Elementos', Icone: IconeMidia, altura: 36, compacta: 28 },
+  { id: 'elementos', rotulo: 'Enfeites', Icone: IconeMidia, altura: 36, compacta: 28 },
   { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 56, compacta: 42 },
   { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36, compacta: 28 },
-  { id: 'trilha', rotulo: 'Trilha', Icone: IconeTrilha, altura: 40, compacta: 30 },
+  { id: 'trilha', rotulo: 'Música', Icone: IconeTrilha, altura: 40, compacta: 30 },
 ];
 
 const ALTURA_REGUA = 28;
@@ -671,7 +671,7 @@ export function Timeline({
         {onVelocidade && <Acao Icone={IconeVelocidade} rotulo="Velocidade" classe="so-celular" desabilitado={!onOperacao} onClick={onVelocidade} dica="Velocidade do trecho" />}
         {onAjustes && <Acao Icone={IconeParametros} rotulo="Ajustes" classe="so-celular" onClick={onAjustes} dica="Propriedades do que está selecionado" />}
         {onTirarPausas && (
-          <Acao Icone={IconeIA} rotulo="Tirar pausas" comNome classe="so-largo" desabilitado={!onOperacao} onClick={onTirarPausas} dica="Encosta cada corte na fala e tira os silêncios longos" />
+          <Acao Icone={IconeIA} rotulo="Cortar silêncios" comNome classe="so-largo" desabilitado={!onOperacao} onClick={onTirarPausas} dica="Tira as pausas longas entre as falas" />
         )}
         <span className="timeline__adicionar-largo">
           <Acao Icone={IconeMais} rotulo="Legenda" comNome desabilitado={!onOperacao} onClick={novaLegenda} dica="Nova legenda no cursor" />
@@ -741,7 +741,7 @@ export function Timeline({
           )}
           {onAbrirBiblioteca && (
             <button type="button" role="menuitem" onClick={() => onAbrirBiblioteca('trilha')}>
-              <IconeMusica size={16} /> Trilha de fundo
+              <IconeMusica size={16} /> Música de fundo
             </button>
           )}
           {onGravarNarracao && (
@@ -751,7 +751,7 @@ export function Timeline({
           )}
           {onTirarPausas && (
             <button type="button" role="menuitem" onClick={onTirarPausas}>
-              <IconeIA size={16} /> Tirar as pausas (IA)
+              <IconeIA size={16} /> Cortar silêncios
             </button>
           )}
         </div>
@@ -781,7 +781,7 @@ export function Timeline({
             </div>
           </div>
 
-          {FAIXAS.map(({ id, rotulo, Icone, altura: normal, compacta }) => {
+          {FAIXAS.filter((f) => f.id === 'video' || f.id === 'audio' || !vazias.has(f.id)).map(({ id, rotulo, Icone, altura: normal, compacta }) => {
             // Faixa sem nada fica fina: sobra altura para as que têm
             // conteúdo (em notebook, 4 de 9 faixas cabiam à vista).
             const altura = vazias.has(id) ? (telaBaixa ? ALTURA_VAZIA_COMPACTA : ALTURA_VAZIA) : telaBaixa ? compacta : normal;
@@ -1028,7 +1028,7 @@ export function Timeline({
                       ))
                     : onAbrirBiblioteca && (
                         <button type="button" className="timeline__vazio" onClick={() => onAbrirBiblioteca('midia')}>
-                          <IconeMais size={13} /> Adicionar imagem ou vídeo (B-roll)
+                          <IconeMais size={13} /> Adicionar imagem ou vídeo
                         </button>
                       ))}
 
@@ -1137,7 +1137,7 @@ export function Timeline({
                       zoom={zoom}
                       altura={altura}
                       cor="#9333ea"
-                      rotulo={`Trilha de fundo · ${plan.music.gainDb} dB${plan.music.duckUnderVoice ? ' · abaixa na fala' : ''}`}
+                      rotulo={`Música de fundo${plan.music.duckUnderVoice ? ' · abaixa quando você fala' : ''}`}
                       selecionado={selecionado('trilha', 'trilha')}
                       onSelecionar={() => {
                         onSelecionar?.(null);
@@ -1147,7 +1147,7 @@ export function Timeline({
                   ) : (
                     onAbrirBiblioteca && (
                       <button type="button" className="timeline__vazio" onClick={() => onAbrirBiblioteca('trilha')}>
-                        <IconeMais size={13} /> Adicionar trilha de fundo
+                        <IconeMais size={13} /> Adicionar música de fundo
                       </button>
                     )
                   ))}

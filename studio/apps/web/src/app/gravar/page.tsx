@@ -78,17 +78,17 @@ interface BlocoDoRoteiro {
 // Os treze papéis do roteiro, em português (antes eram seis, em
 // maiúsculas: "proof" e "pattern_interrupt" apareciam crus na tela).
 const ROTULO: Record<string, string> = {
-  hook: 'Gancho',
+  hook: 'Abertura',
   problem: 'Problema',
   context: 'Contexto',
   curiosity_gap: 'Curiosidade',
   authority: 'Autoridade',
   introduction: 'Apresentação',
   proof: 'Prova',
-  insight: 'Insight',
+  insight: 'Ponto principal',
   solution: 'Solução',
   pattern_interrupt: 'Virada',
-  payoff: 'Recompensa',
+  payoff: 'Conclusão',
   offer: 'Oferta',
   cta: 'Chamada',
 };
@@ -136,7 +136,8 @@ function NovoVideo() {
   // "Gravar com este roteiro", vindo da tela de Roteiro.
   const roteiroDaUrl = parametros.get('roteiro');
 
-  const [etapa, setEtapa] = useState<Etapa>('escolher');
+  // "Gravar agora" (Criar vídeo) chega direto na câmera.
+  const [etapa, setEtapa] = useState<Etapa>(parametros.get('modo') === 'camera' ? 'camera' : 'escolher');
   const [projeto, setProjeto] = useState<ProjetoDetalhado | null>(null);
   const [titulo, setTitulo] = useState('');
   const [roteiro, setRoteiro] = useState<BlocoDoRoteiro[]>(ROTEIRO_PADRAO);
@@ -533,9 +534,8 @@ function Composicao({
     <div style={{ maxWidth: 980, width: '100%', margin: '0 auto', display: 'grid', gap: 'var(--e5)' }}>
       <div>
         <h1 style={{ marginBottom: 'var(--e2)' }}>Novo vídeo</h1>
-        <p className="texto-secundario">
-          Envie um ou vários vídeos, grave tomadas com o teleprompter e ponha na ordem. Quando estiver
-          tudo aqui, a IA junta, transcreve e monta a edição.
+        <p className="texto-secundario dica">
+          Envie um ou vários vídeos ou grave; a IA junta e monta a edição.
         </p>
       </div>
 

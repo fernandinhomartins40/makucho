@@ -10,6 +10,7 @@
 // que está sob o cursor da timeline.
 // ============================================================
 
+import { MarcaNoEditor } from '../marca/MarcaNoEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoriaDeEfeitoDeTela, CategoriaDeSom, CategoriaDeTransicao, EditPlanV1, EfeitoSonoroEmbutido, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
@@ -40,18 +41,19 @@ import { PainelDeMidias } from './PainelDeMidias';
 import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
-export type CategoriaDaBiblioteca = 'estilos' | 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha';
+export type CategoriaDaBiblioteca = 'estilos' | 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha' | 'marca';
 
 const CATEGORIAS: ReadonlyArray<readonly [CategoriaDaBiblioteca, string]> = [
-  ['estilos', 'Estilos'],
+  ['estilos', 'Estilos prontos'],
   ['textos', 'Textos'],
-  ['stickers', 'Stickers'],
-  ['midia', 'Mídia'],
+  ['cor', 'Cor'],
+  ['trilha', 'Música'],
+  ['sons', 'Sons'],
+  ['stickers', 'Enfeites'],
   ['transicoes', 'Transições'],
   ['efeitos', 'Efeitos'],
-  ['cor', 'Filtros'],
-  ['sons', 'Sons'],
-  ['trilha', 'Trilha'],
+  ['midia', 'Imagens'],
+  ['marca', 'Marca'],
 ];
 
 interface Props {
@@ -112,6 +114,7 @@ export function PainelDaBiblioteca(props: Props) {
         {categoria === 'cor' && <PainelDeCor {...props} />}
         {categoria === 'sons' && <Sons {...props} />}
         {categoria === 'trilha' && <Trilha {...props} />}
+        {categoria === 'marca' && <MarcaNoEditor plan={props.plan} posicaoMs={props.posicaoMs} onOperacao={props.onOperacao} />}
       </div>
     </div>
   );

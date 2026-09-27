@@ -77,10 +77,9 @@ export function ConfigurarComIa({ logos, nome, onNome, onAplicar, onEnviarLogo }
           <IconeIA size={22} weight="fill" />
         </span>
         <div>
-          <h2 style={{ margin: 0 }}>Configure tudo com IA</h2>
+          <h2 style={{ margin: 0 }}>A IA monta sua marca</h2>
           <p className="texto-secundario" style={{ margin: '4px 0 0' }}>
-            A IA lê as cores das suas logos e monta o kit inteiro: cores, fontes, legendas, textos, acabamento dos vídeos e os pedidos prontos para
-            criar trilhas, sons, aberturas, imagens e vídeos. Você confere antes de usar.
+            Cores, fontes e estilo tirados da sua logo. Você confere antes de usar.
           </p>
         </div>
       </div>

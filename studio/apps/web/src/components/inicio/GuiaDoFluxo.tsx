@@ -63,7 +63,7 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
   const [temMarca, setTemMarca] = useState<boolean | null>(null);
   const [temRoteiro, setTemRoteiro] = useState<boolean | null>(null);
   const [exportou, setExportou] = useState(false);
-  const [aberto, setAberto] = useState(true);
+  const [aberto, setAberto] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -80,7 +80,7 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
       .then((l) => vivo && setTemRoteiro(l.length > 0))
       .catch(() => vivo && setTemRoteiro(false));
     setExportou(lerLocal('studio:ja-exportou') === '1');
-    if (lerLocal('studio:guia-recolhido') === '1') setAberto(false);
+    if (lerLocal('studio:guia-recolhido') === '0') setAberto(true);
     return () => {
       vivo = false;
     };
@@ -96,26 +96,26 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
   const passos: Passo[] = [
     {
       id: 'ia',
-      titulo: 'Ligue a IA',
-      texto: 'Cole a chave da DeepSeek. É ela que escolhe os trechos, escreve os roteiros e monta o kit da marca.',
-      acao: 'Colocar a chave',
+      titulo: 'Conecte a IA',
+      texto: 'Um passo só, feito uma vez.',
+      acao: 'Conectar',
       href: '/configuracoes#ia',
       Icone: IconeConfiguracoes,
       feito: iaLigada === true,
     },
     {
       id: 'marca',
-      titulo: 'Monte o kit da marca',
-      texto: 'Envie a logo e clique em "Configurar com IA": cores, fontes, legendas e os prompts de trilha, abertura e imagens.',
-      acao: 'Montar o kit',
+      titulo: 'Sua marca',
+      texto: 'Envie a logo: a IA faz o resto.',
+      acao: 'Enviar a logo',
       href: '/marca',
       Icone: IconeMarca,
       feito: temMarca === true,
     },
     {
       id: 'roteiro',
-      titulo: 'Escreva o roteiro com IA',
-      texto: 'Diga do seu jeito o que quer. A IA aplica gancho, loop e chamada; você ajusta por pedido e aprova.',
+      titulo: 'Roteiro',
+      texto: 'Diga o assunto; a IA escreve.',
       acao: 'Criar roteiro',
       href: '/roteiros',
       Icone: IconeRoteiro,
@@ -124,8 +124,8 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
     },
     {
       id: 'gravar',
-      titulo: 'Grave ou envie o vídeo',
-      texto: 'Teleprompter que rola sozinho, câmera já em 9:16. Ou envie um vídeo que você já gravou.',
+      titulo: 'Grave ou envie',
+      texto: 'Com o texto rolando na tela, ou envie um pronto.',
       acao: 'Gravar agora',
       href: '/gravar',
       Icone: IconeGravar,
@@ -133,8 +133,8 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
     },
     {
       id: 'editar',
-      titulo: 'Revise a edição da IA',
-      texto: 'Ela corta, legenda e põe textos e efeitos. Ajuste na timeline ou peça à IA em linguagem natural.',
+      titulo: 'Confira a edição',
+      texto: 'A IA corta e legenda; você só confere.',
       acao: paraEditar ? 'Abrir o editor' : 'Primeiro, grave',
       href: hrefDoEditor,
       Icone: IconeEditor,
@@ -142,8 +142,8 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
     },
     {
       id: 'exportar',
-      titulo: 'Exporte e publique',
-      texto: 'Gera o MP4 no seu navegador, em até 1080p, com a trilha e as vinhetas da marca. Pronto para Reels, TikTok e Shorts.',
+      titulo: 'Exporte',
+      texto: 'Pronto para Reels, TikTok e Shorts.',
       acao: paraEditar ? 'Exportar o vídeo' : 'Primeiro, grave',
       href: hrefDoEditor,
       Icone: IconeExportar,
@@ -164,70 +164,51 @@ export function GuiaDoFluxo({ projetos }: { projetos: readonly Projeto[] }) {
     }
   };
 
-  if (!aberto) {
-    return (
-      <section className="guia guia--recolhido" aria-label="Comece por aqui">
-        <span className="guia__resumo">
-          <IconeIA size={16} weight="fill" /> Comece por aqui · {feitos} de {passos.length} passos feitos
-          {proximo ? ` · próximo: ${proximo.titulo.toLowerCase()}` : ' · tudo pronto'}
-        </span>
-        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => recolher(false)}>
-          Mostrar o guia
-        </button>
-      </section>
-    );
-  }
+  // Tudo feito: o guia sai da frente (os projetos são o que importa agora).
+  if (carregando || !proximo) return null;
 
   return (
-    <section className="guia" aria-labelledby="guia-titulo">
-      <header className="guia__topo">
-        <div>
-          <span className="guia__selo">
-            <IconeIA size={14} weight="fill" /> Comece por aqui
-          </span>
-          <h2 id="guia-titulo">{proximo ? 'Do zero ao vídeo publicado, passo a passo' : 'Você já fez o caminho inteiro'}</h2>
-          <p>
-            {proximo
-              ? 'Siga na ordem: cada passo deixa o próximo melhor. O guia marca sozinho o que você já fez.'
-              : 'Agora é repetir: grave, revise e exporte. O guia continua aqui para consulta.'}
-          </p>
-        </div>
-        <div className="guia__progresso">
+    <section className="guia-compacto" aria-label="Primeiros passos">
+      <div className="guia-compacto__linha">
+        <ol className="guia-compacto__pontos" aria-hidden>
+          {passos.map((p) => (
+            <li key={p.id} data-estado={p.feito ? 'feito' : p.id === proximo.id ? 'atual' : 'pendente'} />
+          ))}
+        </ol>
+        <div className="crescer">
           <strong>
-            {feitos} de {passos.length}
+            Próximo passo: {proximo.titulo}
           </strong>
-          <div className="barra" role="progressbar" aria-valuenow={feitos} aria-valuemin={0} aria-valuemax={passos.length} aria-label="Passos concluídos">
-            <div className="barra__preenchida" style={{ width: `${(feitos / passos.length) * 100}%` }} />
-          </div>
-          <button type="button" className="guia__recolher" onClick={() => recolher(true)}>
-            Recolher o guia
-          </button>
+          <span>
+            {feitos} de {passos.length} feitos · {proximo.texto}
+          </span>
         </div>
-      </header>
-
-      <ol className="guia__passos">
-        {passos.map((p, i) => {
-          const atual = !carregando && proximo?.id === p.id;
-          return (
-            <li key={p.id} className="guia__passo" data-estado={p.feito ? 'feito' : atual ? 'atual' : 'pendente'}>
-              <div className="guia__cabeca">
-                <span className="guia__numero" aria-hidden>
-                  {p.feito ? <IconeCheck size={15} weight="bold" /> : i + 1}
-                </span>
-                <p.Icone size={20} className="guia__icone" aria-hidden />
-                {p.opcional && !p.feito && <span className="guia__opcional">opcional</span>}
-              </div>
-              <h3>{p.titulo}</h3>
-              <p>{p.texto}</p>
-              <Link href={p.href} className={atual ? 'botao botao--primario botao--pequeno' : 'guia__link'}>
-                {p.feito ? 'Abrir de novo' : p.acao}
-                <IconeAvancar size={14} />
+        <Link href={proximo.href} className="botao botao--primario botao--pequeno">
+          {proximo.acao}
+          <IconeAvancar size={14} />
+        </Link>
+        <button type="button" className="botao botao--fantasma botao--pequeno" aria-expanded={aberto} onClick={() => recolher(aberto)}>
+          {aberto ? 'Fechar' : 'Ver todos'}
+        </button>
+      </div>
+      {aberto && (
+        <ol className="guia-compacto__lista">
+          {passos.map((p, i) => (
+            <li key={p.id} data-estado={p.feito ? 'feito' : p.id === proximo.id ? 'atual' : 'pendente'}>
+              <span className="guia-compacto__numero" aria-hidden>
+                {p.feito ? <IconeCheck size={13} weight="bold" /> : i + 1}
+              </span>
+              <span className="crescer">
+                {p.titulo}
+                {p.opcional && !p.feito ? ' (opcional)' : ''}
+              </span>
+              <Link href={p.href} className="guia__link">
+                {p.feito ? 'Abrir' : p.acao}
               </Link>
-              <span className="visualmente-oculto">{p.feito ? '(feito)' : atual ? '(próximo passo)' : '(a fazer)'}</span>
             </li>
-          );
-        })}
-      </ol>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

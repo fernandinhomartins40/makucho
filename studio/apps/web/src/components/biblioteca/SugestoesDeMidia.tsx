@@ -180,7 +180,7 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
         </span>
         <div>
           <h3 id="sugestoes-midia-titulo">Imagens que ilustram a fala</h3>
-          <p>Ícones 3D, logos, fotos e vídeos de bancos livres, nos momentos certos do vídeo.</p>
+          <p className="dica">Ícones 3D, logos, fotos e vídeos de bancos livres, nos momentos certos do vídeo.</p>
         </div>
       </header>
 

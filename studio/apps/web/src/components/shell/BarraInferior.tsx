@@ -24,16 +24,14 @@ import {
   IconeConfiguracoes,
   IconeAjuda,
   IconeInstalar,
-  IconeEditor,
 } from '../icones';
 import { Folha } from './Folha';
-import { Armazenamento, Sair } from './Sidebar';
+import { Armazenamento, Sair, itemAtivo } from './Sidebar';
 import { PassoAPasso, useGuiaDeInstalacao } from '../pwa/GuiaDeInstalacao';
 
-const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; destaque?: boolean }> = [
-  { href: '/', rotulo: 'Projetos', Icone: IconeProjetos },
-  { href: '/roteiros', rotulo: 'Roteiro', Icone: IconeRoteiro },
-  { href: '/gravar', rotulo: 'Gravar', Icone: IconeGravar, destaque: true },
+const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; destaque?: boolean; tambem?: string[] }> = [
+  { href: '/', rotulo: 'Vídeos', Icone: IconeProjetos },
+  { href: '/novo', rotulo: 'Criar', Icone: IconeGravar, destaque: true, tambem: ['/gravar', '/roteiros'] },
   { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 
@@ -41,13 +39,14 @@ export function BarraInferior() {
   const caminho = usePathname();
   const [mais, setMais] = useState(false);
   const fechar = useCallback(() => setMais(false), []);
-  const noMais = ['/configuracoes', '/ajuda', '/editor'].some((r) => caminho.startsWith(r));
+  const noMais = ['/configuracoes', '/ajuda'].some((r) => caminho.startsWith(r));
 
   return (
     <>
       <nav className="barra-inferior" aria-label="Navegação principal">
-        {ITENS.map(({ href, rotulo, Icone, destaque }) => {
-          const ativo = href === '/' ? caminho === '/' : caminho.startsWith(href);
+        {ITENS.map((item) => {
+          const { href, rotulo, Icone, destaque } = item;
+          const ativo = itemAtivo(caminho, item);
           return (
             <Link
               key={href}
@@ -78,11 +77,11 @@ export function BarraInferior() {
 
       <Folha aberta={mais} aoFechar={fechar} titulo="Mais">
         <div className="pilha" style={{ gap: 'var(--e1)' }} onClick={(e) => (e.target as HTMLElement).closest('a') && fechar()}>
-          <Link href="/editor" className="nav-item">
+          <Link href="/roteiros" className="nav-item">
             <span className="nav-item__icone" aria-hidden>
-              <IconeEditor size={20} />
+              <IconeRoteiro size={20} />
             </span>
-            <span className="nav-item__rotulo">Editor</span>
+            <span className="nav-item__rotulo">Meus roteiros</span>
           </Link>
           <Link href="/configuracoes" className="nav-item">
             <span className="nav-item__icone" aria-hidden>
@@ -100,7 +99,7 @@ export function BarraInferior() {
           <Sair />
         </div>
         <div style={{ marginTop: 'var(--e4)' }}>
-          <Armazenamento />
+          <Armazenamento sempre />
         </div>
       </Folha>
     </>
