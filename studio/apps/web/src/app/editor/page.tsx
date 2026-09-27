@@ -623,7 +623,9 @@ function Editor({ projectId }: { projectId: string }) {
   const carregarMidiasSeparadas = useCallback(() => {
     void bancoDeMidia
       .pendentes(projectId)
-      .then(setMidiasSeparadas)
+      // Só um registro com a lista de momentos conta (resposta vazia ou de
+      // outra versão da API não pode derrubar o editor).
+      .then((r) => setMidiasSeparadas(r && Array.isArray(r.momentos) ? r : null))
       .catch(() => setMidiasSeparadas(null));
   }, [projectId]);
   useEffect(carregarMidiasSeparadas, [carregarMidiasSeparadas]);

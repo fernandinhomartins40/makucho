@@ -105,7 +105,7 @@ export function SugestoesDeMidia({ plan, desligados = [], corDaMarca, onOperacoe
   // O que a montagem separou entra na lista, pronto para aprovar.
   const [daMontagem, setDaMontagem] = useState(false);
   useEffect(() => {
-    if (!separadas?.momentos.length) return;
+    if (!separadas?.momentos?.length) return;
     encher(separadas);
     setDaMontagem(true);
     setAberta(true);
