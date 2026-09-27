@@ -54,3 +54,4 @@ export * from './midias-da-ia';
 export * from './ai-roteiro-livre';
 export * from './adaptativo';
 export * from './montagem-visual';
+export * from './busca-sem-ia';

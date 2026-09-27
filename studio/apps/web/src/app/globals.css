@@ -13378,3 +13378,18 @@ button.midia-cartao__previa:disabled {
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+/* Busca de mídia: o que foi procurado e onde a IA pôs a escolhida. */
+.busca-no-banco__consulta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.busca-no-banco__entrou {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+  font-size: 13px;
+}

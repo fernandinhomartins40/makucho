@@ -12,7 +12,8 @@
 
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@makucho/studio-database';
-import { agendaDoPlano, falaParaMidias, lerMomentosVisuais, ranquearResultados } from '@makucho/studio-contracts';
+import { COMPOSICOES, agendaDoPlano, falaParaMidias, lerMomentosVisuais, ranquearResultados } from '@makucho/studio-contracts';
+import type { Composicao } from '@makucho/studio-contracts';
 import type { MomentoVisual, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
@@ -149,6 +150,69 @@ export class MidiasService {
       data: { mediaSuggestions: registro as unknown as Prisma.InputJsonValue },
     });
     return registro.momentos.length;
+  }
+
+  /**
+   * Uma mídia que a pessoa ESCOLHEU na busca (sem IA): a IA lê a fala e
+   * diz em que momento ela ilustra melhor, por quanto tempo e em qual
+   * composição. Sem fala ou sem IA, devolve null e o editor põe no
+   * cursor, como antes.
+   */
+  async posicionar(
+    tenant: TenantContext,
+    projectId: string,
+    pedido: { consulta: string; titulo: string; tags: string[]; tipo: TipoDaBusca; composicoes: Composicao[]; cursorMs: number; desligados: string[] },
+  ): Promise<{ inicioMs: number; fimMs: number; composicao: Composicao; motivo: string } | { semIa: string }> {
+    const atual = await this.planos.atual(tenant, projectId);
+    const plano = atual.document;
+    const palavras = await this.prisma.transcriptWord.findMany({
+      where: { segment: { transcription: { projectId } } },
+      select: { startMs: true, endMs: true, word: true },
+      orderBy: { startMs: 'asc' },
+    });
+    if (!palavras.length) return { semIa: 'o vídeo não tem fala para a IA ler' };
+    const fala = falaParaMidias(plano, palavras.map((p) => ({ startMs: p.startMs, endMs: p.endMs, texto: p.word })), pedido.desligados);
+    const duracaoMs = agendaDoPlano(plano, [...pedido.desligados]).duracaoMs;
+    const possiveis = pedido.composicoes.length ? pedido.composicoes : (['tela_cheia'] as Composicao[]);
+    const { texto: instrucoes, versao } = this.prompts.obter('posicionar_midia');
+    let resposta;
+    try {
+      resposta = await this.ai.chamar({
+        workspaceId: tenant.workspaceId,
+        projectId,
+        chamada: 'sugerir_midias',
+        sistema: instrucoes,
+        usuario: [
+          `Buscado: ${pedido.consulta.slice(0, 120)}`,
+          `A imagem: ${pedido.titulo.slice(0, 120)} (${pedido.tipo}); tags: ${pedido.tags.slice(0, 8).join(', ')}`,
+          `Composições possíveis: ${possiveis.join(', ')}`,
+          `Cursor: ${(pedido.cursorMs / 1000).toFixed(1)} s · duração: ${Math.round(duracaoMs / 1000)} s`,
+          '',
+          'Fala:',
+          fala,
+        ].join('\n'),
+        maxTokens: 300,
+        promptVersion: versao,
+        raciocinio: 'desligado',
+      });
+    } catch (e) {
+      const publico = e && typeof e === 'object' && 'publico' in e ? String((e as { publico: unknown }).publico) : 'a IA não respondeu';
+      return { semIa: publico };
+    }
+    try {
+      const texto = resposta.texto;
+      const json = JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1)) as { inicio?: unknown; fim?: unknown; composicao?: unknown; motivo?: unknown };
+      const inicio = Math.max(0, Math.min(duracaoMs - 500, Math.round(Number(json.inicio) * 1000)));
+      let fim = Math.round(Number(json.fim) * 1000);
+      if (!Number.isFinite(inicio)) throw new Error('sem início');
+      if (!Number.isFinite(fim) || fim <= inicio + 600) fim = inicio + 2500;
+      fim = Math.min(duracaoMs, inicio + 6000, fim);
+      const comp = (COMPOSICOES as readonly string[]).includes(String(json.composicao)) && possiveis.includes(json.composicao as Composicao) ? (json.composicao as Composicao) : possiveis[0]!;
+      return { inicioMs: inicio, fimMs: Math.max(fim, inicio + 600), composicao: comp, motivo: String(json.motivo ?? '').slice(0, 120) };
+    } catch {
+      this.log.warn(`posição da mídia ilegível no projeto ${projectId}`);
+      return { semIa: 'a IA devolveu uma resposta que não pôde ser lida' };
+    }
   }
 
   /** As mídias separadas na montagem, esperando aprovação (ou null). */

@@ -55,6 +55,8 @@ export const VERSAO_DO_PROMPT = {
   sugerir_midias: 'midias-v2',
   // Vídeo sem narração, montado pelas cenas (montagem-visual.ts).
   montar_por_cenas: 'montagem-visual-v1',
+  // Uma mídia escolhida na busca: a IA diz onde e como ela entra.
+  posicionar_midia: 'posicionar-midia-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

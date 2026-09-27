@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Composicao, EditPlanV1, KenBurns, LayoutDeMidia, MarcaDoVideo, ResultadoDaBusca, TimelineOperation, TipoDaBusca } from '@makucho/studio-contracts';
-import { NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
+import { NOME_DA_COMPOSICAO, NOME_DA_FONTE, NOME_DO_TIPO_DA_BUSCA, TIPOS_DA_BUSCA, agendaDoPlano, cortesDoSlideshow } from '@makucho/studio-contracts';
 import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
 import { assets as apiAssets, bancoDeMidia, type Asset, type MidiasSeparadas, type Transcricao } from '../../lib/api';
 import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
@@ -114,6 +114,10 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
   const [tipoDaBusca, setTipoDaBusca] = useState<TipoDaBusca>('icone3d');
   const [resultados, setResultados] = useState<ResultadoDaBusca[] | null>(null);
   const [avisosDaBusca, setAvisosDaBusca] = useState<string[]>([]);
+  // O que a busca procurou de verdade (o português vira inglês, sem IA).
+  const [consultaUsada, setConsultaUsada] = useState<string | null>(null);
+  // Onde a IA pôs a última mídia (e por quê).
+  const [ondeEntrou, setOndeEntrou] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [trazendo, setTrazendo] = useState<string | null>(null);
   const [erroDaBusca, setErroDaBusca] = useState<string | null>(null);
@@ -125,6 +129,7 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
       const r = await bancoDeMidia.buscar(busca.trim(), tipoDaBusca);
       setResultados(r.resultados);
       setAvisosDaBusca(r.avisos);
+      setConsultaUsada(r.consulta ?? null);
     } catch (e) {
       setErroDaBusca(e instanceof Error ? e.message : 'a busca falhou.');
       setResultados(null);
@@ -132,22 +137,59 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
       setBuscando(false);
     }
   };
-  /** Traz da fonte (o servidor baixa, com a licença) e põe no cursor, na composição escolhida. */
-  const trazer = async (r: ResultadoDaBusca, composicao: Composicao) => {
+  /**
+   * Traz da fonte (o servidor baixa, com a licença) e põe no vídeo. A
+   * busca foi sem IA; a ADIÇÃO é com ela: a IA lê a fala e diz o
+   * momento em que a mídia ilustra melhor, quanto tempo fica e em qual
+   * composição. Sem fala ou sem IA, entra no cursor, como antes.
+   */
+  const trazer = async (r: ResultadoDaBusca) => {
+    const possiveis = composicoesDoResultado(r);
     setTrazendo(`${r.fonte}:${r.id}`);
     setErroDaBusca(null);
-    const fim = Math.min(duracaoTotal, noCursor + (r.tipo === 'video' ? Math.min(r.duracaoMs ?? 4000, 4000) : 3000));
+    setOndeEntrou(null);
+    let inicio = noCursor;
+    let fim = Math.min(duracaoTotal, noCursor + (r.tipo === 'video' ? Math.min(r.duracaoMs ?? 4000, 4000) : 3000));
+    let composicao: Composicao = possiveis[0] ?? 'tela_cheia';
+    let motivo: string | null = null;
+    const lugar = await bancoDeMidia
+      .posicionar(plan.projectId, {
+        consulta: busca.trim(),
+        titulo: r.titulo,
+        tags: r.tags.slice(0, 12),
+        tipo: r.tipo,
+        composicoes: possiveis,
+        cursorMs: noCursor,
+        desligados: desligados ?? [],
+      })
+      .catch(() => null);
+    if (lugar && 'inicioMs' in lugar) {
+      inicio = lugar.inicioMs;
+      fim = lugar.fimMs;
+      composicao = lugar.composicao;
+      motivo = lugar.motivo;
+    }
     const { ops, falhas } = await operacoesDasEscolhas(
       [
         {
-          momento: { inicioMs: noCursor, fimMs: Math.max(noCursor + 1200, fim), conceito: busca.trim() || r.titulo, termos: [busca.trim() || r.titulo], tipo: r.tipo, composicao },
+          momento: { inicioMs: inicio, fimMs: Math.max(inicio + 1200, fim), conceito: busca.trim() || r.titulo, termos: [busca.trim() || r.titulo], tipo: r.tipo, composicao },
           opcao: r,
           composicao,
         },
       ],
       marca?.cores.primary,
     );
-    if (ops.length) onOperacoes(ops);
+    if (ops.length) {
+      onOperacoes(ops);
+      setOndeEntrou(
+        motivo
+          ? `A IA colocou em ${tempo(inicio)} (${NOME_DA_COMPOSICAO[composicao].toLowerCase()}): ${motivo}.`
+          : `Entrou no cursor, em ${tempo(inicio)}${lugar && 'semIa' in lugar ? ` (sem a IA: ${lugar.semIa})` : ''}.`,
+      );
+      // No computador a timeline vai até lá; no celular a folha fica
+      // aberta (dá para adicionar outra) e o aviso diz onde entrou.
+      if (window.matchMedia('(min-width: 900px)').matches) onVerNoVideo?.(inicio);
+    }
     if (falhas.length) setErroDaBusca(falhas.join(' · '));
     setTrazendo(null);
     void carregar();
@@ -313,6 +355,10 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
       </form>
       {erroDaBusca && <p className="campo__erro">{erroDaBusca}</p>}
       {avisosDaBusca.length > 0 && <p className="campo__ajuda">Fora desta busca: {avisosDaBusca.join(' · ')}</p>}
+      {consultaUsada && resultados && <p className="busca-no-banco__consulta">Buscando por: {consultaUsada}</p>}
+      {resultados && resultados.length > 0 && !trazendo && !ondeEntrou && <p className="busca-no-banco__consulta">Toque numa imagem: a IA escolhe o melhor momento da fala para ela.</p>}
+      {trazendo && <p className="busca-no-banco__consulta" role="status">A IA está escolhendo o melhor momento…</p>}
+      {ondeEntrou && <p className="busca-no-banco__entrou" role="status">{ondeEntrou}</p>}
       {resultados &&
         (resultados.length === 0 ? (
           <p className="texto-secundario">Nada encontrado. Tente outras palavras, em inglês (&ldquo;coin&rdquo;, &ldquo;rocket&rdquo;, &ldquo;office&rdquo;).</p>
@@ -326,11 +372,8 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
                   type="button"
                   className={`midia-cartao__previa${r.transparente ? ' midia-cartao__previa--transparente' : ' midia-cartao__previa--vertical'}`}
                   disabled={trazendo !== null}
-                  title={`Adicionar: ${r.titulo} · ${NOME_DA_FONTE[r.fonte]} · ${r.licenca.nome}`}
-                  onClick={() => {
-                    const c = composicoesDoResultado(r)[0];
-                    if (c) void trazer(r, c);
-                  }}
+                  title={`Adicionar com IA: ${r.titulo} · ${NOME_DA_FONTE[r.fonte]} · ${r.licenca.nome}`}
+                  onClick={() => void trazer(r)}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={r.miniatura} alt={r.titulo} loading="lazy" />

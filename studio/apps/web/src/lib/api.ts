@@ -12,6 +12,7 @@
 // ============================================================
 
 import type {
+  Composicao,
   ContextoDoComando,
   EntradaDaMarca,
   FonteDeMidia,
@@ -822,12 +823,21 @@ export const bancoDeMidia = {
     api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'PUT', corpo: { apiKey, provider } }),
   removerChave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`, { metodo: 'DELETE' }),
   buscar: (q: string, tipo: TipoDaBusca, opcoes: { fonte?: FonteDeMidia; pagina?: number } = {}) =>
-    api<{ total: number; resultados: ResultadoDaBusca[]; avisos: string[] }>(
+    api<{ total: number; resultados: ResultadoDaBusca[]; avisos: string[]; consulta?: string | null }>(
       `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(opcoes.pagina ?? 1), ...(opcoes.fonte ? { fonte: opcoes.fonte } : {}) })}`,
     ),
   /** O servidor busca o item de novo na fonte, baixa e grava como asset do workspace (com licença). */
   importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>
     api<MidiaImportada>('/banco-de-midia/importar', { metodo: 'POST', corpo: { fonte: r.fonte, tipo: r.tipo, id: r.id } }),
+  /** Uma mídia escolhida na busca: a IA diz o momento, a duração e a composição. */
+  posicionar: (
+    projectId: string,
+    pedido: { consulta: string; titulo: string; tags: string[]; tipo: TipoDaBusca; composicoes: string[]; cursorMs: number; desligados: readonly string[] },
+  ) =>
+    api<{ inicioMs: number; fimMs: number; composicao: Composicao; motivo: string } | { semIa: string }>(`/projects/${projectId}/media-placement`, {
+      metodo: 'POST',
+      corpo: { ...pedido, desligados: [...pedido.desligados] },
+    }),
   /** As mídias que a montagem com IA separou, esperando aprovação (null se nenhuma). */
   pendentes: (projectId: string) => api<MidiasSeparadas | null>(`/projects/${projectId}/media-suggestions`),
   /** Aprovadas ou dispensadas: o aviso some do editor. */

@@ -10,7 +10,7 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
+import { COMPOSICOES, TIPOS_DA_BUSCA, entradaDaMarcaSchema, pedidoDeComandoSchema } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -47,6 +47,24 @@ export class AcabamentoController {
     assertCanWrite(tenant);
     const { desligados } = z.object({ desligados: z.array(z.string().max(64)).max(200).default([]) }).parse(body ?? {});
     return this.midias.sugerir(tenant, id, desligados);
+  }
+
+  /** Uma mídia escolhida na busca: a IA diz onde e como ela entra. */
+  @Post('projects/:id/media-placement')
+  posicionarMidia(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    const pedido = z
+      .object({
+        consulta: z.string().max(200).default(''),
+        titulo: z.string().max(300).default(''),
+        tags: z.array(z.string().max(60)).max(20).default([]),
+        tipo: z.enum(TIPOS_DA_BUSCA),
+        composicoes: z.array(z.enum(COMPOSICOES)).max(6).default([]),
+        cursorMs: z.number().int().min(0).max(3_600_000).default(0),
+        desligados: z.array(z.string().max(64)).max(200).default([]),
+      })
+      .parse(body ?? {});
+    return this.midias.posicionar(tenant, id, pedido);
   }
 
   /** As mídias separadas na montagem, esperando aprovação (null se nenhuma). */

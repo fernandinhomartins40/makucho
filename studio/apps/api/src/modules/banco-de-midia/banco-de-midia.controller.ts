@@ -11,7 +11,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeMidiaSchema } from '@makucho/studio-contracts';
+import { FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeMidiaSchema, traduzirBusca } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -29,11 +29,27 @@ const importarSchema = z.object({
 export class BancoDeMidiaController {
   constructor(private readonly banco: BancoDeMidiaService) {}
 
+  /**
+   * A busca manual, SEM IA: o português vira inglês pelo glossário
+   * (os bancos são indexados em inglês). Achando pouco com a frase
+   * inteira, busca termo a termo e junta -- "control three" pode não
+   * achar nada junto e achar "control" sozinho.
+   */
   @Get('busca')
   async buscar(@CurrentTenant() tenant: TenantContext, @Query() query: unknown) {
     const pedido = buscaDeMidiaSchema.parse(query);
-    const { resultados, avisos } = await this.banco.buscar(tenant, pedido);
-    return { total: resultados.length, resultados, avisos };
+    const traducao = traduzirBusca(pedido.q);
+    const primeira = await this.banco.buscar(tenant, { ...pedido, q: traducao.consulta });
+    const resultados = [...primeira.resultados];
+    const avisos = new Set(primeira.avisos);
+    if (resultados.length < 8 && traducao.termos.length > 1 && (pedido.pagina ?? 1) === 1) {
+      for (const termo of traducao.termos.slice(0, 3)) {
+        const r = await this.banco.buscar(tenant, { ...pedido, q: termo });
+        r.avisos.forEach((x) => avisos.add(x));
+        for (const x of r.resultados) if (!resultados.some((y) => y.fonte === x.fonte && y.id === x.id)) resultados.push(x);
+      }
+    }
+    return { total: resultados.length, resultados, avisos: [...avisos], consulta: traducao.traduziu ? traducao.consulta : null };
   }
 
   @Post('importar')
