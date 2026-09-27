@@ -41,6 +41,7 @@ import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPa
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
+import { EditorSimples, type DestinoSimples } from '../../components/editor/EditorSimples';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
@@ -94,6 +95,7 @@ import {
   IconeVideo,
   IconeEnviar,
   IconeMidia,
+  IconeParametros,
   IconeMarca,
 } from '../../components/icones';
 
@@ -555,6 +557,27 @@ function Editor({ projectId }: { projectId: string }) {
     return () => mq.removeEventListener('change', atualizar);
   }, []);
 
+  // ---------- Modo: simples (padrão) ou avançado (timeline completa) ----------
+  const [modo, setModo] = useState<'simples' | 'avancado'>('simples');
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem('studio:modo-editor') === 'avancado') setModo('avancado');
+    } catch {
+      // Sem armazenamento: simples.
+    }
+  }, []);
+  const alternarModo = () => {
+    const novo = modo === 'simples' ? 'avancado' : 'simples';
+    setModo(novo);
+    setFolha(null);
+    try {
+      window.localStorage.setItem('studio:modo-editor', novo);
+    } catch {
+      // Vale só nesta visita.
+    }
+  };
+  const simples = modo === 'simples';
+
   // ---------- Narração ----------
   const [gravadorDe, setGravadorDe] = useState<number | null>(null);
   const [gravandoDe, setGravandoDe] = useState<number | null>(null);
@@ -564,7 +587,7 @@ function Editor({ projectId }: { projectId: string }) {
   const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
   const abrirPainel = (a: AbaDoEditor) => {
     setAba(a);
-    if (noCelular()) setFolha('painel');
+    if (noCelular() || simples) setFolha('painel');
   };
   const abrirBiblioteca = (c: CategoriaDaBiblioteca) => {
     setCategoriaDaBiblioteca(c);
@@ -617,6 +640,20 @@ function Editor({ projectId }: { projectId: string }) {
     if (a === 'velocidade') setTimeout(() => document.getElementById('velocidade-do-trecho')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 260);
   };
 
+  const abrirNoSimples = (d: DestinoSimples) => {
+    if (d === 'narracao') return setGravadorDe(Math.round(posicaoMs));
+    if (d === 'legendas') {
+      // Primeiro o que o leigo quer: ligar e escolher o estilo; corrigir palavras fica a um toque.
+      setSelecionado(null);
+      setItemSelecionado(null);
+      setAbaDoInspector((x) => ({ aba: 'legendas', n: (x?.n ?? 0) + 1 }));
+      return setFolha('inspector');
+    }
+    if (d === 'imagens') return abrirPainel('midia');
+    const categoria: Record<'texto' | 'musica' | 'estilo', CategoriaDaBiblioteca> = { texto: 'textos', musica: 'trilha', estilo: 'estilos' };
+    abrirBiblioteca(categoria[d]);
+  };
+
   // ---------- Mídias que a montagem separou, para aprovar ----------
   const [midiasSeparadas, setMidiasSeparadas] = useState<MidiasSeparadas | null>(null);
   const carregarMidiasSeparadas = useCallback(() => {
@@ -630,7 +667,7 @@ function Editor({ projectId }: { projectId: string }) {
   useEffect(carregarMidiasSeparadas, [carregarMidiasSeparadas]);
   const abrirMidiasSeparadas = () => {
     setAba('midia');
-    if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
+    if (window.matchMedia('(max-width: 899px)').matches || modo === 'simples') setFolha('painel');
   };
   const concluirMidiasSeparadas = useCallback(() => {
     setMidiasSeparadas(null);
@@ -902,7 +939,18 @@ function Editor({ projectId }: { projectId: string }) {
 
           <button
             type="button"
-            className="botao botao--secundario"
+            className="botao botao--fantasma editor__modo"
+            aria-pressed={!simples}
+            onClick={alternarModo}
+            title={simples ? 'Timeline completa, faixas e todas as propriedades' : 'Só o essencial'}
+          >
+            <IconeParametros size={16} />
+            <span className="so-largo">{simples ? 'Modo avançado' : 'Modo simples'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="botao botao--secundario so-largo"
             disabled={!temProxy}
             onClick={() => setComandoTocar((n) => n + 1)}
             title="Assistir do começo, como o vídeo vai sair"
@@ -984,7 +1032,7 @@ function Editor({ projectId }: { projectId: string }) {
         />
       )}
 
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined}>
+      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo={modo}>
         <RailDeFerramentas
           aba={aba}
           onTrocar={(nova) => {
@@ -1000,7 +1048,7 @@ function Editor({ projectId }: { projectId: string }) {
           {/* No celular a folha fechada não se atualiza (continua montada:
               nada do que foi digitado se perde) -- durante o vídeo, é
               trabalho a menos a cada atualização. */}
-          <Congelado ativo={!celular || folha === 'painel'}>
+          <Congelado ativo={(!celular && !simples) || folha === 'painel'}>
           <CabecalhoDaFolha titulo={ROTULO_DA_ABA[aba]} aoFechar={() => setFolha(null)} />
           {/* Aba IA, na ordem do que a pessoa quer fazer: (1) pedir um
               ajuste, (2) conferir os trechos, (3) o que a IA entendeu e
@@ -1242,7 +1290,7 @@ function Editor({ projectId }: { projectId: string }) {
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
-          <Congelado ativo={!celular || folha === 'inspector'}>
+          <Congelado ativo={(!celular && !simples) || folha === 'inspector'}>
           <CabecalhoDaFolha titulo="Ajustes" aoFechar={() => setFolha(null)} />
           <Inspector
             plan={plano}
@@ -1259,6 +1307,10 @@ function Editor({ projectId }: { projectId: string }) {
             posicaoMs={posicaoMs}
             onSeek={setPosicaoMs}
             abaPedida={abaDoInspector}
+            onCorrigirLegendas={() => {
+              setAba('legendas');
+              setFolha('painel');
+            }}
           />
           </Congelado>
         </aside>
@@ -1282,48 +1334,92 @@ function Editor({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        <section className="editor__timeline" aria-label="Linha do tempo">
-          <DivisorDaTimeline editorRef={editorRef} />
-          <Timeline
+        {simples ? (
+          <EditorSimples
             plan={plano}
-            ocultas={ocultas}
-            onAlternarCamada={alternarCamada}
+            desligados={desligados}
             posicaoMs={posicaoMs}
-            onSeek={setPosicaoMs}
-            onOperacao={executar}
-            clipeSelecionado={selecionado}
-            onSelecionar={setSelecionado}
-            palavras={palavrasDaTranscricao}
-            onda={onda}
             quadros={quadrosDoVideo}
-            onAbrirIa={() => abrirPainel('ia')}
-            onAjustes={() => naAcao('ajustar')}
-            onVelocidade={() => naAcao('velocidade')}
-            onGravarNarracao={() => {
-              setFolha(null);
-              setGravadorDe(Math.round(posicaoMs));
-            }}
-            onTirarPausas={tirarAsPausas}
-            onAbrirBiblioteca={(categoria) => {
-              // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).
-              if (categoria === 'midia') setAba('midia');
-              else {
-                setCategoriaDaBiblioteca(categoria === 'trilha' ? 'trilha' : categoria);
-                setAba('biblioteca');
-              }
-              if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
-            }}
-            onMostrarAtalhos={() => setAtalhosAbertos(true)}
-            itemSelecionado={itemSelecionado}
-            onSelecionarItem={(item) => {
-              setItemSelecionado(item);
-              // No celular as propriedades ficam numa folha: abrir os
-              // estilos (clique duplo) já a abre.
-              if (item && item.tipo === 'elemento' && item.aba && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
-              else if (item && item.tipo !== 'elemento' && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
-            }}
+            semIa={semIa}
+            onPedir={pedirAIa}
+            onIrPara={setPosicaoMs}
+            onAlternarTrecho={alternarTrecho}
+            onAbrir={abrirNoSimples}
+            topo={
+              <>
+                {semIa && (
+                  <div className="aviso aviso--atencao">
+                    <IconeAviso size={15} />
+                    <span className="crescer" style={{ fontSize: 12.5 }}>Montado sem IA: toda a fala, sem as pausas.</span>
+                    <button type="button" className="botao botao--primario botao--pequeno" disabled={analisando} onClick={() => void analisar()}>
+                      {analisando ? 'Analisando…' : 'Montar com IA'}
+                    </button>
+                  </div>
+                )}
+                {avisosDaIa.map((a) => (
+                  <div key={a} className="aviso aviso--atencao">
+                    <IconeAviso size={15} />
+                    <span style={{ fontSize: 12.5 }}>{a}</span>
+                  </div>
+                ))}
+                {midiasSeparadas?.momentos?.length ? (
+                  <div className="aviso aviso--info">
+                    <IconeMidia size={15} />
+                    <span className="crescer" style={{ fontSize: 12.5 }}>
+                      A IA separou {midiasSeparadas.momentos.length} {midiasSeparadas.momentos.length === 1 ? 'imagem' : 'imagens'} para o vídeo.
+                    </span>
+                    <button type="button" className="botao botao--primario botao--pequeno" onClick={abrirMidiasSeparadas}>
+                      Ver e aprovar
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            }
           />
-        </section>
+        ) : (
+        <section className="editor__timeline" aria-label="Linha do tempo">
+            <DivisorDaTimeline editorRef={editorRef} />
+            <Timeline
+              plan={plano}
+              ocultas={ocultas}
+              onAlternarCamada={alternarCamada}
+              posicaoMs={posicaoMs}
+              onSeek={setPosicaoMs}
+              onOperacao={executar}
+              clipeSelecionado={selecionado}
+              onSelecionar={setSelecionado}
+              palavras={palavrasDaTranscricao}
+              onda={onda}
+              quadros={quadrosDoVideo}
+              onAbrirIa={() => abrirPainel('ia')}
+              onAjustes={() => naAcao('ajustar')}
+              onVelocidade={() => naAcao('velocidade')}
+              onGravarNarracao={() => {
+                setFolha(null);
+                setGravadorDe(Math.round(posicaoMs));
+              }}
+              onTirarPausas={tirarAsPausas}
+              onAbrirBiblioteca={(categoria) => {
+                // Mídia tem ferramenta própria na barra (sugestões da IA + bancos).
+                if (categoria === 'midia') setAba('midia');
+                else {
+                  setCategoriaDaBiblioteca(categoria === 'trilha' ? 'trilha' : categoria);
+                  setAba('biblioteca');
+                }
+                if (window.matchMedia('(max-width: 899px)').matches) setFolha('painel');
+              }}
+              onMostrarAtalhos={() => setAtalhosAbertos(true)}
+              itemSelecionado={itemSelecionado}
+              onSelecionarItem={(item) => {
+                setItemSelecionado(item);
+                // No celular as propriedades ficam numa folha: abrir os
+                // estilos (clique duplo) já a abre.
+                if (item && item.tipo === 'elemento' && item.aba && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+                else if (item && item.tipo !== 'elemento' && window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+              }}
+            />
+          </section>
+        )}
       </div>
     </>
   );

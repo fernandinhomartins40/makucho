@@ -95,6 +95,8 @@ interface Props {
   onSeek?: (ms: number) => void;
   /** Abre numa aba (o "Recorte" do celular vai direto ao enquadramento). */
   abaPedida?: { aba: AbaDoInspector; n: number } | null;
+  /** Legendas: leva à lista de palavras para corrigir. */
+  onCorrigirLegendas?: () => void;
 }
 
 export function Inspector({
@@ -112,6 +114,7 @@ export function Inspector({
   posicaoMs = 0,
   onSeek,
   abaPedida,
+  onCorrigirLegendas,
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   useEffect(() => {
@@ -173,7 +176,7 @@ export function Inspector({
                 refazendo={refazendoAcabamento}
               />
             )}
-            {aba === 'legendas' && <AbaDeLegendas plan={plan} marca={marca} onOperacao={onOperacao} />}
+            {aba === 'legendas' && <AbaDeLegendas plan={plan} marca={marca} onOperacao={onOperacao} {...(onCorrigirLegendas ? { onCorrigir: onCorrigirLegendas } : {})} />}
             {aba === 'efeitos' && (
               <AbaDeEfeitos plan={plan} recursos={recursos} onOperacao={onOperacao} onOperacoes={onOperacoes} />
             )}
@@ -272,10 +275,13 @@ function AbaDeLegendas({
   plan,
   marca,
   onOperacao,
+  onCorrigir,
 }: {
   plan: EditPlanV1;
   marca?: MarcaDoVideo;
   onOperacao: (op: TimelineOperation) => void;
+  /** Abre a lista das palavras para corrigir o que a IA ouviu errado. */
+  onCorrigir?: () => void;
 }) {
   const c = plan.captions;
   const escala = c.sizeScale ?? 1;
@@ -298,6 +304,11 @@ function AbaDeLegendas({
 
   return (
     <>
+      {onCorrigir && (
+        <button type="button" className="botao botao--secundario" style={{ width: '100%', marginBottom: 'var(--e3)' }} onClick={onCorrigir}>
+          Corrigir uma palavra da legenda
+        </button>
+      )}
       <Chave
         rotulo="Legendas no vídeo"
         ligada={c.enabled}

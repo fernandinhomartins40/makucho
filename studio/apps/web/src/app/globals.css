@@ -11802,3 +11802,235 @@ html:not([data-dicas]) :is(
     flex-wrap: nowrap;
   }
 }
+
+/* ============================================================
+   Editor simples: vídeo, pedir à IA, trechos e seis botões.
+   A timeline completa fica no modo avançado.
+   ============================================================ */
+.editor[data-modo='simples'] {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  grid-template-areas:
+    'palco'
+    'simples' !important;
+  padding: 0 var(--e3) var(--e3) !important;
+}
+
+.editor[data-modo='simples'] .editor__rail,
+.editor[data-modo='simples'] .palco-lateral,
+.editor[data-modo='simples'] .editor__ia,
+.editor[data-modo='simples'] .editor__inspector {
+  display: none !important;
+}
+
+.editor[data-modo='simples'] .editor__palco {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.editor[data-modo='simples'] .editor__palco > .palco__quadro {
+  height: min(100%, calc(100cqw * var(--quadro-hw, 1.7778))) !important;
+}
+
+/* As gavetas: à direita no computador, de baixo no celular. */
+.editor[data-modo='simples'][data-folha='painel'] .editor__ia,
+.editor[data-modo='simples'][data-folha='inspector'] .editor__inspector {
+  display: flex !important;
+  position: fixed;
+  top: var(--topbar, 64px);
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  width: min(440px, 100vw);
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 18px 0 0 18px;
+  background: var(--bg-sidebar);
+  animation: entrar-da-direita 200ms ease-out;
+}
+
+.editor[data-modo='simples'] .editor__veu {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  display: block;
+  background: rgb(1 6 18 / 45%);
+}
+
+.editor[data-modo='simples'] .editor__folha-cabecalho {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  gap: var(--e1);
+  padding: var(--e2) var(--e2) var(--e1) var(--e4);
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+}
+
+@keyframes entrar-da-direita {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 899px) {
+  .editor[data-modo='simples'][data-folha='painel'] .editor__ia,
+  .editor[data-modo='simples'][data-folha='inspector'] .editor__inspector {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 75dvh;
+    border-radius: 20px 20px 0 0;
+    animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+.editor-simples {
+  grid-area: simples;
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-destaque);
+  background: var(--surface-1);
+}
+
+.editor-simples > .aviso {
+  align-items: center;
+  margin: 0;
+}
+
+.editor-simples__trechos {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 2px;
+}
+
+.trecho-simples {
+  display: grid;
+  gap: 4px;
+  flex: none;
+  width: 92px;
+}
+
+.trecho-simples__capa {
+  position: relative;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.trecho-simples[data-atual] .trecho-simples__capa {
+  border-color: var(--accent);
+}
+
+.trecho-simples:not([data-ligado]) .trecho-simples__capa {
+  opacity: 0.35;
+}
+
+.trecho-simples__capa img,
+.trecho-simples__capa > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.85;
+}
+
+.trecho-simples__capa b {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: calc(100% - 8px);
+  padding: 1px 6px;
+  overflow: hidden;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trecho-simples__chave {
+  padding: 3px 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trecho-simples__chave[aria-checked='true'] {
+  border-color: color-mix(in srgb, var(--success) 50%, var(--border));
+  color: var(--success);
+}
+
+.editor-simples__botoes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.editor-simples__botoes button {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.editor-simples__botoes button:hover {
+  border-color: var(--primary);
+}
+
+.editor__modo[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+@media (max-width: 899px) {
+  .editor[data-modo='simples'] {
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    padding: 0 var(--e2) var(--e2) !important;
+  }
+
+  .editor-simples {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .editor-simples .pedir-ia .ia-secao__titulo {
+    display: none;
+  }
+}
+
+/* Na gaveta, o título da folha já diz o que é: sem o cabeçalho repetido. */
+.editor[data-modo='simples'] .editor__inspector .painel__cabecalho {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .editor__inspector .painel__cabecalho {
+    display: none;
+  }
+}
