@@ -45,7 +45,7 @@ import {
 import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/catalogo';
 import { TimelineRuler } from './TimelineRuler';
 import { msParaPx, pxParaMs, alinharAoFrame } from './ruler-utils';
-import { corDaFuncao, nomeDaFuncao } from '../editor/funcoes';
+import { corDaFuncao, nomeDaFuncao, tempo } from '../editor/funcoes';
 import {
   IconeZoomMenos,
   IconeZoomMais,
@@ -148,6 +148,16 @@ interface Props {
   onAjustes?: () => void;
   /** Abre o gravador de narração no ponto do cursor. */
   onGravarNarracao?: () => void;
+  /**
+   * Celular (jeito CapCut): a agulha fica fixa no meio e a timeline corre
+   * por baixo dela -- arrastar a timeline é mover no vídeo. O começo da
+   * faixa de vídeo tem os atalhos; música e texto aparecem sempre, com
+   * "+ Adicionar". A barra de ações sai (a barra de baixo do editor faz).
+   */
+  central?: boolean;
+  /** Atalhos do começo da faixa de vídeo (modo central). */
+  onSilenciarTudo?: () => void;
+  somOriginalMudo?: boolean;
 }
 
 type Arraste = {
@@ -192,6 +202,9 @@ export function Timeline({
   onVelocidade,
   onAjustes,
   onGravarNarracao,
+  central = false,
+  onSilenciarTudo,
+  somOriginalMudo = false,
 }: Props) {
   const [zoom, setZoom] = useState(1);
   const telaBaixa = useTelaBaixa();
@@ -492,15 +505,59 @@ export function Timeline({
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [podeDividir, dividir, cortar, duplicar, excluirTrecho, clipeSelecionado, itemSelecionado]);
 
+  // Modo central: meia largura de folga antes e depois (o começo e o fim
+  // do vídeo chegam à agulha do meio).
+  const [meia, setMeia] = useState(0);
+  useEffect(() => {
+    const area = rolagemRef.current;
+    if (!central || !area) return;
+    const medir = () => setMeia(Math.round(area.clientWidth / 2));
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(area);
+    return () => obs.disconnect();
+  }, [central]);
+
+  // A posição comanda a rolagem (a agulha fica no meio)...
+  const rolagemProgramada = useRef(-1);
+  useEffect(() => {
+    const area = rolagemRef.current;
+    if (!central || !area || arrastando || !meia) return;
+    const x = Math.round(msParaPx(posicaoMs, zoom));
+    if (Math.abs(area.scrollLeft - x) < 1) return;
+    rolagemProgramada.current = x;
+    area.scrollLeft = x;
+  }, [central, posicaoMs, zoom, arrastando, meia]);
+
+  // ... e o dedo que rola a timeline move no vídeo.
+  useEffect(() => {
+    const area = rolagemRef.current;
+    if (!central || !area || !onSeek) return;
+    let quadro = 0;
+    const aoRolar = () => {
+      if (Math.abs(area.scrollLeft - rolagemProgramada.current) < 2) return;
+      rolagemProgramada.current = -1;
+      cancelAnimationFrame(quadro);
+      quadro = requestAnimationFrame(() => {
+        onSeek(Math.min(duracaoMs, Math.max(0, pxParaMs(area.scrollLeft, zoomRef.current))));
+      });
+    };
+    area.addEventListener('scroll', aoRolar, { passive: true });
+    return () => {
+      area.removeEventListener('scroll', aoRolar);
+      cancelAnimationFrame(quadro);
+    };
+  }, [central, onSeek, duracaoMs]);
+
   // O playhead acompanha a reprodução: rola a timeline quando sai da vista.
   useEffect(() => {
     const area = rolagemRef.current;
-    if (!area || arrastando) return;
+    if (central || !area || arrastando) return;
     const x = msParaPx(posicaoMs, zoom);
     const rotulo = area.querySelector<HTMLElement>('.timeline__canto')?.offsetWidth ?? 0;
     const visivel = area.clientWidth - rotulo;
     if (x < area.scrollLeft || x > area.scrollLeft + visivel - 40) area.scrollLeft = Math.max(0, x - visivel * 0.25);
-  }, [posicaoMs, zoom, arrastando]);
+  }, [posicaoMs, zoom, arrastando, central]);
 
   // Rolar sem mexer nos itens: arrastar um espaço vazio da faixa (ou com
   // o botão do meio em qualquer lugar) rola a timeline para os lados; a
@@ -659,7 +716,7 @@ export function Timeline({
   return (
     <>
       {/* ---------- Barra de ações ---------- */}
-      <div className="timeline__barra">
+      <div className="timeline__barra" hidden={central}>
         <Acao Icone={IconeCortar} rotulo="Cortar" desabilitado={!podeDividir} atalho="C" onClick={cortar} />
         <Acao Icone={IconeDividir} rotulo="Dividir" desabilitado={!podeDividir} atalho="S" onClick={dividir} />
         <Acao Icone={IconeCopiar} rotulo="Duplicar" desabilitado={semSelecao} atalho="D" onClick={duplicar} />
@@ -758,8 +815,18 @@ export function Timeline({
       )}
 
       {/* ---------- Área rolável: uma rolagem só ---------- */}
+      <div className="timeline__janela" data-central={central || undefined}>
+      {central && (
+        <>
+          <span className="timeline__tempo" aria-live="off">
+            <b>{tempo(Math.min(posicaoMs, duracaoMs))}</b> / {tempo(duracaoMs)}
+          </span>
+          <span className="timeline__agulha" aria-hidden />
+        </>
+      )}
       <div
         ref={rolagemRef}
+        style={central && meia ? ({ ['--rotulo-da-faixa' as string]: `${meia}px` } as React.CSSProperties) : undefined}
         className="timeline__rolagem"
         data-rolando={rolando || undefined}
         onPointerDown={aoApertarNaArea}
@@ -772,7 +839,7 @@ export function Timeline({
         onPointerCancel={arrastando ? aoSoltar : undefined}
         onPointerLeave={arrastando ? aoSoltar : undefined}
       >
-        <div className="timeline__conteudo" style={{ width: `calc(var(--rotulo-da-faixa) + ${larguraPx + 40}px)` }}>
+        <div className="timeline__conteudo" style={{ width: `calc(var(--rotulo-da-faixa) + ${larguraPx + (central ? meia : 40)}px)` }}>
           {/* Régua presa no topo; o canto, preso nos dois. */}
           <div className="timeline__linha timeline__linha--regua" style={{ height: telaBaixa ? ALTURA_REGUA_COMPACTA : ALTURA_REGUA }}>
             <div className="timeline__canto" />
@@ -781,7 +848,7 @@ export function Timeline({
             </div>
           </div>
 
-          {FAIXAS.filter((f) => f.id === 'video' || f.id === 'audio' || !vazias.has(f.id)).map(({ id, rotulo, Icone, altura: normal, compacta }) => {
+          {FAIXAS.filter((f) => f.id === 'video' || f.id === 'audio' || !vazias.has(f.id) || (central && (f.id === 'trilha' || f.id === 'textos'))).map(({ id, rotulo, Icone, altura: normal, compacta }) => {
             // Faixa sem nada fica fina: sobra altura para as que têm
             // conteúdo (em notebook, 4 de 9 faixas cabiam à vista).
             const altura = vazias.has(id) ? (telaBaixa ? ALTURA_VAZIA_COMPACTA : ALTURA_VAZIA) : telaBaixa ? compacta : normal;
@@ -793,7 +860,33 @@ export function Timeline({
               data-vazia={vazias.has(id) || undefined}
               style={{ height: altura }}
             >
-              {/* Nome da faixa, preso à esquerda durante a rolagem. */}
+              {/* Nome da faixa, preso à esquerda durante a rolagem. No modo
+                  central, o começo da faixa: atalhos no vídeo, e o ícone
+                  que acrescenta nas outras. */}
+              {central ? (
+                <div className="timeline__inicio">
+                  {id === 'video' ? (
+                    <>
+                      {onSilenciarTudo && (
+                        <button type="button" className="timeline__atalho" onClick={onSilenciarTudo} aria-pressed={somOriginalMudo}>
+                          {somOriginalMudo ? <IconeMudo size={18} /> : <IconeSom size={18} />}
+                          <span>{somOriginalMudo ? 'Ligar o som' : 'Silenciar som'}</span>
+                        </button>
+                      )}
+                      {onTirarPausas && (
+                        <button type="button" className="timeline__atalho" onClick={onTirarPausas}>
+                          <IconeIA size={18} />
+                          <span>Cortar silêncios</span>
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span className="timeline__icone-da-faixa" title={rotulo}>
+                      <Icone size={15} />
+                    </span>
+                  )}
+                </div>
+              ) : (
               <div className="timeline__faixa" title={rotulo}>
                 <Icone size={16} />
                 <span className="timeline__nome">{rotulo}</span>
@@ -801,6 +894,7 @@ export function Timeline({
                   <OlhoDaFaixa rotulo={rotulo} oculta={faixaOculta(id)} onClick={() => onAlternarCamada(id)} />
                 )}
               </div>
+              )}
 
               <div className="timeline__pista" style={{ width: larguraPx + 40 }}>
                 {id === 'video' &&
@@ -975,6 +1069,11 @@ export function Timeline({
                     />
                   ))}
 
+                {central && id === 'textos' && vazias.has('textos') && (
+                  <button type="button" className="timeline__vazio" onClick={novoTexto}>
+                    <IconeMais size={13} /> Adicionar texto
+                  </button>
+                )}
                 {(id === 'textos' || id === 'elementos') &&
                   plan.overlays
                     .filter((o) => (id === 'textos') === COMPONENTES_DE_TEXTO.has(o.component))
@@ -1156,9 +1255,10 @@ export function Timeline({
             );
           })}
 
-          {/* Playhead. */}
-          <div className="timeline__playhead" aria-hidden style={{ left: `calc(var(--rotulo-da-faixa) + ${msParaPx(posicaoMs, zoom)}px)` }} />
+          {/* Playhead (no modo central a agulha é fixa, fora da rolagem). */}
+          {!central && <div className="timeline__playhead" aria-hidden style={{ left: `calc(var(--rotulo-da-faixa) + ${msParaPx(posicaoMs, zoom)}px)` }} />}
         </div>
+      </div>
       </div>
     </>
   );

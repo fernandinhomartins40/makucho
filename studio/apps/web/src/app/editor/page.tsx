@@ -36,13 +36,14 @@ import {
   MOTIVO_DA_MONTAGEM_AUTOMATICA,
   ROTULO_DE_ESTADO,
   tirarPausas,
-  agendaDoPlano, duracaoNaTimeline } from '@makucho/studio-contracts';
+  agendaDoPlano, duracaoNaTimeline, PRESETS_DE_TEXTO } from '@makucho/studio-contracts';
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import { EditorSimples, type DestinoSimples } from '../../components/editor/EditorSimples';
 import { EtiquetaDoItem, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
+import { BarraMovel, type AcaoMovel } from '../../components/editor/BarraMovel';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor } from '../../components/editor/RailDeFerramentas';
 import { PreparoDoVideo, avisarQueFicouPronto } from '../../components/editor/PreparoDoVideo';
@@ -97,6 +98,9 @@ import {
   IconeEnviar,
   IconeMidia,
   IconeParametros,
+  IconeAbrir,
+  IconePausar,
+  IconeTelaCheia,
   IconeMarca,
 } from '../../components/icones';
 
@@ -863,6 +867,79 @@ function Editor({ projectId }: { projectId: string }) {
     );
   }
 
+  // ---------- Barra de baixo do celular ----------
+  const somOriginalMudo = !!plano && plano.clips.every((c) => c.audio?.muted);
+  const executarAcaoMovel = (a: AcaoMovel) => {
+    if (!plano) return;
+    const biblioteca: Partial<Record<AcaoMovel, CategoriaDaBiblioteca>> = {
+      enfeites: 'stickers',
+      filtros: 'cor',
+      estilos: 'estilos',
+      marca: 'marca',
+      efeitos: 'efeitos',
+      transicoes: 'transicoes',
+      musica: 'trilha',
+      sons: 'sons',
+      'modelos-texto': 'textos',
+    };
+    const categoria = biblioteca[a];
+    if (categoria) return abrirBiblioteca(categoria);
+    const noCursor = Math.min(Math.max(0, Math.round(posicaoMs)), Math.max(0, duracaoMs - 1000));
+    switch (a) {
+      case 'imagens':
+        return abrirPainel('midia');
+      case 'formato':
+      case 'preencher':
+        return naAcao('recorte');
+      case 'narrar':
+        return setGravadorDe(Math.round(posicaoMs));
+      case 'silenciar':
+        return executarVarias(plano.clips.map((c) => ({ op: 'ajustar_audio_do_clipe' as const, clipId: c.id, muted: somOriginalMudo ? null : true })));
+      case 'silencios':
+        return tirarAsPausas();
+      case 'novo-texto':
+        return executar({
+          op: 'adicionar_overlay',
+          component: 'Destaque',
+          text: 'Seu destaque',
+          timelineStartMs: noCursor,
+          durationMs: Math.min(2500, Math.max(300, duracaoMs - noCursor)),
+          style: { ...(PRESETS_DE_TEXTO.find((x) => x.id === 'marca_texto')?.estilo ?? {}), x: 0.5, y: 0.3 },
+        });
+      case 'nova-legenda':
+        return executar({ op: 'adicionar_legenda', timelineStartMs: noCursor, durationMs: 1500, text: 'Nova legenda' });
+      case 'legenda-estilo':
+        return abrirNoSimples('legendas');
+      case 'legenda-corrigir':
+        setAba('legendas');
+        return setFolha('painel');
+      case 'legenda-onoff':
+        return executar({ op: 'configurar_legenda', enabled: !plano.captions.enabled });
+      case 'velocidade':
+      case 'ajustes':
+        return naAcao(a === 'ajustes' ? 'ajustar' : 'velocidade');
+      case 'som':
+        return naAcao('volume');
+      case 'cor':
+        return naAcao('cor');
+    }
+    // Dividir, cortar, duplicar e excluir: o trecho selecionado ou o do cursor.
+    const alvo = trechoAlvo();
+    const t = alvo ? agendaDoPlano(plano, [...desligados]).trechos.find((x) => x.clip.id === alvo) : undefined;
+    if (!t) return;
+    const dentro = posicaoMs - t.inicioMs;
+    const ponto = dentro > 300 && dentro < t.duracaoMs - 300 ? Math.round(t.clip.sourceStartMs + dentro * t.velocidade) : null;
+    if (a === 'duplicar') return executar({ op: 'duplicar_clipe', clipId: t.clip.id });
+    if (a === 'excluir') {
+      if (plano.clips.length <= 1) return setAviso('O vídeo precisa de ao menos um trecho.');
+      executar({ op: 'alternar_clipe', clipId: t.clip.id, enabled: false });
+      return setSelecionado(null);
+    }
+    if (ponto === null) return setAviso('Leve a agulha para dentro do trecho (longe das pontas) para cortar ali.');
+    if (a === 'dividir') return executar({ op: 'dividir_clipe', clipId: t.clip.id, sourceMs: ponto });
+    if (a === 'cortar') return executar({ op: 'ajustar_corte', clipId: t.clip.id, sourceStartMs: ponto, sourceEndMs: t.clip.sourceEndMs });
+  };
+
   const cabecalho = (
     <header className="topbar topbar--editor">
       <Link href="/" className="botao-icone" aria-label="Voltar para Projetos">
@@ -963,6 +1040,9 @@ function Editor({ projectId }: { projectId: string }) {
             <span className="so-largo">Pré-visualizar</span>
           </button>
 
+          <button type="button" className="botao botao--secundario so-celular editor__qualidade" onClick={() => setExportarAberto(true)} aria-label="Qualidade da exportação">
+            1080p <IconeAbrir size={12} />
+          </button>
           <button type="button" className="botao" onClick={() => setExportarAberto(true)}>
             <IconeExportar size={16} />
             <span className="so-largo">
@@ -1291,6 +1371,24 @@ function Editor({ projectId }: { projectId: string }) {
               if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
             }}
           />
+          {/* Celular: tela cheia, play no meio, desfazer e refazer (o CapCut
+              põe aqui; o topo fica só com fechar, qualidade e exportar). */}
+          <div className="controles-moveis so-celular">
+            <button type="button" className="botao-icone" aria-label="Tela cheia" onClick={() => void document.querySelector<HTMLElement>('.palco__quadro')?.requestFullscreen?.()}>
+              <IconeTelaCheia size={20} />
+            </button>
+            <button type="button" className="controles-moveis__play" aria-label={tocandoNaPrevia ? 'Pausar' : 'Reproduzir'} disabled={!temProxy} onClick={() => setComandoAlternar((n) => n + 1)}>
+              {tocandoNaPrevia ? <IconePausar size={22} weight="fill" /> : <IconeTocar size={22} weight="fill" />}
+            </button>
+            <span className="controles-moveis__direita">
+              <button type="button" className="botao-icone" onClick={desfazer} disabled={passado.length === 0} aria-label="Desfazer">
+                <IconeDesfazer size={20} />
+              </button>
+              <button type="button" className="botao-icone" onClick={refazer} disabled={futuro.length === 0} aria-label="Refazer">
+                <IconeRefazer size={20} />
+              </button>
+            </span>
+          </div>
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
@@ -1398,7 +1496,10 @@ function Editor({ projectId }: { projectId: string }) {
               onAbrirIa={() => abrirPainel('ia')}
               onAjustes={() => naAcao('ajustar')}
               onVelocidade={() => naAcao('velocidade')}
-              onGravarNarracao={() => {
+              central={celular}
+            onSilenciarTudo={() => executarAcaoMovel('silenciar')}
+            somOriginalMudo={somOriginalMudo}
+            onGravarNarracao={() => {
                 setFolha(null);
                 setGravadorDe(Math.round(posicaoMs));
               }}
@@ -1423,9 +1524,26 @@ function Editor({ projectId }: { projectId: string }) {
             />
           </section>
 
+        {celular && (
+          <>
+            <BarraMovel
+              trechoSelecionado={Boolean(selecionado) && !itemSelecionado}
+              onDesmarcarTrecho={() => setSelecionado(null)}
+              onAcao={executarAcaoMovel}
+              legendasLigadas={plano.captions.enabled}
+              somOriginalMudo={somOriginalMudo}
+            />
+            {!semIa && (
+              <button type="button" className="botao-da-ia" aria-label="Pedir à IA" onClick={() => abrirPainel('ia')}>
+                <IconeIA size={24} weight="fill" />
+              </button>
+            )}
+          </>
+        )}
+
         <EtiquetaDoItem
           plan={plano}
-          alvo={itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado ? { tipo: 'clipe', id: selecionado } : null}
+          alvo={itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado && !celular ? { tipo: 'clipe', id: selecionado } : null}
           posicaoMs={posicaoMs}
           copiado={copiado}
           onCopiar={(c) => {
