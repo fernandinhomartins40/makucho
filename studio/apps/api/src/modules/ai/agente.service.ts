@@ -33,6 +33,7 @@ import {
   macroDoComandoSchema,
   operacoesDaComposicao,
   perfilDoAudioSchema,
+  ranquearResultados,
   ramoOuOutro,
   resumoDoPlanoParaIa,
   timelineOperationSchema,
@@ -471,7 +472,7 @@ export class AgenteService {
             }
           }
           if (entrou.length) c.mudancas += 1;
-          return { entrou, falhas, semOpcoes: s.semOpcoes };
+          return { entrou, falhas, semOpcoes: s.semOpcoes, ...(s.avisos.length ? { avisos: s.avisos } : {}) };
         },
       },
 
@@ -581,23 +582,27 @@ export class AgenteService {
       // ---------- Buscar e trazer mídia ----------
       buscar_midia: {
         rotulo: 'Buscando imagens',
-        descricao: `Busca nos bancos de licença livre (${TIPOS_DA_BUSCA.join(', ')}). A busca pode ser em português. Devolve até 8 opções com "ref" para adicionar_midia.`,
+        descricao: `Busca nos bancos de licença livre (${TIPOS_DA_BUSCA.join(', ')}; padrão "video"). Prefira video e foto reais (Pexels, Pixabay); icone3d só no tom descontraído. A busca pode ser em português. Devolve até 8 opções, as melhores primeiro (resolução, em pé), com "ref" para adicionar_midia.`,
         parametros: objeto({ busca: { type: 'string' }, tipo: { type: 'string', enum: [...TIPOS_DA_BUSCA] } }, ['busca', 'tipo']),
         executar: async (c, a) => {
-          const tipo = (TIPOS_DA_BUSCA as readonly string[]).includes(String(a.tipo)) ? (String(a.tipo) as TipoDaBusca) : 'icone3d';
+          const tipo = (TIPOS_DA_BUSCA as readonly string[]).includes(String(a.tipo)) ? (String(a.tipo) as TipoDaBusca) : 'video';
           const t = traduzirBusca(String(a.busca ?? ''));
           const achados: ResultadoDaBusca[] = [];
+          const avisos = new Set<string>();
           for (const q of [t.consulta, ...(t.termos.length > 1 ? t.termos.slice(0, 2) : [])]) {
             const r = await this.banco.buscar(c.tenant, { q, tipo });
+            r.avisos.forEach((x) => avisos.add(x));
             for (const x of r.resultados) if (!achados.some((y) => y.fonte === x.fonte && y.id === x.id)) achados.push(x);
             if (achados.length >= 8) break;
           }
+          const ordenados = ranquearResultados(achados, t.termos, tipo);
           return {
             buscouPor: t.consulta,
-            opcoes: achados.slice(0, 8).map((r) => {
+            ...(avisos.size ? { avisos: [...avisos] } : {}),
+            opcoes: ordenados.slice(0, 8).map((r) => {
               const ref = `${r.fonte}:${r.id}`.slice(0, 120);
               c.achados.set(ref, r);
-              return { ref, titulo: r.titulo, tipo: r.tipo, transparente: r.transparente, tags: r.tags.slice(0, 6) };
+              return { ref, titulo: r.titulo, tipo: r.tipo, fonte: r.fonte, resolucao: `${r.largura}x${r.altura}`, emPe: r.altura >= r.largura, ...(r.duracaoMs ? { duracaoS: Math.round(r.duracaoMs / 1000) } : {}), tags: r.tags.slice(0, 6) };
             }),
           };
         },

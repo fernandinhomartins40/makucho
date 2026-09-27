@@ -52,13 +52,17 @@ export const VERSAO_DO_PROMPT = {
   gerar_roteiro_livre: 'roteiro-v2',
   editar_roteiro: 'edicao-roteiro-v2',
   // Imagens, ícones e vídeos que ilustram a fala (midias-da-ia.ts).
-  sugerir_midias: 'midias-v2',
+  // v3: vídeo e foto reais de banco em primeiro lugar; ícone 3D só no tom
+  // descontraído e nunca emoji (infantilizava os vídeos de negócio).
+  sugerir_midias: 'midias-v3',
   // Vídeo sem narração, montado pelas cenas (montagem-visual.ts).
   montar_por_cenas: 'montagem-visual-v1',
   // Uma mídia escolhida na busca: a IA diz onde e como ela entra.
   posicionar_midia: 'posicionar-midia-v1',
   // O "Peça à IA" com ferramentas (agente.service.ts).
-  agente_de_edicao: 'agente-v1',
+  // v2: direção de arte completa (identidade, legenda sob medida, textos
+  // profissionais, b-roll real, cor, ritmo, som) e padrão de produtora.
+  agente_de_edicao: 'agente-v2',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

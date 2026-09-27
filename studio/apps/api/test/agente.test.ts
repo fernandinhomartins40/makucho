@@ -121,7 +121,7 @@ async function main() {
   t('salvou UMA versão', a.salvos.length === 1);
   const resultadoDoVer = a.vistas[1]!.find((m) => m.role === 'tool');
   t('o resultado de ver_projeto voltou para a IA (com o ramo)', Boolean(resultadoDoVer && resultadoDoVer.content.includes('Comércio')));
-  t('o sistema traz os conceitos e a referência das operações', a.vistas[0]![0]!.content.includes('Roteiro viral') && a.vistas[0]![0]!.content.includes('trocar_estilo_legenda'));
+  t('o sistema traz a direção de arte, os conceitos e a referência das operações', a.vistas[0]![0]!.content.includes('Direção de arte completa') && a.vistas[0]![0]!.content.includes('roteiro viral') && a.vistas[0]![0]!.content.includes('trocar_estilo_legenda'));
   const passos = (a.agente as unknown as { andamento: Map<string, { passos: string[]; ativo: boolean }> }).andamento.get('p1')!;
   t('o progresso registra os passos', passos.passos.includes('Olhando o projeto') && passos.passos.includes('Editando o vídeo') && !passos.ativo);
 

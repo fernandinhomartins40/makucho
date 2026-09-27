@@ -62,7 +62,7 @@ const palavras: PalavraDaTranscricao[] = [
 // ============================================================
 {
   const ids = PRESETS_DE_LEGENDA.map((p) => p.id);
-  t('há dez estilos', ids.length === 10);
+  t('há treze estilos (dez + três profissionais)', ids.length === 13);
   t('ids únicos', new Set(ids).size === ids.length);
   t('os ids antigos da tela da Marca continuam valendo', presetDaLegenda('moderno')?.id === 'caixa' && presetDaLegenda('minimalista')?.id === 'minimal');
   t('o "default" do compilador antigo vira o Clássico', presetDaLegenda('default')?.id === 'padrao');

@@ -237,6 +237,10 @@ export function aplicarAcabamento(
   // O estilo de texto da marca (quando escolhido) vale para o título e
   // a chamada: é o que faz todo vídeo sair com a mesma cara.
   const estiloDaMarca = PRESETS_DE_TEXTO.find((p) => p.id === prefs.textoPreset)?.estilo;
+  // Sem estilo escolhido na marca: a linha profissional (título editorial,
+  // chamada em botão), nunca o texto cru do componente.
+  const estiloDoTitulo = estiloDaMarca ?? PRESETS_DE_TEXTO.find((p) => p.id === 'editorial')?.estilo;
+  const estiloDaChamada = estiloDaMarca ?? PRESETS_DE_TEXTO.find((p) => p.id === 'chamada_pro')?.estilo;
 
   if (titulo && total >= 4000) {
     overlays.push({
@@ -245,7 +249,7 @@ export function aplicarAcabamento(
       text: titulo,
       timelineStartMs: 0,
       durationMs: Math.min(DURACAO_DO_TITULO_MS, total),
-      ...(estiloDaMarca ? { style: estiloDaMarca } : {}),
+      ...(estiloDoTitulo ? { style: estiloDoTitulo } : {}),
     });
   }
 
@@ -257,7 +261,7 @@ export function aplicarAcabamento(
       text: chamada,
       timelineStartMs: total - duracao,
       durationMs: duracao,
-      ...(estiloDaMarca ? { style: estiloDaMarca } : {}),
+      ...(estiloDaChamada ? { style: estiloDaChamada } : {}),
     });
   }
 

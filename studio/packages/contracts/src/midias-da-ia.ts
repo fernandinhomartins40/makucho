@@ -57,7 +57,9 @@ export const FONTES_DO_TIPO: Record<TipoDaBusca, readonly FonteDeMidia[]> = {
   video: ['pexels', 'pixabay'],
   foto: ['pexels', 'pixabay', 'openverse'],
   ilustracao: ['pixabay', 'openverse'],
-  icone3d: ['3dicons', 'fluent'],
+  // Só os objetos 3D do 3dicons: os emojis 3D (Fluent) infantilizavam os
+  // vídeos de negócio. O Fluent continua buscável pedindo a fonte.
+  icone3d: ['3dicons'],
   icone: ['iconify'],
   logo: ['iconify'],
 };
@@ -293,8 +295,15 @@ export function ranquearResultados(resultados: readonly ResultadoDaBusca[], term
     const icone = tipo === 'icone3d' || tipo === 'icone' || tipo === 'logo';
     if (icone && r.transparente) n += 1;
     if (!icone) {
+      // Qualidade de produtora: resolução alta e em pé (9:16) na frente;
+      // imagem pequena só se não houver outra.
+      const lado = Math.min(r.largura, r.altura);
       if (r.altura >= r.largura) n += 0.6;
-      if (Math.min(r.largura, r.altura) >= 1000) n += 0.4;
+      if (lado >= 1080) n += 0.8;
+      else if (lado >= 720) n += 0.3;
+      else n -= 2;
+      // Pexels e Pixabay têm curadoria; o Openverse mistura qualidade.
+      if (r.fonte === 'pexels' || r.fonte === 'pixabay') n += 0.5;
     }
     if (r.licenca.exigeCredito) n -= 0.3;
     return n;

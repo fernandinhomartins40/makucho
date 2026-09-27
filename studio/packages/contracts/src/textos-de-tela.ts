@@ -777,4 +777,60 @@ export const PRESETS_DE_TEXTO: readonly PresetDeTexto[] = [
     descricao: 'Letra de HQ com contorno grosso e balanço.',
     estilo: tudo({ preset: 'quadrinho', fontId: 'bangers', sizeScale: 1.2, color: '#FFFFFF', outlineColor: '#111111', outlineWidth: 9, letterSpacing: 2, rotation: -3, entrada: 'elastico', durante: 'balancar' }),
   },
+
+  // ---------- Profissionais ----------
+  // A linha das marcas e dos canais grandes: tipografia limpa, pouca cor,
+  // movimento curto. A IA usa estes por padrão em vídeos de negócio; os
+  // acima (quadrinho, neon, pílula) ficam para quando o tom pede humor.
+  {
+    id: 'editorial',
+    rotulo: 'Editorial',
+    descricao: 'Profissional. Branco limpo com sombra suave, como capa de revista.',
+    estilo: tudo({ preset: 'editorial', fontId: 'inter', sizeScale: 1.05, shadow: 6, shadowColor: '#000000', letterSpacing: 0, entrada: 'subir', saida: 'sumir' }),
+  },
+  {
+    id: 'manchete',
+    rotulo: 'Manchete',
+    descricao: 'Profissional. Caixa alta condensada sobre tarja escura, como telejornal.',
+    estilo: tudo({ preset: 'manchete', fontId: 'oswald', uppercase: true, letterSpacing: 1, bgShape: 'retangulo', bgColor: '#0B0F19', bgOpacity: 0.88, bgPadding: 20, entrada: 'deslizar_esquerda', saida: 'deslizar_direita' }),
+  },
+  {
+    id: 'corporativo',
+    rotulo: 'Corporativo',
+    descricao: 'Profissional. Faixa na cor da marca, texto branco firme. Para empresas e serviços.',
+    estilo: tudo({ preset: 'corporativo', fontId: 'montserrat-black', sizeScale: 0.95, bgShape: 'faixa', bgColor: '#2F66FF', bgOpacity: 0.95, bgPadding: 22, entrada: 'deslizar_direita', saida: 'sumir' }),
+  },
+  {
+    id: 'premium',
+    rotulo: 'Premium',
+    descricao: 'Profissional. Serifada elegante, sem fundo, entrada suave. Para luxo, beleza e imóveis.',
+    estilo: tudo({ preset: 'premium', fontId: 'dm-serif', sizeScale: 1.15, shadow: 5, shadowColor: '#000000', letterSpacing: 1, entrada: 'desfocar', saida: 'sumir' }),
+  },
+  {
+    id: 'numero_destaque',
+    rotulo: 'Número em destaque',
+    descricao: 'Profissional. Número ou preço grande, na cor de destaque, com sombra. Para dados e ofertas.',
+    estilo: tudo({ preset: 'numero_destaque', fontId: 'bebas', sizeScale: 1.9, color: '#FFD400', shadow: 8, shadowColor: '#000000', letterSpacing: 2, entrada: 'zoom', saida: 'sumir' }),
+  },
+  {
+    id: 'legenda_de_tela',
+    rotulo: 'Rodapé limpo',
+    descricao: 'Profissional. Pequeno, em pílula translúcida. Para nomes, lugares e observações.',
+    estilo: tudo({ preset: 'legenda_de_tela', fontId: 'inter-semi', sizeScale: 0.78, bgShape: 'pilula', bgColor: '#000000', bgOpacity: 0.55, bgPadding: 18, entrada: 'subir', saida: 'sumir' }),
+  },
+  {
+    id: 'tecnologia',
+    rotulo: 'Tecnologia',
+    descricao: 'Profissional. Grotesca moderna sobre grafite, entrada digitada. Para tecnologia e dados.',
+    estilo: tudo({ preset: 'tecnologia', fontId: 'space-grotesk', sizeScale: 1, color: '#E6F6FF', bgShape: 'retangulo', bgColor: '#111827', bgOpacity: 0.9, bgPadding: 20, accentColor: '#41C8FF', entrada: 'digitar', saida: 'sumir' }),
+  },
+  {
+    id: 'chamada_pro',
+    rotulo: 'Chamada profissional',
+    descricao: 'Profissional. Botão arredondado na cor da marca com texto branco. Para a chamada final.',
+    estilo: tudo({ preset: 'chamada_pro', fontId: 'poppins-extra', sizeScale: 0.95, bgShape: 'arredondado', bgColor: '#2F66FF', bgOpacity: 1, bgPadding: 26, entrada: 'subir', saida: 'nenhuma', durante: 'pulsar' }),
+  },
 ];
+
+/** Os estilos de texto de linha profissional (a IA prefere estes). */
+export const PRESETS_PROFISSIONAIS_DE_TEXTO = ['editorial', 'manchete', 'corporativo', 'premium', 'numero_destaque', 'legenda_de_tela', 'tecnologia', 'chamada_pro', 'minimal', 'elegante', 'faixa'] as const;
