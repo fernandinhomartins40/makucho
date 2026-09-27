@@ -596,23 +596,17 @@ function Editor({ projectId }: { projectId: string }) {
   const [painelAberto, setPainelAberto] = useState(true);
   const colunaAtiva: CategoriaDaColuna | null = !painelAberto
     ? null
-    : aba === 'ia' || aba === 'midia' || aba === 'legendas'
+    : aba === 'ia' || aba === 'midia' || aba === 'legendas' || aba === 'ajustes'
       ? aba
       : aba === 'biblioteca'
         ? (categoriaDaBiblioteca as CategoriaDaColuna)
         : null;
   const escolherNaColuna = (c: CategoriaDaColuna) => {
-    if (c === 'ajustes') {
-      if (propsAbertas && !selecionado && !itemSelecionado) return setPropsAbertas(false);
-      setSelecionado(null);
-      setItemSelecionado(null);
-      return pedirAbaDoInspector('video');
-    }
     if (c === colunaAtiva) return setPainelAberto(false);
     setPainelAberto(true);
     // Legendas: corrigir as palavras à esquerda, o estilo à direita.
     if (c === 'legendas') pedirAbaDoInspector('legendas');
-    if (c === 'ia' || c === 'midia' || c === 'legendas') return setAba(c);
+    if (c === 'ia' || c === 'midia' || c === 'legendas' || c === 'ajustes') return setAba(c);
     setCategoriaDaBiblioteca(c as CategoriaDaBiblioteca);
     setAba('biblioteca');
   };
@@ -1150,7 +1144,7 @@ function Editor({ projectId }: { projectId: string }) {
 
       <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props={selecionado || itemSelecionado || propsAbertas ? 'com' : 'sem'}>
         {!celular && cabecalho}
-        <RailDeFerramentas ativa={colunaAtiva} ajustesAbertos={propsAbertas && !selecionado && !itemSelecionado} onEscolher={escolherNaColuna} />
+        <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
         {/* A alça na borda do painel: recolhe e devolve (computador). */}
         <button
           type="button"
@@ -1303,6 +1297,28 @@ function Editor({ projectId }: { projectId: string }) {
                 projeto?.entendimentoDaIa ? `${projeto.entendimentoDaIa.topic} ${projeto.entendimentoDaIa.structure} ${projeto.entendimentoDaIa.hookType}` : null,
               )}
             />
+          )}
+          {/* Ajustes do vídeo todo (formato, enquadramento, legendas e
+              efeitos gerais): no painel, como as outras categorias. */}
+          {aba === 'ajustes' && (
+            <div className="painel-de-ajustes">
+              <Inspector
+                titulo="Ajustes"
+                plan={plano}
+                clipId={null}
+                item={null}
+                onOperacao={executar}
+                onOperacoes={executarVarias}
+                marca={marcaDoVideo}
+                recursos={recursos}
+                onRefazerAcabamento={() => void refazerAcabamento()}
+                refazendoAcabamento={refazendoAcabamento}
+                posicaoMs={posicaoMs}
+                onSeek={setPosicaoMs}
+                abaPedida={AJUSTES_DO_VIDEO}
+                onCorrigirLegendas={() => setAba('legendas')}
+              />
+            </div>
           )}
           {aba === 'midia' && (
             <div className="painel-de-midias">
@@ -1494,6 +1510,7 @@ function Editor({ projectId }: { projectId: string }) {
               onAjustes={() => naAcao('ajustar')}
               onVelocidade={() => naAcao('velocidade')}
               central={celular}
+            faixasEnxutas={!celular}
             tocando={tocandoNaPrevia}
             onAlternarReproducao={temProxy ? () => setComandoAlternar((n) => n + 1) : undefined}
             onTelaCheia={temProxy ? abrirTelaCheia : undefined}
@@ -1656,7 +1673,11 @@ const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
   legendas: 'Legendas',
   marca: 'Marca',
   audio: 'Áudio',
+  ajustes: 'Ajustes',
 };
+
+/** "Ajustes" abre já no formato e no enquadramento do vídeo. */
+const AJUSTES_DO_VIDEO = { aba: 'video', n: 0 } as const;
 
 /** Alça e título da folha -- só aparece no celular, onde o painel sobe de baixo. */
 function CabecalhoDaFolha({ titulo, aoFechar }: { titulo: string; aoFechar: () => void }) {

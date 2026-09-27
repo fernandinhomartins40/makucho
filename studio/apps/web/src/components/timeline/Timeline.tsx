@@ -160,6 +160,12 @@ interface Props {
    * "+ Adicionar". A barra de ações sai (a barra de baixo do editor faz).
    */
   central?: boolean;
+  /**
+   * Computador: as faixas no jeito do celular (atalhos no começo da faixa
+   * de vídeo, ícone nas outras, música e texto sempre com "+ Adicionar"),
+   * sem a agulha fixa -- o cursor anda, como no CapCut online.
+   */
+  faixasEnxutas?: boolean;
   /** Atalhos do começo da faixa de vídeo (modo central). */
   onSilenciarTudo?: () => void;
   somOriginalMudo?: boolean;
@@ -212,6 +218,7 @@ export function Timeline({
   onAjustes,
   onGravarNarracao,
   central = false,
+  faixasEnxutas = false,
   onSilenciarTudo,
   somOriginalMudo = false,
   tocando = false,
@@ -913,7 +920,7 @@ export function Timeline({
             </div>
           </div>
 
-          {FAIXAS.filter((f) => f.id === 'video' || f.id === 'audio' || !vazias.has(f.id) || (central && (f.id === 'trilha' || f.id === 'textos'))).map(({ id, rotulo, Icone, altura: normal, compacta }) => {
+          {FAIXAS.filter((f) => f.id === 'video' || f.id === 'audio' || !vazias.has(f.id) || ((central || faixasEnxutas) && (f.id === 'trilha' || f.id === 'textos'))).map(({ id, rotulo, Icone, altura: normal, compacta }) => {
             // Faixa sem nada fica fina: sobra altura para as que têm
             // conteúdo (em notebook, 4 de 9 faixas cabiam à vista).
             const altura = vazias.has(id) ? (telaBaixa ? ALTURA_VAZIA_COMPACTA : ALTURA_VAZIA) : telaBaixa ? compacta : normal;
@@ -928,7 +935,7 @@ export function Timeline({
               {/* Nome da faixa, preso à esquerda durante a rolagem. No modo
                   central, o começo da faixa: atalhos no vídeo, e o ícone
                   que acrescenta nas outras. */}
-              {central ? (
+              {central || faixasEnxutas ? (
                 <div className="timeline__inicio">
                   {id === 'video' ? (
                     <>
@@ -946,9 +953,14 @@ export function Timeline({
                       )}
                     </>
                   ) : (
-                    <span className="timeline__icone-da-faixa" title={rotulo}>
-                      <Icone size={15} />
-                    </span>
+                    <>
+                      <span className="timeline__icone-da-faixa" title={rotulo}>
+                        <Icone size={15} />
+                      </span>
+                      {faixasEnxutas && onAlternarCamada && ehCamadaOcultavel(id) && (
+                        <OlhoDaFaixa rotulo={rotulo} oculta={faixaOculta(id)} onClick={() => onAlternarCamada(id)} />
+                      )}
+                    </>
                   )}
                 </div>
               ) : (
@@ -1134,7 +1146,7 @@ export function Timeline({
                     />
                   ))}
 
-                {central && id === 'textos' && vazias.has('textos') && (
+                {(central || faixasEnxutas) && id === 'textos' && vazias.has('textos') && (
                   <button type="button" className="timeline__vazio" onClick={novoTexto}>
                     <IconeMais size={13} /> Adicionar texto
                   </button>

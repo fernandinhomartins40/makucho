@@ -29,7 +29,7 @@ import {
   IconeParametros,
 } from '../icones';
 
-export type AbaDoEditor = 'ia' | 'biblioteca' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio';
+export type AbaDoEditor = 'ia' | 'biblioteca' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio' | 'ajustes';
 
 /** O que cada botão da coluna abre (a biblioteca, numa categoria). */
 export type CategoriaDaColuna = 'ia' | 'midia' | 'textos' | 'legendas' | 'trilha' | 'sons' | 'efeitos' | 'transicoes' | 'cor' | 'stickers' | 'estilos' | 'marca' | 'ajustes';
@@ -52,16 +52,14 @@ const ITENS: Array<{ id: CategoriaDaColuna; rotulo: string; Icone: Icon }> = [
 
 interface Props {
   ativa: CategoriaDaColuna | null;
-  /** "Ajustes" abre as propriedades à direita (não o painel da esquerda). */
-  ajustesAbertos?: boolean;
   onEscolher: (c: CategoriaDaColuna) => void;
 }
 
-export function RailDeFerramentas({ ativa, ajustesAbertos = false, onEscolher }: Props) {
+export function RailDeFerramentas({ ativa, onEscolher }: Props) {
   return (
     <nav className="editor__rail" aria-label="Categorias do editor">
       {ITENS.map(({ id, rotulo, Icone }) => {
-        const ligada = id === 'ajustes' ? ajustesAbertos : ativa === id;
+        const ligada = ativa === id;
         return (
         <button key={id} type="button" className="ferramenta" aria-pressed={ligada} onClick={() => onEscolher(id)} title={rotulo}>
           <Icone size={21} weight={ligada ? 'fill' : 'regular'} />

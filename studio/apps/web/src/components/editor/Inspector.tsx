@@ -98,6 +98,8 @@ interface Props {
   abaPedida?: { aba: AbaDoInspector; n: number } | null;
   /** Computador: recolhe o painel (e tira a seleção). */
   onRecolher?: () => void;
+  /** O título do painel (no painel da esquerda, "Ajustes"). */
+  titulo?: string;
   /** Legendas: leva à lista de palavras para corrigir. */
   onCorrigirLegendas?: () => void;
 }
@@ -119,6 +121,7 @@ export function Inspector({
   abaPedida,
   onCorrigirLegendas,
   onRecolher,
+  titulo = 'Propriedades',
 }: Props) {
   const [aba, setAba] = useState<AbaDoInspector>('legendas');
   useEffect(() => {
@@ -131,7 +134,7 @@ export function Inspector({
       <header className="painel__cabecalho">
         <span className="linha" style={{ gap: 'var(--e2)' }}>
           <IconeConfiguracoes size={19} />
-          <strong style={{ fontSize: 17 }}>Propriedades</strong>
+          <strong style={{ fontSize: 17 }}>{titulo}</strong>
         </span>
         {onRecolher && (
           <button type="button" className="botao-icone botao-icone--pequeno so-largo" aria-label="Fechar as propriedades" title="Fechar" onClick={onRecolher}>

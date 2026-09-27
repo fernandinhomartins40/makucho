@@ -13193,7 +13193,7 @@ button.midia-cartao__previa:disabled {
 
   /* Trilhas enxutas: só o ícone (e o olho) no começo de cada uma. */
   .editor[data-modo='completo'] .timeline__rolagem {
-    --rotulo-da-faixa: 64px !important;
+    --rotulo-da-faixa: 156px !important;
   }
 
   .editor[data-modo='completo'] .timeline__faixa {
@@ -13225,5 +13225,69 @@ button.midia-cartao__previa:disabled {
 @media (min-width: 900px) {
   .editor[data-modo='completo'][data-painel='fechado'] .editor__alca {
     left: calc(var(--col-rail) - 1px);
+  }
+}
+
+/* Ajustes no painel da esquerda: rola por inteiro, como as outras. */
+.painel-de-ajustes {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Computador: o começo das faixas no jeito do celular (e do CapCut):
+   atalhos na faixa de vídeo, ícone e olho nas outras, preso à esquerda. */
+@media (min-width: 900px) {
+  .editor[data-modo='completo'] .timeline__inicio {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    display: flex;
+    flex: 0 0 var(--rotulo-da-faixa);
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-right: 10px;
+    background: var(--surface-1);
+  }
+
+  .editor[data-modo='completo'] .timeline__atalho {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 3px;
+    width: 64px;
+    height: calc(100% - 10px);
+    max-height: 56px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 10px;
+    line-height: 1.1;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .editor[data-modo='completo'] .timeline__atalho:hover {
+    border-color: var(--primary);
+  }
+
+  .editor[data-modo='completo'] .timeline__atalho[aria-pressed='true'] {
+    border-color: var(--primary);
+    color: var(--accent);
+  }
+
+  .editor[data-modo='completo'] .timeline__icone-da-faixa {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text-secondary);
   }
 }
