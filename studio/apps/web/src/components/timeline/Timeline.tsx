@@ -194,6 +194,12 @@ type Arraste = {
    */
   min: number;
   max: number;
+  /**
+   * Trecho de vídeo com a ponta puxada (alças, como no CapCut): o pedaço
+   * do original, a velocidade e o fim da gravação -- e onde está agora.
+   */
+  fonte?: { inicio: number; fim: number; vel: number; limite: number };
+  fonteAtual?: { inicio: number; fim: number };
 };
 
 export function Timeline({
@@ -267,6 +273,14 @@ export function Timeline({
       });
       return;
     }
+    if (arraste.tipo === 'clipe' && arraste.modo !== 'mover') {
+      // Puxar a ponta do trecho corta (ou estende) no ORIGINAL; os
+      // trechos seguintes andam junto (ajustar_corte recompõe a fila).
+      if (arraste.fonteAtual) {
+        onOperacao({ op: 'ajustar_corte', clipId: arraste.id, sourceStartMs: Math.round(arraste.fonteAtual.inicio), sourceEndMs: Math.round(arraste.fonteAtual.fim) });
+      }
+      return;
+    }
     if (arraste.modo !== 'mover') {
       const inicio = Math.max(0, alinharAoFrame(arraste.atualMs));
       const duracao = Math.max(300, alinharAoFrame(arraste.atualDuracao));
@@ -316,6 +330,24 @@ export function Timeline({
           } else {
             elemento.style.width = `${base.width + px}px`;
           }
+        }
+        return;
+      }
+
+      // Alça do trecho de vídeo: mede no original, até o fim da gravação.
+      if (arraste.tipo === 'clipe' && arraste.modo !== 'mover' && arraste.fonte) {
+        const f = arraste.fonte;
+        const noOriginal = deslocamentoMs * f.vel;
+        arraste.fonteAtual =
+          arraste.modo === 'fim'
+            ? { inicio: f.inicio, fim: Math.min(f.limite, Math.max(f.inicio + 300 * f.vel, f.fim + noOriginal)) }
+            : { inicio: Math.max(0, Math.min(f.fim - 300 * f.vel, f.inicio + noOriginal)), fim: f.fim };
+        const dur = (arraste.fonteAtual.fim - arraste.fonteAtual.inicio) / f.vel;
+        arraste.atualDuracao = dur;
+        arraste.atualMs = arraste.modo === 'inicio' ? arraste.startMsInicial + (arraste.duracaoInicial - dur) : arraste.startMsInicial;
+        if (elemento) {
+          elemento.style.left = `${msParaPx(arraste.atualMs, zoom)}px`;
+          elemento.style.width = `${Math.max(6, msParaPx(dur, zoom))}px`;
         }
         return;
       }
@@ -374,7 +406,7 @@ export function Timeline({
   };
 
   const iniciarArraste =
-    (tipo: Arraste['tipo'], id: string, startMs: number, duracaoMs = 0, modo: Arraste['modo'] = 'mover', extraInicial = 0) =>
+    (tipo: Arraste['tipo'], id: string, startMs: number, duracaoMs = 0, modo: Arraste['modo'] = 'mover', extraInicial = 0, fonte?: Arraste['fonte']) =>
     (e: React.PointerEvent) => {
       if (!onOperacao) return;
       if (modo !== 'mover') e.stopPropagation();
@@ -389,11 +421,14 @@ export function Timeline({
           atualMs: startMs,
           atualDuracao: tipo === 'audio' ? extraInicial : duracaoMs,
           extraInicial,
+          ...(fonte ? { fonte } : {}),
           ...limitesDe(tipo, id, startMs, duracaoMs),
         };
         setArrastando(id);
       };
-      if (e.pointerType !== 'touch') {
+      // Mouse, ou uma alça (borda) no toque: começa na hora. Só mover o
+      // item inteiro pede segurar no toque (deslizar rola a timeline).
+      if (e.pointerType !== 'touch' || modo !== 'mover') {
         comecar(e.clientX);
         return;
       }
@@ -993,6 +1028,17 @@ export function Timeline({
                         onSelecionar?.(t.clip.id);
                       }}
                       onIniciarArraste={iniciarArraste('clipe', t.clip.id, t.inicioMs)}
+                      onAparar={
+                        onOperacao !== undefined
+                          ? (borda) =>
+                              iniciarArraste('clipe', t.clip.id, t.inicioMs, t.duracaoMs, borda, 0, {
+                                inicio: t.clip.sourceStartMs,
+                                fim: t.clip.sourceEndMs,
+                                vel: t.velocidade,
+                                limite: plan.sourceDurationMs,
+                              })
+                          : undefined
+                      }
                       velocidade={t.velocidade}
                       sourceInicioMs={t.clip.sourceStartMs}
                       sourceDuracaoMs={t.clip.sourceEndMs - t.clip.sourceStartMs}
@@ -1606,6 +1652,7 @@ function ClipeNaFaixa({
   sourceDuracaoMs,
   quadros,
   velocidade = 1,
+  onAparar,
 }: {
   id: string;
   funcao: string;
@@ -1624,6 +1671,8 @@ function ClipeNaFaixa({
   sourceDuracaoMs: number;
   quadros?: QuadrosDoVideo;
   velocidade?: number;
+  /** Alças nas pontas (trecho selecionado): cortar ou estender, como no CapCut. */
+  onAparar?: (borda: 'inicio' | 'fim') => (e: React.PointerEvent) => void;
 }) {
   const cor = corDaFuncao(funcao);
   const largura = Math.max(2, msParaPx(duracaoMs, zoom));
@@ -1669,6 +1718,12 @@ function ClipeNaFaixa({
         borderColor: selecionado ? 'var(--accent)' : risco === 'high' ? 'var(--warning)' : 'transparent',
       }}
     >
+      {selecionado && onAparar && (
+        <>
+          <span className="clipe__borda clipe__borda--inicio clipe__alca" aria-hidden title="Puxe para cortar o começo" onPointerDown={onAparar('inicio')} onClick={(e) => e.stopPropagation()} />
+          <span className="clipe__borda clipe__borda--fim clipe__alca" aria-hidden title="Puxe para cortar o fim" onPointerDown={onAparar('fim')} onClick={(e) => e.stopPropagation()} />
+        </>
+      )}
       <span
         className="clipe__frames"
         aria-hidden
