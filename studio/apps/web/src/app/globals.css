@@ -13482,14 +13482,24 @@ button.midia-cartao__previa:disabled {
 
 /* Alças do trecho selecionado (o jeito do CapCut): barras brancas nas
    pontas com um risco no meio; puxar corta ou estende o trecho. */
-.clipe--trecho .clipe__alca {
+.clipe__alca {
   z-index: 6;
   width: 14px;
   background: #fff;
   cursor: ew-resize;
 }
 
-.clipe--trecho .clipe__alca::after {
+/* Área de toque maior que o desenho: pega mesmo errando uns pixels. */
+.clipe__alca::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  left: -8px;
+  right: -8px;
+}
+
+.clipe__alca::after {
   top: 32%;
   bottom: 32%;
   left: 5px;
@@ -13499,20 +13509,31 @@ button.midia-cartao__previa:disabled {
   opacity: 1;
 }
 
-.clipe--trecho .clipe__borda--inicio.clipe__alca {
+.clipe__borda--inicio.clipe__alca {
   border-radius: 6px 0 0 6px;
 }
 
-.clipe--trecho .clipe__borda--fim.clipe__alca {
+.clipe__borda--fim.clipe__alca {
   border-radius: 0 6px 6px 0;
 }
 
+/* Item com alças: sem cortar a área de toque que passa da borda. */
+.clipe[data-selecionado]:has(.clipe__alca),
+.audio-do-trecho[data-selecionado]:has(.clipe__alca) {
+  overflow: visible;
+}
+
 @media (pointer: coarse) {
-  .clipe--trecho .clipe__alca {
-    width: 18px;
+  .clipe__alca {
+    width: 20px;
   }
 
-  .clipe--trecho .clipe__alca::after {
-    left: 7px;
+  .clipe__alca::after {
+    left: 8px;
+  }
+
+  .clipe__alca::before {
+    left: -12px;
+    right: -12px;
   }
 }

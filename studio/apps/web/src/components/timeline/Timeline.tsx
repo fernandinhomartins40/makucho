@@ -176,7 +176,7 @@ interface Props {
 }
 
 type Arraste = {
-  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia' | 'narracao';
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia' | 'narracao' | 'trilha';
   id: string;
   /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
   modo: 'mover' | 'inicio' | 'fim';
@@ -273,6 +273,20 @@ export function Timeline({
       });
       return;
     }
+    if (arraste.tipo === 'narracao' && arraste.modo !== 'mover') {
+      // Narração: o começo cortado é o ponto de onde a voz toca.
+      if (arraste.fonteAtual && arraste.fonte) {
+        onOperacao({
+          op: 'editar_narracao',
+          narracaoId: arraste.id,
+          timelineStartMs: Math.max(0, Math.round(arraste.atualMs)),
+          sourceStartMs: Math.round(arraste.fonteAtual.inicio),
+          durationMs: Math.max(200, Math.round(arraste.fonteAtual.fim - arraste.fonteAtual.inicio)),
+          assetDurationMs: Math.round(arraste.fonte.limite),
+        });
+      }
+      return;
+    }
     if (arraste.tipo === 'clipe' && arraste.modo !== 'mover') {
       // Puxar a ponta do trecho corta (ou estende) no ORIGINAL; os
       // trechos seguintes andam junto (ajustar_corte recompõe a fila).
@@ -292,6 +306,10 @@ export function Timeline({
         onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(100, duracao) });
       } else if (arraste.tipo === 'legenda') {
         onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
+      } else if (arraste.tipo === 'som') {
+        onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(50, Math.min(30_000, duracao)) });
+      } else if (arraste.tipo === 'trilha') {
+        onOperacao({ op: 'configurar_musica', timelineStartMs: inicio, durationMs: duracao });
       }
       return;
     }
@@ -335,7 +353,7 @@ export function Timeline({
       }
 
       // Alça do trecho de vídeo: mede no original, até o fim da gravação.
-      if (arraste.tipo === 'clipe' && arraste.modo !== 'mover' && arraste.fonte) {
+      if ((arraste.tipo === 'clipe' || arraste.tipo === 'narracao') && arraste.modo !== 'mover' && arraste.fonte) {
         const f = arraste.fonte;
         const noOriginal = deslocamentoMs * f.vel;
         arraste.fonteAtual =
@@ -388,7 +406,7 @@ export function Timeline({
     } else if (tipo === 'efeito') {
       for (const x of plan.screenEffects ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
     } else if (tipo === 'som') {
-      for (const x of plan.soundEffects) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + 600]);
+      for (const x of plan.soundEffects) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + (x.durationMs ?? 600)]);
     } else if (tipo === 'narracao') {
       for (const x of plan.voiceovers ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
     } else if (tipo === 'legenda') {
@@ -1133,17 +1151,17 @@ export function Timeline({
                           {a?.muted ? <IconeMudo size={12} /> : null}
                           {recursos.get(t.clip.id)?.audio ?? ''}
                         </span>
-                        {onOperacao && !a?.muted && (
+                        {onOperacao && !a?.muted && selecionado('audio', t.clip.id) && (
                           <>
                             <span
-                              className="clipe__borda clipe__borda--inicio"
+                              className="clipe__borda clipe__borda--inicio clipe__alca"
                               aria-hidden
                               title="Puxe para a esquerda: o som entra antes da imagem (J-cut)"
                               onPointerDown={iniciarArraste('audio', t.clip.id, t.inicioMs, 0, 'inicio', a?.leadMs ?? 0)}
                               onClick={(e) => e.stopPropagation()}
                             />
                             <span
-                              className="clipe__borda clipe__borda--fim"
+                              className="clipe__borda clipe__borda--fim clipe__alca"
                               aria-hidden
                               title="Puxe para a direita: o som continua depois da imagem (L-cut)"
                               onPointerDown={iniciarArraste('audio', t.clip.id, t.inicioMs, 0, 'fim', a?.tailMs ?? 0)}
@@ -1317,6 +1335,17 @@ export function Timeline({
                           selecionado={selecionado('narracao', n.id)}
                           arrastavel={onOperacao !== undefined}
                           onIniciarArraste={iniciarArraste('narracao', n.id, n.timelineStartMs, n.durationMs)}
+                          onRedimensionar={
+                            onOperacao !== undefined
+                              ? (borda) =>
+                                  iniciarArraste('narracao', n.id, n.timelineStartMs, n.durationMs, borda, 0, {
+                                    inicio: n.sourceStartMs ?? 0,
+                                    fim: (n.sourceStartMs ?? 0) + n.durationMs,
+                                    vel: 1,
+                                    limite: n.assetDurationMs ?? (n.sourceStartMs ?? 0) + n.durationMs,
+                                  })
+                              : undefined
+                          }
                           onSelecionar={() => {
                             onSelecionar?.(null);
                             onSelecionarItem?.({ tipo: 'narracao', id: n.id });
@@ -1335,14 +1364,15 @@ export function Timeline({
                       key={s.id}
                       id={`som-${s.id}`}
                       inicioMs={s.timelineStartMs}
-                      fimMs={s.timelineStartMs + 600}
+                      fimMs={s.timelineStartMs + (s.durationMs ?? 600)}
                       zoom={zoom}
                       altura={altura}
                       cor="#0f766e"
                       rotulo={NOME_DO_SOM[s.assetId] ?? 'Som'}
                       selecionado={selecionado('som', s.id)}
                       arrastavel={onOperacao !== undefined}
-                      onIniciarArraste={iniciarArraste('som', s.id, s.timelineStartMs, 600)}
+                      onIniciarArraste={iniciarArraste('som', s.id, s.timelineStartMs, s.durationMs ?? 600)}
+                      onRedimensionar={onOperacao !== undefined ? (borda) => iniciarArraste('som', s.id, s.timelineStartMs, s.durationMs ?? 600, borda) : undefined}
                       onSelecionar={() => {
                         onSelecionar?.(null);
                         onSelecionarItem?.({ tipo: 'som', id: s.id });
@@ -1354,8 +1384,20 @@ export function Timeline({
                   (plan.music ? (
                     <ItemSimples
                       id="trilha-trilha"
-                      inicioMs={0}
-                      fimMs={duracaoMs}
+                      inicioMs={plan.music.timelineStartMs ?? 0}
+                      fimMs={Math.min(duracaoMs, (plan.music.timelineStartMs ?? 0) + (plan.music.durationMs ?? duracaoMs))}
+                      onRedimensionar={
+                        onOperacao !== undefined
+                          ? (borda) =>
+                              iniciarArraste(
+                                'trilha',
+                                'trilha',
+                                plan.music!.timelineStartMs ?? 0,
+                                Math.min(duracaoMs, (plan.music!.timelineStartMs ?? 0) + (plan.music!.durationMs ?? duracaoMs)) - (plan.music!.timelineStartMs ?? 0),
+                                borda,
+                              )
+                          : undefined
+                      }
                       zoom={zoom}
                       altura={altura}
                       cor="#9333ea"
@@ -1567,15 +1609,15 @@ function ItemSimples({
         cursor: arrastavel ? 'grab' : 'pointer',
       }}
     >
-      {onRedimensionar && (
-        <span className="clipe__borda clipe__borda--inicio" aria-hidden onPointerDown={onRedimensionar('inicio')} onClick={(e) => e.stopPropagation()} />
+      {onRedimensionar && selecionado && (
+        <span className="clipe__borda clipe__borda--inicio clipe__alca" aria-hidden onPointerDown={onRedimensionar('inicio')} onClick={(e) => e.stopPropagation()} />
       )}
       <span className="clipe__texto">{rotulo}</span>
       {marcas?.map((m) => (
         <span key={m} className="clipe__marca" aria-hidden style={{ left: msParaPx(m, zoom) }} title="Ponto de movimento" />
       ))}
-      {onRedimensionar && (
-        <span className="clipe__borda clipe__borda--fim" aria-hidden onPointerDown={onRedimensionar('fim')} onClick={(e) => e.stopPropagation()} />
+      {onRedimensionar && selecionado && (
+        <span className="clipe__borda clipe__borda--fim clipe__alca" aria-hidden onPointerDown={onRedimensionar('fim')} onClick={(e) => e.stopPropagation()} />
       )}
     </div>
   );

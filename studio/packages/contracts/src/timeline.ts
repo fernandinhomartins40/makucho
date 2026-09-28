@@ -410,6 +410,10 @@ export const editarNarracaoSchema = z.object({
   gainDb: z.number().min(-30).max(12).optional(),
   fadeInMs: msSchema.max(3000).optional(),
   fadeOutMs: msSchema.max(3000).optional(),
+  /** Alças: cortar o começo (de onde a voz toca) e o fim (quanto dura). */
+  sourceStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(200).max(900_000).optional(),
+  assetDurationMs: z.number().int().min(200).max(900_000).optional(),
 });
 
 export const removerNarracaoSchema = z.object({
@@ -423,6 +427,7 @@ export const editarEfeitoSonoroSchema = z.object({
   soundEffectId: idSchema,
   timelineStartMs: msSchema.optional(),
   gainDb: z.number().min(-40).max(6).optional(),
+  durationMs: z.number().int().min(50).max(30_000).optional(),
 });
 
 /**
@@ -447,6 +452,9 @@ export const configurarMusicaSchema = z.object({
   fadeInMs: z.number().int().min(0).max(5000).optional(),
   fadeOutMs: z.number().int().min(0).max(5000).optional(),
   duckUnderVoice: z.boolean().optional(),
+  /** A janela da música no vídeo (alças da faixa Trilha). */
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(300).max(3_600_000).optional(),
 });
 
 /** Um efeito de tela novo (vinheta, flash, tremor...) na faixa Efeitos. */
@@ -922,6 +930,7 @@ export function aplicarOperacao(
                 ...e,
                 ...(operacao.timelineStartMs !== undefined ? { timelineStartMs: operacao.timelineStartMs } : {}),
                 ...(operacao.gainDb !== undefined ? { gainDb: operacao.gainDb } : {}),
+                ...(operacao.durationMs !== undefined ? { durationMs: operacao.durationMs } : {}),
               }
             : e,
         ),
@@ -1295,6 +1304,9 @@ export function aplicarOperacao(
                 ...(operacao.gainDb !== undefined ? { gainDb: operacao.gainDb } : {}),
                 ...(operacao.fadeInMs !== undefined ? { fadeInMs: operacao.fadeInMs } : {}),
                 ...(operacao.fadeOutMs !== undefined ? { fadeOutMs: operacao.fadeOutMs } : {}),
+                ...(operacao.sourceStartMs !== undefined ? { sourceStartMs: operacao.sourceStartMs } : {}),
+                ...(operacao.durationMs !== undefined ? { durationMs: operacao.durationMs } : {}),
+                ...(operacao.assetDurationMs !== undefined ? { assetDurationMs: operacao.assetDurationMs } : {}),
               }
             : n,
         ),

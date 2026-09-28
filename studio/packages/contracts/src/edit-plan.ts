@@ -419,6 +419,9 @@ export const musicTrackSchema = z.object({
   fadeOutMs: msSchema.max(5000),
   // Abaixa a musica enquanto ha fala.
   duckUnderVoice: z.boolean(),
+  /** Onde a música começa e quanto fica no vídeo (ausente = o vídeo todo). */
+  timelineStartMs: msSchema.optional(),
+  durationMs: z.number().int().min(300).max(3_600_000).optional(),
 });
 
 /**
@@ -448,6 +451,10 @@ export const narracaoSchema = z.object({
   gainDb: z.number().min(-30).max(12),
   fadeInMs: msSchema.max(3000).optional(),
   fadeOutMs: msSchema.max(3000).optional(),
+  /** Começo cortado: de onde a gravação da voz começa a tocar (ms). */
+  sourceStartMs: msSchema.optional(),
+  /** Quanto a gravação inteira dura: o limite para estender de volta. */
+  assetDurationMs: z.number().int().min(200).max(900_000).optional(),
 });
 export type Narracao = z.infer<typeof narracaoSchema>;
 
@@ -456,6 +463,8 @@ export const soundEffectSchema = z.object({
   assetId: idSchema,
   timelineStartMs: msSchema,
   gainDb: z.number().min(-40).max(6),
+  /** Cortado na alça: toca só isso (ausente = o som inteiro). */
+  durationMs: z.number().int().min(50).max(30_000).optional(),
 });
 
 /**

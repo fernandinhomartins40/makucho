@@ -513,6 +513,11 @@ export function Palco({
       audio.volume = Math.min(1, 10 ** (e.gainDb / 20));
       audio.currentTime = 0;
       void audio.play().catch(() => undefined);
+      // Cortado na alça: para na duração escolhida.
+      if (e.durationMs !== undefined) {
+        const este = audio;
+        setTimeout(() => este.pause(), e.durationMs);
+      }
     },
     [urlDoAsset],
   );
@@ -559,7 +564,8 @@ export function Palco({
           continue;
         }
         a.volume = Math.min(1, Math.max(0, 10 ** (n.gainDb / 20)));
-        const alvo = dentro / 1000;
+        // Com o começo cortado, a voz toca a partir do ponto escolhido.
+        const alvo = ((n.sourceStartMs ?? 0) + dentro) / 1000;
         if (Math.abs(a.currentTime - alvo) > 0.2) a.currentTime = alvo;
         if (a.paused) void a.play().catch(() => undefined);
       }
@@ -569,6 +575,25 @@ export function Palco({
   useEffect(() => {
     if (!tocando) sincronizarNarracoes(0, false);
   }, [tocando, sincronizarNarracoes]);
+
+  /** A música toca só dentro da janela dela (alças da faixa Trilha). */
+  const sincronizarTrilha = useCallback(
+    (ms: number) => {
+      const a = trilhaRef.current;
+      const m = plan.music;
+      if (!a || !m) return;
+      const inicio = m.timelineStartMs ?? 0;
+      const fim = m.durationMs !== undefined ? inicio + m.durationMs : Number.POSITIVE_INFINITY;
+      if (ms < inicio || ms >= fim) {
+        if (!a.paused) a.pause();
+        return;
+      }
+      const alvo = a.duration ? ((ms - inicio) / 1000) % a.duration : (ms - inicio) / 1000;
+      if (Math.abs(a.currentTime - alvo) > 0.35) a.currentTime = alvo;
+      if (a.paused) void a.play().catch(() => undefined);
+    },
+    [plan.music],
+  );
 
   // ---------- Reprodução ----------
   const intervaloDoAviso = useMemo(
@@ -608,6 +633,7 @@ export function Palco({
 
       for (const e of sonsQueComecam(plan, de, relogio.ms)) tocarSom(e);
       sincronizarNarracoes(relogio.ms, true);
+      sincronizarTrilha(relogio.ms);
       aplicar(relogio.ms, true);
       tempoAoVivo.current = relogio.ms;
       desenharFundo();
@@ -631,7 +657,7 @@ export function Palco({
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes, intervaloDoAviso]);
+  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes, sincronizarTrilha, intervaloDoAviso]);
 
   // ---------- Trilha ----------
   const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;
@@ -642,13 +668,9 @@ export function Palco({
     // presente, então a prévia usa o volume "abaixado".
     const db = plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0);
     audio.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * 4));
-    if (tocando) {
-      if (audio.duration) audio.currentTime = (relogioRef.current.ms / 1000) % audio.duration;
-      void audio.play().catch(() => undefined);
-    } else {
-      audio.pause();
-    }
-  }, [tocando, plan.music]);
+    if (tocando) sincronizarTrilha(relogioRef.current.ms);
+    else audio.pause();
+  }, [tocando, plan.music, sincronizarTrilha]);
 
   const tocarDe = useCallback(
     (msNaTimeline: number) => {

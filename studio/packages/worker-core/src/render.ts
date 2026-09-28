@@ -301,7 +301,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       n.fadeOutMs ? `afade=t=out:st=${Math.max(0, (n.durationMs - n.fadeOutMs) / 1000).toFixed(3)}:d=${(n.fadeOutMs / 1000).toFixed(3)}` : '',
     ].filter(Boolean);
     partes.push(
-      `[${indice}:a]atrim=0:${dur},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,` +
+      `[${indice}:a]atrim=${((n.sourceStartMs ?? 0) / 1000).toFixed(3)}:${(((n.sourceStartMs ?? 0) + n.durationMs) / 1000).toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,` +
         (n.gainDb ? `volume=${n.gainDb}dB,` : '') +
         (fades.length ? `${fades.join(',')},` : '') +
         `adelay=delays=${Math.max(0, Math.round(n.timelineStartMs))}:all=1[nr${k}]`,
@@ -533,12 +533,17 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     // vez de acabar no meio.
     entradas.push('-stream_loop', '-1', '-i', opcoes.musica);
     const m = plano.music;
+    // A janela da música no vídeo (alças da faixa Trilha); sem ela, tudo.
+    const inicioS = Math.min(Math.max(0, (m.timelineStartMs ?? 0) / 1000), Math.max(0, duracaoTotalS - 0.3));
+    const janelaS = Math.max(0.3, Math.min(duracaoTotalS - inicioS, m.durationMs !== undefined ? m.durationMs / 1000 : duracaoTotalS));
     const fadeIn = (m.fadeInMs / 1000).toFixed(2);
-    const fadeOut = Math.min(m.fadeOutMs / 1000, duracaoTotalS / 2);
+    const fadeOut = Math.min(m.fadeOutMs / 1000, janelaS / 2);
     partes.push(
-      `[${indice}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${duracaoTotalS.toFixed(3)},asetpts=PTS-STARTPTS,` +
+      `[${indice}:a]aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${janelaS.toFixed(3)},asetpts=PTS-STARTPTS,` +
         `volume=${m.gainDb}dB,afade=t=in:st=0:d=${fadeIn},` +
-        `afade=t=out:st=${Math.max(0, duracaoTotalS - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(2)}[trilha]`,
+        `afade=t=out:st=${Math.max(0, janelaS - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(2)}` +
+        (inicioS > 0 ? `,adelay=delays=${Math.round(inicioS * 1000)}:all=1` : '') +
+        `,apad=whole_dur=${duracaoTotalS.toFixed(3)}[trilha]`,
     );
 
     if (m.duckUnderVoice) {
@@ -560,14 +565,16 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     if (atraso >= duracaoTotalS * 1000) return;
     const cauda = `volume=${e.gainDb}dB,aformat=sample_rates=48000:channel_layouts=stereo,adelay=delays=${atraso}:all=1[sfx${k}]`;
 
+    // Cortado na alça: só a duração escolhida.
+    const corte = e.durationMs !== undefined ? `atrim=0:${(e.durationMs / 1000).toFixed(3)},asetpts=PTS-STARTPTS,` : '';
     if (ehEfeitoSonoroEmbutido(e.assetId)) {
-      partes.push(`${somEmbutido(e.assetId)},${cauda}`);
+      partes.push(`${somEmbutido(e.assetId)},${corte}${cauda}`);
     } else {
       const caminho = opcoes.sons?.[e.assetId];
       if (!caminho) return;
       const indice = proximaEntrada++;
       entradas.push('-i', caminho);
-      partes.push(`[${indice}:a]atrim=0:3,asetpts=PTS-STARTPTS,${cauda}`);
+      partes.push(`[${indice}:a]atrim=0:${e.durationMs !== undefined ? (e.durationMs / 1000).toFixed(3) : '3'},asetpts=PTS-STARTPTS,${cauda}`);
     }
     sons.push(`[sfx${k}]`);
   });
