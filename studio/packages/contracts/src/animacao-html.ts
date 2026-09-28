@@ -21,6 +21,7 @@
 
 import { z } from 'zod';
 import { LAYOUTS_DA_CENA, divisaoDaCena } from './cenas-animadas';
+import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
 
@@ -103,7 +104,7 @@ export interface OpcoesDoDocumento {
   duracaoMs: number;
   /** Onde está o gsap.min.js (render: "gsap.min.js"; prévia: URL do Studio). */
   gsap: string;
-  /** Pasta das fontes Inter (render: "" = a própria pasta; prévia: "/fonts/"). */
+  /** Pasta das fontes (render: "" = a própria pasta; prévia: "/fonts/"). */
   fontes: string;
   /** Origens liberadas na política de conteúdo (render: 'self'; prévia: a do Studio). */
   origens: string;
@@ -116,12 +117,44 @@ export interface OpcoesDoDocumento {
 
 const ESC = (s: string) => s.replace(/<\/(script|style)/gi, '<\\/$1');
 
+// ---------- Fontes ----------
+
+/** As famílias que a animação pode usar: as mesmas 70+ fontes livres das legendas. */
+export const FAMILIAS_DA_ANIMACAO: ReadonlyArray<{ familia: string; arquivo: string; categoria: string }> = (() => {
+  const vistas = new Set<string>();
+  const out: Array<{ familia: string; arquivo: string; categoria: string }> = [];
+  for (const f of Object.values(FONTES_DE_VIDEO)) {
+    if (vistas.has(f.nomeAss)) continue;
+    vistas.add(f.nomeAss);
+    out.push({ familia: f.nomeAss, arquivo: f.arquivo, categoria: f.categoria });
+  }
+  return out;
+})();
+
+/**
+ * As fontes que o CSS da animação usa (pelo nome da família). As Inter
+ * vão sempre: são o texto padrão da cena. Só as usadas entram no
+ * documento -- e só os arquivos delas vão para o render.
+ */
+export function fontesDaComposicao(css: string): Array<{ familia: string; arquivo: string }> {
+  const baixo = css.toLowerCase();
+  const usadas = FAMILIAS_DA_ANIMACAO.filter((f) => {
+    const nome = f.familia.toLowerCase();
+    return f.familia.startsWith('Inter ') || baixo.includes(`'${nome}'`) || baixo.includes(`"${nome}"`);
+  });
+  return usadas.map(({ familia, arquivo }) => ({ familia, arquivo }));
+}
+
 /** O CSS base: fontes, cores da paleta e o fundo escuro do painel (o visual das referências). */
-function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean) {
-  return `@font-face { font-family: 'Inter ExtraBold'; src: url('${o.fontes}Inter-ExtraBold.ttf'); }
-@font-face { font-family: 'Inter SemiBold'; src: url('${o.fontes}Inter-SemiBold.ttf'); }
+function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean, css: string) {
+  // font-display: block -- o quadro espera a fonte em vez de desenhar
+  // com a reserva (serifada) e trocar depois.
+  const faces = fontesDaComposicao(css)
+    .map((f) => `@font-face { font-family: '${f.familia}'; src: url('${o.fontes}${f.arquivo}'); font-display: block; }`)
+    .join('\n');
+  return `${faces}
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
-#cena { position: relative; width: 100%; height: 100%; overflow: hidden; font-family: 'Inter SemiBold'; color: #F1F3F4;
+#cena { position: relative; width: 100%; height: 100%; overflow: hidden; font-family: 'Inter SemiBold', 'Inter ExtraBold', sans-serif; color: #F1F3F4;
   --azul: #7BAAF7; --azul-forte: #4285F4; --vermelho: #EA4335; --amarelo: #FBBC04; --verde: #34A853; --roxo: #A142F4; --laranja: #FA7B17;
   --texto: #F1F3F4; --apagado: #9AA0A6; --cartao: #1E2126; --borda: rgba(255,255,255,0.10); --marca: ${o.corDaMarca ?? '#7BAAF7'}; }
 #cena * { box-sizing: border-box; }
@@ -154,7 +187,7 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>${cssBase(o, area, comFundo)}
+<style>${cssBase(o, area, comFundo, c.css)}
 ${ESC(c.css)}</style>
 <script src="${o.gsap}"></script>
 </head><body>
@@ -192,7 +225,8 @@ function cyrb53(s: string, semente = 0): string {
 }
 
 /** Versão do formato do vídeo pronto: mudar invalida os antigos. */
-const VERSAO_DO_VIDEO = 'v1';
+// v2: as fontes que o CSS usa (antes só as Inter carregavam).
+const VERSAO_DO_VIDEO = 'v2';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área
@@ -227,17 +261,27 @@ export function chaveDoArquivoDaAnimacao(workspaceId: string, chave: string): st
 
 // ---------- Para a IA ----------
 
-/** As regras do HyperFrames (skills hyperframes-core / -animation), resumidas para o agente. */
+/** As fontes, agrupadas, para a IA escolher pelo nome exato. */
+function listaDeFontes(): string {
+  const grupos: Record<string, string[]> = {};
+  for (const f of FAMILIAS_DA_ANIMACAO) (grupos[f.categoria] ??= []).push(`'${f.familia}'`);
+  return Object.entries(grupos)
+    .map(([c, fs]) => `${c.replace('_', ' ')}: ${fs.join(', ')}`)
+    .join('\n  ');
+}
+
+/** As regras do HyperFrames (skills hyperframes-core / -animation / talking-head-recut), resumidas para a IA. */
 export const REGRAS_DA_ANIMACAO_HTML = `ANIMAÇÃO EM HTML (HyperFrames). Você entrega três textos:
 - html: o miolo. Ele vai DENTRO de #area (a área da animação: no meio_a_meio é o painel, 1080 x a altura do painel; no cartão e na tela cheia é o quadro todo, 1080x1920). Use position:absolute ou flex dentro de #area.
-- css: estilos (classes e ids seus). Fontes disponíveis: 'Inter ExtraBold' (títulos) e 'Inter SemiBold' (texto). Cores prontas em variáveis: var(--azul) var(--azul-forte) var(--vermelho) var(--amarelo) var(--verde) var(--roxo) var(--laranja) var(--texto) var(--apagado) var(--cartao) var(--borda) var(--marca).
+- css: estilos (classes e ids seus). Use SÓ estas fontes, pelo nome exato entre aspas (outra fonte não existe no servidor e sai serifada):
+  ${listaDeFontes()}
+  Variáveis prontas (opcionais): var(--texto) var(--apagado) var(--cartao) var(--borda) var(--marca) var(--azul) var(--vermelho) var(--amarelo) var(--verde) var(--roxo) var(--laranja).
 - script: os movimentos, com GSAP, na linha do tempo \`tl\` que JÁ EXISTE (pausada). Ex.: tl.from('#titulo', { y: 40, opacity: 0, duration: 0.4, ease: 'back.out(1.6)' }, 0.2). O 3º argumento é o SEGUNDO em que o movimento começa, contado do início da animação -- ponha cada coisa no instante da palavra que a fala diz.
-Regras (senão a animação é recusada ou sai errada):
-- Nada de rede, fetch, imagens de fora, emoji (não há fonte de emoji no servidor): ícones em SVG no próprio html.
-- Nada de Math.random, Date, setTimeout, setInterval, requestAnimationFrame, repeat:-1, play(); nada de criar outra timeline.
-- Movimento só com x, y, scale, rotation, opacity, color, backgroundColor, borderColor, strokeDashoffset (desenhar linha de SVG). Nada de animar width/height/top/left.
+Regras técnicas (senão a animação é recusada ou sai errada):
+- Nada de rede, fetch, imagens de fora, emoji (não há fonte de emoji no servidor): ícones e desenhos em SVG no próprio html.
+- Nada de Math.random, Date, setTimeout, setInterval, requestAnimationFrame, repeat:-1, play(); nada de criar outra timeline. Irregularidade "à mão": números fixos escritos por você.
+- Anime transform e opacidade (x, y, scale, rotation, opacity), cores e strokeDashoffset (desenhar SVG); clipPath para revelar. Nada de animar width/height/top/left.
 - Estado inicial dentro do tween (tl.from / tl.fromTo), não num transform do CSS do mesmo elemento.
-- Nada de <br>; texto quebra sozinho (defina largura). Centralize com flex, não com translate(-50%).
-- Texto mínimo 28px; títulos 56-96px; cartões com cantos 28-36px, fundo var(--cartao) e borda 2px var(--borda).
-- No cartão (sobre o vídeo), não cubra o rosto: topo do quadro (top 140-300px) ou logo acima da legenda. Fundo transparente fora do cartão.
-- Estilo das referências (vídeos de tecnologia): escuro, cartões arredondados, ondas de áudio de barras, pílulas com bolinha colorida, seletores com cursor que clica, barras vermelho→verde, carimbo girado que "bate", check verde que aparece, entradas com leve "pop" (back.out) e 0.3-0.5 s por movimento.`;
+- Nada de <br>; o texto quebra sozinho (defina largura). Centralize com flex, não com translate(-50%).
+- Vídeo vertical, visto no celular: título 88-132px, texto 30-40px, rótulo 20-24px, número em destaque 64-120px; margens laterais 48-72px.
+- No cartão (sobre o vídeo), não cubra o rosto: topo do quadro (top 140-360px) ou a faixa de baixo (acima da legenda, bottom 380-700px). Fundo transparente fora do cartão.`;

@@ -5,7 +5,7 @@
 // Se a IA falhar, o vídeo sai sem animação -- com o motivo registrado.
 // ============================================================
 
-import type { EditPlanV1 } from '@makucho/studio-contracts';
+import { documentoDaComposicao, type EditPlanV1 } from '@makucho/studio-contracts';
 import { AnimacoesDaFalaService } from '../src/modules/ai/animacoes-da-fala.service';
 import { PropostaService } from '../src/modules/ai/proposta.service';
 
@@ -88,6 +88,20 @@ async function main() {
   t('a que veio com problema foi corrigida (uma volta a mais)', tentativasDaSegunda === 2 && camadas.some((m) => m.composicao?.titulo === 'Voz natural'));
   t('entram como camada html no instante e no layout planejados', camadas[0]?.kind === 'html' && camadas[0].timelineStartMs === 1000 && camadas[0].composicao?.layout === 'meio_a_meio' && camadas[1]?.composicao?.layout === 'cartao');
   t('o vídeo de cada uma já é pedido e a nota fica no projeto', a.pedidos.length === 2 && a.notas.some((n) => n.startsWith('A IA criou 2 animações')));
+
+  // 1b. O estilo que a IA escolhe vai para a escrita (o cartão de referência dele) e para a nota.
+  const sistemas: string[] = [];
+  const e = montar((usuario, sis) => {
+    if (sis.includes('diretor')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'meio_a_meio', lado: 'baixo', tipo: 'citacao', intencao: 'a frase forte', conteudo: { titulo: 'Gemini' } }] });
+    sistemas.push(sis);
+    return boa('Gemini');
+  });
+  const re = await e.servico.criarNaMontagem(sistema as never, 'p1');
+  const ce = e.atual().mediaLayers?.[0]?.composicao;
+  t('o estilo escolhido chega à escrita com o cartão de referência', re.criadas === 1 && sistemas[0]!.includes('ESTILO DO VÍDEO: Editorial') && sistemas[0]!.includes('ref-editorial'));
+  t('meio a meio respeita o lado planejado e o estilo pinta o próprio fundo', ce?.lado === 'baixo' && ce?.semFundo === true && e.notas.some((n) => n.includes('estilo Editorial')));
+  const docF = documentoDaComposicao({ html: '<p>x</p>', css: ".t { font-family: 'Playfair Display'; }", script: 'tl.to("p", { opacity: 1 }, 0);', layout: 'cartao' }, { duracaoMs: 3000, gsap: 'g.js', fontes: '/fonts/', origens: "'self'" });
+  t('o documento carrega as fontes que o CSS usa (e não as outras)', docF.includes("url('/fonts/PlayfairDisplay-Bold.ttf')") && docF.includes('Inter-SemiBold.ttf') && !docF.includes('Bangers'));
 
   // 2. IA fora do ar: sem animação, mas com o motivo gravado.
   const b = montar(() => {

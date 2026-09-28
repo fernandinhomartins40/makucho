@@ -14,7 +14,7 @@
 import { copyFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { documentoDaComposicao, type JobDeAnimacao } from '@makucho/studio-contracts';
+import { documentoDaComposicao, fontesDaComposicao, type JobDeAnimacao } from '@makucho/studio-contracts';
 import { executarBinario } from '@makucho/studio-worker-core';
 
 /** `import()` de verdade (o TypeScript em CommonJS trocaria por require, e o produtor é ESM). */
@@ -50,7 +50,7 @@ export async function prepararAnimacao(
     'utf8',
   );
   await copyFile(require.resolve('gsap/dist/gsap.min.js'), join(comp, 'gsap.min.js'));
-  for (const f of ['Inter-ExtraBold.ttf', 'Inter-SemiBold.ttf']) {
+  for (const { arquivo: f } of fontesDaComposicao(job.composicao.css)) {
     const origem = join(opcoes.pastaDeFontes, f);
     if (existsSync(origem)) await copyFile(origem, join(comp, f));
   }

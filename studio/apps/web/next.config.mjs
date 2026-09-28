@@ -22,6 +22,13 @@ const nextConfig = {
   htmlLimitedBots: /.*/,
   poweredByHeader: false,
 
+  // As animações (HyperFrames) rodam num iframe isolado, de origem nula:
+  // o navegador só entrega fonte a ele com CORS. Sem isto o texto da
+  // prévia saía serifado (a fonte reserva).
+  async headers() {
+    return [{ source: '/fonts/:arquivo*', headers: [{ key: 'Access-Control-Allow-Origin', value: '*' }] }];
+  },
+
   transpilePackages: ['@makucho/studio-contracts'],
 
   images: {
