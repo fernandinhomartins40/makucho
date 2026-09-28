@@ -40,6 +40,8 @@ export const CHAMADAS_DE_IA = [
   'montar_por_cenas',
   // #12: o "Peça à IA" com ferramentas (a IA decide o que usar, em passos).
   'agente_de_edicao',
+  // #13: as animações em HTML (HyperFrames) que a montagem cria da fala.
+  'animar_fala',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -59,6 +61,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   sugerir_midias: 'Mídias sugeridas',
   montar_por_cenas: 'Montagem pelas cenas',
   agente_de_edicao: 'Edição com ferramentas',
+  animar_fala: 'Animações da fala',
 };
 
 // ---------- Modelos ----------
@@ -108,6 +111,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   sugerir_midias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   montar_por_cenas: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   agente_de_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  animar_fala: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /** Compatibilidade: so o modelo de cada chamada. */

@@ -25,6 +25,7 @@ import { AnaliseService } from './analise.service';
 import { MidiasService } from './midias.service';
 import { MontagemVisualService } from './montagem-visual.service';
 import { AgenteService } from './agente.service';
+import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { StorageService } from '../../common/storage.service';
 import { PromptsService } from './prompts.service';
 import { PropostaService } from './proposta.service';
@@ -44,6 +45,7 @@ import { UsoDeIaService } from './uso.service';
     MidiasService,
     MontagemVisualService,
     AgenteService,
+    AnimacoesDaFalaService,
     StorageService,
     AiService,
     AnaliseService,

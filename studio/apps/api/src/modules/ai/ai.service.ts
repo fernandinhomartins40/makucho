@@ -79,6 +79,8 @@ export interface PedidoDeIa {
   semCache?: boolean;
   /** Substitui o raciocinio da tabela (a segunda tentativa da selecao). */
   raciocinio?: Raciocinio;
+  /** Tempo máximo desta resposta (respostas longas, como uma animação). */
+  tempoMaximoMs?: number;
 }
 
 export interface ResultadoDeIa {
@@ -193,6 +195,7 @@ export class AiService {
       maxTokens: pedido.maxTokens,
       raciocinio: config.raciocinio,
       sinal: pedido.sinal,
+      ...(pedido.tempoMaximoMs ? { tempoMaximoMs: pedido.tempoMaximoMs } : {}),
     });
 
     const custo = await this.uso.registrar(

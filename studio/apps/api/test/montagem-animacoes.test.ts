@@ -1,10 +1,12 @@
 // ============================================================
-// A montagem automática cria as animações (HyperFrames) pelo agente,
-// antes de entregar o projeto. Se o agente falhar, o vídeo sai mesmo
-// assim, sem animação.
+// A montagem automática cria as animações (HyperFrames) com chamadas
+// próprias: planeja os momentos, escreve cada animação em paralelo,
+// corrige UMA vez a que vier com problema e grava a nota no projeto.
+// Se a IA falhar, o vídeo sai sem animação -- com o motivo registrado.
 // ============================================================
 
 import type { EditPlanV1 } from '@makucho/studio-contracts';
+import { AnimacoesDaFalaService } from '../src/modules/ai/animacoes-da-fala.service';
 import { PropostaService } from '../src/modules/ai/proposta.service';
 
 let ok = 0,
@@ -15,51 +17,97 @@ const t = (nome: string, cond: boolean) => {
 };
 
 const plano = {
-  clips: [{ id: 'c1', origin: 'fala' }],
-  mediaLayers: [] as unknown[],
+  schemaVersion: '1.0',
+  projectId: 'p1',
+  sourceMediaId: 'm1',
+  sourceDurationMs: 60_000,
+  fps: 30,
+  canvas: { aspectRatio: '9:16', width: 1080, height: 1920 },
+  targetDurationMs: 30_000,
+  framework: 'authority_education',
+  clips: [{ id: 'c1', sourceStartMs: 0, sourceEndMs: 30_000, timelineStartMs: 0, role: 'hook', transcriptSegmentIds: ['s1'], semanticRisk: 'low', reason: 'x', origin: 'fala' }],
+  captions: { enabled: true, styleId: 'padrao', wordsPerBlock: 3, position: 'bottom', highlightActiveWord: true },
+  overlays: [],
+  soundEffects: [],
+  transitions: [],
+  render: { fps: 30, videoCodec: 'h264', audioCodec: 'aac', crf: 23, audioBitrateKbps: 128, loudnessTargetLufs: -14 },
 } as unknown as EditPlanV1;
 
-function montar(agente: unknown) {
+const palavras = 'o google acabou de lançar o gemini três ponto oito flash tts uma voz muito mais natural e ela consegue rir suspirar e sussurrar'
+  .split(' ')
+  .map((w, i) => ({ startMs: 500 + i * 700, word: w }));
+
+const boa = (titulo: string) => JSON.stringify({ titulo, html: '<div id="a" class="t">Gemini</div>', css: ".t { font-family: 'Inter ExtraBold'; font-size: 90px; }", script: "tl.fromTo('#a', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 }, 0.5);" });
+const ruim = JSON.stringify({ titulo: 'x', html: '<div id="a">x</div>', css: '', script: "tl.to('#a', { x: Math.random() }, 0);" });
+
+function montar(respostas: (usuario: string, sistema: string) => string) {
   let atual: EditPlanV1 = JSON.parse(JSON.stringify(plano));
+  const notas: string[] = [];
+  const chamadas: string[] = [];
   const pedidos: string[] = [];
-  const estados: string[] = [];
-  const s = new PropostaService(
-    { project: { findUnique: async () => ({ id: 'p1', state: 'ANALYZING' }), update: async (a: { data: { state?: string } }) => { if (a.data.state) estados.push(a.data.state); } } } as never,
-    { analisar: async () => ({ ok: true, plano: atual, confianca: 0.9, avisos: [], problemas: [] }) } as never,
-    { salvar: async (_t: unknown, _p: string, doc: EditPlanV1) => { atual = doc; }, atual: async () => ({ document: atual }) } as never,
-    { publicarProgresso: async () => undefined } as never,
-    { separarNaMontagem: async () => 0 } as never,
-    agente
-      ? ({
-          executar: async (_t: unknown, _p: string, pedido: string) => {
-            pedidos.push(pedido);
-            await (agente as (p: EditPlanV1) => Promise<EditPlanV1>)(atual).then((p) => (atual = p));
-          },
-        } as never)
-      : undefined,
-  );
-  return { s, pedidos, estados, atual: () => atual };
+  const prisma = {
+    transcriptWord: { findMany: async () => palavras },
+    project: {
+      findUnique: async () => ({ id: 'p1', state: 'ANALYZING' }),
+      update: async (a: { data: { animationNote?: string } }) => {
+        if (a.data.animationNote) notas.push(a.data.animationNote);
+      },
+    },
+  };
+  const ai = {
+    chamar: async (p: { usuario: string; sistema: string; tempoMaximoMs?: number }) => {
+      chamadas.push(p.sistema.includes('diretor') ? `planejar:${p.tempoMaximoMs}` : `escrever:${p.tempoMaximoMs}`);
+      return { texto: respostas(p.usuario, p.sistema) };
+    },
+  };
+  const planos = { atual: async () => ({ document: atual }), salvar: async (_t: unknown, _p: string, doc: EditPlanV1) => { atual = doc; } };
+  const animacoes = { problemas: async () => [], preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return {}; } };
+  const servico = new AnimacoesDaFalaService(prisma as never, ai as never, planos as never, animacoes as never);
+  return { servico, notas, chamadas, pedidos, atual: () => atual, prisma, planos };
 }
 
 async function main() {
-  const html = (id: string) => ({ id, kind: 'html', assetId: 'html', layout: 'tela_cheia', timelineStartMs: 0, durationMs: 4000, composicao: { layout: 'meio_a_meio', html: 'x', css: '', script: 'tl' } });
+  const sistema = { userId: 'sistema', workspaceId: 'w', role: 'OWNER' } as const;
+  const plan = JSON.stringify({ momentos: [
+    { inicioS: 1, fimS: 7, layout: 'meio_a_meio', ideia: 'o nome do modelo', palavras: [] },
+    { inicioS: 9, fimS: 14, layout: 'cartao', ideia: 'voz natural', palavras: [] },
+    { inicioS: 10, fimS: 12, layout: 'cartao', ideia: 'sobrepõe a anterior: fica de fora', palavras: [] },
+  ] });
 
-  const a = montar(async (p) => ({ ...p, mediaLayers: [html('a1'), html('a2')] }) as unknown as EditPlanV1);
-  const r = await a.s.gerar('w', 'p1');
-  t('a montagem pede SÓ animações ao agente, lendo a fala palavra a palavra', a.pedidos.length === 1 && a.pedidos[0]!.includes('criar_animacao') && a.pedidos[0]!.includes('palavras=true') && a.pedidos[0]!.includes('Não mexa em cortes'));
-  t('as animações entram antes de entregar, e o aviso conta quantas', (a.atual().mediaLayers?.length ?? 0) === 2 && r.avisos.some((x) => x.includes('2 animações')) && a.estados.includes('PROPOSAL_READY'));
-
-  const b = montar(async () => {
-    throw new Error('IA fora do ar');
+  // 1. Caminho feliz, com uma animação corrigida na segunda tentativa.
+  let tentativasDaSegunda = 0;
+  const a = montar((usuario, sistema2) => {
+    if (sistema2.includes('diretor')) return plan;
+    if (usuario.includes('voz natural')) return (tentativasDaSegunda += 1) === 1 ? ruim : boa('Voz natural');
+    return '```json\n' + boa('Gemini') + '\n```';
   });
-  const rb = await b.s.gerar('w', 'p1');
-  t('agente falhou: a montagem sai mesmo assim, sem animação', rb.ok && b.estados.includes('PROPOSAL_READY') && !rb.avisos.some((x) => x.includes('animaç')));
+  const r = await a.servico.criarNaMontagem(sistema as never, 'p1');
+  const camadas = a.atual().mediaLayers ?? [];
+  t('planeja uma vez e escreve uma animação por momento, com mais tempo que as outras chamadas', a.chamadas[0] === 'planejar:150000' && a.chamadas.filter((c) => c === 'escrever:240000').length === 3);
+  t('momento que sobrepõe outro fica de fora', r.criadas === 2 && camadas.length === 2);
+  t('a que veio com problema foi corrigida (uma volta a mais)', tentativasDaSegunda === 2 && camadas.some((m) => m.composicao?.titulo === 'Voz natural'));
+  t('entram como camada html no instante e no layout planejados', camadas[0]?.kind === 'html' && camadas[0].timelineStartMs === 1000 && camadas[0].composicao?.layout === 'meio_a_meio' && camadas[1]?.composicao?.layout === 'cartao');
+  t('o vídeo de cada uma já é pedido e a nota fica no projeto', a.pedidos.length === 2 && a.notas.some((n) => n.startsWith('A IA criou 2 animações')));
 
-  process.env.STUDIO_ANIMAR_NA_MONTAGEM = 'off';
-  const c = montar(async (p) => p);
-  await c.s.gerar('w', 'p1');
-  t('STUDIO_ANIMAR_NA_MONTAGEM=off desliga', c.pedidos.length === 0);
-  delete process.env.STUDIO_ANIMAR_NA_MONTAGEM;
+  // 2. IA fora do ar: sem animação, mas com o motivo gravado.
+  const b = montar(() => {
+    throw Object.assign(new Error('x'), { publico: 'a chave da IA foi recusada' });
+  });
+  const rb = await b.servico.criarNaMontagem(sistema as never, 'p1');
+  t('IA fora do ar: nenhuma animação e o motivo vai para o projeto', rb.criadas === 0 && b.notas.some((n) => n.includes('a chave da IA foi recusada')));
+
+  // 3. A montagem chama o serviço e entrega mesmo quando ele não cria nada.
+  const estados: string[] = [];
+  const s = new PropostaService(
+    { project: { findUnique: async () => ({ id: 'p1', state: 'ANALYZING' }), update: async (x: { data: { state?: string } }) => { if (x.data.state) estados.push(x.data.state); } } } as never,
+    { analisar: async () => ({ ok: true, plano, confianca: 0.9, avisos: [], problemas: [] }) } as never,
+    { salvar: async () => undefined, atual: async () => ({ document: plano }) } as never,
+    { publicarProgresso: async () => undefined } as never,
+    { separarNaMontagem: async () => 0 } as never,
+    { criarNaMontagem: async () => ({ criadas: 3, nota: 'ok' }) } as never,
+  );
+  const rp = await s.gerar('w', 'p1');
+  t('a montagem cria as animações antes de entregar e avisa quantas', rp.avisos.some((x) => x.includes('3 animações')) && estados.includes('PROPOSAL_READY'));
 
   console.log(`\n${ok} ok, ${fail} falha(s)`);
   if (fail) process.exit(1);

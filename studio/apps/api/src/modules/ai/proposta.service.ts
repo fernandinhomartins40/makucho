@@ -26,7 +26,7 @@ import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { FilaService } from '../../common/fila.service';
 import { MidiasService } from './midias.service';
-import { AgenteService } from './agente.service';
+import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { AnaliseService } from './analise.service';
 
 export interface ResultadoDaProposta {
@@ -51,16 +51,6 @@ const VARREDURA_MS = 60_000;
 /** Projeto em "analisando" há mais que isso sem job é projeto órfão. */
 const ORFAO_APOS_MS = 3 * 60_000;
 
-/** O pedido que a montagem faz ao agente: só as animações da fala. */
-const PEDIDO_DE_ANIMACOES_NA_MONTAGEM = `Montagem automática: crie as ANIMAÇÕES do vídeo com criar_animacao (HyperFrames). Não mexa em cortes, legendas, textos, cor, trilha ou mídias -- só animações.
-1. Leia ler_fala com palavras=true.
-2. Escolha de 2 a 5 momentos-chave que ganham com uma explicação visual (um termo, uma lista, um número, uma comparação, um passo a passo, a chamada final), espaçados pelo vídeo.
-3. Para cada um, crie uma animação de 4 a 10 s que entra no ritmo das palavras: meio_a_meio para explicar, cartao para um detalhe rápido sem cobrir o rosto; tela_cheia no máximo uma vez.
-4. Se voltar "problemas", corrija e chame de novo. No fim, responda em uma frase o que animou.`;
-
-/** Tempo máximo das animações na montagem (a IA escreve e confere cada uma). */
-const TEMPO_DAS_ANIMACOES_MS = 4 * 60_000;
-
 @Injectable()
 export class PropostaService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(PropostaService.name);
@@ -75,7 +65,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly planos: EditPlansService,
     private readonly filas: FilaService,
     private readonly midias: MidiasService,
-    @Optional() private readonly agente?: AgenteService,
+    @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
   ) {}
 
   onModuleInit() {
@@ -226,31 +216,15 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Pede ao agente as animações da montagem (HyperFrames): só animações,
-   * sem mexer em cortes, legendas ou textos. Devolve quantas entraram.
+   * As animações da montagem (HyperFrames): chamadas próprias, com mais
+   * tempo e em paralelo (animacoes-da-fala.service). Devolve quantas
+   * entraram; o motivo de não ter nenhuma fica no projeto.
    */
   private async animarNaMontagem(sistema: TenantContext, projectId: string): Promise<number> {
-    if (!this.agente || process.env.STUDIO_AGENTE === 'off' || process.env.STUDIO_ANIMAR_NA_MONTAGEM === 'off') return 0;
+    if (!this.animacoesDaFala || process.env.STUDIO_ANIMAR_NA_MONTAGEM === 'off') return 0;
     await this.filas.publicarProgresso(projectId, 'montando', 88).catch(() => undefined);
-    const contar = async () => {
-      const p = await this.planos.atual(sistema, projectId).catch(() => null);
-      return (p?.document.mediaLayers ?? []).filter((m) => m.kind === 'html').length;
-    };
-    const antes = await contar();
-    let cronometro: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        this.agente.executar(sistema, projectId, PEDIDO_DE_ANIMACOES_NA_MONTAGEM),
-        new Promise((_, falha) => {
-          cronometro = setTimeout(() => falha(new Error('tempo esgotado')), TEMPO_DAS_ANIMACOES_MS);
-        }),
-      ]);
-    } catch (e) {
-      this.log.warn(`animações da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      clearTimeout(cronometro);
-    }
-    return Math.max(0, (await contar()) - antes);
+    const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId);
+    return r.criadas;
   }
 
   /**

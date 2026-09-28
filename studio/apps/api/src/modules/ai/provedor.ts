@@ -38,6 +38,8 @@ export interface RespostaDoProvedor {
 
 export interface PedidoAoProvedor {
   chamada: ChamadaDeIa;
+  /** Tempo máximo desta resposta (padrão: o do provedor). Respostas longas, como uma animação, pedem mais. */
+  tempoMaximoMs?: number;
   /** Instrução de sistema: vem de um prompt versionado em arquivo. */
   sistema: string;
   usuario: string;

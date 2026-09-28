@@ -464,6 +464,8 @@ model Project {
   audioProfile Json?
   videoKind    String?
   contentBrief String?
+  /// O que a montagem fez nas animações (ou por que não fez), para o editor mostrar.
+  animationNote String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

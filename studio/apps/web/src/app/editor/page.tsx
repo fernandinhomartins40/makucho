@@ -89,7 +89,7 @@ import {
   IconeRefazer,
   IconeExportar,
   IconeTocar,
-  IconeAviso,
+  IconeAviso, IconeAnimacao,
   IconeVoltar,
   IconeRenomear,
   IconeSalvo,
@@ -1259,6 +1259,14 @@ function Editor({ projectId }: { projectId: string }) {
               rolagem: duas barras no mesmo painel confundiam. */}
           {aba === 'ia' && (
             <div className="ia-secao ia-secao--topo">
+              {projeto?.animationNote && (
+                <div className="aviso aviso--info" role="status">
+                  <IconeAnimacao size={15} />
+                  <span style={{ fontSize: 12 }}>
+                    <strong>Animações:</strong> {projeto.animationNote.replace(/^Sem animações: /, 'nenhuma nesta montagem -- ')}
+                  </span>
+                </div>
+              )}
               {semIa && (
                 <div className="aviso aviso--atencao">
                   <IconeAviso size={15} />

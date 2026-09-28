@@ -243,6 +243,8 @@ export interface ProjetoDetalhado {
   editPlans: Array<{ id: string; version: number; createdAt: string }>;
   /** Por que a IA não montou a proposta atual, quando não montou. */
   aiFallbackReason?: string | null;
+  /** O que a montagem fez nas animações (ou por que não fez). */
+  animationNote?: string | null;
   /** Que áudio o vídeo tem (medido na transcrição): guia a montagem. */
   audioProfile?: { tipo: 'fala' | 'fala_parcial' | 'musica_ou_ambiente' | 'mudo'; coberturaDeFala: number; fracaoDeSilencio: number; descartados?: number } | null;
   /** O tipo de vídeo escolhido (null = automático). */

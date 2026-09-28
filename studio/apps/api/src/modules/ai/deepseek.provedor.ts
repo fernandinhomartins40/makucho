@@ -21,6 +21,9 @@ const URL_BASE = process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
  */
 const TIMEOUT_MS = 120_000;
 
+/** Uma volta do agente pode escrever uma animação inteira. */
+const TIMEOUT_DAS_FERRAMENTAS_MS = 240_000;
+
 /** Com raciocínio, o modelo pensa antes de responder: mais tempo. */
 const TIMEOUT_COM_RACIOCINIO_MS = 300_000;
 
@@ -38,7 +41,7 @@ export class DeepseekProvedor implements ProvedorDeIa {
     // tempo. `AbortSignal.any` é o que evita ter de escolher entre um
     // e outro.
     const raciocinio = pedido.raciocinio ?? 'desligado';
-    const relogio = AbortSignal.timeout(raciocinio === 'desligado' ? TIMEOUT_MS : TIMEOUT_COM_RACIOCINIO_MS);
+    const relogio = AbortSignal.timeout(pedido.tempoMaximoMs ?? (raciocinio === 'desligado' ? TIMEOUT_MS : TIMEOUT_COM_RACIOCINIO_MS));
     const sinal = pedido.sinal ? AbortSignal.any([pedido.sinal, relogio]) : relogio;
 
     let resposta: Response;
@@ -150,7 +153,9 @@ export class DeepseekProvedor implements ProvedorDeIa {
  * pensamento a cada volta (e custaria mais sem ganho medido).
  */
   async conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas> {
-  const relogio = AbortSignal.timeout(TIMEOUT_MS);
+  // Uma volta pode trazer uma animação inteira (html + css + script do
+  // criar_animacao): mais longa que as outras respostas.
+  const relogio = AbortSignal.timeout(TIMEOUT_DAS_FERRAMENTAS_MS);
   const sinal = pedido.sinal ? AbortSignal.any([pedido.sinal, relogio]) : relogio;
   const eu = this;
   let resposta: Response;
