@@ -13717,3 +13717,35 @@ button.midia-cartao__previa:disabled {
     right: -12px;
   }
 }
+
+/* Música e sons grátis (Openverse): busca, crédito para copiar. */
+.audios-livres__busca {
+  gap: var(--e2);
+  margin-bottom: var(--e2);
+}
+
+.audios-livres__credito {
+  display: grid;
+  gap: var(--e1);
+  margin: var(--e2) 0;
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.audios-livres__credito code {
+  white-space: normal;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.audios-livres__credito .botao {
+  justify-self: start;
+}
+
+.som__credito {
+  font-size: 11px;
+  opacity: 0.8;
+  word-break: break-word;
+}

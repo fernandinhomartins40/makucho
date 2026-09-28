@@ -158,6 +158,17 @@ async function main() {
   const camada = s.salvos[0]?.mediaLayers?.[0];
   t('sobreposição: entra em tela cheia, modo tela, no tempo pedido', camada?.assetId === 'asset-luz' && camada.blend === 'tela' && camada.layout === 'tela_cheia' && camada.timelineStartMs === 1000 && camada.durationMs === 2000);
 
+  // ---------- Trilha grátis pelo clima ----------
+  const faixa = (id: string, instrumental: boolean, duracaoMs: number) => ({ fonte: 'openverse', id, tipo: 'musica', titulo: `faixa ${id}`, autor: 'Autor', duracaoMs, previa: 'https://x/a.mp3', pagina: 'https://jamendo.com/t', origem: 'Jamendo (Openverse)', generos: [], tags: [], instrumental, licenca: { tipo: 'cc-by', nome: 'CC BY 3.0', exigeCredito: true } });
+  const bancoDeAudio = {
+    buscarAudio: async () => [faixa('vocal', false, 200_000), faixa('justa', true, 35_000), faixa('longa', true, 400_000)],
+    importarAudio: async (_t: unknown, p: { id: string }) => ({ id: `asset-${p.id}` }),
+  };
+  const m = montar([{ chamadas: [{ nome: 'escolher_trilha', args: { clima: 'corporativa' } }] }, { texto: 'Pus uma trilha.' }], bancoDeAudio);
+  await m.agente.executar(tenant as never, 'p1', 'x');
+  const retorno = m.vistas[1]!.find((x) => x.role === 'tool');
+  t('trilha: a instrumental mais curta que cobre o vídeo, com o crédito', m.salvos[0]?.music?.assetId === 'asset-justa' && Boolean(retorno?.content.includes('CC BY 3.0')));
+
   // ---------- Teto de passos ----------
   const e = montar([{ chamadas: [{ nome: 'conferir_plano', args: {} }] }]);
   const re = await e.agente.executar(tenant as never, 'p1', 'x');

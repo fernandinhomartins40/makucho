@@ -19,6 +19,8 @@ import type {
   MomentoVisual,
   PreferenciasDeVideo,
   ResultadoDaBusca,
+  ResultadoDeAudio,
+  TipoDeAudioLivre,
   SugestaoDeMarca,
   TipoDaBusca,
 } from '@makucho/studio-contracts';
@@ -489,6 +491,8 @@ export interface Asset {
   durationMs: number | null;
   /** Logo sem transparência ganha retângulo branco sobre o vídeo. */
   hasAlpha: boolean;
+  /** Licença gravada na importação (autor, link, crédito obrigatório). */
+  license?: unknown;
   createdAt: string;
 }
 
@@ -847,6 +851,13 @@ export const bancoDeMidia = {
       `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(opcoes.pagina ?? 1), ...(opcoes.fonte ? { fonte: opcoes.fonte } : {}) })}`,
     ),
   /** O servidor busca o item de novo na fonte, baixa e grava como asset do workspace (com licença). */
+  /** Música (Jamendo) ou efeito (Freesound) pelo Openverse, sem chave. */
+  buscarAudio: (pedido: { tipo: TipoDeAudioLivre; q?: string; clima?: string; pagina?: number }) =>
+    api<{ total: number; resultados: ResultadoDeAudio[] }>(
+      `/banco-de-midia/audio?${new URLSearchParams({ tipo: pedido.tipo, ...(pedido.q ? { q: pedido.q } : {}), ...(pedido.clima ? { clima: pedido.clima } : {}), pagina: String(pedido.pagina ?? 1) })}`,
+    ),
+  importarAudio: (r: Pick<ResultadoDeAudio, 'id' | 'tipo'>) =>
+    api<Asset & { resultado: ResultadoDeAudio }>('/banco-de-midia/importar-audio', { metodo: 'POST', corpo: { id: r.id, tipo: r.tipo } }),
   importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>
     api<MidiaImportada>('/banco-de-midia/importar', { metodo: 'POST', corpo: { fonte: r.fonte, tipo: r.tipo, id: r.id } }),
   /** Uma mídia escolhida na busca: a IA diz o momento, a duração e a composição. */

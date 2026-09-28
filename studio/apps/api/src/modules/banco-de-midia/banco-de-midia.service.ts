@@ -12,8 +12,8 @@
 
 import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import sharp from 'sharp';
-import { FONTES_DO_TIPO, TAMANHO_MAXIMO } from '@makucho/studio-contracts';
-import type { FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
+import { DURACAO_MAXIMA_DO_SOM_MS, DURACAO_MINIMA_DA_TRILHA_MS, FONTES_DO_TIPO, TAMANHO_MAXIMO, definicaoDoClima } from '@makucho/studio-contracts';
+import type { BuscaDeAudio, FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
@@ -30,6 +30,7 @@ import {
   licencaDoAsset,
   licencaDoOpenverse,
   linkSeguro,
+  openverseAudio,
   openverseImagem,
   pexelsFoto,
   pexelsVideo,
@@ -41,6 +42,7 @@ import {
   LICENCA_PEXELS,
   LICENCA_PIXABAY,
   type ColecaoDoIconify,
+  type AudioDoOpenverse,
   type ImagemDoOpenverse,
   type ImagemDoPixabay,
   type VideoDoPixabay,
@@ -191,6 +193,58 @@ export class BancoDeMidiaService {
       case 'fluent':
         return buscarIcones3d(q, fonte);
     }
+  }
+
+  // ---------- Áudio (Openverse: música do Jamendo, efeitos do Freesound) ----------
+
+  private readonly cacheDeAudio = new Map<string, { em: number; valor: ResultadoDeAudio[] }>();
+
+  /**
+   * Busca de música ou efeito sonoro, sem chave. Música: o clima vira a
+   * consulta curada; só faixas de 30 s ou mais. Efeito: até 15 s.
+   */
+  async buscarAudio(pedido: BuscaDeAudio): Promise<ResultadoDeAudio[]> {
+    const q = [definicaoDoClima(pedido.clima)?.busca, pedido.q].filter(Boolean).join(' ').slice(0, 100);
+    const pagina = pedido.pagina ?? 1;
+    const chave = `${pedido.tipo}|${q.toLowerCase()}|${pagina}`;
+    const guardado = this.cacheDeAudio.get(chave);
+    if (guardado && Date.now() - guardado.em < DIA) return guardado.valor;
+    const params = new URLSearchParams({ q, license: LICENCAS_OPENVERSE.join(','), page_size: '20', page: String(pagina), mature: 'false' });
+    if (pedido.tipo === 'musica') {
+      params.set('source', 'jamendo');
+      params.set('category', 'music');
+    } else {
+      params.set('source', 'freesound');
+    }
+    const r = await this.json<{ results: AudioDoOpenverse[] }>(`https://api.openverse.org/v1/audio/?${params}`, { headers: { 'User-Agent': AGENTE } }, 'Openverse');
+    const valor = r.results
+      .map((a) => openverseAudio(a, pedido.tipo))
+      .filter((x): x is ResultadoDeAudio => Boolean(x))
+      .filter((x) => (pedido.tipo === 'musica' ? (x.duracaoMs ?? 0) >= DURACAO_MINIMA_DA_TRILHA_MS : (x.duracaoMs ?? 0) > 0 && (x.duracaoMs ?? 0) <= DURACAO_MAXIMA_DO_SOM_MS));
+    if (this.cacheDeAudio.size > 300) this.cacheDeAudio.delete(this.cacheDeAudio.keys().next().value!);
+    this.cacheDeAudio.set(chave, { em: Date.now(), valor });
+    return valor;
+  }
+
+  /** Traz a música (MUSIC) ou o efeito (SOUND_EFFECT) para o workspace, com a licença e o crédito. */
+  async importarAudio(tenant: TenantContext, pedido: { id: string; tipo: TipoDeAudioLivre }) {
+    const a = await this.json<AudioDoOpenverse>(`https://api.openverse.org/v1/audio/${pedido.id}/`, { headers: { 'User-Agent': AGENTE } }, 'Openverse');
+    const r = openverseAudio(a, pedido.tipo);
+    if (!r) throw new BadRequestException('a licença deste áudio não permite uso comercial livre');
+    const kind = pedido.tipo === 'musica' ? 'MUSIC' : 'SOUND_EFFECT';
+    const { conteudo, mime } = await this.baixar(r.previa, TAMANHO_MAXIMO[kind], r.origem);
+    const extensao = mime.includes('wav') ? 'wav' : mime.includes('ogg') ? 'ogg' : 'mp3';
+    const asset = await this.assets.enviar(tenant, {
+      kind,
+      // O nome é o título e o autor: é o que a lista mostra e o crédito usa.
+      originalName: `${r.titulo} -- ${r.autor || r.origem}`.slice(0, 110) + `.${extensao}`,
+      mimeDeclarado: mime || 'audio/mpeg',
+      conteudo,
+      license: licencaDoAsset(r.licenca, r.autor, r.pagina, r.origem),
+      ...(r.duracaoMs ? { durationMs: r.duracaoMs } : {}),
+    });
+    this.log.log(`áudio importado do Openverse (${pedido.tipo}) para o workspace ${tenant.workspaceId}`);
+    return { ...asset, resultado: r };
   }
 
   // ---------- Importação ----------

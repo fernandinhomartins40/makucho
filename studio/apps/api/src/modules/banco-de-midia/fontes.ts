@@ -14,7 +14,7 @@
 //   Fluent     emoji 3D (Microsoft)  MIT
 // ============================================================
 
-import type { LicencaDaMidia, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
+import type { LicencaDaMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
 import type { FotoDoPexels, VideoDoPexels } from './pexels';
 import { BASE_3DICONS, ICONES_3DICONS } from './dados/icones-3dicons';
 import { BASE_FLUENT, EMOJIS_FLUENT_3D } from './dados/emojis-fluent-3d';
@@ -207,6 +207,48 @@ export interface ImagemDoOpenverse {
   foreign_landing_url?: string | null;
   filetype?: string | null;
   tags?: Array<{ name: string }> | null;
+}
+
+/** Um áudio do Openverse (música do Jamendo, efeito do Freesound). */
+export interface AudioDoOpenverse {
+  id: string;
+  title?: string | null;
+  url: string;
+  creator?: string | null;
+  duration?: number | null;
+  license: string;
+  license_version?: string | null;
+  license_url?: string | null;
+  foreign_landing_url?: string | null;
+  provider?: string | null;
+  source?: string | null;
+  filetype?: string | null;
+  genres?: string[] | null;
+  tags?: Array<{ name: string }> | null;
+}
+
+const NOME_DO_ACERVO: Record<string, string> = { jamendo: 'Jamendo', freesound: 'Freesound', wikimedia_audio: 'Wikimedia', ccmixter: 'ccMixter' };
+
+export function openverseAudio(a: AudioDoOpenverse, tipo: TipoDeAudioLivre): ResultadoDeAudio | null {
+  const licenca = licencaDoOpenverse(a.license, a.license_version, a.license_url);
+  if (!licenca || !linkSeguro(a.url)) return null;
+  const tags = (a.tags ?? []).map((t) => t.name.toLowerCase()).slice(0, 20);
+  const origem = NOME_DO_ACERVO[a.source ?? a.provider ?? ''] ?? (a.source ?? 'Openverse');
+  return {
+    fonte: 'openverse',
+    id: a.id,
+    tipo,
+    titulo: (a.title ?? 'Sem título').replace(/\.(wav|mp3|ogg|flac|aif+)$/i, '').slice(0, 120),
+    autor: (a.creator ?? '').slice(0, 120),
+    duracaoMs: typeof a.duration === 'number' && a.duration > 0 ? a.duration : null,
+    previa: a.url,
+    pagina: a.foreign_landing_url ?? '',
+    origem: `${origem} (Openverse)`,
+    generos: (a.genres ?? []).slice(0, 6),
+    tags,
+    instrumental: tags.includes('instrumental') || !tags.includes('vocal'),
+    licenca,
+  };
 }
 
 export function licencaDoOpenverse(l: string, versao?: string | null, url?: string | null): LicencaDaMidia | null {

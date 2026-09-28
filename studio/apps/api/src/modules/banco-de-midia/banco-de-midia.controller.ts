@@ -11,7 +11,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeMidiaSchema, traduzirBusca } from '@makucho/studio-contracts';
+import { FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeAudioSchema, buscaDeMidiaSchema, importacaoDeAudioSchema, traduzirBusca } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -50,6 +50,21 @@ export class BancoDeMidiaController {
       }
     }
     return { total: resultados.length, resultados, avisos: [...avisos], consulta: traducao.traduziu ? traducao.consulta : null };
+  }
+
+  /** Música (Jamendo) ou efeito sonoro (Freesound), pelo Openverse: sem chave. */
+  @Get('audio')
+  async buscarAudio(@Query() query: unknown) {
+    const pedido = buscaDeAudioSchema.parse(query);
+    const q = pedido.q ? traduzirBusca(pedido.q).consulta : undefined;
+    const resultados = await this.banco.buscarAudio({ ...pedido, ...(q ? { q } : {}) });
+    return { total: resultados.length, resultados };
+  }
+
+  @Post('importar-audio')
+  importarAudio(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    return this.banco.importarAudio(tenant, importacaoDeAudioSchema.parse(body));
   }
 
   @Post('importar')

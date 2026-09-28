@@ -14,6 +14,7 @@ import { MarcaNoEditor } from '../marca/MarcaNoEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoriaDeEfeitoDeTela, CategoriaDeSom, CategoriaDeTransicao, EditPlanV1, EfeitoSonoroEmbutido, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
+  creditoDoAsset,
   CATEGORIAS_DE_SOM,
   duracaoDoSom,
   ehEfeitoSonoroEmbutido,
@@ -39,6 +40,7 @@ import { EFEITOS_DE_TRECHO, ELEMENTOS, NOME_DO_SOM, SONS, TRANSICOES } from './c
 import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
 import { Sobreposicoes } from './Sobreposicoes';
+import { AudiosLivres } from './AudiosLivres';
 import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
@@ -650,6 +652,26 @@ function Sons({ plan, posicaoMs, onOperacao, onOperacoes, transcricao }: Props) 
           {aviso}
         </p>
       )}
+      <AudiosLivres
+        tipo="som"
+        previa={previa}
+        rotuloDoBotao="Adicionar"
+        onUsar={(asset, r) => {
+          const dur = Math.min(30_000, r.duracaoMs ?? asset.durationMs ?? 1000);
+          const p = proteger && temFala ? protegerFala(noCursor, dur, fala) : null;
+          onOperacao({
+            op: 'adicionar_efeito_sonoro',
+            assetId: asset.id,
+            timelineStartMs: p?.inicioMs ?? noCursor,
+            gainDb: -10 + (p?.ganhoDb ?? 0),
+            durationMs: Math.max(50, dur),
+          });
+          setAviso(`“${r.titulo}” entrou em ${tempo(p?.inicioMs ?? noCursor)} na faixa Sons.`);
+        }}
+      />
+      <span className="campo__rotulo" style={{ display: 'block', marginTop: 'var(--e3)' }}>
+        Sons do Studio
+      </span>
       <ul className="lista-de-sons">
         {SONS.filter((s) => grupo === 'todos' || s.categoria === grupo).map((s) => (
           <li key={s.id} className="som">
@@ -728,6 +750,19 @@ function Trilha({ plan, onOperacao, urlDoAsset }: Props) {
       </button>
       {erro && <p className="campo__erro">{erro}</p>}
       <p className="campo__ajuda">Use só música que você tem direito de usar (sua, comprada ou livre de direitos).</p>
+      <AudiosLivres
+        tipo="musica"
+        previa={previa}
+        rotuloDoBotao="Usar"
+        onUsar={(asset) => {
+          // Toca do começo ao fim: mais curta que o vídeo, repete; o fade fecha.
+          onOperacao({ op: 'trocar_musica', assetId: asset.id });
+          void carregar();
+        }}
+      />
+      <span className="campo__rotulo" style={{ display: 'block', marginTop: 'var(--e3)' }}>
+        Suas trilhas
+      </span>
 
       {trilhas === null ? (
         <p className="texto-secundario">Carregando trilhas…</p>
@@ -748,8 +783,9 @@ function Trilha({ plan, onOperacao, urlDoAsset }: Props) {
                   {previa.tocando === t.id ? <IconePausar size={16} weight="fill" /> : <IconeTocar size={16} weight="fill" />}
                 </button>
                 <span className="som__texto">
-                  <strong>{t.originalName}</strong>
+                  <strong>{t.originalName.replace(/\.[a-z0-9]+$/i, '').replace(' -- ', ' · ')}</strong>
                   <span>{t.durationMs ? tempo(t.durationMs) : ''}</span>
+                  {emUso && creditoDoAsset(t) && <span className="som__credito">Crédito: {creditoDoAsset(t)}</span>}
                 </span>
                 {emUso ? (
                   <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => onOperacao({ op: 'trocar_musica', assetId: null })}>

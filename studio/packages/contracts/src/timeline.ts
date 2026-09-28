@@ -390,6 +390,8 @@ export const adicionarEfeitoSonoroSchema = z.object({
   assetId: idSchema,
   timelineStartMs: msSchema,
   gainDb: z.number().min(-40).max(6).optional(),
+  /** Duração do arquivo (efeito do workspace): a faixa mostra o tamanho real. */
+  durationMs: z.number().int().min(50).max(30_000).optional(),
 });
 
 /** Uma narração gravada, no ponto da timeline em que foi gravada. */
@@ -1268,6 +1270,7 @@ export function aplicarOperacao(
             assetId: operacao.assetId,
             timelineStartMs: operacao.timelineStartMs,
             gainDb: operacao.gainDb ?? -8,
+            ...(operacao.durationMs ? { durationMs: operacao.durationMs } : {}),
           },
         ],
       };

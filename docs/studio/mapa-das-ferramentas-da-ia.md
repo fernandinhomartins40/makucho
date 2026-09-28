@@ -202,3 +202,5 @@ Total: cerca de 35 ferramentas, quase todas sobre código que já existe. O
 trabalho novo é o registro (nome, descrição, esquema e execução de cada
 uma), o loop do agente com limites e o progresso na tela. O mesmo registro
 alimenta o servidor MCP na Fase 3.
+
+**Música e sons grátis (implementado):** `escolher_trilha` (clima do catálogo `CLIMAS_DE_MUSICA`; Jamendo pelo Openverse; instrumental que cobre o vídeo primeiro; devolve o crédito quando a licença é CC BY) e `adicionar_som_do_banco` (Freesound, até 15 s). Na tela: aba Música (climas + busca + ▶) e aba Sons (busca), com o crédito pronto para copiar. Endpoints `GET /banco-de-midia/audio` e `POST /banco-de-midia/importar-audio`, sem chave.

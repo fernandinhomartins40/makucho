@@ -17,6 +17,7 @@
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
+  CLIMAS_DE_MUSICA,
   COMPOSICOES,
   RAMOS,
   RECEITAS,
@@ -27,12 +28,15 @@ import {
   analisarFechamento,
   aplicarComando,
   catalogoDoStudioParaIa,
+  creditoDoAudio,
+  definicaoDoClima,
   definicaoDaSobreposicao,
   duracaoNaTimeline,
   editPlanV1Schema,
   falaParaMidias,
   macroDoComandoSchema,
   operacoesDaComposicao,
+  ordenarTrilhas,
   perfilDoAudioSchema,
   ranquearResultados,
   SOBREPOSICOES,
@@ -692,6 +696,55 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, video: escolhido.titulo, ignoradas: res.ignoradas };
+        },
+      },
+
+      escolher_trilha: {
+        rotulo: 'Escolhendo a trilha',
+        descricao: `Busca música grátis (Jamendo, licença livre para uso comercial) pelo clima e põe como trilha de fundo, abaixo da voz. clima: ${CLIMAS_DE_MUSICA.map((c) => `${c.id} (${c.quando})`).join('; ')}. busca: palavras extras em português (opcional). Prefere instrumental que cubra o vídeo inteiro. Devolve o crédito quando a licença pede.`,
+        parametros: objeto({ clima: { type: 'string', enum: CLIMAS_DE_MUSICA.map((c) => c.id) }, busca: { type: 'string' } }, ['clima']),
+        executar: async (c, a) => {
+          const clima = definicaoDoClima(String(a.clima)) ? String(a.clima) : 'animada';
+          const q = typeof a.busca === 'string' && a.busca.trim() ? traduzirBusca(a.busca).consulta : undefined;
+          const achadas = await this.banco.buscarAudio({ tipo: 'musica', clima, ...(q ? { q } : {}) });
+          const ordem = ordenarTrilhas(achadas, agendaDoPlano(c.plano).duracaoMs);
+          for (const r of ordem.slice(0, 3)) {
+            try {
+              const asset = await this.banco.importarAudio(c.tenant, { id: r.id, tipo: 'musica' });
+              c.biblioteca.push({ assetId: asset.id, tipo: 'MUSIC', nome: r.titulo, duracaoMs: r.duracaoMs });
+              const res = aplicarComando(c.plano, [{ op: 'trocar_musica', assetId: asset.id }], { biblioteca: c.biblioteca });
+              c.plano = res.plan;
+              if (res.aplicadas) c.mudancas += 1;
+              return { ok: res.aplicadas > 0, musica: r.titulo, autor: r.autor, duracaoS: Math.round((r.duracaoMs ?? 0) / 1000), instrumental: r.instrumental, ...(r.licenca.exigeCredito ? { credito: creditoDoAudio(r) } : {}), ignoradas: res.ignoradas };
+            } catch (e) {
+              this.log.warn(`trilha ${r.id} não veio: ${e instanceof Error ? e.message : e}`);
+            }
+          }
+          return { erro: 'nenhuma trilha deste clima pôde ser trazida agora; tente outro clima' };
+        },
+      },
+
+      adicionar_som_do_banco: {
+        rotulo: 'Buscando um efeito sonoro',
+        descricao: 'Busca um efeito sonoro grátis (Freesound, até 15 s) e põe no instante pedido. Use quando os sons do catálogo não servem (ex.: caixa registradora, aplausos, porta, latido). busca em português ou inglês.',
+        parametros: objeto({ busca: { type: 'string' }, inicioS: { type: 'number' }, volumeDb: { type: 'number' } }, ['busca', 'inicioS']),
+        executar: async (c, a) => {
+          const achados = await this.banco.buscarAudio({ tipo: 'som', q: traduzirBusca(String(a.busca ?? '')).consulta || String(a.busca) });
+          const r = achados[0];
+          if (!r) return { erro: 'nenhum som encontrado' };
+          const asset = await this.banco.importarAudio(c.tenant, { id: r.id, tipo: 'som' });
+          c.biblioteca.push({ assetId: asset.id, tipo: 'SOUND_EFFECT', nome: r.titulo, duracaoMs: r.duracaoMs });
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 100));
+          const ganho = typeof a.volumeDb === 'number' ? Math.min(6, Math.max(-40, a.volumeDb)) : -10;
+          const res = aplicarComando(
+            c.plano,
+            [{ op: 'adicionar_efeito_sonoro', assetId: asset.id, timelineStartMs: inicio, gainDb: ganho, durationMs: Math.max(50, Math.min(30_000, r.duracaoMs ?? 1000)) }],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          return { ok: res.aplicadas > 0, som: r.titulo, inicioS: inicio / 1000, ...(r.licenca.exigeCredito ? { credito: creditoDoAudio(r) } : {}), ignoradas: res.ignoradas };
         },
       },
 
