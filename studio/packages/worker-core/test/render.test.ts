@@ -477,6 +477,18 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('emoji animado: o quadro do instante por crop, antes de escalar', fe.includes("crop=w=iw/6:h=ih/6:x='iw/6*mod(mod(floor(n*33/30),33),6)'") && fe.indexOf('crop=w=iw/6') < fe.indexOf('scale=', fe.indexOf('crop=w=iw/6')));
   t('emoji animado: a caixa é a de um quadro (quadrado), não a da folha', fe.includes('scale=324:324'));
 
+  // Cena animada meio a meio: a sequência de quadros e o vídeo deslocado só nos quadros dela.
+  const comCena: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [{ id: 'c1', assetId: 'cena', kind: 'cena', timelineStartMs: 1000, durationMs: 2000, layout: 'tela_cheia', cena: { layout: 'meio_a_meio', divisao: 0.5, foco: 0.4, blocos: [{ tipo: 'titulo', texto: 'Oi', emMs: 0 }] } }],
+  };
+  const ac = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comCena, cenas: { c1: '/tmp/cena-c1/%05d.png' } });
+  const fc = ac[ac.indexOf('-filter_complex') + 1]!;
+  t('cena: lê a sequência de quadros desenhados', ac.join(' ').includes('-framerate 30 -start_number 0 -i /tmp/cena-c1/%05d.png'));
+  t('meio a meio: o rosto (y0=0,15) vai para a metade de baixo, só nos quadros da cena', fc.includes('crop=1080:960:0:288') && fc.includes("overlay=0:960:enable='between(n,30,89)'"));
+  const semQuadros = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comCena });
+  t('cena sem quadros prontos: fica de fora (e o vídeo não desloca)', !semQuadros[semQuadros.indexOf('-filter_complex') + 1]!.includes('crop=1080:960'));
+
   const semMidia = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia });
   t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
 }

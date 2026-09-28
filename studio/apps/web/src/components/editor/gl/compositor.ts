@@ -109,6 +109,8 @@ export interface QuadroParaDesenhar {
   midias?: readonly MidiaNoQuadro[];
   /** Passa o quadro composto pelo framebuffer 2 mesmo sem efeitos (a máscara da pessoa lê de lá). */
   guardarQuadro?: boolean;
+  /** Meio a meio de uma cena animada (contracts: `divisaoNoInstante`). */
+  divisao?: { a: number; h: number; y0: number } | null;
 }
 
 /**
@@ -188,6 +190,9 @@ uniform int uModo;
 uniform float uZoom;
 uniform highp sampler3D uLut;
 uniform float uLado;
+// Meio a meio (cena animada): o vídeo aparece de a até a+h (frações de
+// cima) e vem de y0 -- a mesma conta do crop + overlay do render.
+uniform vec3 uDivisao;
 in vec2 vUv;
 out vec4 cor;
 vec3 video(vec2 uv, float escala, float lod) {
@@ -198,7 +203,9 @@ vec3 video(vec2 uv, float escala, float lod) {
   return textureLod(uVideo, p, lod).rgb;
 }
 vec3 montar() {
-  vec2 uv = 0.5 + (vUv - 0.5) / uZoom;
+  vec2 f = vUv;
+  if (uDivisao.y > 0.0) f.y = 1.0 - ((1.0 - f.y) - uDivisao.x + uDivisao.z);
+  vec2 uv = 0.5 + (f - 0.5) / uZoom;
   float cabe = min(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
   float cobre = max(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
   if (uModo == 1) return max(video(uv, cobre, 0.0), 0.0);
@@ -229,6 +236,8 @@ interface Programa {
 export class Compositor {
   private gl: WebGL2RenderingContext;
   private enquadrar: Programa;
+  /** O meio a meio do quadro sendo desenhado. */
+  private divisaoAtual: { a: number; h: number; y0: number } | null = null;
   /** Um programa por transição (ver `programaDaTransicao`). */
   private transicoes = new Map<number, Programa>();
   private copiar: Programa;
@@ -269,7 +278,7 @@ export class Compositor {
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado']);
+    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado', 'uDivisao']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
     this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura', 'uRecorte']);
@@ -378,6 +387,8 @@ export class Compositor {
     gl.uniform2f(p.uniforms.uQuadroTam!, this.largura, this.altura);
     gl.uniform1i(p.uniforms.uModo!, enquadramento === 'preencher' ? 1 : enquadramento === 'desfoque' ? 2 : 0);
     gl.uniform1f(p.uniforms.uZoom!, c.zoom);
+    const d = this.divisaoAtual;
+    gl.uniform3f(p.uniforms.uDivisao!, d?.a ?? 0, d?.h ?? 0, d?.y0 ?? 0);
     this.usarCor(c.cor);
     this.desenharRetangulo();
     return true;
@@ -450,6 +461,7 @@ export class Compositor {
     gl.uniform2f(p.uniforms.uQuadroTam!, w, h);
     gl.uniform1i(p.uniforms.uModo!, 1);
     gl.uniform1f(p.uniforms.uZoom!, 1);
+    gl.uniform3f(p.uniforms.uDivisao!, 0, 0, 0);
     this.usarCor(cor);
     this.desenharRetangulo();
   }
@@ -504,6 +516,7 @@ export class Compositor {
   }
 
   desenhar(quadro: QuadroParaDesenhar): void {
+    this.divisaoAtual = quadro.divisao ?? null;
     const gl = this.gl;
     const canvas = gl.canvas as HTMLCanvasElement;
     this.garantirTamanho(canvas.width, canvas.height);

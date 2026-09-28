@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1, SpriteDaMidia } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, divisaoDaCena, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -80,6 +80,11 @@ export interface OpcoesDoRender {
    * assetId: o arquivo, a proporção (largura / altura) e se tem som.
    */
   midias?: Readonly<Record<string, { caminho: string; proporcao: number; temAudio?: boolean }>>;
+  /**
+   * Cenas animadas (camadas "cena"), pelo id da camada: o padrão dos
+   * quadros já desenhados (PNG com transparência, a partir de 0).
+   */
+  cenas?: Readonly<Record<string, string>>;
   /**
    * Onde a cabeça de quem fala está, quadro a quadro, a partir de
    * `inicioMs` (cabeca.ts, pela máscara): para as camadas que a acompanham.
@@ -352,6 +357,22 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
 
   // ---------- Efeitos de tela (vinheta, flash, tremor...) ----------
   // Sobre o video montado, na ordem do plano, antes de logo e textos.
+  // ---------- Meio a meio: o vídeo desce (ou sobe) para dar lugar à animação ----------
+  // Só nos quadros da cena: o pedaço do vídeo com o rosto (y0..y0+h) vai
+  // para a parte de baixo (a partir de a). O painel da cena cobre o resto.
+  (plano.mediaLayers ?? []).forEach((c, i) => {
+    const div = c.kind === 'cena' && c.cena ? divisaoDaCena(c.cena) : null;
+    if (!div || !opcoes.cenas?.[c.id]) return;
+    const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
+    const n1 = Math.min(acumulado, n0 + Math.max(1, Math.round((c.durationMs * FPS) / 1000))) - 1;
+    const hPx = Math.round((H * div.h) / 2) * 2;
+    const r = `dv${i}`;
+    partes.push(`[${video}]split[${r}a][${r}b]`);
+    partes.push(`[${r}b]crop=${W}:${hPx}:0:${Math.round((H * div.y0) / 2) * 2}[${r}c]`);
+    partes.push(`[${r}a][${r}c]overlay=0:${Math.round((H * div.a) / 2) * 2}:enable='between(n,${n0},${n1})'[${r}o]`);
+    video = `${r}o`;
+  });
+
   efeitosDeTela.forEach((e, i) => {
     const mascara = efeitoUsaPessoa(e.type) ? mascaras.shift() : undefined;
     const saida = filtroDoEfeitoDeTela(e, video, `ef${i}`, acumulado, W, H, mascara);
@@ -385,14 +406,21 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     partes.push(`[${r}v][${r}g]blend=all_mode=${modo}:enable='between(n,${n0},${n0 + nf - 1})',format=yuv420p[${r}o]`);
   };
   (plano.mediaLayers ?? []).forEach((c, i) => {
-    const m = opcoes.midias?.[c.assetId];
+    const m =
+      c.kind === 'cena'
+        ? opcoes.cenas?.[c.id]
+          ? { caminho: opcoes.cenas[c.id]!, proporcao: W / H, temAudio: false }
+          : undefined
+        : opcoes.midias?.[c.assetId];
     if (!m) return;
     const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
     if (n0 >= acumulado) return;
     const nf = Math.min(Math.max(1, Math.round((c.durationMs * FPS) / 1000)), acumulado - n0);
     const d = nf / FPS;
     const indice = proximaEntrada++;
-    if (c.kind !== 'video') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
+    // Cena: a sequência de quadros desenhados (um PNG por quadro).
+    if (c.kind === 'cena') entradas.push('-framerate', String(FPS), '-start_number', '0', '-i', m.caminho);
+    else if (c.kind !== 'video') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
     else entradas.push('-ss', ((c.sourceStartMs ?? 0) / 1000).toFixed(3), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
 
     // Folha de quadros (emoji animado): a caixa é a de UM quadro.

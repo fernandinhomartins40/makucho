@@ -13777,3 +13777,45 @@ button.midia-cartao__previa:disabled {
   margin-top: var(--e2);
   border-radius: 8px;
 }
+
+/* Animações: modelos prontos com a miniatura desenhada pelo motor da cena. */
+.cenas-modelos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--e2);
+}
+
+.cena-cartao {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cena-cartao:hover,
+.cena-cartao:focus-visible {
+  border-color: var(--accent);
+}
+
+.cena-cartao__miniatura {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  border-radius: 8px;
+  display: block;
+}
+
+.cena-cartao__nome {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cena-cartao__quando {
+  font-size: 11px;
+  opacity: 0.7;
+}

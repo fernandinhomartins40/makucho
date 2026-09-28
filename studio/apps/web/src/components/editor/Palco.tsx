@@ -36,7 +36,7 @@ import {
   bordaDaCortina,
   kenBurnsNoInstante,
   cabecaDaMascara,
-  caixaDaMidia, proporcaoDoQuadro,
+  caixaDaMidia, divisaoNoInstante, proporcaoDoQuadro,
   estadoDaMidia,
   midiaEstaAnimada,
   caixaDoTexto,
@@ -56,6 +56,7 @@ import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
 import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
+import { fontesDaCena, QuadrosDasCenas } from './gl/cenasNoNavegador';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -233,6 +234,11 @@ export function Palco({
   // o vídeo segue o relógio da prévia (mudo, salvo se a camada tem volume).
   const elementosDasMidias = useRef(new Map<string, { assetId: string; el: HTMLImageElement | HTMLVideoElement }>());
   const moldurasRef = useRef(new MoldurasDasMidias());
+  const cenasRef = useRef(new QuadrosDasCenas());
+  // As fontes da cena chegam depois do primeiro quadro: redesenha quando chegarem.
+  useEffect(() => {
+    if ((plan.mediaLayers ?? []).some((m) => m.kind === 'cena')) void fontesDaCena().then(() => desenharGlRef.current?.());
+  }, [plan.mediaLayers]);
   /** Onde está a cabeça agora (pela máscara da prévia), para as camadas que a acompanham. */
   const cabecaRef = useRef<{ x: number; y: number } | null>(null);
   const tocandoRef = useRef(false);
@@ -257,7 +263,24 @@ export function Palco({
       const H = canvas.height;
       const quadro = Math.floor((ms * 30) / 1000);
       const lista: MidiaNoQuadro[] = [];
+      cenasRef.current.manter(new Set(camadas.filter((c) => c.kind === 'cena').map((c) => c.id)));
       for (const c of camadas) {
+        // Cena animada: desenhada agora, no instante dela, pela mesma função do render.
+        if (c.kind === 'cena') {
+          if (!c.cena) continue;
+          const n0 = Math.round((c.timelineStartMs * 30) / 1000);
+          const nf = Math.max(1, Math.round((c.durationMs * 30) / 1000));
+          const j = quadro - n0;
+          if (j < 0 || j >= nf || quadro >= agenda.duracaoQuadros) continue;
+          const d = nf / 30;
+          const tt = j / 30;
+          let fade = 1;
+          if (c.fadeInMs) fade *= Math.min(1, tt / (c.fadeInMs / 1000));
+          if (c.fadeOutMs) fade *= Math.min(1, Math.max(0, (d - tt) / (c.fadeOutMs / 1000)));
+          const fonte = cenasRef.current.quadro(c.id, c.cena, (j * 1000) / 30, W, H, marca?.cores.primary);
+          lista.push({ fonte, caixa: { x: 0, y: 0, w: W, h: H, modo: 'cobrir' }, raio: 0, alfa: (c.opacity ?? 1) * fade });
+          continue;
+        }
         let e = mapa.get(c.id);
         if (!e) {
           let el: HTMLImageElement | HTMLVideoElement;
@@ -401,10 +424,11 @@ export function Palco({
         enquadramento,
         efeitos: efeitosNoQuadro(plan.screenEffects, ultimoMs.current, agenda.duracaoQuadros),
         midias: midiasNoInstante(ultimoMs.current),
+        divisao: divisaoNoInstante(plan.mediaLayers, ultimoMs.current),
         guardarQuadro: (plan.mediaLayers ?? []).some((m) => m.followPerson),
       });
     },
-    [players, enquadramento, agenda, plan.screenEffects, midiasNoInstante],
+    [players, enquadramento, agenda, plan.screenEffects, plan.mediaLayers, midiasNoInstante],
   );
 
   tocandoRef.current = tocando;

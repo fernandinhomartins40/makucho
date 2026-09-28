@@ -18,3 +18,4 @@ export * from './legendas';
 export * from './juntar';
 export * from './projeto-excluido';
 export * from './progresso';
+export * from './cenas';

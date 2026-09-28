@@ -21,7 +21,7 @@ import {
   IconeTexto,
   IconeLegenda,
   IconeMidia,
-  IconeEfeito,
+  IconeEfeito, IconeAnimacao,
   IconeSticker,
   IconeFiltro,
   IconeMaisFerramentas,
@@ -53,7 +53,7 @@ export type AcaoMovel =
   | 'musica' | 'sons' | 'narrar' | 'silenciar' | 'silencios'
   | 'novo-texto' | 'modelos-texto'
   | 'legenda-estilo' | 'legenda-corrigir' | 'nova-legenda' | 'legenda-onoff'
-  | 'efeitos' | 'transicoes';
+  | 'efeitos' | 'transicoes' | 'animacoes';
 
 type Nivel = 'raiz' | 'editar' | 'audio' | 'texto' | 'legendas' | 'efeitos';
 type Item = { id: string; rotulo: string; Icone: Icon; abre?: Nivel; acao?: AcaoMovel; perigo?: boolean };
@@ -118,6 +118,7 @@ export function BarraMovel({ trechoSelecionado, onDesmarcarTrecho, onAcao, legen
     ],
     efeitos: [
       { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, acao: 'efeitos' },
+      { id: 'animacoes', rotulo: 'Animações', Icone: IconeAnimacao, acao: 'animacoes' },
       { id: 'transicoes', rotulo: 'Transições', Icone: IconeTransicao, acao: 'transicoes' },
     ],
   };

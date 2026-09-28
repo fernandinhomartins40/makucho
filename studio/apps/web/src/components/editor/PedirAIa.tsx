@@ -31,8 +31,14 @@ export function PedirAIa({
   onEnviar,
   extras = [],
   passos = [],
+  titulo = 'Peça à IA',
+  ajuda = 'Escreva do seu jeito o que quer mudar no vídeo. Ela ajusta a edição para você.',
+  exemplos = EXEMPLOS,
 }: {
   onEnviar: Envio;
+  titulo?: string;
+  ajuda?: string;
+  exemplos?: readonly string[];
   extras?: Array<{ rotulo: string; onClick: () => void }>;
   /** O que a IA está fazendo agora (o agente com ferramentas). */
   passos?: string[];
@@ -66,9 +72,9 @@ export function PedirAIa({
       <div>
         <label htmlFor="pedido-ia" className="ia-secao__titulo linha" style={{ gap: 6 }}>
           <IconeIA size={16} weight="fill" color="var(--accent)" />
-          Peça à IA
+          {titulo}
         </label>
-        <p className="ia-secao__ajuda">Escreva do seu jeito o que quer mudar no vídeo. Ela ajusta a edição para você.</p>
+        <p className="ia-secao__ajuda">{ajuda}</p>
       </div>
       <form
         className="pedir-ia__linha"
@@ -104,7 +110,7 @@ export function PedirAIa({
 
       {!resposta && !enviando && (
         <div className="pedir-ia__exemplos">
-          {EXEMPLOS.map((e) => (
+          {exemplos.map((e) => (
             <button key={e} type="button" className="pedir-ia__exemplo" onClick={() => void enviar(e)}>
               {e}
             </button>

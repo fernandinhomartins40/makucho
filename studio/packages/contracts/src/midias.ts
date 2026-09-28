@@ -11,6 +11,7 @@
 import { z } from 'zod';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { spriteDaMidiaSchema } from './emojis-animados';
+import { cenaAnimadaSchema, divisaoDaCena } from './cenas-animadas';
 
 export const LAYOUTS_DE_MIDIA = [
   'tela_cheia',
@@ -97,8 +98,12 @@ export const camadaDeMidiaSchema = z
   .object({
     id: idSchema,
     assetId: idSchema,
-    /** `sticker`: o `assetId` é o id do sticker embutido (stickers.ts). */
-    kind: z.enum(['image', 'video', 'sticker']),
+    /**
+     * `sticker`: o `assetId` é o id do sticker embutido (stickers.ts).
+     * `cena`: uma cena animada (cenas-animadas.ts), desenhada quadro a
+     * quadro; o `assetId` não aponta arquivo nenhum ("cena").
+     */
+    kind: z.enum(['image', 'video', 'sticker', 'cena']),
     timelineStartMs: z.number().int().nonnegative(),
     durationMs: z.number().int().min(100).max(600_000),
     layout: z.enum(LAYOUTS_DE_MIDIA),
@@ -137,6 +142,8 @@ export const camadaDeMidiaSchema = z
     blend: z.enum(MISTURAS_DA_MIDIA).optional(),
     /** Imagem que é uma folha de quadros (emoji animado): anima em loop. */
     sprite: spriteDaMidiaSchema.optional(),
+    /** A cena animada (kind "cena"). */
+    cena: cenaAnimadaSchema.optional(),
   })
   .strict();
 
@@ -171,6 +178,8 @@ export function caixaDaMidia(
   W = 1080,
   H = 1920,
 ): CaixaDaMidia {
+  // A cena animada ocupa o quadro inteiro (o layout é dela: meio a meio, cartão...).
+  if (c.kind === 'cena') return { x: 0, y: 0, w: W, h: H, modo: 'cobrir' };
   const p = proporcao > 0 && Number.isFinite(proporcao) ? proporcao : 16 / 9;
   switch (c.layout) {
     case 'tela_cheia':
@@ -259,4 +268,18 @@ export function bordaDaCortina(c: { reveal?: Revelacao; revealMs?: number }, t: 
   const u = Math.min(1, Math.max(0, t / (c.revealMs ?? 800)));
   const e = u * u * (3 - 2 * u);
   return e;
+}
+
+/**
+ * O "meio a meio" ativo no instante (a cena animada mais de cima que o
+ * pede): onde o vídeo aparece e de onde vem. Nulo sem cena meio a meio.
+ */
+export function divisaoNoInstante(camadas: readonly CamadaDeMidia[] | undefined, ms: number): { a: number; h: number; y0: number } | null {
+  let achada: { a: number; h: number; y0: number } | null = null;
+  for (const c of camadas ?? []) {
+    if (c.kind !== 'cena' || !c.cena) continue;
+    if (ms < c.timelineStartMs || ms >= c.timelineStartMs + c.durationMs) continue;
+    achada = divisaoDaCena(c.cena) ?? achada;
+  }
+  return achada;
 }

@@ -169,6 +169,18 @@ async function main() {
   const retorno = m.vistas[1]!.find((x) => x.role === 'tool');
   t('trilha: a instrumental mais curta que cobre o vídeo, com o crédito', m.salvos[0]?.music?.assetId === 'asset-justa' && Boolean(retorno?.content.includes('CC BY 3.0')));
 
+  // ---------- Cena animada: inválida volta com o que corrigir; válida entra ----------
+  const an = montar([
+    { chamadas: [{ nome: 'criar_cena_animada', args: { inicioS: 1, cena: { layout: 'meio_a_meio', blocos: [{ tipo: 'titulo' }] } } }] },
+    { chamadas: [{ nome: 'criar_cena_animada', args: { inicioS: 1, duracaoS: 3, cena: { layout: 'meio_a_meio', blocos: [{ tipo: 'titulo', texto: 'Olha isso', emMs: 0 }] } } }] },
+    { texto: 'Pus uma animação.' },
+  ]);
+  await an.agente.executar(tenant as never, 'p1', 'x');
+  const primeira = an.vistas[1]!.find((x) => x.role === 'tool');
+  const camadaCena = an.salvos[0]?.mediaLayers?.[0];
+  t('animação inválida: a IA recebe o que corrigir', Boolean(primeira?.content.includes('cena inválida') && primeira.content.includes('texto')));
+  t('animação válida: entra na faixa Mídia como cena, no tempo pedido', camadaCena?.kind === 'cena' && camadaCena.cena?.layout === 'meio_a_meio' && camadaCena.timelineStartMs === 1000 && camadaCena.durationMs === 3000);
+
   // ---------- Teto de passos ----------
   const e = montar([{ chamadas: [{ nome: 'conferir_plano', args: {} }] }]);
   const re = await e.agente.executar(tenant as never, 'p1', 'x');

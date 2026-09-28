@@ -85,6 +85,7 @@ import {
   SpeakerSlash,
   Waveform,
   Lightning,
+  Cards,
   Keyboard,
   Books,
   Shapes,
@@ -201,3 +202,5 @@ export const IconeRecorte = Crop;
 export const IconeEnquadrar = CornersOut;
 export const IconeMaisFerramentas = SquaresFour;
 export const IconeAudio2 = MusicNotes;
+/** Animações (motion UI): cartões que se montam. */
+export const IconeAnimacao = Cards;

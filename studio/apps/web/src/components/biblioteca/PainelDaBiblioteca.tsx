@@ -42,14 +42,17 @@ import { PainelDeMidias } from './PainelDeMidias';
 import { Sobreposicoes } from './Sobreposicoes';
 import { AudiosLivres } from './AudiosLivres';
 import { EmojisAnimados } from './EmojisAnimados';
+import { Animacoes } from './Animacoes';
+import type { RespostaDaIa } from '../editor/PedirAIa';
 import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
-export type CategoriaDaBiblioteca = 'estilos' | 'textos' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha' | 'marca';
+export type CategoriaDaBiblioteca = 'estilos' | 'textos' | 'animacoes' | 'stickers' | 'midia' | 'transicoes' | 'efeitos' | 'cor' | 'sons' | 'trilha' | 'marca';
 
 const CATEGORIAS: ReadonlyArray<readonly [CategoriaDaBiblioteca, string]> = [
   ['estilos', 'Estilos prontos'],
   ['textos', 'Textos'],
+  ['animacoes', 'Animações'],
   ['cor', 'Cor'],
   ['trilha', 'Música'],
   ['sons', 'Sons'],
@@ -80,6 +83,9 @@ interface Props {
   /** Mídias que a montagem com IA separou, para aprovar na categoria Mídia. */
   midiasSeparadas?: MidiasSeparadas | null;
   onMidiasConcluidas?: () => void;
+  /** O "Peça à IA" (para criar animações a partir da fala). */
+  onPedirIa?: (texto: string, anterior?: { pedido: string; resposta: string }) => Promise<RespostaDaIa | null>;
+  passosDaIa?: string[];
 }
 
 /**
@@ -118,6 +124,17 @@ export function PainelDaBiblioteca(props: Props) {
         {categoria === 'cor' && <PainelDeCor {...props} />}
         {categoria === 'sons' && <Sons {...props} />}
         {categoria === 'trilha' && <Trilha {...props} />}
+        {categoria === 'animacoes' && (
+          <Animacoes
+            plan={props.plan}
+            posicaoMs={props.posicaoMs}
+            {...(props.marca?.cores.primary ? { corDaMarca: props.marca.cores.primary } : {})}
+            onOperacao={props.onOperacao}
+            onSelecionarItem={props.onSelecionarItem}
+            {...(props.onPedirIa ? { onPedirIa: props.onPedirIa } : {})}
+            {...(props.passosDaIa ? { passosDaIa: props.passosDaIa } : {})}
+          />
+        )}
         {categoria === 'marca' && <MarcaNoEditor plan={props.plan} posicaoMs={props.posicaoMs} onOperacao={props.onOperacao} />}
       </div>
     </div>

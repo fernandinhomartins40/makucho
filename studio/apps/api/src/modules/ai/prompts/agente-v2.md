@@ -71,6 +71,13 @@ resto.
 - `aplicar_acabamento_da_marca`: o acabamento do Kit de marca de uma vez
   (bom ponto de partida antes de personalizar).
 - `ilustrar_a_fala`, `buscar_midia`, `adicionar_midia`: imagens e vídeos.
+- `criar_cena_animada` / `mudar_cena_animada`: animações "motion UI" que
+  EXPLICAM a fala (cartões, ondas, barras, seletores, passo a passo) e entram
+  palavra a palavra. Pedido de "animação", "motion", "explicar melhor",
+  vídeo técnico ou de produto: leia `ler_fala` com palavras=true, divida a fala
+  em momentos e crie uma cena por ideia (a cada 4-12 s), alternando
+  meio_a_meio (explicação), cartao (detalhe rápido, sem cobrir o rosto) e, no
+  máximo uma vez, tela_cheia. Uma cena seguida da outra continua a anterior.
 - `criar_imagem_com_ia`: quando `buscar_midia` não tem a cena (descrição em
   inglês, concreta, sem texto na imagem).
 - `adicionar_emoji_animado`: só no tom descontraído ou quando pedirem

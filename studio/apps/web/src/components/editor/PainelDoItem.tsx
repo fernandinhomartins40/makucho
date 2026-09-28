@@ -10,8 +10,11 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
+import type { CenaAnimada } from '@makucho/studio-contracts';
 import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
+  LAYOUTS_DA_CENA,
+  NOME_DO_LAYOUT_DA_CENA,
   ANIMACOES_DURANTE,
   CATEGORIAS_DE_EFEITO_DE_TELA,
   EFEITOS_DE_TELA,
@@ -116,7 +119,7 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'narracao') return 'Narração';
   if (item.tipo === 'midia') {
     const m = plan.mediaLayers?.find((x) => x.id === item.id);
-    return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
+    return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'cena' ? 'Animação' : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
   }
   if (item.tipo === 'efeito') {
     const e = plan.screenEffects?.find((x) => x.id === item.id);
@@ -640,6 +643,7 @@ function MidiaDoItem({
   if (!m) return <p className="texto-secundario">Esta mídia não existe mais.</p>;
   const editar = (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) =>
     onOperacao({ op: 'editar_midia', mediaId: id, ...mudanca });
+  if (m.kind === 'cena' && m.cena) return <CenaDoItem cena={m.cena} editar={(cena) => editar({ cena })} />;
   const posicionavel = m.layout === 'pip' || m.layout === 'livre';
   const padrao = padraoDaCaixa(m);
   return (
@@ -778,6 +782,66 @@ function MidiaDoItem({
  * Os valores de cada ponto se ajustam arrastando na prévia (com o cursor
  * sobre o ponto) -- é o jeito mais direto de dizer "aqui ela está ali".
  */
+/**
+ * A cena animada: onde ela passa, como fazemos com as imagens -- meio a
+ * meio (animação em cima ou embaixo, quanto da tela, onde fica o rosto),
+ * cartão (posição e largura) ou tela cheia.
+ */
+function CenaDoItem({ cena, editar }: { cena: CenaAnimada; editar: (c: CenaAnimada) => void }) {
+  const mudar = (m: Partial<CenaAnimada>) => editar({ ...cena, ...m });
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo. Para trocar os textos ou os elementos, peça à IA (&ldquo;muda o título da animação para…&rdquo;).
+      </p>
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Onde a animação passa</span>
+        <div className="biblioteca__chips" role="radiogroup" aria-label="Onde a animação passa">
+          {LAYOUTS_DA_CENA.map((l) => (
+            <button key={l} type="button" role="radio" aria-checked={cena.layout === l} className="biblioteca__chip" onClick={() => mudar({ layout: l })}>
+              {NOME_DO_LAYOUT_DA_CENA[l]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {cena.layout === 'meio_a_meio' && (
+        <>
+          <div className="biblioteca__chips" role="radiogroup" aria-label="Lado da animação">
+            {(['cima', 'baixo'] as const).map((l) => (
+              <button key={l} type="button" role="radio" aria-checked={(cena.lado ?? 'cima') === l} className="biblioteca__chip" onClick={() => mudar({ lado: l })}>
+                {l === 'cima' ? 'Animação em cima' : 'Animação embaixo'}
+              </button>
+            ))}
+          </div>
+          <Deslizante rotulo="Tamanho da animação" valor={Math.round((cena.divisao ?? 0.5) * 100)} min={30} max={65} passo={1} unidade="%" onSoltar={(v) => mudar({ divisao: v / 100 })} />
+          <Deslizante rotulo="Altura do rosto no vídeo" valor={Math.round((cena.foco ?? 0.4) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ foco: v / 100 })} />
+        </>
+      )}
+      {cena.layout === 'cartao' && (
+        <>
+          <div className="linha" style={{ gap: 'var(--e3)' }}>
+            <div className="crescer">
+              <Deslizante rotulo="Horizontal" valor={Math.round((cena.x ?? 0.5) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ x: v / 100 })} />
+            </div>
+            <div className="crescer">
+              <Deslizante rotulo="Altura (topo)" valor={Math.round((cena.y ?? 0.13) * 100)} min={0} max={90} passo={1} unidade="%" onSoltar={(v) => mudar({ y: v / 100 })} />
+            </div>
+          </div>
+          <Deslizante rotulo="Largura do cartão" valor={Math.round((cena.largura ?? 0.62) * 100)} min={30} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ largura: v / 100 })} />
+          <p className="campo__ajuda" style={{ marginTop: 0 }}>Deixe o cartão fora do rosto: em geral no topo (altura 8% a 15%) ou embaixo, acima da legenda.</p>
+        </>
+      )}
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Alinhamento">
+        {(['esquerda', 'centro'] as const).map((a) => (
+          <button key={a} type="button" role="radio" aria-checked={(cena.alinhar ?? 'esquerda') === a} className="biblioteca__chip" onClick={() => mudar({ alinhar: a })}>
+            {a === 'esquerda' ? 'Alinhar à esquerda' : 'Centralizar'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MovimentoDaMidia({
   m,
   posicaoMs,

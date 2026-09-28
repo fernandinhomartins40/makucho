@@ -49,6 +49,7 @@ import {
   verificarLimite,
   limparSeProjetoExcluido,
   medirMidia,
+  quadrosDaCena,
 } from '@makucho/studio-worker-core';
 import type { MascaraGerada, RuntimeOnnx } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
@@ -196,6 +197,26 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         luts[clip.id] = caminho;
       }
 
+      // Cenas animadas: cada quadro desenhado pela mesma função da prévia
+      // (contracts/cenas-animadas), em PNG com transparência.
+      const cenas: Record<string, string> = {};
+      for (const c of plano.mediaLayers ?? []) {
+        if (c.kind !== 'cena' || !c.cena) continue;
+        try {
+          const nf = Math.max(1, Math.round((c.durationMs * 30) / 1000));
+          cenas[c.id] = await quadrosDaCena(c.cena, nf, espaco.arquivo(`cena-${c.id}`), {
+            corDaMarca: marca.cores.primary,
+            ...(existsSync(PASTA_DE_FONTES) ? { pastaDeFontes: PASTA_DE_FONTES } : {}),
+            aoProgredir: () => {
+              void renovar();
+              bater();
+            },
+          });
+        } catch (e) {
+          console.warn(`[render] cena ${c.id} não pôde ser desenhada; fica de fora:`, e);
+        }
+      }
+
       await renderizar({
         entrada,
         saida: saidaTmp,
@@ -210,6 +231,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         sons: arquivos.sons,
         luts,
         midias: await midiasDoPlano(plano, arquivos.imagens),
+        cenas,
         ...vinhetas,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
@@ -424,7 +446,7 @@ async function arquivosDoPlano(plano: EditPlanV1, workspaceId: string | null) {
 
   const ids = new Set<string>();
   for (const o of plano.overlays) if (o.assetId) ids.add(o.assetId);
-  for (const m of plano.mediaLayers ?? []) if (m.kind !== 'sticker') ids.add(m.assetId);
+  for (const m of plano.mediaLayers ?? []) if (m.kind !== 'sticker' && m.kind !== 'cena') ids.add(m.assetId);
   for (const e of plano.soundEffects) if (!ehEfeitoSonoroEmbutido(e.assetId)) ids.add(e.assetId);
   for (const n of plano.voiceovers ?? []) ids.add(n.assetId);
   if (plano.music) ids.add(plano.music.assetId);
@@ -491,7 +513,7 @@ async function midiasDoPlano(plano: EditPlanV1, arquivos: Record<string, string>
     if (existsSync(caminho)) midias[s] = { caminho, proporcao: 1, temAudio: false };
     else console.warn(`[render] sticker ${s} ausente em ${PASTA_DE_STICKERS}`);
   }
-  for (const id of new Set((plano.mediaLayers ?? []).filter((m) => m.kind !== 'sticker').map((m) => m.assetId))) {
+  for (const id of new Set((plano.mediaLayers ?? []).filter((m) => m.kind !== 'sticker' && m.kind !== 'cena').map((m) => m.assetId))) {
     const caminho = arquivos[id];
     if (!caminho) continue;
     try {

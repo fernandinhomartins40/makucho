@@ -33,7 +33,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { QuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
-import { NOME_DO_LAYOUT, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela, definicaoDoSticker } from '@makucho/studio-contracts';
+import { NOME_DO_LAYOUT, NOME_DO_LAYOUT_DA_CENA, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela, definicaoDoSticker } from '@makucho/studio-contracts';
 import {
   COMPONENTES_DE_TEXTO,
   COR_DO_ELEMENTO,
@@ -1253,8 +1253,14 @@ export function Timeline({
                           fimMs={m.timelineStartMs + m.durationMs}
                           zoom={zoom}
                           altura={altura}
-                          cor={m.kind === 'video' ? '#0e7490' : m.kind === 'sticker' ? '#c2410c' : '#15803d'}
-                          rotulo={m.kind === 'sticker' ? `Sticker · ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : `${m.kind === 'video' ? 'Vídeo' : 'Imagem'} · ${NOME_DO_LAYOUT[m.layout]}`}
+                          cor={m.kind === 'cena' ? '#6d28d9' : m.kind === 'video' ? '#0e7490' : m.kind === 'sticker' ? '#c2410c' : '#15803d'}
+                          rotulo={
+                            m.kind === 'cena'
+                              ? `Animação · ${m.cena ? NOME_DO_LAYOUT_DA_CENA[m.cena.layout].split(' (')[0] : ''}`
+                              : m.kind === 'sticker'
+                                ? `Sticker · ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}`
+                                : `${m.kind === 'video' ? 'Vídeo' : 'Imagem'} · ${NOME_DO_LAYOUT[m.layout]}`
+                          }
                           selecionado={selecionado('midia', m.id)}
                           arrastavel={onOperacao !== undefined}
                           onIniciarArraste={iniciarArraste('midia', m.id, m.timelineStartMs, m.durationMs)}

@@ -30,6 +30,7 @@ import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
 import { spriteDaMidiaSchema } from './emojis-animados';
+import { cenaAnimadaSchema } from './cenas-animadas';
 import { KEN_BURNS, MISTURAS_DA_MIDIA, LAYOUTS_DE_MIDIA, MOLDURAS, REVELACOES } from './midias';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { presetDaLegenda } from './estilos-de-legenda';
@@ -510,6 +511,7 @@ const mudancasDaMidia = {
   frameColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   blend: z.enum(MISTURAS_DA_MIDIA).optional(),
   sprite: spriteDaMidiaSchema.optional(),
+  cena: cenaAnimadaSchema.optional(),
   /** Troca a lista inteira; `null` tira os keyframes. */
   keyframes: z.array(keyframeDaMidiaSchema).max(24).nullable().optional(),
 };
@@ -520,7 +522,7 @@ export const adicionarMidiaSchema = z.object({
   /** Id escolhido por quem pede (ver `comIdsNovos`). */
   id: idSchema.optional(),
   assetId: idSchema,
-  kind: z.enum(['image', 'video', 'sticker']),
+  kind: z.enum(['image', 'video', 'sticker', 'cena']),
   ...mudancasDaMidia,
   timelineStartMs: msSchema,
   durationMs: z.number().int().min(100).max(600_000),

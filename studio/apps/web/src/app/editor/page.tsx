@@ -986,6 +986,7 @@ function Editor({ projectId }: { projectId: string }) {
       marca: 'marca',
       efeitos: 'efeitos',
       transicoes: 'transicoes',
+      animacoes: 'animacoes',
       musica: 'trilha',
       sons: 'sons',
       'modelos-texto': 'textos',
@@ -1393,6 +1394,7 @@ function Editor({ projectId }: { projectId: string }) {
               desligados={[...desligados]}
               midiasSeparadas={midiasSeparadas}
               onMidiasConcluidas={concluirMidiasSeparadas}
+              {...(!semIa ? { onPedirIa: pedirAIa, passosDaIa } : {})}
               recomendado={pacoteRecomendado(
                 projeto?.framework,
                 projeto?.entendimentoDaIa ? `${projeto.entendimentoDaIa.topic} ${projeto.entendimentoDaIa.structure} ${projeto.entendimentoDaIa.hookType}` : null,

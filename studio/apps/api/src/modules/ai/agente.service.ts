@@ -17,6 +17,7 @@
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
+  CATALOGO_DE_BLOCOS_DA_CENA,
   CLIMAS_DE_MUSICA,
   CREDITO_DO_EMOJI_ANIMADO,
   ESTILOS_DA_IMAGEM_POR_IA,
@@ -33,10 +34,13 @@ import {
   buscarEmojisAnimados,
   caractereDoEmoji,
   catalogoDoStudioParaIa,
+  cenaAnimadaSchema,
+  problemasDaCena,
   creditoDoAudio,
   definicaoDoClima,
   definicaoDaSobreposicao,
   duracaoNaTimeline,
+  duracaoSugeridaDaCena,
   editPlanV1Schema,
   falaParaMidias,
   macroDoComandoSchema,
@@ -339,9 +343,28 @@ export class AgenteService {
       ler_fala: {
         rotulo: 'Lendo a fala',
         descricao:
-          'A fala do vídeo. Padrão: no tempo do vídeo final, em frases "[início–fim em s] texto", opcionalmente só entre inicioS e fimS. Com gravacao=true: as frases da GRAVAÇÃO inteira (inclusive o que ficou fora do vídeo), com id do segmento e tempos em ms no original -- use para `inserir` um trecho.',
-        parametros: objeto({ inicioS: { type: 'number' }, fimS: { type: 'number' }, gravacao: { type: 'boolean' } }),
+          'A fala do vídeo. Padrão: no tempo do vídeo final, em frases "[início–fim em s] texto", opcionalmente só entre inicioS e fimS. Com palavras=true: CADA palavra com o instante em que é dita no vídeo final ("12.34 palavra") -- use para sincronizar animações. Com gravacao=true: as frases da GRAVAÇÃO inteira (inclusive o que ficou fora do vídeo), com id do segmento e tempos em ms no original -- use para `inserir` um trecho.',
+        parametros: objeto({ inicioS: { type: 'number' }, fimS: { type: 'number' }, gravacao: { type: 'boolean' }, palavras: { type: 'boolean' } }),
         executar: async (c, a) => {
+          if (a.palavras) {
+            const ps = await this.prisma.transcriptWord.findMany({
+              where: { segment: { transcription: { projectId: c.projectId } } },
+              select: { startMs: true, word: true },
+              orderBy: { startMs: 'asc' },
+            });
+            const de = typeof a.inicioS === 'number' ? a.inicioS * 1000 : 0;
+            const ate = typeof a.fimS === 'number' ? a.fimS * 1000 : Infinity;
+            const agenda = agendaDoPlano(c.plano);
+            const saida: string[] = [];
+            for (const t of agenda.trechos) {
+              for (const p of ps) {
+                if (p.startMs < t.clip.sourceStartMs || p.startMs >= t.clip.sourceEndMs) continue;
+                const ms = t.inicioMs + (p.startMs - t.clip.sourceStartMs) / t.velocidade;
+                if (ms >= de && ms <= ate) saida.push(`${(ms / 1000).toFixed(2)} ${p.word}`);
+              }
+            }
+            return { palavras: saida.slice(0, 300).join('\n'), ...(saida.length > 300 ? { aviso: 'cortado em 300 palavras; peça um intervalo menor' } : {}) };
+          }
           if (a.gravacao) {
             const segs = await this.prisma.transcriptSegment.findMany({
               where: { transcription: { projectId: c.projectId } },
@@ -740,6 +763,61 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, ignoradas: res.ignoradas };
+        },
+      },
+
+      criar_cena_animada: {
+        rotulo: 'Criando uma animação',
+        descricao: `Cria uma CENA ANIMADA ("motion UI": cartões escuros, botões, ondas de áudio, barras e seletores que se montam no ritmo da fala) e põe no vídeo. Use para EXPLICAR o que é dito: termo técnico, lista, comparação, número, passo a passo, antes/depois, chamada final. layout: meio_a_meio (painel com a animação em cima e o vídeo com o rosto embaixo -- o melhor para explicar), cartao (cartão pequeno por cima do vídeo, SEM cobrir o rosto: y 0.08-0.15, largura 0.5-0.62), tela_cheia (só a animação; no máximo 1-2 por vídeo). TEMPOS: emMs de cada bloco = (instante da palavra no vídeo - inicioS) * 1000 -- leia antes com ler_fala palavras=true e faça cada coisa entrar quando é dita. Cenas seguidas continuam uma a outra (repita os blocos que ficam com entrada "nenhuma"). Textos curtos e fiéis à fala; um detalhe por vez. Se a cena vier inválida, a resposta diz o que corrigir. Blocos:\n${CATALOGO_DE_BLOCOS_DA_CENA}`,
+        parametros: objeto({ cena: { type: 'object' }, inicioS: { type: 'number' }, duracaoS: { type: 'number' } }, ['cena', 'inicioS']),
+        executar: async (c, a) => {
+          const r = cenaAnimadaSchema.safeParse(a.cena);
+          if (!r.success) return { erro: 'cena inválida', problemas: problemasDaCena(a.cena) };
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 500));
+          const dur = Math.max(500, Math.min(total - inicio, typeof a.duracaoS === 'number' ? Math.round(a.duracaoS * 1000) : duracaoSugeridaDaCena(r.data)));
+          const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
+          const res = aplicarComando(
+            c.plano,
+            [{ op: 'adicionar_midia', assetId: 'cena', kind: 'cena', layout: 'tela_cheia', cena: r.data, timelineStartMs: inicio, durationMs: dur, ...(r.data.layout === 'cartao' ? { fadeOutMs: 200 } : {}) }],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          const nova = (c.plano.mediaLayers ?? []).find((m) => !antes.has(m.id));
+          return { ok: res.aplicadas > 0, id: nova?.id, inicioS: inicio / 1000, fimS: (inicio + dur) / 1000, ignoradas: res.ignoradas };
+        },
+      },
+
+      mudar_cena_animada: {
+        rotulo: 'Ajustando a animação',
+        descricao: 'Muda uma cena animada que já está no vídeo (id de criar_cena_animada ou de ver_projeto): cena inteira nova (mesmo formato), e/ou inicioS/duracaoS. Para trocar só o layout ou a posição, mande a cena com os campos mudados.',
+        parametros: objeto({ id: { type: 'string' }, cena: { type: 'object' }, inicioS: { type: 'number' }, duracaoS: { type: 'number' } }, ['id']),
+        executar: async (c, a) => {
+          const atual = (c.plano.mediaLayers ?? []).find((m) => m.id === String(a.id) && m.kind === 'cena');
+          if (!atual) return { erro: 'animação não encontrada', animacoes: (c.plano.mediaLayers ?? []).filter((m) => m.kind === 'cena').map((m) => ({ id: m.id, inicioS: m.timelineStartMs / 1000, layout: m.cena?.layout })) };
+          let cena = atual.cena;
+          if (a.cena !== undefined) {
+            const r = cenaAnimadaSchema.safeParse(a.cena);
+            if (!r.success) return { erro: 'cena inválida', problemas: problemasDaCena(a.cena) };
+            cena = r.data;
+          }
+          const res = aplicarComando(
+            c.plano,
+            [
+              {
+                op: 'editar_midia',
+                mediaId: atual.id,
+                ...(cena ? { cena } : {}),
+                ...(typeof a.inicioS === 'number' ? { timelineStartMs: Math.max(0, Math.round(a.inicioS * 1000)) } : {}),
+                ...(typeof a.duracaoS === 'number' ? { durationMs: Math.max(500, Math.round(a.duracaoS * 1000)) } : {}),
+              },
+            ],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          return { ok: res.aplicadas > 0, ignoradas: res.ignoradas };
         },
       },
 

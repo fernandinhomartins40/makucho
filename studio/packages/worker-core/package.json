@@ -18,6 +18,7 @@
   "dependencies": {
     "@makucho/studio-contracts": "workspace:*",
     "@makucho/studio-database": "workspace:*",
+    "@napi-rs/canvas": "^0.1.100",
     "bullmq": "^5.28.1",
     "ioredis": "^5.4.1"
   },

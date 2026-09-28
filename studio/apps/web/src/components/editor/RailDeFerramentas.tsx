@@ -27,17 +27,19 @@ import {
   IconeSticker,
   IconeMaisFerramentas,
   IconeParametros,
+  IconeAnimacao,
 } from '../icones';
 
 export type AbaDoEditor = 'ia' | 'biblioteca' | 'midia' | 'texto' | 'legendas' | 'marca' | 'audio' | 'ajustes' | 'propriedades';
 
 /** O que cada botão da coluna abre (a biblioteca, numa categoria). */
-export type CategoriaDaColuna = 'ia' | 'midia' | 'textos' | 'legendas' | 'trilha' | 'sons' | 'efeitos' | 'transicoes' | 'cor' | 'stickers' | 'estilos' | 'marca' | 'ajustes';
+export type CategoriaDaColuna = 'ia' | 'midia' | 'textos' | 'animacoes' | 'legendas' | 'trilha' | 'sons' | 'efeitos' | 'transicoes' | 'cor' | 'stickers' | 'estilos' | 'marca' | 'ajustes';
 
 const ITENS: Array<{ id: CategoriaDaColuna; rotulo: string; Icone: Icon }> = [
   { id: 'ia', rotulo: 'IA', Icone: IconeIA },
   { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia },
   { id: 'textos', rotulo: 'Texto', Icone: IconeTexto },
+  { id: 'animacoes', rotulo: 'Animações', Icone: IconeAnimacao },
   { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda },
   { id: 'trilha', rotulo: 'Música', Icone: IconeTrilha },
   { id: 'sons', rotulo: 'Sons', Icone: IconeSom },

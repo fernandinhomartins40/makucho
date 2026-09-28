@@ -28,7 +28,7 @@ import {
   arquivoDoSticker,
   bordaDaCortina,
   cabecaDaMascara,
-  caixaDaMidia, proporcaoDoQuadro,
+  caixaDaMidia, divisaoNoInstante, proporcaoDoQuadro,
   efeitoUsaPessoa,
   ehTextoAtras,
   estadoDaMidia,
@@ -53,6 +53,7 @@ import {
   type InputVideoTrack,
 } from 'mediabunny';
 import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from '../../components/editor/gl/compositor';
+import { fontesDaCena, QuadrosDasCenas } from '../../components/editor/gl/cenasNoNavegador';
 import { INDICE_DA_TRANSICAO } from '../../components/editor/gl/transicoesGlsl';
 import { tabelaDaPrevia } from '../../components/editor/gl/cores';
 import { efeitosNoQuadro, estadoNoInstante, sourceNoInstante } from '../../components/editor/motorDaPrevia';
@@ -301,7 +302,10 @@ export async function exportarNoNavegador(
     }
     const fontesDasMidias = new Map<string, { img?: HTMLImageElement; sink?: CanvasSink; leitor?: LeitorDeQuadros }>();
     const molduras = new MoldurasDasMidias();
+    const cenas = new QuadrosDasCenas();
+    if ((plano.mediaLayers ?? []).some((m) => m.kind === 'cena')) await fontesDaCena();
     for (const c of plano.mediaLayers ?? []) {
+      if (c.kind === 'cena') continue;
       if (c.kind === 'video') {
         const f = await abrirVideo(pedido.urlDoAsset(c.assetId));
         if (f) fontesDasMidias.set(c.id, { sink: new CanvasSink(f, { poolSize: 2 }) });
@@ -443,12 +447,23 @@ export async function exportarNoNavegador(
       const midias: MidiaNoQuadro[] = [];
       const quadro30 = Math.floor((ms * 30) / 1000);
       for (const c of plano.mediaLayers ?? []) {
-        const fonte = fontesDasMidias.get(c.id);
-        if (!fonte) continue;
         const n0 = Math.round((c.timelineStartMs * 30) / 1000);
         const nf = Math.max(1, Math.round((c.durationMs * 30) / 1000));
         const j = quadro30 - n0;
         if (j < 0 || j >= nf) continue;
+        // Cena animada: a mesma função do render, no instante dela.
+        if (c.kind === 'cena') {
+          if (!c.cena) continue;
+          const d = nf / 30;
+          const tt = j / 30;
+          let fade = 1;
+          if (c.fadeInMs) fade *= Math.min(1, tt / (c.fadeInMs / 1000));
+          if (c.fadeOutMs) fade *= Math.min(1, Math.max(0, (d - tt) / (c.fadeOutMs / 1000)));
+          midias.push({ fonte: cenas.quadro(c.id, c.cena, (j * 1000) / 30, W, H, pedido.marca.cores.primary), caixa: { x: 0, y: 0, w: W, h: H, modo: 'cobrir' }, raio: 0, alfa: (c.opacity ?? 1) * fade });
+          continue;
+        }
+        const fonte = fontesDasMidias.get(c.id);
+        if (!fonte) continue;
         let el: HTMLImageElement | QuadroExterno;
         let largura: number;
         let altura: number;
@@ -521,6 +536,7 @@ export async function exportarNoNavegador(
         enquadramento: plano.render.fit ?? 'ajustar',
         efeitos,
         midias,
+        divisao: divisaoNoInstante(plano.mediaLayers, ms),
       } as const;
 
       // 3. A máscara da pessoa, do quadro montado (antes dos efeitos),
