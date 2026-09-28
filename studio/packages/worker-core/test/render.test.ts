@@ -8,7 +8,7 @@
 // ============================================================
 
 import { montarArgumentos, duracaoDoResultado, filtroDaTransicao, cadeiaDeAtempo } from '../src/render';
-import { TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
+import { MISTURAS_DE_RECEITA, TIPOS_DE_TRANSICAO, TRANSICOES_DO_CATALOGO } from '@makucho/studio-contracts';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
 
 let ok = 0,
@@ -368,6 +368,15 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   // Todo o catálogo gera filtro, e nenhum usa o xfade custom (lento e instável entre threads).
   const todos = TRANSICOES_DO_CATALOGO.filter((d) => d.id !== 'cut').map((d) => filtroDaTransicao(d.id, 'a', 'b', '0.4000'));
   t('todo o catálogo gera filtro sem xfade custom', todos.every((f) => f.length > 0 && !f.includes('transition=custom')));
+
+  // Receitas com outra nativa na mistura: o lado deformado entra no xfade dela.
+  const circulo = filtroDaTransicao('circulo_zoom', 'a', 'b', '0.5000', 15);
+  t('mistura nativa: círculo abre depois do zoom da próxima', circulo.includes('perspective=') && circulo.includes('[aw][bw]xfade=transition=circleopen'));
+  const queimar = filtroDaTransicao('queimar', 'a', 'b', '0.7000', 21);
+  t('queimar: pelo branco com a faixa de luz', queimar.includes('transition=fadewhite') && queimar.includes('blend=all_mode=screen'));
+  t('toda receita usa uma mistura conhecida', TRANSICOES_DO_CATALOGO.every((d) => !d.receita || (MISTURAS_DE_RECEITA as readonly string[]).includes(d.receita.mistura)));
+  t('toda mistura nativa de receita existe no catálogo', MISTURAS_DE_RECEITA.every((m) => m === 'metade' || TRANSICOES_DO_CATALOGO.some((d) => d.xfade === m)));
+  t('catálogo e tipos do plano andam juntos', TRANSICOES_DO_CATALOGO.every((d) => (TIPOS_DE_TRANSICAO as readonly string[]).includes(d.id)));
 
   const comReceita: EditPlanV1 = { ...plano, transitions: [{ id: 't1', type: 'glitch', beforeClipIndex: 1, durationMs: 400 }] };
   const a = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comReceita });

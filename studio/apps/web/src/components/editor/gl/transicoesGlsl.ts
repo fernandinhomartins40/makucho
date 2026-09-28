@@ -56,8 +56,15 @@ function corpoDaReceita(id: string, r: ReceitaDeTransicao): { funcoes: string; c
     mistura =
       'float z = float(int(-P * W)); float zx = z + x; float zz = zx < 0.0 ? zx + W : (zx >= W ? zx - W : zx);' +
       ` return (zx >= 0.0 && zx < W) ? ${id}_B(zz, y, q) : ${id}_A(zz, y, q);`;
-  } else {
+  } else if (r.mistura === 'metade') {
     mistura = `return q < floor(uN / 2.0) / uN ? ${id}_A(x, y, q) : ${id}_B(x, y, q);`;
+  } else {
+    // A fórmula da nativa do catálogo, com a e b vindos dos lados
+    // deformados e o ponto (x, y) no lugar do pixel da tela.
+    const base = TRANSICOES_DO_CATALOGO.find((t) => t.xfade === r.mistura && CORPOS[t.id]);
+    const formula = base ? CORPOS[base.id]! : '';
+    if (!formula || /amostra|suave/.test(formula)) throw new Error(`mistura sem fórmula ponto a ponto: ${r.mistura}`);
+    mistura = `vec3 a = ${id}_A(x, y, q); vec3 b = ${id}_B(x, y, q); ${formula.replace(/\bX\b/g, 'x').replace(/\bY\b/g, 'y')}`;
   }
   funcoes.push(`vec3 ${id}_mix(float x, float y) { float q = 1.0 - P; ${mistura} }`);
 
