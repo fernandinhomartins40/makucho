@@ -15,6 +15,8 @@ export const CATEGORIAS_DE_APARENCIA = {
   basicos: 'Básicos',
   retro: 'Retrô',
   cinema: 'Cinema',
+  filme: 'Filme',
+  produto: 'Produto e loja',
   vida: 'Vida e comida',
   noite: 'Noite e clima',
 } as const;
@@ -66,6 +68,23 @@ const mono = (c: Rgb): Rgb => {
   const l = luma(c);
   return [l, l, l];
 };
+/** Curva em S num canal só (processo cruzado). */
+const sCanal = (x: number, forca: number) => x + forca * (x - 0.5) * x * (1 - x) * 4;
+/**
+ * Laranja e azul-petróleo pelo matiz: o que é quente (pele, madeira)
+ * puxa para o laranja; o resto, para o petróleo. O "look de blockbuster".
+ */
+const petroleoELaranja = (c: Rgb, k: number): Rgb => {
+  const quente = lim((c[0] - c[2]) * 2.5);
+  const laranja: Rgb = [c[0] * 1.08 + 0.02, c[1] * 0.98, c[2] * 0.82];
+  const petroleo: Rgb = [c[0] * 0.85, c[1] * 1.0, c[2] * 1.12 + 0.02];
+  return mapa(c, (x, i) => x + (laranja[i]! * quente + petroleo[i]! * (1 - quente) - x) * k);
+};
+/** Clareia só os claros até o branco (fundo de produto limpo). */
+const clarearRealces = (c: Rgb, k: number): Rgb => {
+  const w = suave(0.55, 1, luma(c)) * k;
+  return mapa(c, (x) => x + (1 - x) * w);
+};
 
 export const APARENCIAS: readonly DefinicaoDeAparencia[] = [
   // ---------- Básicos ----------
@@ -103,6 +122,42 @@ export const APARENCIAS: readonly DefinicaoDeAparencia[] = [
   // ---------- Noite e clima ----------
   { id: 'noite', rotulo: 'Noite', categoria: 'noite', descricao: 'Escuro e azulado.', aplicar: (c) => ganho(mapa(saturar(c, 0.8), (x) => x * 0.8), 0.85, 0.95, 1.12) },
   { id: 'neon', rotulo: 'Neon', categoria: 'noite', descricao: 'Magenta e ciano, balada.', aplicar: (c) => tonalizar(saturar(curvaS(c, 0.35), 1.4), [0.62, 0.38, 0.66], [0.4, 0.62, 0.64], 0.45) },
+  // ---------- Filme ----------
+  { id: 'retrato_400', rotulo: 'Retrato 400', categoria: 'filme', descricao: 'Filme de retrato: pele quente e macia, pouco contraste.', aplicar: (c) => saturar(tonalizar(desbotar(curvaS(ganho(c, 1.04, 1.0, 0.95), 0.12), 0.035, 0.015), [0.47, 0.53, 0.52], [0.58, 0.53, 0.46], 0.3), 0.92) },
+  { id: 'paisagem_100', rotulo: 'Paisagem 100', categoria: 'filme', descricao: 'Filme de paisagem: cor densa e contraste alto.', aplicar: (c) => ganho(saturar(curvaS(c, 0.4), 1.45), 1.04, 1.0, 0.97) },
+  { id: 'verde_de_filme', rotulo: 'Verde de filme', categoria: 'filme', descricao: 'Verdes e cianos suaves, claros frios.', aplicar: (c) => tonalizar(saturar(ganho(desbotar(c, 0.03, 0.01), 0.97, 1.03, 1.02), 1.1), [0.5, 0.47, 0.54], [0.46, 0.54, 0.56], 0.3) },
+  { id: 'noite_800', rotulo: 'Noite 800', categoria: 'filme', descricao: 'Filme de tungstênio: noite azulada, luzes quentes.', aplicar: (c) => tonalizar(ganho(curvaS(c, 0.25), 0.92, 0.98, 1.1), [0.44, 0.5, 0.6], [0.66, 0.5, 0.44], 0.4) },
+  { id: 'slide_classico', rotulo: 'Slide clássico', categoria: 'filme', descricao: 'Cromo antigo: vermelhos e azuis fortes, sombras fundas.', aplicar: (c) => ganho(saturar(curvaS(contrastar(c, 1.1), 0.35), 1.35), 1.05, 0.99, 0.95) },
+  {
+    id: 'prata',
+    rotulo: 'Prata',
+    categoria: 'filme',
+    descricao: 'Revelação sem branqueamento: pouca cor e contraste metálico.',
+    aplicar: (c) => {
+      const m = mono(c);
+      return curvaS(contrastar(mapa(c, (x, i) => x * 0.45 + m[i]! * 0.55), 1.25), 0.35);
+    },
+  },
+  { id: 'processo_cruzado', rotulo: 'Processo cruzado', categoria: 'filme', descricao: 'Claros amarelo-esverdeados, sombras azuis, cor exagerada.', aplicar: (c) => saturar([sCanal(c[0], 0.5), c[1] * 1.05 + 0.02, 0.15 + c[2] * 0.7], 1.2) },
+  { id: 'pb_suave', rotulo: 'P&B suave', categoria: 'filme', descricao: 'Preto e branco lavado, de filme.', aplicar: (c) => mono(desbotar(contrastar(c, 0.9), 0.07, 0.03)) },
+  // ---------- Cinema (mais) ----------
+  { id: 'blockbuster', rotulo: 'Blockbuster', categoria: 'cinema', descricao: 'Laranja e azul-petróleo fortes, de filme de ação.', aplicar: (c) => saturar(petroleoELaranja(curvaS(c, 0.35), 0.8), 1.1) },
+  { id: 'digital_verde', rotulo: 'Digital verde', categoria: 'cinema', descricao: 'Verde frio de ficção científica.', aplicar: (c) => tonalizar(ganho(saturar(curvaS(c, 0.3), 0.6), 0.85, 1.1, 0.85), [0.42, 0.55, 0.45], [0.5, 0.58, 0.46], 0.35) },
+  { id: 'deserto', rotulo: 'Deserto', categoria: 'cinema', descricao: 'Areia e laranja queimado, épico.', aplicar: (c) => tonalizar(saturar(ganho(desbotar(c, 0.04, 0.02), 1.08, 0.98, 0.8), 0.85), [0.52, 0.48, 0.42], [0.64, 0.55, 0.4], 0.35) },
+  { id: 'pastel', rotulo: 'Pastel', categoria: 'cinema', descricao: 'Cores de doceria, lavadas e simétricas.', aplicar: (c) => saturar(tonalizar(desbotar(contrastar(c, 0.8), 0.1, 0.03), [0.55, 0.48, 0.55], [0.6, 0.55, 0.5], 0.3), 0.75) },
+  { id: 'sombrio', rotulo: 'Sombrio', categoria: 'cinema', descricao: 'Escuro, pouca cor, sombras frias.', aplicar: (c) => tonalizar(saturar(mapa(curvaS(c, 0.3), (x) => x * 0.88), 0.7), [0.42, 0.5, 0.56], [0.54, 0.52, 0.48], 0.35) },
+  // ---------- Produto e loja ----------
+  { id: 'limpo', rotulo: 'Limpo', categoria: 'produto', descricao: 'Claro e neutro, para mostrar produto.', aplicar: (c) => saturar(curvaS(mapa(c, (x) => x * 1.06 + 0.02), 0.15), 1.08) },
+  { id: 'fundo_branco', rotulo: 'Fundo branco', categoria: 'produto', descricao: 'Clareia o fundo até o branco e mantém a cor do produto.', aplicar: (c) => saturar(clarearRealces(c, 0.55), 1.05) },
+  { id: 'luxo', rotulo: 'Luxo', categoria: 'produto', descricao: 'Pretos fundos e brilho dourado.', aplicar: (c) => tonalizar(saturar(curvaS(contrastar(c, 1.15), 0.35), 0.8), [0.46, 0.48, 0.52], [0.64, 0.56, 0.4], 0.4) },
+  { id: 'fresco', rotulo: 'Fresco', categoria: 'produto', descricao: 'Claro e levemente ciano: bebida, beleza, limpeza.', aplicar: (c) => ganho(saturar(mapa(c, (x) => x * 1.04 + 0.02), 1.15), 0.95, 1.02, 1.06) },
+  { id: 'vitrine', rotulo: 'Vitrine', categoria: 'produto', descricao: 'Cor forte e contraste: oferta, varejo.', aplicar: (c) => saturar(curvaS(contrastar(c, 1.08), 0.35), 1.35) },
+  // ---------- Vida (mais) ----------
+  { id: 'verao', rotulo: 'Verão', categoria: 'vida', descricao: 'Sol forte, cor quente e viva.', aplicar: (c) => ganho(saturar(mapa(curvaS(c, 0.2), (x) => x * 1.05 + 0.01), 1.3), 1.06, 1.01, 0.94) },
+  { id: 'outono', rotulo: 'Outono', categoria: 'vida', descricao: 'Laranjas e marrons, aconchego.', aplicar: (c) => tonalizar(saturar(ganho(c, 1.08, 0.98, 0.84), 1.1), [0.52, 0.46, 0.44], [0.64, 0.54, 0.4], 0.3) },
+  { id: 'inverno', rotulo: 'Inverno', categoria: 'vida', descricao: 'Claro, frio e com pouca cor.', aplicar: (c) => saturar(ganho(mapa(c, (x) => x * 1.04 + 0.03), 0.92, 0.99, 1.08), 0.6) },
+  // ---------- Noite (mais) ----------
+  { id: 'cyberpunk', rotulo: 'Cyberpunk', categoria: 'noite', descricao: 'Magenta e azul fortes, cidade de néon.', aplicar: (c) => tonalizar(saturar(curvaS(c, 0.4), 1.5), [0.35, 0.55, 0.7], [0.72, 0.38, 0.66], 0.55) },
   { id: 'nublado', rotulo: 'Nublado', categoria: 'noite', descricao: 'Luz baixa e fria, melancolia.', aplicar: (c) => saturar(ganho(desbotar(c, 0.05, 0.06), 0.95, 0.98, 1.04), 0.65) },
 ];
 

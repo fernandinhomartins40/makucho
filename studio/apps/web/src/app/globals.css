@@ -2447,6 +2447,186 @@ body {
   font-display: swap;
 }
 @font-face {
+  font-family: 'Sora ExtraBold';
+  src: url('/fonts/Sora-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Outfit ExtraBold';
+  src: url('/fonts/Outfit-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans ExtraBold';
+  src: url('/fonts/PlusJakartaSans-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope ExtraBold';
+  src: url('/fonts/Manrope-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DM Sans ExtraBold';
+  src: url('/fonts/DMSans-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Urbanist Black';
+  src: url('/fonts/Urbanist-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Figtree ExtraBold';
+  src: url('/fonts/Figtree-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lexend Bold';
+  src: url('/fonts/Lexend-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'League Spartan ExtraBold';
+  src: url('/fonts/LeagueSpartan-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Work Sans ExtraBold';
+  src: url('/fonts/WorkSans-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Teko SemiBold';
+  src: url('/fonts/Teko-SemiBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Fjalla One';
+  src: url('/fonts/FjallaOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Big Shoulders Display Black';
+  src: url('/fonts/BigShouldersDisplay-Black.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'League Gothic';
+  src: url('/fonts/LeagueGothic-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Antonio Bold';
+  src: url('/fonts/Antonio-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Syne ExtraBold';
+  src: url('/fonts/Syne-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Alfa Slab One';
+  src: url('/fonts/AlfaSlabOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Orbitron ExtraBold';
+  src: url('/fonts/Orbitron-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Audiowide';
+  src: url('/fonts/Audiowide-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Press Start 2P';
+  src: url('/fonts/PressStart2P-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bowlby One';
+  src: url('/fonts/BowlbyOne-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Passion One Bold';
+  src: url('/fonts/PassionOne-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Fraunces ExtraBold';
+  src: url('/fonts/Fraunces-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Cormorant Garamond Bold';
+  src: url('/fonts/CormorantGaramond-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lora Bold';
+  src: url('/fonts/Lora-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Cinzel ExtraBold';
+  src: url('/fonts/Cinzel-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Libre Baskerville Bold';
+  src: url('/fonts/LibreBaskerville-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Bodoni Moda ExtraBold';
+  src: url('/fonts/BodoniModa-ExtraBold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Great Vibes';
+  src: url('/fonts/GreatVibes-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satisfy';
+  src: url('/fonts/Satisfy-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Kalam Bold';
+  src: url('/fonts/Kalam-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caveat Bold';
+  src: url('/fonts/Caveat-Bold.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Shadows Into Light';
+  src: url('/fonts/ShadowsIntoLight-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Rock Salt';
+  src: url('/fonts/RockSalt-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sacramento';
+  src: url('/fonts/Sacramento-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Yellowtail';
+  src: url('/fonts/Yellowtail-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
   font-family: 'Inter ExtraBold';
   src: url('/fonts/Inter-ExtraBold.ttf') format('truetype');
   font-display: swap;

@@ -150,7 +150,9 @@ t('o resumo segue curto (< 1800 caracteres)', resumo.length < 1800);
 const catalogo = catalogoDoStudioParaIa();
 t('o catálogo cobre estilos, efeitos, filtros, sons e stickers', ['impacto', 'vinheta', 'cinema', 'sfx-whoosh', 'emoji_fogo', 'energia_tiktok'].every((x) => catalogo.includes(x)));
 t('o catálogo é fixo (mesmo texto: prefixo cacheável)', catalogo === catalogoDoStudioParaIa());
-t('o catálogo cabe em ~3 mil tokens (< 12 mil caracteres)', catalogo.length < 12_000);
+// Subiu com as transições, filtros e sobreposições novas: ~4 mil tokens
+// num prefixo cacheado ainda é barato, e o agente lê por seção.
+t('o catálogo cabe em ~4 mil tokens (< 16 mil caracteres)', catalogo.length < 16_000);
 console.log(`   (catálogo: ${catalogo.length} caracteres; resumo: ${resumo.length})`);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
