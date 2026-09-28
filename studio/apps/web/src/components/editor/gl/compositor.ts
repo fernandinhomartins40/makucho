@@ -87,6 +87,8 @@ export interface MidiaNoQuadro {
   mistura?: 'tela' | 'multiplicar';
   /** Só uma parte da textura (o quadro de uma folha de quadros), em frações. */
   recorte?: { x: number; y: number; w: number; h: number };
+  /** Animação em HTML pronta: cor (multiplicada pelo alfa) à esquerda, alfa à direita. */
+  ladoALado?: boolean;
 }
 
 /** A célula do quadro `j` de uma camada animada (folha de quadros), para o `MidiaNoQuadro`. */
@@ -132,6 +134,7 @@ uniform vec2 uKb;
 uniform vec2 uCortina;
 uniform float uMistura;
 uniform vec4 uRecorte;
+uniform float uLadoALado;
 out vec4 cor;
 void main() {
   float X = floor(gl_FragCoord.x);
@@ -162,6 +165,12 @@ void main() {
   // Folha de quadros: a célula do instante (uv de 0 a 1 dentro dela).
   uv = uRecorte.xy + clamp(uv, 0.0, 1.0) * uRecorte.zw;
   vec4 m = texture(uM, vec2(uv.x, 1.0 - uv.y));
+  if (uLadoALado > 0.5) {
+    // Cor à esquerda (já multiplicada pelo alfa), alfa em cinza à direita.
+    vec3 c = texture(uM, vec2(uv.x * 0.5, 1.0 - uv.y)).rgb;
+    float al = clamp((texture(uM, vec2(0.5 + uv.x * 0.5, 1.0 - uv.y)).r - 0.01) / 0.98, 0.0, 1.0);
+    m = vec4(al > 0.001 ? clamp(c / al, 0.0, 1.0) : vec3(0.0), al);
+  }
   float k = a * m.a;
   // Tela: a cor já pesada pelo alfa (o blend faz s + d(1 - s)).
   // Multiplicar: a cor misturada ao branco (o blend faz d * s).
@@ -281,7 +290,7 @@ export class Compositor {
     this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado', 'uDivisao']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
-    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura', 'uRecorte']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura', 'uRecorte', 'uLadoALado']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -601,7 +610,8 @@ export class Compositor {
       if (g.t < 0) continue;
       gl.uniform4f(p.uniforms.uCaixa!, m.caixa.x, m.caixa.y, m.caixa.w, m.caixa.h);
       gl.uniform2f(p.uniforms.uTamanho!, this.largura, this.altura);
-      gl.uniform1f(p.uniforms.uProporcao!, largura / altura);
+      // Lado a lado (animação em HTML): a imagem é só a metade da esquerda.
+      gl.uniform1f(p.uniforms.uProporcao!, (m.ladoALado ? largura / 2 : largura) / altura);
       gl.uniform1f(p.uniforms.uCobrir!, m.caixa.modo === 'cobrir' ? 1 : 0);
       gl.uniform1f(p.uniforms.uRaio!, m.raio);
       gl.uniform1f(p.uniforms.uAlfa!, m.alfa);
@@ -610,6 +620,7 @@ export class Compositor {
       gl.uniform2f(p.uniforms.uCortina!, m.cortina?.borda ?? 1, m.cortina ? (m.cortina.lado === 'esquerda' ? 1 : 2) : 0);
       gl.uniform1f(p.uniforms.uMistura!, m.mistura === 'multiplicar' ? 2 : m.mistura === 'tela' ? 1 : 0);
       gl.uniform4f(p.uniforms.uRecorte!, m.recorte?.x ?? 0, m.recorte?.y ?? 0, m.recorte?.w ?? 1, m.recorte?.h ?? 1);
+      gl.uniform1f(p.uniforms.uLadoALado!, m.ladoALado ? 1 : 0);
       if (m.mistura === 'tela') gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE);
       else if (m.mistura === 'multiplicar') gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ZERO, gl.ONE);
       else gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);

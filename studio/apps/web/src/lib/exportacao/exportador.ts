@@ -22,6 +22,7 @@
 //      postar).
 // ============================================================
 
+import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import type { EditPlanV1, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import {
   agendaDoPlano,
@@ -74,6 +75,11 @@ export interface PedidoDeExportacao {
   urlDoOriginal: string;
   urlDoProxy: string;
   urlDoAsset: (assetId: string) => string;
+  /**
+   * Animação em HTML (HyperFrames): espera o vídeo com transparência
+   * ficar pronto no servidor e devolve o endereço dele.
+   */
+  urlDaAnimacao?: (composicao: ComposicaoHtml, duracaoMs: number, aoEsperar: (texto: string) => void) => Promise<string>;
 }
 
 export type EtapaDaExportacao = 'preparando' | 'audio' | 'video' | 'finalizando';
@@ -306,6 +312,15 @@ export async function exportarNoNavegador(
     if ((plano.mediaLayers ?? []).some((m) => m.kind === 'cena')) await fontesDaCena();
     for (const c of plano.mediaLayers ?? []) {
       if (c.kind === 'cena') continue;
+      if (c.kind === 'html') {
+        if (!c.composicao) continue;
+        if (!pedido.urlDaAnimacao) throw new Error('este vídeo tem animações em HTML, que precisam do servidor para exportar');
+        const url = await pedido.urlDaAnimacao(c.composicao, c.durationMs, (texto) => informar({ etapa: 'preparando', fracao: 0.005, quadro: 0, aviso: texto }));
+        const f = await abrirVideo(url);
+        if (!f) throw new Error('não foi possível abrir o vídeo de uma animação');
+        fontesDasMidias.set(c.id, { sink: new CanvasSink(f, { poolSize: 2 }) });
+        continue;
+      }
       if (c.kind === 'video') {
         const f = await abrirVideo(pedido.urlDoAsset(c.assetId));
         if (f) fontesDasMidias.set(c.id, { sink: new CanvasSink(f, { poolSize: 2 }) });
@@ -351,11 +366,11 @@ export async function exportarNoNavegador(
       }
       const q30 = Math.floor((ms * 30) / 1000);
       for (const c of plano.mediaLayers ?? []) {
-        if (c.kind !== 'video' || !fontesDasMidias.get(c.id)?.sink) continue;
+        if ((c.kind !== 'video' && c.kind !== 'html') || !fontesDasMidias.get(c.id)?.sink) continue;
         const j = q30 - Math.round((c.timelineStartMs * 30) / 1000);
         if (j < 0 || j >= Math.max(1, Math.round((c.durationMs * 30) / 1000))) continue;
         const lista = temposDaMidia.get(c.id) ?? [];
-        lista.push(Math.max(0, (c.sourceStartMs ?? 0) / 1000 + (ms - c.timelineStartMs) / 1000));
+        lista.push(Math.max(0, (c.kind === 'html' ? 0 : (c.sourceStartMs ?? 0) / 1000) + (ms - c.timelineStartMs) / 1000));
         temposDaMidia.set(c.id, lista);
       }
     }
@@ -503,7 +518,7 @@ export async function exportarNoNavegador(
         };
         const seguir = Boolean(c.followPerson && cabeca);
         if (!midiaEstaAnimada(c) && !seguir) {
-          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j) });
+          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j), ...(c.kind === 'html' ? { ladoALado: true } : {}) });
           continue;
         }
         const est = estadoDaMidia(c, (j * 1000) / 30, { x: (base.x + base.w / 2) / W, y: (base.y + base.h / 2) / H });

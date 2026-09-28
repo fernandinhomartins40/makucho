@@ -24,6 +24,8 @@ import type {
   EmojiAnimado,
   SpriteDaMidia,
   FormatoDaImagemPorIa,
+  ComposicaoHtml,
+  EstadoDaAnimacao,
   EstiloDaImagemPorIa,
   SugestaoDeMarca,
   TipoDaBusca,
@@ -662,6 +664,20 @@ export interface SituacaoDoRender {
   duracaoMs?: number | null;
   erro?: string | null;
 }
+
+// ============================================================
+// Animações em HTML (HyperFrames)
+// ============================================================
+
+export const animacoes = {
+  /** Pede o vídeo com transparência (o servidor calcula a chave pelo conteúdo). */
+  preparar: (projectId: string, composicao: ComposicaoHtml, duracaoMs: number) =>
+    api<{ chave: string; estado: EstadoDaAnimacao; erro?: string }>(`/projects/${projectId}/animacoes`, { metodo: 'POST', corpo: { composicao, duracaoMs } }),
+  tentarDeNovo: (projectId: string, composicao: ComposicaoHtml, duracaoMs: number) =>
+    api<{ chave: string; estado: EstadoDaAnimacao; erro?: string }>(`/projects/${projectId}/animacoes/tentar-de-novo`, { metodo: 'POST', corpo: { composicao, duracaoMs } }),
+  estado: (projectId: string, chave: string) => api<{ estado: EstadoDaAnimacao; erro?: string }>(`/projects/${projectId}/animacoes/${chave}`),
+  urlDoVideo: (projectId: string, chave: string) => `/api/projects/${projectId}/animacoes/${chave}/video`,
+};
 
 export const renders = {
   // Por fila: leva minutos, e o usuário pode fechar a aba.

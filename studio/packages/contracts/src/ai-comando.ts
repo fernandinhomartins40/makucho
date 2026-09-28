@@ -531,7 +531,7 @@ function conferirArquivos(op: TimelineOperation, biblioteca: readonly ItemDaBibl
   const semBiblioteca = 'esse arquivo não está na biblioteca da marca';
   switch (op.op) {
     case 'adicionar_midia':
-      if (op.kind === 'sticker' || op.kind === 'cena') return { op };
+      if (op.kind === 'sticker' || op.kind === 'cena' || op.kind === 'html') return { op };
       return achar(op.assetId, op.kind === 'video' ? ['VIDEO'] : IMAGENS_DA_MARCA) ? { op } : { erro: semBiblioteca };
     case 'editar_midia':
       if (!op.assetId) return { op };

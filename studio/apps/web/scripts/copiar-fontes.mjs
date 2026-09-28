@@ -49,3 +49,10 @@ mkdirSync(destinoDoOrt, { recursive: true });
 for (const f of ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.mjs']) cpSync(join(ort, f), join(destinoDoOrt, f));
 console.log('modelo da pessoa e runtime ONNX copiados');
 
+// ---------- GSAP (animações em HTML, HyperFrames) ----------
+// A prévia carrega o mesmo gsap.min.js que o servidor usa no render.
+const destinoDoGsap = join(process.cwd(), 'public', 'hyperframes');
+mkdirSync(destinoDoGsap, { recursive: true });
+cpSync(require.resolve('gsap/dist/gsap.min.js'), join(destinoDoGsap, 'gsap.min.js'));
+console.log('gsap copiado para a prévia das animações');
+

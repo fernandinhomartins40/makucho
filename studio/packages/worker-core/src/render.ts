@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1, SpriteDaMidia } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, divisaoDaCena, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, divisaoDaCamada, divisaoDaCena, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -85,6 +85,11 @@ export interface OpcoesDoRender {
    * quadros já desenhados (PNG com transparência, a partir de 0).
    */
   cenas?: Readonly<Record<string, string>>;
+  /**
+   * Animações em HTML (camadas "html", HyperFrames), pelo id da camada: o
+   * MP4 com a cor (já multiplicada pelo alfa) à esquerda e o alfa à direita.
+   */
+  animacoes?: Readonly<Record<string, string>>;
   /**
    * Onde a cabeça de quem fala está, quadro a quadro, a partir de
    * `inicioMs` (cabeca.ts, pela máscara): para as camadas que a acompanham.
@@ -361,8 +366,8 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // Só nos quadros da cena: o pedaço do vídeo com o rosto (y0..y0+h) vai
   // para a parte de baixo (a partir de a). O painel da cena cobre o resto.
   (plano.mediaLayers ?? []).forEach((c, i) => {
-    const div = c.kind === 'cena' && c.cena ? divisaoDaCena(c.cena) : null;
-    if (!div || !opcoes.cenas?.[c.id]) return;
+    const div = divisaoDaCamada(c);
+    if (!div || !(opcoes.cenas?.[c.id] || opcoes.animacoes?.[c.id])) return;
     const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
     const n1 = Math.min(acumulado, n0 + Math.max(1, Math.round((c.durationMs * FPS) / 1000))) - 1;
     const hPx = Math.round((H * div.h) / 2) * 2;
@@ -411,7 +416,11 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
         ? opcoes.cenas?.[c.id]
           ? { caminho: opcoes.cenas[c.id]!, proporcao: W / H, temAudio: false }
           : undefined
-        : opcoes.midias?.[c.assetId];
+        : c.kind === 'html'
+          ? opcoes.animacoes?.[c.id]
+            ? { caminho: opcoes.animacoes[c.id]!, proporcao: W / H, temAudio: false }
+            : undefined
+          : opcoes.midias?.[c.assetId];
     if (!m) return;
     const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
     if (n0 >= acumulado) return;
@@ -420,6 +429,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     const indice = proximaEntrada++;
     // Cena: a sequência de quadros desenhados (um PNG por quadro).
     if (c.kind === 'cena') entradas.push('-framerate', String(FPS), '-start_number', '0', '-i', m.caminho);
+    else if (c.kind === 'html') entradas.push('-t', (d + 0.5).toFixed(3), '-i', m.caminho);
     else if (c.kind !== 'video') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
     else entradas.push('-ss', ((c.sourceStartMs ?? 0) / 1000).toFixed(3), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
 
@@ -434,6 +444,17 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     let cadeia =
       `[${indice}:v]fps=${FPS},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(d + 1).toFixed(3)},` +
       `trim=end_frame=${nf},${c.sprite ? `${cortarQuadroDoSprite(c.sprite)},` : ''}${escala},setsar=1`;
+    if (c.kind === 'html') {
+      // Cor (multiplicada pelo alfa) à esquerda, alfa à direita: junta de
+      // volta e desfaz a multiplicação -- a mesma conta do compositor.
+      partes.push(
+        `[${indice}:v]fps=${FPS},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(d + 1).toFixed(3)},trim=end_frame=${nf},format=rgb24,split[${r}h1][${r}h2]`,
+      );
+      partes.push(`[${r}h1]crop=iw/2:ih:0:0[${r}hc]`);
+      partes.push(`[${r}h2]crop=iw/2:ih:iw/2:0,format=gray[${r}ha]`);
+      partes.push(`[${r}hc][${r}ha]alphamerge,unpremultiply=inplace=1[${r}hm]`);
+      cadeia = `[${r}hm]${escala},setsar=1`;
+    }
     // Ken Burns: zoom e deslizamento lentos na caixa, pelo `perspective`
     // (subpixel, como o shader). O quadro da camada é (in-1)/30.
     if (c.kenBurns && c.kenBurns !== 'nenhum' && cx.modo === 'cobrir') {

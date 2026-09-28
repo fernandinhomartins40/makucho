@@ -1,11 +1,13 @@
 # ============================================================
 # MAKUCHO STUDIO - Worker de render
 #
-# FFmpeg + libass, e nada mais: legendas, textos, transicoes, efeitos,
-# logo, trilha e sons sao filtros nativos do FFmpeg (ver
-# packages/worker-core/src/render.ts). Sem navegador headless: o
-# Remotion previsto no plano nunca foi instalado, e as bibliotecas do
-# Chromium que esta imagem carregava so ocupavam espaco.
+# FFmpeg + libass: legendas, textos, transicoes, efeitos, logo, trilha
+# e sons sao filtros nativos do FFmpeg (ver packages/worker-core/src/render.ts).
+#
+# Chromium (headless) SO para as animacoes em HTML (HyperFrames, fila
+# studio-animation): o HyperFrames abre a pagina e tira um PNG com
+# transparencia por quadro. O Chromium e o do Debian (atualizado pelo
+# apt), nao o que o puppeteer baixaria -- por isso PUPPETEER_SKIP_DOWNLOAD.
 #
 # Debian slim: o FFmpeg 5.1 do bookworm ja traz libass, librsvg (logo
 # em SVG), xfade com as 46 transicoes e sidechaincompress.
@@ -18,6 +20,7 @@ RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # ---------- Dependencias ----------
 FROM base AS deps
@@ -63,7 +66,7 @@ FROM node:22-bookworm-slim AS runner
 # fonte.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       ffmpeg ca-certificates fonts-liberation \
+       ffmpeg ca-certificates fonts-liberation chromium fonts-noto-color-emoji \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -72,6 +75,10 @@ ENV NODE_ENV=production
 # As fontes do video (OFL). O libass as recebe por `fontsdir` e as
 # encontra pelo nome gravado no arquivo (estilos-de-legenda.ts).
 ENV STUDIO_FONTS_DIR=/app/fonts
+# O Chrome das animacoes em HTML (HyperFrames).
+ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium
+ENV HYPERFRAMES_FONT_CACHE_DIR=/tmp/studio/hf-fontes
+ENV PRODUCER_RENDERS_DIR=/tmp/studio/hf-renders/renders
 
 RUN groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m worker
 

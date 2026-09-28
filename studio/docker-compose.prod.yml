@@ -255,7 +255,12 @@ services:
           # apaga o mkdir do Dockerfile, entao sem isto o processo nao
           # escreve nem o heartbeat nem os temporarios de FFmpeg.
           mode: 0o1777
-    mem_limit: 512m
+    # 1 GB: o Chromium das animacoes em HTML (HyperFrames) usa ~300-500 MB
+    # durante uma animacao; o FFmpeg do render usa o resto. Um de cada vez
+    # (concurrency 1 nas duas filas).
+    mem_limit: 1g
+    # O Chromium precisa de memoria compartilhada maior que os 64 MB padrao.
+    shm_size: 256m
     networks:
       - studio-net
       # Alcanca o Postgres do portal (ADR 0004), como a API.

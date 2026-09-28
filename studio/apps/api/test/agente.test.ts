@@ -46,7 +46,7 @@ const plano: EditPlanV1 = {
 
 type Roteiro = Array<{ texto?: string; chamadas?: Array<{ nome: string; args: unknown }> }>;
 
-function montar(roteiro: Roteiro, banco: unknown = {}) {
+function montar(roteiro: Roteiro, banco: unknown = {}, animacoes?: unknown) {
   const vistas: MensagemDoAgente[][] = [];
   const salvos: EditPlanV1[] = [];
   let volta = 0;
@@ -88,6 +88,7 @@ function montar(roteiro: Roteiro, banco: unknown = {}) {
     {} as never,
     {} as never,
     banco as never,
+    animacoes as never,
   );
   return { agente, vistas, salvos };
 }
@@ -180,6 +181,24 @@ async function main() {
   const camadaCena = an.salvos[0]?.mediaLayers?.[0];
   t('animação inválida: a IA recebe o que corrigir', Boolean(primeira?.content.includes('cena inválida') && primeira.content.includes('texto')));
   t('animação válida: entra na faixa Mídia como cena, no tempo pedido', camadaCena?.kind === 'cena' && camadaCena.cena?.layout === 'meio_a_meio' && camadaCena.timelineStartMs === 1000 && camadaCena.durationMs === 3000);
+
+  // ---------- Animação em HTML (HyperFrames) ----------
+  const pedidos: string[] = [];
+  const animacoesFalsas = { problemas: async () => [], preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return { chave: 'x', estado: 'preparando' }; } };
+  const hf = montar(
+    [
+      { chamadas: [{ nome: 'criar_animacao', args: { layout: 'meio_a_meio', html: '<div id="a">Oi</div>', script: "tl.to('#a', { x: Math.random() }, 0);", inicioS: 1, duracaoS: 3 } }] },
+      { chamadas: [{ nome: 'criar_animacao', args: { layout: 'meio_a_meio', titulo: 'Oi', html: '<div id="a">Oi</div>', script: "tl.from('#a', { y: 30, opacity: 0, duration: 0.4 }, 0.2);", inicioS: 1, duracaoS: 3 } }] },
+      { texto: 'Pronto.' },
+    ],
+    {},
+    animacoesFalsas,
+  );
+  await hf.agente.executar(tenant as never, 'p1', 'x');
+  const recusada = hf.vistas[1]!.find((x) => x.role === 'tool');
+  const camadaHtml = hf.salvos[0]?.mediaLayers?.[0];
+  t('HyperFrames: sorteio é devolvido para a IA corrigir', Boolean(recusada?.content.includes('sorteio')));
+  t('HyperFrames: a animação entra como camada html e o vídeo já é pedido', camadaHtml?.kind === 'html' && camadaHtml.composicao?.layout === 'meio_a_meio' && camadaHtml.durationMs === 3000 && pedidos[0] === 'Oi');
 
   // ---------- Teto de passos ----------
   const e = montar([{ chamadas: [{ nome: 'conferir_plano', args: {} }] }]);

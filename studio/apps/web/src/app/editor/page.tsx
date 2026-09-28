@@ -74,7 +74,7 @@ import {
   ia as apiIa,
   transcricao as apiTranscricao,
   marca as apiMarca,
-  assets as apiAssets,
+  assets as apiAssets, animacoes as apiAnimacoes,
   bancoDeMidia,
   urlDoVideo,
   type MidiasSeparadas,
@@ -806,6 +806,19 @@ function Editor({ projectId }: { projectId: string }) {
         urlDoOriginal: `/api/projects/${projectId}/original`,
         urlDoProxy: urlDoVideo(projectId),
         urlDoAsset: apiAssets.url,
+        urlDaAnimacao: async (composicao, duracaoMs, aoEsperar) => {
+          // Pede (ou acha) o vídeo com transparência e espera ficar pronto.
+          let r = await apiAnimacoes.preparar(projectId, composicao, duracaoMs);
+          const limite = Date.now() + 8 * 60_000;
+          while (r.estado !== 'pronta') {
+            if (r.estado === 'falhou') throw new Error(`uma animação não pôde ser preparada: ${r.erro ?? 'erro no servidor'}`);
+            if (Date.now() > limite) throw new Error('as animações demoraram demais para ficar prontas; tente de novo');
+            aoEsperar('Preparando as animações no servidor…');
+            await new Promise((ok) => setTimeout(ok, 3000));
+            r = { chave: r.chave, ...(await apiAnimacoes.estado(projectId, r.chave)) };
+          }
+          return apiAnimacoes.urlDoVideo(projectId, r.chave);
+        },
       });
     },
     [plano, planoVisivel, projectId, titulo, projeto?.title, desligados, transcricao, marcaDoVideo, iniciarExportacao],

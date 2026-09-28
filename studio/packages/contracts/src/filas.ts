@@ -22,7 +22,14 @@ export const FILA_RENDER = 'studio-render';
  */
 export const FILA_ANALISE = 'studio-analysis';
 
-export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER] as const;
+/**
+ * Animações em HTML (HyperFrames): o vídeo com transparência de cada
+ * animação, preparado pelo worker de render (que tem o Chrome) para a
+ * exportação do navegador usar.
+ */
+export const FILA_ANIMACAO = 'studio-animation';
+
+export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER, FILA_ANIMACAO] as const;
 export type NomeDeFila = (typeof FILAS)[number];
 
 /**

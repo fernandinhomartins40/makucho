@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import type { CenaAnimada } from '@makucho/studio-contracts';
+import type { CenaAnimada, ComposicaoHtml } from '@makucho/studio-contracts';
 import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
   LAYOUTS_DA_CENA,
@@ -119,7 +119,7 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
   if (item.tipo === 'narracao') return 'Narração';
   if (item.tipo === 'midia') {
     const m = plan.mediaLayers?.find((x) => x.id === item.id);
-    return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'cena' ? 'Animação' : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
+    return m ? (m.kind === 'sticker' ? `Sticker: ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}` : m.kind === 'cena' || m.kind === 'html' ? 'Animação' : m.kind === 'video' ? 'Vídeo sobreposto' : 'Imagem sobreposta') : 'Mídia';
   }
   if (item.tipo === 'efeito') {
     const e = plan.screenEffects?.find((x) => x.id === item.id);
@@ -644,6 +644,7 @@ function MidiaDoItem({
   const editar = (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) =>
     onOperacao({ op: 'editar_midia', mediaId: id, ...mudanca });
   if (m.kind === 'cena' && m.cena) return <CenaDoItem cena={m.cena} editar={(cena) => editar({ cena })} />;
+  if (m.kind === 'html' && m.composicao) return <AnimacaoHtmlDoItem composicao={m.composicao} editar={(composicao) => editar({ composicao })} />;
   const posicionavel = m.layout === 'pip' || m.layout === 'livre';
   const padrao = padraoDaCaixa(m);
   return (
@@ -782,6 +783,51 @@ function MidiaDoItem({
  * Os valores de cada ponto se ajustam arrastando na prévia (com o cursor
  * sobre o ponto) -- é o jeito mais direto de dizer "aqui ela está ali".
  */
+/**
+ * Animação em HTML (HyperFrames): onde ela passa e, no meio a meio,
+ * o lado, o tamanho do painel e a altura do rosto no vídeo. O desenho
+ * e os movimentos mudam pela IA ("muda a cor do cartão", "sobe o título").
+ */
+function AnimacaoHtmlDoItem({ composicao, editar }: { composicao: ComposicaoHtml; editar: (c: ComposicaoHtml) => void }) {
+  const mudar = (m: Partial<ComposicaoHtml>) => editar({ ...composicao, ...m });
+  return (
+    <div className="pilha" style={{ gap: 'var(--e3)' }}>
+      <p className="campo__ajuda" style={{ marginTop: 0 }}>
+        Animação feita com HyperFrames. Arraste na faixa Mídia para mover e puxe as bordas para mudar o tempo. Para mudar o desenho ou os movimentos, peça à IA
+        (&ldquo;deixa o título maior&rdquo;, &ldquo;troca o azul pela cor da marca&rdquo;).
+      </p>
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Onde a animação passa</span>
+        <div className="biblioteca__chips" role="radiogroup" aria-label="Onde a animação passa">
+          {LAYOUTS_DA_CENA.map((l) => (
+            <button key={l} type="button" role="radio" aria-checked={composicao.layout === l} className="biblioteca__chip" onClick={() => mudar({ layout: l })}>
+              {NOME_DO_LAYOUT_DA_CENA[l]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {composicao.layout === 'meio_a_meio' && (
+        <>
+          <div className="biblioteca__chips" role="radiogroup" aria-label="Lado da animação">
+            {(['cima', 'baixo'] as const).map((l) => (
+              <button key={l} type="button" role="radio" aria-checked={(composicao.lado ?? 'cima') === l} className="biblioteca__chip" onClick={() => mudar({ lado: l })}>
+                {l === 'cima' ? 'Animação em cima' : 'Animação embaixo'}
+              </button>
+            ))}
+          </div>
+          <Deslizante rotulo="Tamanho da animação" valor={Math.round((composicao.divisao ?? 0.5) * 100)} min={30} max={65} passo={1} unidade="%" onSoltar={(v) => mudar({ divisao: v / 100 })} />
+          <Deslizante rotulo="Altura do rosto no vídeo" valor={Math.round((composicao.foco ?? 0.4) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ foco: v / 100 })} />
+        </>
+      )}
+      {composicao.layout !== 'cartao' && (
+        <label className="biblioteca__opcao">
+          <input type="checkbox" checked={!composicao.semFundo} onChange={(e) => mudar({ semFundo: !e.target.checked })} /> Fundo escuro no painel
+        </label>
+      )}
+    </div>
+  );
+}
+
 /**
  * A cena animada: onde ela passa, como fazemos com as imagens -- meio a
  * meio (animação em cima ou embaixo, quanto da tela, onde fica o rosto),

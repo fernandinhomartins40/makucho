@@ -1253,9 +1253,11 @@ export function Timeline({
                           fimMs={m.timelineStartMs + m.durationMs}
                           zoom={zoom}
                           altura={altura}
-                          cor={m.kind === 'cena' ? '#6d28d9' : m.kind === 'video' ? '#0e7490' : m.kind === 'sticker' ? '#c2410c' : '#15803d'}
+                          cor={m.kind === 'cena' || m.kind === 'html' ? '#6d28d9' : m.kind === 'video' ? '#0e7490' : m.kind === 'sticker' ? '#c2410c' : '#15803d'}
                           rotulo={
-                            m.kind === 'cena'
+                            m.kind === 'html'
+                              ? `Animação · ${m.composicao?.titulo ?? (m.composicao ? NOME_DO_LAYOUT_DA_CENA[m.composicao.layout].split(' (')[0] : '')}`
+                              : m.kind === 'cena'
                               ? `Animação · ${m.cena ? NOME_DO_LAYOUT_DA_CENA[m.cena.layout].split(' (')[0] : ''}`
                               : m.kind === 'sticker'
                                 ? `Sticker · ${definicaoDoSticker(m.assetId)?.rotulo ?? ''}`

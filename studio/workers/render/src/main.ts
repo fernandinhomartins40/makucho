@@ -19,7 +19,11 @@ import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import {
   CORES_PADRAO_DA_MARCA,
+  FILA_ANIMACAO,
   FILA_RENDER,
+  chaveDaAnimacao,
+  chaveDoArquivoDaAnimacao,
+  composicaoHtmlSchema,
   PREFIXO_DAS_FILAS,
   brandColorsSchema,
   editPlanV1Schema,
@@ -37,7 +41,8 @@ import {
   presetDaLegenda,
   resolverEstiloDaLegenda,
 } from '@makucho/studio-contracts';
-import type { CaptionStyleInput, EditPlanV1, MarcaDoVideo } from '@makucho/studio-contracts';
+import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, MarcaDoVideo } from '@makucho/studio-contracts';
+import { prepararAnimacao } from './animacoes';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -217,6 +222,18 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         }
       }
 
+      // Animações em HTML (HyperFrames): o vídeo com a transparência lado
+      // a lado, preparado pela fila de animações (o mesmo da exportação).
+      const animacoes: Record<string, string> = {};
+      for (const c of plano.mediaLayers ?? []) {
+        if (c.kind !== 'html' || !c.composicao) continue;
+        const ws = await workspaceDo(projectId);
+        if (!ws) break;
+        const arquivo = caminhoDe(chaveDoArquivoDaAnimacao(ws, chaveDaAnimacao(c.composicao, c.durationMs, marca.cores.primary)));
+        if (existsSync(arquivo)) animacoes[c.id] = arquivo;
+        else console.warn(`[render] animação ${c.id} ainda não foi preparada; fica de fora`);
+      }
+
       await renderizar({
         entrada,
         saida: saidaTmp,
@@ -232,6 +249,7 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
         luts,
         midias: await midiasDoPlano(plano, arquivos.imagens),
         cenas,
+        animacoes,
         ...vinhetas,
         clipsDesligados: job.data.clipsDesligados ?? [],
         aoProgredir: (fracao) => {
@@ -600,6 +618,31 @@ worker.on('failed', (job, erro) => {
 worker.on('completed', (job) => {
   console.log(`[render] job ${job.id} concluído (projeto ${job.data.projectId})`);
 });
+
+// ---------- Animações em HTML (HyperFrames) ----------
+// Uma por vez: cada uma abre um Chrome. O arquivo pronto fica no storage
+// pela chave do conteúdo; a API e a exportação o acham por ela.
+const workerDeAnimacoes = new Worker<JobDeAnimacao>(
+  FILA_ANIMACAO,
+  async (job) => {
+    const composicao = composicaoHtmlSchema.parse(job.data.composicao);
+    const destino = chaveDoArquivoDaAnimacao(job.data.workspaceId, job.data.chave);
+    if (existsSync(caminhoDe(destino))) return;
+    await comEspacoDeTrabalho(async (espaco) => {
+      const pronto = await prepararAnimacao({ ...job.data, composicao }, espaco.arquivo('animacao'), {
+        pastaDeFontes: PASTA_DE_FONTES,
+        aoProgredir: () => {
+          bater();
+          void job.updateProgress(50);
+        },
+      });
+      await publicar(pronto, destino);
+    });
+    console.log(`[animacao] ${job.data.chave} pronta (workspace ${job.data.workspaceId})`);
+  },
+  { connection: redis, prefix: PREFIXO_DAS_FILAS, concurrency: 1 },
+);
+workerDeAnimacoes.on('failed', (job, erro) => console.error(`[animacao] ${job?.id} falhou:`, erro.message));
 
 // ---------- Heartbeat ----------
 const HEARTBEAT = '/tmp/studio/heartbeat';

@@ -76,16 +76,16 @@ export function Animacoes({ plan, posicaoMs, corDaMarca, onOperacao, onSeleciona
       {onPedirIa && (
         <PedirAIa
           titulo="Criar animações com a IA"
-          ajuda="A IA lê a fala e monta cenas que entram no ritmo das palavras: meio a meio, cartão sobre o vídeo ou tela cheia."
+          ajuda="A IA lê a fala e cria animações com HyperFrames (HTML e GSAP) que entram no ritmo das palavras: meio a meio, cartão sobre o vídeo ou tela cheia."
           exemplos={['Anime os pontos principais da fala', 'Um cartão com o preço, sem cobrir o rosto', 'Meio a meio no passo a passo']}
-          onEnviar={(texto, anterior) => onPedirIa(`Animações (motion UI, com criar_cena_animada): ${texto}`, anterior)}
+          onEnviar={(texto, anterior) => onPedirIa(`Animações (HyperFrames, com criar_animacao; leia ler_fala palavras=true antes): ${texto}`, anterior)}
           passos={passosDaIa ?? []}
         />
       )}
       <span className="campo__rotulo" style={{ display: 'block', marginTop: 'var(--e3)' }}>
-        Modelos prontos
+        Modelos prontos (rápidos)
       </span>
-      <p className="campo__ajuda">Entram no cursor ({tempo(noCursor)}), na faixa Mídia. Selecione para trocar o jeito (meio a meio, cartão, tela cheia) e a posição.</p>
+      <p className="campo__ajuda">Não precisam do servidor: entram no cursor ({tempo(noCursor)}), na faixa Mídia. Selecione para trocar o jeito (meio a meio, cartão, tela cheia) e a posição.</p>
       <div className="cenas-modelos">
         {MODELOS_DE_CENA.map((m) => (
           <button key={m.id} type="button" className="cena-cartao" title={m.quando} onClick={() => por(m.cena)}>

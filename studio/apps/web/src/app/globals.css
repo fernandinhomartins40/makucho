@@ -13819,3 +13819,26 @@ button.midia-cartao__previa:disabled {
   font-size: 11px;
   opacity: 0.7;
 }
+
+/* Animações em HTML (HyperFrames) na prévia: o quadro 1080x1920 escalado. */
+.palco__animacoes {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.palco__animacao {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  border: 0;
+  background: transparent;
+  transform-origin: 0 0;
+  /* O editor declara color-scheme escuro: com ele, o Chrome pinta o
+     fundo do iframe (opaco). Claro = o documento fica transparente. */
+  color-scheme: light;
+}

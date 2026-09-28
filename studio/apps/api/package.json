@@ -9,9 +9,10 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts && tsx test/pexels.test.ts && tsx test/fontes-de-midia.test.ts && tsx test/agente.test.ts"
+    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts && tsx test/pexels.test.ts && tsx test/fontes-de-midia.test.ts && tsx test/agente.test.ts && tsx test/animacoes.test.ts"
   },
   "dependencies": {
+    "@hyperframes/lint": "0.8.82",
     "@makucho/studio-contracts": "workspace:*",
     "@makucho/studio-database": "workspace:*",
     "@nestjs/common": "^10.4.4",

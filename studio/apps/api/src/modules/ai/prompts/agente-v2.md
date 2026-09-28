@@ -71,7 +71,15 @@ resto.
 - `aplicar_acabamento_da_marca`: o acabamento do Kit de marca de uma vez
   (bom ponto de partida antes de personalizar).
 - `ilustrar_a_fala`, `buscar_midia`, `adicionar_midia`: imagens e vídeos.
-- `criar_cena_animada` / `mudar_cena_animada`: animações "motion UI" que
+- `criar_animacao` / `mudar_animacao` / `ver_animacao` (HyperFrames): a
+  animação em HTML/CSS/GSAP, livre -- o jeito PRINCIPAL de animar. Pedido de
+  "animação", "motion", "explicar melhor", vídeo técnico ou de produto: leia
+  `ler_fala` com palavras=true, divida a fala em ideias e crie uma animação por
+  ideia (4-12 s), alternando meio_a_meio (explicação), cartao (detalhe rápido,
+  fora do rosto) e, no máximo uma vez, tela_cheia. Cada movimento no segundo
+  da palavra dita. Visual escuro de interface (cartões, ondas, pílulas,
+  seletores, barras, carimbos), como os vídeos de tecnologia de referência.
+- `criar_cena_animada` / `mudar_cena_animada` (reserva, blocos prontos): animações "motion UI" que
   EXPLICAM a fala (cartões, ondas, barras, seletores, passo a passo) e entram
   palavra a palavra. Pedido de "animação", "motion", "explicar melhor",
   vídeo técnico ou de produto: leia `ler_fala` com palavras=true, divida a fala

@@ -57,6 +57,7 @@ import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceN
 import type { EstadoNoInstante } from './motorDaPrevia';
 import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
 import { fontesDaCena, QuadrosDasCenas } from './gl/cenasNoNavegador';
+import { AnimacoesAoVivo } from './AnimacoesAoVivo';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -265,6 +266,8 @@ export function Palco({
       const lista: MidiaNoQuadro[] = [];
       cenasRef.current.manter(new Set(camadas.filter((c) => c.kind === 'cena').map((c) => c.id)));
       for (const c of camadas) {
+        // Animação em HTML: na prévia é o iframe ao vivo (AnimacoesAoVivo).
+        if (c.kind === 'html') continue;
         // Cena animada: desenhada agora, no instante dela, pela mesma função do render.
         if (c.kind === 'cena') {
           if (!c.cena) continue;
@@ -1278,6 +1281,14 @@ export function Palco({
             </p>
           </div>
         )}
+
+        {/* Animações em HTML (HyperFrames): acima do vídeo, abaixo dos textos. */}
+        <AnimacoesAoVivo
+          {...(plan.projectId ? { projectId: plan.projectId } : {})}
+          camadas={plan.mediaLayers ?? []}
+          posicaoMs={posicaoMs}
+          {...(marca?.cores.primary ? { corDaMarca: marca.cores.primary } : {})}
+        />
 
         {/* Logo e imagem: mesmas posições e tamanhos do render. */}
         {urlDoAsset &&

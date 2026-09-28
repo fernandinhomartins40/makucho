@@ -16,6 +16,7 @@ import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
 import {
   FILA_ANALISE,
+  FILA_ANIMACAO,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -24,7 +25,7 @@ import {
   VALIDADE_DO_PROGRESSO_S,
   chaveDoProgresso,
 } from '@makucho/studio-contracts';
-import type { EtapaDoPreparo, ProgressoDoPreparo } from '@makucho/studio-contracts';
+import type { EtapaDoPreparo, JobDeAnimacao, ProgressoDoPreparo } from '@makucho/studio-contracts';
 
 export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
@@ -196,6 +197,34 @@ export class FilaService implements OnModuleDestroy {
       this.log.error(`falha ao enfileirar render do projeto ${projectId}`, e as Error);
       return false;
     }
+  }
+
+  /**
+   * Pede o vídeo de uma animação em HTML (HyperFrames). jobId pela chave
+   * do conteúdo: pedir de novo a mesma animação não abre outro Chrome.
+   */
+  async animar(dados: JobDeAnimacao): Promise<boolean> {
+    try {
+      await this.fila(FILA_ANIMACAO).add('animar', dados, { jobId: `anim-${dados.chave}`, attempts: 2, backoff: { type: 'fixed', delay: 10_000 } });
+      return true;
+    } catch (e) {
+      this.log.error(`falha ao enfileirar a animação ${dados.chave}`, e as Error);
+      return false;
+    }
+  }
+
+  /** Onde está o pedido de uma animação: esperando, rodando, falhou (e por quê). */
+  async estadoDaAnimacao(chave: string): Promise<{ estado: string; erro?: string } | null> {
+    const job = await this.fila(FILA_ANIMACAO).getJob(`anim-${chave}`).catch(() => null);
+    if (!job) return null;
+    const estado = await job.getState();
+    return { estado, ...(estado === 'failed' && job.failedReason ? { erro: job.failedReason } : {}) };
+  }
+
+  /** Tira o pedido que falhou, para poder pedir de novo. */
+  async esquecerAnimacao(chave: string): Promise<void> {
+    const job = await this.fila(FILA_ANIMACAO).getJob(`anim-${chave}`).catch(() => null);
+    await job?.remove().catch(() => undefined);
   }
 
   /** Quantos jobs esperam em cada fila. Alimenta o painel de status. */

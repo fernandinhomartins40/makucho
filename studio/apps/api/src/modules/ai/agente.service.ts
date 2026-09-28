@@ -15,9 +15,12 @@
 // plano (um "desfazer").
 // ============================================================
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CATALOGO_DE_BLOCOS_DA_CENA,
+  REGRAS_DA_ANIMACAO_HTML,
+  composicaoHtmlSchema,
+  problemasDaComposicao,
   CLIMAS_DE_MUSICA,
   CREDITO_DO_EMOJI_ANIMADO,
   ESTILOS_DA_IMAGEM_POR_IA,
@@ -61,6 +64,7 @@ import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
+import { AnimacoesService } from '../animacoes/animacoes.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
@@ -134,6 +138,7 @@ export class AgenteService {
     private readonly visual: MontagemVisualService,
     private readonly refino: RefinoService,
     private readonly banco: BancoDeMidiaService,
+    @Optional() private readonly animacoes?: AnimacoesService,
   ) {}
 
   /** Os passos do pedido em andamento (ou do último) e o resultado, para a tela. */
@@ -763,6 +768,97 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, ignoradas: res.ignoradas };
+        },
+      },
+
+      criar_animacao: {
+        rotulo: 'Criando uma animação (HyperFrames)',
+        descricao: `Cria uma ANIMAÇÃO em HTML (HyperFrames) e põe no vídeo: o melhor jeito de EXPLICAR a fala com motion design (títulos que entram palavra a palavra, cartões, ondas de áudio, barras, seletores, gráficos, passo a passo). layout: meio_a_meio (painel com a animação e o vídeo com o rosto na outra parte -- o melhor para explicar; lado cima|baixo, divisao 0.3-0.65, foco = altura do rosto no vídeo 0-1), cartao (sobre o vídeo, sem cobrir o rosto), tela_cheia (só a animação; no máximo 1-2 por vídeo). Antes, leia ler_fala palavras=true: o tempo de cada movimento é (instante da palavra - inicioS) em segundos. Uma ideia por animação (4-12 s). Se voltar "problemas", corrija e chame de novo.\n${REGRAS_DA_ANIMACAO_HTML}`,
+        parametros: objeto(
+          {
+            html: { type: 'string' },
+            css: { type: 'string' },
+            script: { type: 'string' },
+            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] },
+            lado: { type: 'string', enum: ['cima', 'baixo'] },
+            divisao: { type: 'number' },
+            foco: { type: 'number' },
+            titulo: { type: 'string' },
+            inicioS: { type: 'number' },
+            duracaoS: { type: 'number' },
+          },
+          ['html', 'script', 'layout', 'inicioS', 'duracaoS'],
+        ),
+        executar: async (c, a) => {
+          const r = composicaoHtmlSchema.safeParse({
+            html: a.html,
+            css: a.css ?? '',
+            script: a.script ?? '',
+            layout: a.layout,
+            ...(typeof a.lado === 'string' ? { lado: a.lado } : {}),
+            ...(typeof a.divisao === 'number' ? { divisao: Math.min(0.65, Math.max(0.3, a.divisao)) } : {}),
+            ...(typeof a.foco === 'number' ? { foco: Math.min(1, Math.max(0, a.foco)) } : {}),
+            ...(typeof a.titulo === 'string' ? { titulo: a.titulo.slice(0, 60) } : {}),
+          });
+          if (!r.success) return { erro: 'animação inválida', problemas: r.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`) };
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 500));
+          const dur = Math.max(500, Math.min(total - inicio, 60_000, Math.round(Number(a.duracaoS) * 1000) || 5000));
+          const locais = problemasDaComposicao(r.data);
+          const problemas = locais.length || !this.animacoes ? locais : await this.animacoes.problemas(r.data, dur);
+          if (problemas.length) return { erro: 'a animação tem problemas', problemas };
+          const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
+          const res = aplicarComando(
+            c.plano,
+            [{ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao: r.data, timelineStartMs: inicio, durationMs: dur }],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          // O vídeo com transparência (para exportar) começa a ser preparado já.
+          void this.animacoes?.preparar(c.tenant, c.projectId, r.data, dur).catch((e) => this.log.warn(`animação não pedida: ${e instanceof Error ? e.message : e}`));
+          const nova = (c.plano.mediaLayers ?? []).find((m) => !antes.has(m.id));
+          return { ok: res.aplicadas > 0, id: nova?.id, inicioS: inicio / 1000, fimS: (inicio + dur) / 1000, ignoradas: res.ignoradas };
+        },
+      },
+
+      mudar_animacao: {
+        rotulo: 'Ajustando a animação',
+        descricao: 'Muda uma animação em HTML que já está no vídeo (id de criar_animacao ou de ver_projeto): mande só o que muda (html, css, script, layout, lado, divisao, foco) e/ou inicioS/duracaoS. Leia antes a atual com ver_animacao para editar em cima dela.',
+        parametros: objeto(
+          { id: { type: 'string' }, html: { type: 'string' }, css: { type: 'string' }, script: { type: 'string' }, layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] }, lado: { type: 'string', enum: ['cima', 'baixo'] }, divisao: { type: 'number' }, foco: { type: 'number' }, inicioS: { type: 'number' }, duracaoS: { type: 'number' } },
+          ['id'],
+        ),
+        executar: async (c, a) => {
+          const atual = (c.plano.mediaLayers ?? []).find((m) => m.id === String(a.id) && m.kind === 'html');
+          if (!atual?.composicao) return { erro: 'animação não encontrada', animacoes: (c.plano.mediaLayers ?? []).filter((m) => m.kind === 'html').map((m) => ({ id: m.id, inicioS: m.timelineStartMs / 1000, titulo: m.composicao?.titulo })) };
+          const mudada = { ...atual.composicao } as Record<string, unknown>;
+          for (const k of ['html', 'css', 'script', 'layout', 'lado', 'divisao', 'foco'] as const) if (a[k] !== undefined) mudada[k] = a[k];
+          const r = composicaoHtmlSchema.safeParse(mudada);
+          if (!r.success) return { erro: 'animação inválida', problemas: r.error.issues.slice(0, 6).map((i) => `${i.path.join('.')}: ${i.message}`) };
+          const dur = typeof a.duracaoS === 'number' ? Math.max(500, Math.round(a.duracaoS * 1000)) : atual.durationMs;
+          const locais = problemasDaComposicao(r.data);
+          const problemas = locais.length || !this.animacoes ? locais : await this.animacoes.problemas(r.data, dur);
+          if (problemas.length) return { erro: 'a animação tem problemas', problemas };
+          const res = aplicarComando(
+            c.plano,
+            [{ op: 'editar_midia', mediaId: atual.id, composicao: r.data, durationMs: dur, ...(typeof a.inicioS === 'number' ? { timelineStartMs: Math.max(0, Math.round(a.inicioS * 1000)) } : {}) }],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          void this.animacoes?.preparar(c.tenant, c.projectId, r.data, dur).catch(() => undefined);
+          return { ok: res.aplicadas > 0, ignoradas: res.ignoradas };
+        },
+      },
+
+      ver_animacao: {
+        rotulo: 'Lendo a animação',
+        descricao: 'O html, css e script de uma animação em HTML que está no vídeo (para mudar em cima dela).',
+        parametros: objeto({ id: { type: 'string' } }, ['id']),
+        executar: async (c, a) => {
+          const m = (c.plano.mediaLayers ?? []).find((x) => x.id === String(a.id) && x.kind === 'html');
+          return m?.composicao ? { ...m.composicao, inicioS: m.timelineStartMs / 1000, duracaoS: m.durationMs / 1000 } : { erro: 'animação não encontrada' };
         },
       },
 

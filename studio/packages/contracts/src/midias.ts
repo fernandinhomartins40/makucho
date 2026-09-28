@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { spriteDaMidiaSchema } from './emojis-animados';
 import { cenaAnimadaSchema, divisaoDaCena } from './cenas-animadas';
+import { composicaoHtmlSchema } from './animacao-html';
 
 export const LAYOUTS_DE_MIDIA = [
   'tela_cheia',
@@ -103,7 +104,7 @@ export const camadaDeMidiaSchema = z
      * `cena`: uma cena animada (cenas-animadas.ts), desenhada quadro a
      * quadro; o `assetId` não aponta arquivo nenhum ("cena").
      */
-    kind: z.enum(['image', 'video', 'sticker', 'cena']),
+    kind: z.enum(['image', 'video', 'sticker', 'cena', 'html']),
     timelineStartMs: z.number().int().nonnegative(),
     durationMs: z.number().int().min(100).max(600_000),
     layout: z.enum(LAYOUTS_DE_MIDIA),
@@ -144,6 +145,8 @@ export const camadaDeMidiaSchema = z
     sprite: spriteDaMidiaSchema.optional(),
     /** A cena animada (kind "cena"). */
     cena: cenaAnimadaSchema.optional(),
+    /** A animação em HTML do HyperFrames (kind "html"). */
+    composicao: composicaoHtmlSchema.optional(),
   })
   .strict();
 
@@ -179,7 +182,7 @@ export function caixaDaMidia(
   H = 1920,
 ): CaixaDaMidia {
   // A cena animada ocupa o quadro inteiro (o layout é dela: meio a meio, cartão...).
-  if (c.kind === 'cena') return { x: 0, y: 0, w: W, h: H, modo: 'cobrir' };
+  if (c.kind === 'cena' || c.kind === 'html') return { x: 0, y: 0, w: W, h: H, modo: 'cobrir' };
   const p = proporcao > 0 && Number.isFinite(proporcao) ? proporcao : 16 / 9;
   switch (c.layout) {
     case 'tela_cheia':
@@ -277,9 +280,15 @@ export function bordaDaCortina(c: { reveal?: Revelacao; revealMs?: number }, t: 
 export function divisaoNoInstante(camadas: readonly CamadaDeMidia[] | undefined, ms: number): { a: number; h: number; y0: number } | null {
   let achada: { a: number; h: number; y0: number } | null = null;
   for (const c of camadas ?? []) {
-    if (c.kind !== 'cena' || !c.cena) continue;
     if (ms < c.timelineStartMs || ms >= c.timelineStartMs + c.durationMs) continue;
-    achada = divisaoDaCena(c.cena) ?? achada;
+    achada = divisaoDaCamada(c) ?? achada;
   }
   return achada;
+}
+
+/** O meio a meio que uma camada pede (cena animada ou animação em HTML). */
+export function divisaoDaCamada(c: Pick<CamadaDeMidia, 'kind' | 'cena' | 'composicao'>): { a: number; h: number; y0: number } | null {
+  if (c.kind === 'cena' && c.cena) return divisaoDaCena(c.cena);
+  if (c.kind === 'html' && c.composicao) return divisaoDaCena(c.composicao);
+  return null;
 }

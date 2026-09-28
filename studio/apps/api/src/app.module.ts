@@ -13,6 +13,7 @@ import { EditPlansModule } from './modules/edit-plans/edit-plans.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { AiModule } from './modules/ai/ai.module';
 import { RendersModule } from './modules/renders/renders.module';
+import { AnimacoesModule } from './modules/animacoes/animacoes.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { PwaModule } from './modules/pwa/pwa.module';
 import { BancoDeMidiaModule } from './modules/banco-de-midia/banco-de-midia.module';
@@ -38,6 +39,7 @@ import { loadEnv } from './config/env';
     SettingsModule,
     AiModule,
     RendersModule,
+    AnimacoesModule,
     AssetsModule,
     PwaModule,
     BancoDeMidiaModule,
