@@ -74,6 +74,20 @@ export const NOME_DA_MOLDURA: Record<Moldura, string> = {
 
 /** Cortina: a camada se revela de um lado ao outro no começo. */
 export const REVELACOES = ['nenhuma', 'da_esquerda', 'da_direita'] as const;
+
+/**
+ * Como a camada se junta ao vídeo. "tela" só clareia (o preto some): luz
+ * vazando, bokeh, partículas e poeira sobre fundo preto. "multiplicar" só
+ * escurece (o branco some): texturas de papel, sombras. As contas são as
+ * mesmas no render (`blend` do FFmpeg) e na prévia (blend do WebGL).
+ */
+export const MISTURAS_DA_MIDIA = ['normal', 'tela', 'multiplicar'] as const;
+export type MisturaDaMidia = (typeof MISTURAS_DA_MIDIA)[number];
+export const NOME_DA_MISTURA: Record<MisturaDaMidia, string> = {
+  normal: 'Normal',
+  tela: 'Tela (clareia: luz, brilho)',
+  multiplicar: 'Multiplicar (escurece: textura)',
+};
 export type Revelacao = (typeof REVELACOES)[number];
 
 const idSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
@@ -118,6 +132,8 @@ export const camadaDeMidiaSchema = z
     /** Moldura em volta da imagem (MOLDURAS) e a cor dela (padrão: a da marca). */
     frame: z.enum(MOLDURAS).optional(),
     frameColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    /** Modo de mistura com o vídeo (ver `MISTURAS_DA_MIDIA`). */
+    blend: z.enum(MISTURAS_DA_MIDIA).optional(),
   })
   .strict();
 

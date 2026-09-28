@@ -365,6 +365,25 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // cima com `overlay` a partir do quadro em que começa. Antes do logo e
   // dos textos, que ficam sempre por cima.
   const sonsDasMidias: string[] = [];
+  /**
+   * Põe a camada `r` sobre o vídeo. Nos modos de mistura, a camada vai
+   * antes para uma tela da cor neutra (preto na "tela", branco no
+   * "multiplicar") e o resultado entra no `blend` em RGB -- só nos quadros
+   * dela; fora deles o vídeo passa direto. Fade e opacidade estão no alfa
+   * da camada, então chegam ao blend como mistura com a cor neutra (a
+   * mesma conta do blend do WebGL na prévia).
+   */
+  const compor = (r: string, sobre: string, c: { blend?: string }, n0: number, nf: number) => {
+    const modo = c.blend === 'tela' ? 'screen' : c.blend === 'multiplicar' ? 'multiply' : null;
+    if (!modo) {
+      partes.push(`[${video}][${r}]overlay=${sobre}[${r}o]`);
+      return;
+    }
+    partes.push(`color=c=${modo === 'screen' ? 'black' : 'white'}:s=${W}x${H}:r=${FPS},trim=end_frame=${acumulado},format=yuv420p[${r}n]`);
+    partes.push(`[${r}n][${r}]overlay=${sobre},format=gbrp[${r}g]`);
+    partes.push(`[${video}]format=gbrp[${r}v]`);
+    partes.push(`[${r}v][${r}g]blend=all_mode=${modo}:enable='between(n,${n0},${n0 + nf - 1})',format=yuv420p[${r}o]`);
+  };
   (plano.mediaLayers ?? []).forEach((c, i) => {
     const m = opcoes.midias?.[c.assetId];
     if (!m) return;
@@ -426,7 +445,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       const opacidade = c.opacity ?? 1;
       if (opacidade < 1) cadeia += `,lutyuv=a='val*${opacidade.toFixed(4)}'`;
       partes.push(`${cadeia},setpts=PTS-STARTPTS+${n0}/(${FPS}*TB)[${r}]`);
-      partes.push(`[${video}][${r}]overlay=x=${cx.x}:y=${cx.y}:eof_action=pass:format=yuv420[${r}o]`);
+      compor(r, `x=${cx.x}:y=${cx.y}:eof_action=pass:format=yuv420`, c, n0, nf);
     } else {
       // Animada: as MESMAS contas da prévia (animacao-da-midia.ts), como
       // expressões por quadro. Tamanho e giro numa tela fixa M x M (a
@@ -450,9 +469,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       const tc = `(t-${((opcoes.cabeca?.inicioMs ?? 0) / 1000).toFixed(4)})`;
       const px = seguir ? `(${expressaoDaTrilha(opcoes.cabeca!.trilha, 'x', tc)})+(${noVideo.x})-0.5` : noVideo.x;
       const py = seguir ? `(${expressaoDaTrilha(opcoes.cabeca!.trilha, 'y', tc)})+(${noVideo.y})-0.5` : noVideo.y;
-      partes.push(
-        `[${video}][${r}]overlay=x='(${px})*W-${M / 2}':y='(${py})*H-${M / 2}':eval=frame:eof_action=pass:format=yuv420[${r}o]`,
-      );
+      compor(r, `x='(${px})*W-${M / 2}':y='(${py})*H-${M / 2}':eval=frame:eof_action=pass:format=yuv420`, c, n0, nf);
     }
     video = `${r}o`;
 

@@ -52,7 +52,7 @@ import {
   getFirstEncodableVideoCodec,
   type InputVideoTrack,
 } from 'mediabunny';
-import { Compositor, QuadroExterno, type MidiaNoQuadro } from '../../components/editor/gl/compositor';
+import { misturaDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from '../../components/editor/gl/compositor';
 import { INDICE_DA_TRANSICAO } from '../../components/editor/gl/transicoesGlsl';
 import { tabelaDaPrevia } from '../../components/editor/gl/cores';
 import { efeitosNoQuadro, estadoNoInstante, sourceNoInstante } from '../../components/editor/motorDaPrevia';
@@ -488,7 +488,7 @@ export async function exportarNoNavegador(
         };
         const seguir = Boolean(c.followPerson && cabeca);
         if (!midiaEstaAnimada(c) && !seguir) {
-          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras });
+          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c) });
           continue;
         }
         const est = estadoDaMidia(c, (j * 1000) / 30, { x: (base.x + base.w / 2) / W, y: (base.y + base.h / 2) / H });
@@ -505,6 +505,7 @@ export async function exportarNoNavegador(
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
           giro: est.rotation,
           ...extras,
+          ...misturaDaCamada(c),
         });
       }
 

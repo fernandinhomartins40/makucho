@@ -27,6 +27,7 @@ import {
   analisarFechamento,
   aplicarComando,
   catalogoDoStudioParaIa,
+  definicaoDaSobreposicao,
   duracaoNaTimeline,
   editPlanV1Schema,
   falaParaMidias,
@@ -34,6 +35,7 @@ import {
   operacoesDaComposicao,
   perfilDoAudioSchema,
   ranquearResultados,
+  SOBREPOSICOES,
   ramoOuOutro,
   resumoDoPlanoParaIa,
   timelineOperationSchema,
@@ -464,7 +466,7 @@ export class AgenteService {
             if (!opcao) continue;
             try {
               const ops = await this.opsDaMidia(c, opcao, { ...m, composicao: m.composicao }, cor);
-              const r = aplicarComando(c.plano, ops, {});
+              const r = aplicarComando(c.plano, ops, { biblioteca: c.biblioteca });
               c.plano = r.plan;
               if (r.aplicadas) entrou.push(`${m.conceito} em ${(m.inicioMs / 1000).toFixed(1)}s (${m.composicao})`);
             } catch (e) {
@@ -642,10 +644,54 @@ export class AgenteService {
           const comp = composicao ?? (r.transparente ? 'icone_ao_lado' : 'tela_cheia');
           const cor = Object.values(await this.acabamento.coresDaMarca(c.tenant.workspaceId))[0];
           const ops = await this.opsDaMidia(c, r, { inicioMs: inicio, fimMs: fim, conceito: r.titulo, termos: [r.titulo], tipo: r.tipo, composicao: comp, ...(typeof a.texto === 'string' ? { texto: a.texto } : {}) }, cor);
-          const res = aplicarComando(c.plano, ops, {});
+          const res = aplicarComando(c.plano, ops, { biblioteca: c.biblioteca });
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, composicao: comp, ignoradas: res.ignoradas };
+        },
+      },
+
+      adicionar_sobreposicao: {
+        rotulo: 'Colocando luz e textura',
+        descricao: `Põe por cima do vídeo uma sobreposição de banco gratuito (vídeo em tela cheia no modo tela: o preto some, só a luz fica). tipo: ${SOBREPOSICOES.map((s) => s.id).join(', ')}. Use com parcimônia: abertura, momento emocional, virada, comemoração. opacidade 0,2-1 (padrão do tipo).`,
+        parametros: objeto(
+          { tipo: { type: 'string', enum: SOBREPOSICOES.map((s) => s.id) }, inicioS: { type: 'number' }, fimS: { type: 'number' }, opacidade: { type: 'number' } },
+          ['tipo', 'inicioS'],
+        ),
+        executar: async (c, a) => {
+          const def = definicaoDaSobreposicao(String(a.tipo));
+          if (!def) return { erro: 'tipo desconhecido' };
+          const r = await this.banco.buscar(c.tenant, { q: def.busca, tipo: 'video' });
+          const escolhido = r.resultados.find((x) => (x.duracaoMs ?? 0) >= 3000) ?? r.resultados[0];
+          if (!escolhido) return { erro: 'nada encontrado no banco', ...(r.avisos.length ? { avisos: r.avisos } : {}) };
+          const importada = await this.banco.importar(c.tenant, { fonte: escolhido.fonte, tipo: 'video', id: escolhido.id });
+          c.biblioteca.push({ assetId: importada.id, tipo: 'VIDEO', nome: escolhido.titulo });
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 600));
+          const fimPedido = typeof a.fimS === 'number' ? Math.round(a.fimS * 1000) : inicio + 4000;
+          const fim = Math.min(total, Math.max(inicio + 600, fimPedido), inicio + (escolhido.duracaoMs ?? 600_000));
+          const opacidade = typeof a.opacidade === 'number' ? Math.min(1, Math.max(0.2, a.opacidade)) : def.opacidade;
+          const res = aplicarComando(
+            c.plano,
+            [
+              {
+                op: 'adicionar_midia',
+                assetId: importada.id,
+                kind: 'video',
+                timelineStartMs: inicio,
+                durationMs: Math.max(100, fim - inicio),
+                layout: 'tela_cheia',
+                blend: def.mistura,
+                opacity: Number(opacidade.toFixed(2)),
+                fadeInMs: 300,
+                fadeOutMs: 300,
+              },
+            ],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, video: escolhido.titulo, ignoradas: res.ignoradas };
         },
       },
 
@@ -696,6 +742,9 @@ export class AgenteService {
     corDaMarca?: string,
   ) {
     const importada = await this.banco.importar(c.tenant, { fonte: r.fonte, tipo: r.tipo, id: r.id });
+    // Importado agora para o workspace: entra na biblioteca que a
+    // conferência das operações aceita (sem isso a camada era recusada).
+    c.biblioteca.push({ assetId: importada.id, tipo: r.tipo === 'video' ? 'VIDEO' : 'IMAGE', nome: r.titulo });
     const texto = momento.texto ?? (momento.composicao === 'tela_cheia_com_titulo' ? momento.conceito.replace(/^./, (l) => l.toUpperCase()) : undefined);
     return operacoesDaComposicao(
       { ...momento, ...(texto ? { texto } : {}) },

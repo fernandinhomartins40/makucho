@@ -71,6 +71,9 @@ resto.
 - `aplicar_acabamento_da_marca`: o acabamento do Kit de marca de uma vez
   (bom ponto de partida antes de personalizar).
 - `ilustrar_a_fala`, `buscar_midia`, `adicionar_midia`: imagens e vídeos.
+- `adicionar_sobreposicao`: luz vazando, bokeh, poeira, partículas, confete
+  por cima (1-2 no vídeo: abertura, emoção, comemoração). Transições com
+  mais estilo (impacto, flash_zoom, queimar, vhs...) estão no catálogo.
 - `definir_tipo_do_video` + `remontar_video`: quando o tipo estiver errado.
 - `achar_trechos_esquecidos`, `aprimorar_cortes`, `cortar_silencios`.
 - `consultar_catalogo`: ids de estilos, fontes, cores, transições, sons,

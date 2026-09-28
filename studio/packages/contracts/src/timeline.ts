@@ -29,7 +29,7 @@ import {
 import type { EditPlanV1, EstiloDoTexto, TipoDeTransicao } from './edit-plan';
 import { corDoTrechoSchema, corEhNeutra } from './cor';
 import { TIPOS_DE_EFEITO_DE_TELA, definicaoDoEfeitoDeTela } from './efeitos-de-tela';
-import { KEN_BURNS, LAYOUTS_DE_MIDIA, MOLDURAS, REVELACOES } from './midias';
+import { KEN_BURNS, MISTURAS_DA_MIDIA, LAYOUTS_DE_MIDIA, MOLDURAS, REVELACOES } from './midias';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
@@ -505,6 +505,7 @@ const mudancasDaMidia = {
   revealMs: z.number().int().min(100).max(10_000).optional(),
   frame: z.enum(MOLDURAS).optional(),
   frameColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  blend: z.enum(MISTURAS_DA_MIDIA).optional(),
   /** Troca a lista inteira; `null` tira os keyframes. */
   keyframes: z.array(keyframeDaMidiaSchema).max(24).nullable().optional(),
 };

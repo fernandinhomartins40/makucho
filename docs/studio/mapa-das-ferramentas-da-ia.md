@@ -189,6 +189,10 @@ A IA decide **o que, como e quando**. Estas garantias ela não contorna:
 
 **Buscar e trazer:** `buscar_midia`, `adicionar_midia_do_banco`.
 
+**Sobreposições (implementado):** `adicionar_sobreposicao` (tipo do catálogo `SOBREPOSICOES`: luz vazando, bokeh, poeira, partículas, confete...). Busca curada no banco de vídeos, importa e põe em tela cheia com `blend` "tela" (ou "multiplicar" na textura de papel). O modo de mistura da camada (`blend`) vale no render (`blend` do FFmpeg, só nos quadros dela) e na prévia (blend do WebGL), com a mesma conta.
+
+**Transições:** as receitas aceitam qualquer nativa do `xfade` como mistura (`MISTURAS_DE_RECEITA`), o que abriu 34 combinações novas (Impacto, Luz, Glitch, Formas e Desfoque). A prévia compila o shader de cada transição só quando ela aparece.
+
 **Conferir:** `conferir_plano` (fechamento, sobreposição, legenda),
 `resumir_mudancas`, `desfazer`.
 

@@ -46,7 +46,7 @@ const plano: EditPlanV1 = {
 
 type Roteiro = Array<{ texto?: string; chamadas?: Array<{ nome: string; args: unknown }> }>;
 
-function montar(roteiro: Roteiro) {
+function montar(roteiro: Roteiro, banco: unknown = {}) {
   const vistas: MensagemDoAgente[][] = [];
   const salvos: EditPlanV1[] = [];
   let volta = 0;
@@ -87,7 +87,7 @@ function montar(roteiro: Roteiro) {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
+    banco as never,
   );
   return { agente, vistas, salvos };
 }
@@ -144,6 +144,19 @@ async function main() {
   ]);
   await d.agente.executar(tenant as never, 'p1', 'x');
   t('desfazer_tudo: nada salvo', d.salvos.length === 0);
+
+  // ---------- Sobreposição do banco (o arquivo importado é aceito) ----------
+  const banco = {
+    buscar: async (_t: unknown, q: { q: string }) => ({
+      avisos: [],
+      resultados: [{ fonte: 'pexels', id: '77', tipo: 'video', titulo: `luz ${q.q}`, tags: [], largura: 1080, altura: 1920, duracaoMs: 8000, miniatura: '', transparente: false, autor: '', pagina: '', licenca: { nome: 'Pexels', exigeCredito: false } }],
+    }),
+    importar: async () => ({ id: 'asset-luz', largura: 1080, altura: 1920, transparente: false }),
+  };
+  const s = montar([{ chamadas: [{ nome: 'adicionar_sobreposicao', args: { tipo: 'luz_vazando', inicioS: 1, fimS: 3 } }] }, { texto: 'Pus uma luz.' }], banco);
+  await s.agente.executar(tenant as never, 'p1', 'x');
+  const camada = s.salvos[0]?.mediaLayers?.[0];
+  t('sobreposição: entra em tela cheia, modo tela, no tempo pedido', camada?.assetId === 'asset-luz' && camada.blend === 'tela' && camada.layout === 'tela_cheia' && camada.timelineStartMs === 1000 && camada.durationMs === 2000);
 
   // ---------- Teto de passos ----------
   const e = montar([{ chamadas: [{ nome: 'conferir_plano', args: {} }] }]);

@@ -211,9 +211,15 @@ export function transicoesSemGlsl(): string[] {
   return TRANSICOES_DO_CATALOGO.filter((t) => t.id !== 'cut' && !CORPOS[t.id] && !t.receita).map((t) => t.id);
 }
 
-/** O shader de transição inteiro: uma função por transição e um seletor. */
-export function shaderDeTransicao(): string {
-  const funcoes = TRANSICOES_DO_CATALOGO.filter((t) => CORPOS[t.id] || t.receita)
+/**
+ * O shader de transição: uma função por transição e um seletor. Com
+ * `indice`, só aquela transição -- o compositor compila uma por vez, na
+ * primeira vez que ela aparece: o shader com o catálogo inteiro levava
+ * quase um minuto para compilar no Windows (ANGLE/D3D), travando a página.
+ */
+export function shaderDeTransicao(indice?: number): string {
+  const escolhidas = TRANSICOES_DO_CATALOGO.filter((t) => (CORPOS[t.id] || t.receita) && (indice === undefined || INDICE_DA_TRANSICAO[t.id] === indice));
+  const funcoes = escolhidas
     .map((t) => {
       if (t.receita) {
         const r = corpoDaReceita(t.id, t.receita);
@@ -222,7 +228,7 @@ export function shaderDeTransicao(): string {
       return `vec3 tr_${t.id}(vec3 a, vec3 b) { ${CORPOS[t.id]} }`;
     })
     .join('\n');
-  const seletor = TRANSICOES_DO_CATALOGO.filter((t) => CORPOS[t.id] || t.receita)
+  const seletor = escolhidas
     .map((t) => `  if (uTipo == ${INDICE_DA_TRANSICAO[t.id]}) return tr_${t.id}(a, b);`)
     .join('\n');
   return `#version 300 es

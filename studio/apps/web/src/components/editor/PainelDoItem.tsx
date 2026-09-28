@@ -27,6 +27,8 @@ import {
   NOME_DO_LAYOUT,
   KEN_BURNS,
   NOME_DO_KEN_BURNS,
+  NOME_DA_MISTURA,
+  MISTURAS_DA_MIDIA,
   MOLDURAS,
   NOME_DA_MOLDURA,
   ENTRADAS_DE_MIDIA,
@@ -671,6 +673,16 @@ function MidiaDoItem({
         </>
       )}
       <Deslizante rotulo="Opacidade" valor={Math.round((m.opacity ?? 1) * 100)} min={5} max={100} passo={5} unidade="%" onSoltar={(v) => editar({ opacity: v / 100 })} />
+      <label className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Mistura com o vídeo</span>
+        <select className="campo__selecao" value={m.blend ?? 'normal'} onChange={(e) => editar({ blend: e.target.value as typeof m.blend })}>
+          {MISTURAS_DA_MIDIA.map((k) => (
+            <option key={k} value={k}>
+              {NOME_DA_MISTURA[k]}
+            </option>
+          ))}
+        </select>
+      </label>
       {!posicionavel && m.kind !== 'sticker' && (
         <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
           <label className="campo crescer" style={{ marginBottom: 0 }}>

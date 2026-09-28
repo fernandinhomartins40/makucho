@@ -55,7 +55,7 @@ import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
-import { Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
+import { misturaDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -334,7 +334,7 @@ export function Palco({
         };
         const seguir = Boolean(c.followPerson && cabecaRef.current);
         if (!midiaEstaAnimada(c) && !seguir) {
-          lista.push({ fonte: fonteDaCamada, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras });
+          lista.push({ fonte: fonteDaCamada, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c) });
           continue;
         }
         // Animada: a mesma função que gera as expressões do render.
@@ -353,6 +353,7 @@ export function Palco({
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
           giro: est.rotation,
           ...extras,
+          ...misturaDaCamada(c),
         });
       }
       return lista;

@@ -453,6 +453,21 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('tela cheia: cobre e corta', f.includes('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'));
   t('cada camada começa no seu quadro', f.includes('setpts=PTS-STARTPTS+30/(30*TB)[md0]') && f.includes('setpts=PTS-STARTPTS+150/(30*TB)[md1]'));
   t('o som do B-roll entra com volume, no instante dele', f.includes('volume=0.500') && f.includes('adelay=delays=5000:all=1[md1a]'));
+  t('sem mistura, overlay direto no vídeo', !f.includes('blend=all_mode'));
+
+  // Sobreposição em modo tela: preto neutro, blend em RGB só nos quadros dela.
+  const comLuz: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [{ id: 'l1', assetId: 'vid', kind: 'video', timelineStartMs: 1000, durationMs: 2000, layout: 'tela_cheia', blend: 'tela', opacity: 0.8 }],
+  };
+  const fl = (() => { const x = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comLuz, midias }); return x[x.indexOf('-filter_complex') + 1]!; })();
+  t('tela: a camada vai para um fundo preto do tamanho do vídeo', fl.includes('color=c=black:s=1080x1920:r=30,trim=end_frame=450') && fl.includes('[md0n][md0]overlay='));
+  t('tela: blend screen em RGB só nos quadros da camada', fl.includes("blend=all_mode=screen:enable='between(n,30,89)'") && fl.includes('[md0v][md0g]blend'));
+  t('tela: a opacidade continua no alfa da camada', fl.includes("lutyuv=a='val*0.8000'"));
+  const comPapel: EditPlanV1 = { ...plano, mediaLayers: [{ ...comLuz.mediaLayers![0]!, blend: 'multiplicar' }] };
+  const fp = (() => { const x = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comPapel, midias }); return x[x.indexOf('-filter_complex') + 1]!; })();
+  t('multiplicar: fundo branco e blend multiply', fp.includes('color=c=white:') && fp.includes('blend=all_mode=multiply'));
+
   const semMidia = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia });
   t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
 }

@@ -35,6 +35,7 @@ export * from './transicoes';
 export * from './cor';
 export * from './efeitos-de-tela';
 export * from './midias';
+export * from './sobreposicoes';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';

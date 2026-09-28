@@ -38,6 +38,7 @@ import { tempo } from '../editor/funcoes';
 import { EFEITOS_DE_TRECHO, ELEMENTOS, NOME_DO_SOM, SONS, TRANSICOES } from './catalogo';
 import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
+import { Sobreposicoes } from './Sobreposicoes';
 import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
@@ -508,6 +509,7 @@ function Efeitos(props: Props) {
   return (
     <>
       <EfeitosDeTela {...props} />
+      <Sobreposicoes plan={props.plan} posicaoMs={props.posicaoMs} onOperacao={props.onOperacao} onSelecionarItem={props.onSelecionarItem} />
       <h3 className="biblioteca__subtitulo">Zoom do trecho</h3>
       <Alvo>
         Aplica no trecho {clipeSelecionado ? 'selecionado' : 'sob o cursor'} ({tempo(alvo.inicioMs)}–{tempo(alvo.inicioMs + alvo.duracaoMs)}).

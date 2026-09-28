@@ -82,6 +82,13 @@ export interface MidiaNoQuadro {
   kenBurns?: { z: number; dx: number };
   /** Cortina: até onde (0 a 1 da caixa) a camada aparece, e de que lado. */
   cortina?: { borda: number; lado: 'esquerda' | 'direita' };
+  /** Modo de mistura (o `blend` do render): "tela" clareia, "multiplicar" escurece. */
+  mistura?: 'tela' | 'multiplicar';
+}
+
+/** O modo de mistura de uma camada do plano, para o `MidiaNoQuadro`. */
+export function misturaDaCamada(c: { blend?: string }): Pick<MidiaNoQuadro, 'mistura'> {
+  return c.blend === 'tela' || c.blend === 'multiplicar' ? { mistura: c.blend } : {};
 }
 
 export interface QuadroParaDesenhar {
@@ -113,6 +120,7 @@ uniform float uAlfa;
 uniform float uGiro;
 uniform vec2 uKb;
 uniform vec2 uCortina;
+uniform float uMistura;
 out vec4 cor;
 void main() {
   float X = floor(gl_FragCoord.x);
@@ -141,7 +149,12 @@ void main() {
   }
   // O alfa da própria mídia (PNG com transparência, como os stickers) conta.
   vec4 m = texture(uM, vec2(uv.x, 1.0 - uv.y));
-  cor = vec4(m.rgb, a * m.a);
+  float k = a * m.a;
+  // Tela: a cor já pesada pelo alfa (o blend faz s + d(1 - s)).
+  // Multiplicar: a cor misturada ao branco (o blend faz d * s).
+  if (uMistura > 1.5) cor = vec4(mix(vec3(1.0), m.rgb, k), 1.0);
+  else if (uMistura > 0.5) cor = vec4(m.rgb * k, 1.0);
+  else cor = vec4(m.rgb, k);
 }`;
 
 const VERTICES = `#version 300 es
@@ -205,7 +218,8 @@ interface Programa {
 export class Compositor {
   private gl: WebGL2RenderingContext;
   private enquadrar: Programa;
-  private transicao: Programa;
+  /** Um programa por transição (ver `programaDaTransicao`). */
+  private transicoes = new Map<number, Programa>();
   private copiar: Programa;
   private efeito: Programa;
   private camada: Programa;
@@ -245,10 +259,9 @@ export class Compositor {
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
     this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado']);
-    this.transicao = this.compilar(shaderDeTransicao(), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
-    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -265,6 +278,16 @@ export class Compositor {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       this.texVideo.push(t);
     }
+  }
+
+  /** O programa de uma transição, compilado na primeira vez que ela aparece. */
+  private programaDaTransicao(indice: number): Programa {
+    let p = this.transicoes.get(indice);
+    if (!p) {
+      p = this.compilar(shaderDeTransicao(indice), ['uA', 'uB', 'P', 'uTipo', 'uTamanho', 'uN']);
+      this.transicoes.set(indice, p);
+    }
+    return p;
   }
 
   private compilar(fragmento: string, nomes: string[]): Programa {
@@ -484,7 +507,7 @@ export class Compositor {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbos[0]!.tex);
     if (quadro.transicao && quadro.camadas.length > 1) {
-      const p = this.transicao;
+      const p = this.programaDaTransicao(quadro.transicao.indice);
       gl.useProgram(p.programa);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.fbos[1]!.tex);
@@ -561,6 +584,10 @@ export class Compositor {
       gl.uniform1f(p.uniforms.uGiro!, ((m.giro ?? 0) * Math.PI) / 180);
       gl.uniform2f(p.uniforms.uKb!, m.kenBurns?.z ?? 1, m.kenBurns?.dx ?? 0);
       gl.uniform2f(p.uniforms.uCortina!, m.cortina?.borda ?? 1, m.cortina ? (m.cortina.lado === 'esquerda' ? 1 : 2) : 0);
+      gl.uniform1f(p.uniforms.uMistura!, m.mistura === 'multiplicar' ? 2 : m.mistura === 'tela' ? 1 : 0);
+      if (m.mistura === 'tela') gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE);
+      else if (m.mistura === 'multiplicar') gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ZERO, gl.ONE);
+      else gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);
       this.desenharRetangulo();
     }
     gl.disable(gl.BLEND);
@@ -723,7 +750,7 @@ export class Compositor {
     });
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.largura, this.altura);
-    const p = this.transicao;
+    const p = this.programaDaTransicao(indice);
     gl.useProgram(p.programa);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.fbos[0]!.tex);

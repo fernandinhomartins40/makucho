@@ -33,7 +33,8 @@ import { STICKERS, definicaoDoSticker } from './stickers';
 import { EFEITOS_DE_TELA } from './efeitos-de-tela';
 import { APARENCIAS } from './cor';
 import { SONS_EMBUTIDOS } from './sons';
-import { LAYOUTS_DE_MIDIA, MOLDURAS } from './midias';
+import { LAYOUTS_DE_MIDIA, MISTURAS_DA_MIDIA, MOLDURAS } from './midias';
+import { SOBREPOSICOES } from './sobreposicoes';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA } from './animacao-da-midia';
 import type { IntervaloDeFala } from './protecao-da-fala';
@@ -482,6 +483,9 @@ export function catalogoDoStudioParaIa(): string {
     '## Efeitos sonoros (adicionar_efeito_sonoro assetId: quando usar)',
     SONS_EMBUTIDOS.map((s) => `${s.id}: ${s.quando}`).join('\n'),
     '',
+    '## Sobreposições (adicionar_sobreposicao tipo: quando usar; vídeo em tela cheia no modo tela)',
+    SOBREPOSICOES.map((s) => `${s.id}: ${s.quando}`).join('\n'),
+    '',
     '## Stickers (adicionar_midia kind=sticker, assetId)',
     STICKERS.map((s) => `${s.id}(${s.rotulo})`).join(', '),
     '',
@@ -492,6 +496,7 @@ export function catalogoDoStudioParaIa(): string {
     `animação durante o texto: ${lista(ANIMACOES_DURANTE)}`,
     `layout de mídia: ${lista(LAYOUTS_DE_MIDIA)}`,
     `moldura da mídia (frame): ${lista(MOLDURAS)}`,
+    `mistura da mídia (blend): ${lista(MISTURAS_DA_MIDIA)}`,
     `animação de mídia: entrada ${lista(ENTRADAS_DE_MIDIA)}; durante ${lista(LOOPS_DE_MIDIA)}; saída ${lista(SAIDAS_DE_MIDIA)}`,
   ].join('\n');
 }
