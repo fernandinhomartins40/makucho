@@ -12,8 +12,8 @@
 
 import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import sharp from 'sharp';
-import { CREDITO_DO_EMOJI_ANIMADO, DURACAO_MAXIMA_DO_SOM_MS, DURACAO_MINIMA_DA_TRILHA_MS, FONTES_DO_TIPO, TAMANHO_MAXIMO, URL_DO_EMOJI_ANIMADO, definicaoDoClima, emojisDoCatalogoDoGoogle } from '@makucho/studio-contracts';
-import type { EmojiAnimado, SpriteDaMidia, BuscaDeAudio, FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
+import { FORMATOS_DA_IMAGEM_POR_IA, MODELO_DA_IMAGEM_POR_IA, promptDaImagemPorIa, CREDITO_DO_EMOJI_ANIMADO, DURACAO_MAXIMA_DO_SOM_MS, DURACAO_MINIMA_DA_TRILHA_MS, FONTES_DO_TIPO, TAMANHO_MAXIMO, URL_DO_EMOJI_ANIMADO, definicaoDoClima, emojisDoCatalogoDoGoogle } from '@makucho/studio-contracts';
+import type { PedidoDeImagemPorIa, EmojiAnimado, SpriteDaMidia, BuscaDeAudio, FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
@@ -73,14 +73,14 @@ export class BancoDeMidiaService {
 
   // ---------- Chaves ----------
 
-  async chave(workspaceId: string, provider: 'pexels' | 'pixabay'): Promise<string | null> {
+  async chave(workspaceId: string, provider: 'pexels' | 'pixabay' | 'pollinations'): Promise<string | null> {
     const c = await this.prisma.stockCredential.findUnique({ where: { workspaceId_provider: { workspaceId, provider } } });
     return c ? this.crypto.decifrar({ encryptedKey: c.encryptedKey, iv: c.iv, authTag: c.authTag }) : null;
   }
 
-  private async exigirChave(workspaceId: string, provider: 'pexels' | 'pixabay'): Promise<string> {
+  private async exigirChave(workspaceId: string, provider: 'pexels' | 'pixabay' | 'pollinations'): Promise<string> {
     const c = await this.chave(workspaceId, provider);
-    if (!c) throw new BadRequestException(`cadastre a chave do ${provider === 'pexels' ? 'Pexels' : 'Pixabay'} em Configurações > Banco de mídia`);
+    if (!c) throw new BadRequestException(`cadastre a chave do ${provider === 'pexels' ? 'Pexels' : provider === 'pixabay' ? 'Pixabay' : 'Pollinations'} em Configurações > Banco de mídia`);
     return c;
   }
 
@@ -299,6 +299,44 @@ export class BancoDeMidiaService {
 
   /** O crédito que vai junto do emoji animado. */
   readonly creditoDoEmojiAnimado = CREDITO_DO_EMOJI_ANIMADO;
+
+  // ---------- Imagem criada por IA (Pollinations, com a chave do workspace) ----------
+
+  /**
+   * Gera a imagem e grava como asset. O Pollinations devolve o arquivo
+   * direto (JPEG/PNG); a espera é de alguns segundos. A licença registra
+   * que a imagem foi gerada, com o modelo e o pedido.
+   */
+  async gerarImagem(tenant: TenantContext, pedido: PedidoDeImagemPorIa) {
+    const chave = await this.exigirChave(tenant.workspaceId, 'pollinations');
+    const f = FORMATOS_DA_IMAGEM_POR_IA[pedido.formato];
+    const prompt = promptDaImagemPorIa(pedido);
+    const params = new URLSearchParams({ model: MODELO_DA_IMAGEM_POR_IA, width: String(f.largura), height: String(f.altura), seed: '-1', safe: 'true' });
+    const r = await fetch(`https://gen.pollinations.ai/image/${encodeURIComponent(prompt)}?${params}`, {
+      headers: { Authorization: `Bearer ${chave}`, 'User-Agent': AGENTE },
+      signal: AbortSignal.timeout(120_000),
+    }).catch(() => null);
+    if (!r) throw new BadGatewayException('o Pollinations não respondeu; tente de novo');
+    if (r.status === 401 || r.status === 403) throw new BadRequestException('o Pollinations recusou a chave; confira em Configurações');
+    if (r.status === 402) throw new BadRequestException('acabou o crédito (pollen) da chave do Pollinations');
+    if (r.status === 429) throw new BadRequestException('muitas imagens seguidas no Pollinations; espere um pouco');
+    if (!r.ok) throw new BadGatewayException(`o Pollinations respondeu ${r.status}`);
+    const mime = (r.headers.get('content-type') ?? '').split(';')[0]!.trim();
+    if (!mime.startsWith('image/') || mime.includes('svg')) throw new BadGatewayException('o Pollinations não devolveu uma imagem');
+    const conteudo = Buffer.from(await r.arrayBuffer());
+    if (conteudo.byteLength > TAMANHO_MAXIMO.IMAGE) throw new PayloadTooLargeException('a imagem gerada passou do limite');
+    const medida = await sharp(conteudo).metadata().catch(() => null);
+    const nome = pedido.descricao.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'imagem';
+    const asset = await this.assets.enviar(tenant, {
+      kind: 'IMAGE',
+      originalName: `ia-${nome}.${mime.includes('png') ? 'png' : 'jpg'}`,
+      mimeDeclarado: mime,
+      conteudo,
+      license: { holder: 'Imagem gerada por IA', type: 'royalty_free', url: 'https://pollinations.ai', notes: `Pollinations · ${MODELO_DA_IMAGEM_POR_IA} · "${pedido.descricao.slice(0, 300)}"` },
+    });
+    this.log.log(`imagem gerada por IA (${pedido.formato}) para o workspace ${tenant.workspaceId}`);
+    return { ...asset, largura: medida?.width ?? f.largura, altura: medida?.height ?? f.altura };
+  }
 
   // ---------- Importação ----------
 

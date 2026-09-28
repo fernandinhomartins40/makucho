@@ -23,6 +23,8 @@ import type {
   TipoDeAudioLivre,
   EmojiAnimado,
   SpriteDaMidia,
+  FormatoDaImagemPorIa,
+  EstiloDaImagemPorIa,
   SugestaoDeMarca,
   TipoDaBusca,
 } from '@makucho/studio-contracts';
@@ -811,7 +813,7 @@ export const credencialDeIa = {
 
 export interface ChaveDoBanco {
   configured: boolean;
-  provider?: 'pexels' | 'pixabay';
+  provider?: 'pexels' | 'pixabay' | 'pollinations';
   keyPrefix?: string;
   updatedAt?: string;
 }
@@ -844,10 +846,10 @@ export interface MidiasSeparadas {
 }
 
 export const bancoDeMidia = {
-  chave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`),
-  salvarChave: (apiKey: string, provider: 'pexels' | 'pixabay' = 'pexels') =>
+  chave: (provider: 'pexels' | 'pixabay' | 'pollinations' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`),
+  salvarChave: (apiKey: string, provider: 'pexels' | 'pixabay' | 'pollinations' = 'pexels') =>
     api<ChaveDoBanco>('/settings/stock-credential', { metodo: 'PUT', corpo: { apiKey, provider } }),
-  removerChave: (provider: 'pexels' | 'pixabay' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`, { metodo: 'DELETE' }),
+  removerChave: (provider: 'pexels' | 'pixabay' | 'pollinations' = 'pexels') => api<ChaveDoBanco>(`/settings/stock-credential?provider=${provider}`, { metodo: 'DELETE' }),
   buscar: (q: string, tipo: TipoDaBusca, opcoes: { fonte?: FonteDeMidia; pagina?: number } = {}) =>
     api<{ total: number; resultados: ResultadoDaBusca[]; avisos: string[]; consulta?: string | null }>(
       `/banco-de-midia/busca?${new URLSearchParams({ q, tipo, pagina: String(opcoes.pagina ?? 1), ...(opcoes.fonte ? { fonte: opcoes.fonte } : {}) })}`,
@@ -863,6 +865,9 @@ export const bancoDeMidia = {
   /** O emoji vira uma folha de quadros no workspace; `sprite` diz como animar. */
   importarEmojiAnimado: (codigo: string) =>
     api<{ asset: Asset; sprite: SpriteDaMidia }>('/banco-de-midia/importar-emoji-animado', { metodo: 'POST', corpo: { codigo } }),
+  /** Imagem criada por IA (Pollinations): vira asset do workspace. */
+  gerarImagem: (pedido: { descricao: string; formato?: FormatoDaImagemPorIa; estilo?: EstiloDaImagemPorIa }) =>
+    api<Asset & { largura: number; altura: number }>('/banco-de-midia/gerar-imagem', { metodo: 'POST', corpo: pedido }),
   importarAudio: (r: Pick<ResultadoDeAudio, 'id' | 'tipo'>) =>
     api<Asset & { resultado: ResultadoDeAudio }>('/banco-de-midia/importar-audio', { metodo: 'POST', corpo: { id: r.id, tipo: r.tipo } }),
   importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>

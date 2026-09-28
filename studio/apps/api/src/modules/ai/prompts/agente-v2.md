@@ -71,6 +71,8 @@ resto.
 - `aplicar_acabamento_da_marca`: o acabamento do Kit de marca de uma vez
   (bom ponto de partida antes de personalizar).
 - `ilustrar_a_fala`, `buscar_midia`, `adicionar_midia`: imagens e vídeos.
+- `criar_imagem_com_ia`: quando `buscar_midia` não tem a cena (descrição em
+  inglês, concreta, sem texto na imagem).
 - `adicionar_emoji_animado`: só no tom descontraído ou quando pedirem
   (emoji infantiliza vídeo profissional).
 - `escolher_trilha`: trilha de fundo grátis pelo clima do vídeo (sem trilha,

@@ -418,10 +418,18 @@ const BANCOS = {
     rotuloDoLink: 'pixabay.com/api/docs',
     passo: 'entre na conta e a chave aparece na própria página, em “key”',
   },
+  pollinations: {
+    nome: 'Pollinations',
+    titulo: 'Imagens criadas por IA (Pollinations)',
+    texto: 'Quando o banco de fotos não tem a cena, a IA cria a imagem (cerca de 0,004 pollen cada; a conta vem com crédito grátis).',
+    link: 'https://enter.pollinations.ai/keys',
+    rotuloDoLink: 'enter.pollinations.ai',
+    passo: 'entre, crie uma chave secreta (começa com sk_) e copie',
+  },
 } as const;
 
 /** A chave de um banco de mídia com chave (Pexels, Pixabay). */
-function CartaoDoBanco({ provider }: { provider: 'pexels' | 'pixabay' }) {
+function CartaoDoBanco({ provider }: { provider: 'pexels' | 'pixabay' | 'pollinations' }) {
   const b = BANCOS[provider];
   const chave = useDados<ChaveDoBanco>(() => bancoDeMidia.chave(provider));
   const [valor, setValor] = useState('');
@@ -510,6 +518,7 @@ function SecaoDoBanco() {
     <div className="config__pilha">
       <CartaoDoBanco provider="pexels" />
       <CartaoDoBanco provider="pixabay" />
+      <CartaoDoBanco provider="pollinations" />
       <section className="cartao config__cartao" aria-labelledby="titulo-abertas">
         <header className="config__cabeca">
           <div>

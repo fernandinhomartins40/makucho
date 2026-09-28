@@ -11,7 +11,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeAudioSchema, buscaDeMidiaSchema, importacaoDeAudioSchema, traduzirBusca } from '@makucho/studio-contracts';
+import { pedidoDeImagemPorIaSchema, FONTES_DE_MIDIA, TIPOS_DA_BUSCA, buscaDeAudioSchema, buscaDeMidiaSchema, importacaoDeAudioSchema, traduzirBusca } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -78,6 +78,13 @@ export class BancoDeMidiaController {
     assertCanWrite(tenant);
     const { codigo } = z.object({ codigo: z.string().regex(/^[0-9a-f_]{2,60}$/) }).parse(body);
     return this.banco.importarEmojiAnimado(tenant, codigo);
+  }
+
+  /** Imagem criada por IA (Pollinations, com a chave do workspace). */
+  @Post('gerar-imagem')
+  gerarImagem(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    return this.banco.gerarImagem(tenant, pedidoDeImagemPorIaSchema.parse(body));
   }
 
   @Post('importar')

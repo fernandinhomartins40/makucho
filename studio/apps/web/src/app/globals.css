@@ -13764,3 +13764,16 @@ button.midia-cartao__previa:disabled {
 .emojis-animados .campo__entrada {
   margin-bottom: var(--e2);
 }
+
+/* Criar imagem com IA: descrição, formato, estilo e a última criada. */
+.criar-com-ia textarea {
+  resize: vertical;
+  margin-bottom: var(--e2);
+}
+
+.criar-com-ia__ultima {
+  display: block;
+  max-width: 45%;
+  margin-top: var(--e2);
+  border-radius: 8px;
+}

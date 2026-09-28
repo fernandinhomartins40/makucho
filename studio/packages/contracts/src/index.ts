@@ -38,6 +38,7 @@ export * from './midias';
 export * from './sobreposicoes';
 export * from './musica-livre';
 export * from './emojis-animados';
+export * from './imagem-por-ia';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';

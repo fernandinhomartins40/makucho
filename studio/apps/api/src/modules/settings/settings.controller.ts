@@ -133,7 +133,7 @@ export class SettingsController {
   async salvarChaveDoBanco(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertIsOwner(tenant);
     const { apiKey, provider: p } = z
-      .object({ apiKey: z.string().trim().min(20).max(200), provider: z.enum(['pexels', 'pixabay']).optional() })
+      .object({ apiKey: z.string().trim().min(20).max(200), provider: z.enum(['pexels', 'pixabay', 'pollinations']).optional() })
       .parse(body);
     const provider = provedorDoBanco(p);
     const cifrado = this.crypto.cifrar(apiKey);
@@ -217,7 +217,7 @@ export class SettingsController {
   }
 }
 
-/** O banco de mídia de uma rota de chave: Pexels, a não ser que peça o Pixabay. */
-function provedorDoBanco(v: string | undefined): 'pexels' | 'pixabay' {
-  return v === 'pixabay' ? 'pixabay' : 'pexels';
+/** O banco de mídia de uma rota de chave: Pexels, a não ser que peça outro. */
+function provedorDoBanco(v: string | undefined): 'pexels' | 'pixabay' | 'pollinations' {
+  return v === 'pixabay' || v === 'pollinations' ? v : 'pexels';
 }

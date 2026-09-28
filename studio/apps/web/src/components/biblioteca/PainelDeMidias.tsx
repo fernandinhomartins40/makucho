@@ -20,6 +20,7 @@ import { batidasDaTrilha } from '../../lib/batidasDaTrilha';
 import { assets as apiAssets, bancoDeMidia, type Asset, type MidiasSeparadas, type Transcricao } from '../../lib/api';
 import { operacoesDasEscolhas } from '../../lib/midiasDaIa';
 import { SugestoesDeMidia } from './SugestoesDeMidia';
+import { CriarImagemComIa } from './CriarImagemComIa';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { tempo } from '../editor/funcoes';
 import { IconeEnviar, IconeMais } from '../icones';
@@ -391,6 +392,8 @@ export function PainelDeMidias({ plan, posicaoMs, onOperacao, onOperacoes, onSel
             ))}
           </div>
         ))}
+
+      <CriarImagemComIa noCursor={noCursor} duracaoTotal={duracaoTotal} urlDoAsset={urlDoAsset} onOperacao={onOperacao} onSelecionarItem={onSelecionarItem} onCriada={() => void carregar()} />
 
       <span className="campo__rotulo" style={{ marginTop: 'var(--e3)', display: 'block' }}>
         Suas mídias

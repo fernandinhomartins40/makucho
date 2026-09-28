@@ -19,6 +19,8 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   CLIMAS_DE_MUSICA,
   CREDITO_DO_EMOJI_ANIMADO,
+  ESTILOS_DA_IMAGEM_POR_IA,
+  FORMATOS_DA_IMAGEM_POR_IA,
   COMPOSICOES,
   RAMOS,
   RECEITAS,
@@ -40,6 +42,7 @@ import {
   macroDoComandoSchema,
   operacoesDaComposicao,
   ordenarTrilhas,
+  pedidoDeImagemPorIaSchema,
   perfilDoAudioSchema,
   ranquearResultados,
   SOBREPOSICOES,
@@ -699,6 +702,44 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, video: escolhido.titulo, ignoradas: res.ignoradas };
+        },
+      },
+
+      criar_imagem_com_ia: {
+        rotulo: 'Criando uma imagem com IA',
+        descricao:
+          'Cria uma imagem com IA (Pollinations) quando buscar_midia não achou a cena: o produto numa situação, uma ideia abstrata. descricao: EM INGLÊS, concreta (o que aparece, luz, lugar), sem texto na imagem. formato: vertical (tela cheia, padrão), quadrado, horizontal. estilo: foto, produto, ilustracao, render3d, cinema. Precisa da chave do Pollinations; sem ela, volta erro e você usa buscar_midia.',
+        parametros: objeto(
+          {
+            descricao: { type: 'string' },
+            formato: { type: 'string', enum: Object.keys(FORMATOS_DA_IMAGEM_POR_IA) },
+            estilo: { type: 'string', enum: Object.keys(ESTILOS_DA_IMAGEM_POR_IA) },
+            inicioS: { type: 'number' },
+            fimS: { type: 'number' },
+          },
+          ['descricao', 'inicioS'],
+        ),
+        executar: async (c, a) => {
+          const pedido = pedidoDeImagemPorIaSchema.safeParse({ descricao: a.descricao, formato: a.formato, estilo: a.estilo });
+          if (!pedido.success) return { erro: 'descrição inválida (3 a 600 caracteres)' };
+          const img = await this.banco.gerarImagem(c.tenant, pedido.data);
+          c.biblioteca.push({ assetId: img.id, tipo: 'IMAGE', nome: 'imagem criada por IA' });
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 600));
+          const fim = typeof a.fimS === 'number' ? Math.min(total, Math.max(inicio + 600, Math.round(a.fimS * 1000))) : Math.min(total, inicio + 3000);
+          const vertical = pedido.data.formato === 'vertical';
+          const res = aplicarComando(
+            c.plano,
+            [
+              vertical
+                ? { op: 'adicionar_midia', assetId: img.id, kind: 'image', layout: 'tela_cheia', timelineStartMs: inicio, durationMs: fim - inicio, kenBurns: 'aproximar', fadeInMs: 150, fadeOutMs: 150 }
+                : { op: 'adicionar_midia', assetId: img.id, kind: 'image', layout: 'livre', x: 0.5, y: 0.42, width: 0.85, radius: 0.04, timelineStartMs: inicio, durationMs: fim - inicio, fadeInMs: 150, fadeOutMs: 150 },
+            ],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, ignoradas: res.ignoradas };
         },
       },
 
