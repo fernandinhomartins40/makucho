@@ -10,7 +10,9 @@
 // Vive no Redis com validade: é estado de passagem, não histórico.
 // ============================================================
 
-export const ETAPAS_DO_PREPARO = ['preparando', 'transcrevendo', 'montando'] as const;
+// 'animando': o fim da montagem, quando a IA escreve as animações em HTML
+// (HyperFrames) -- uma etapa própria na tela, com porcentagem real.
+export const ETAPAS_DO_PREPARO = ['preparando', 'transcrevendo', 'montando', 'animando'] as const;
 export type EtapaDoPreparo = (typeof ETAPAS_DO_PREPARO)[number];
 
 export interface ProgressoDoPreparo {

@@ -199,7 +199,12 @@ export class AnimacoesDaFalaService {
    * Cria as animações da montagem e salva uma versão do plano com elas.
    * Devolve quantas entraram e a nota (também gravada no projeto).
    */
-  async criarNaMontagem(sistema: TenantContext, projectId: string): Promise<{ criadas: number; nota: string }> {
+  async criarNaMontagem(
+    sistema: TenantContext,
+    projectId: string,
+    /** Avisa a tela de preparo onde está (0 a 100). */
+    aoAvancar: (pct: number) => void = () => undefined,
+  ): Promise<{ criadas: number; nota: string }> {
     const registrar = async (nota: string) => {
       await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500) } }).catch(() => undefined);
       this.log.log(`animações do projeto ${projectId}: ${nota}`);
@@ -211,10 +216,20 @@ export class AnimacoesDaFalaService {
       const palavras = await this.palavrasNoVideo(projectId, plano);
       if (palavras.length < 8) return { criadas: 0, nota: await registrar('Sem animações: o vídeo não tem fala suficiente para a IA explicar.') };
       const duracaoS = agendaDoPlano(plano).duracaoMs / 1000;
+      aoAvancar(5);
       const momentos = await this.planejar(sistema.workspaceId, projectId, palavras, duracaoS);
+      aoAvancar(20);
       if (!momentos.length) return { criadas: 0, nota: await registrar('Sem animações: a IA não achou momentos que pedissem explicação visual.') };
 
-      const feitas = await Promise.allSettled(momentos.map((m) => this.escrever(sistema.workspaceId, projectId, m)));
+      let prontas = 0;
+      const feitas = await Promise.allSettled(
+        momentos.map((m) =>
+          this.escrever(sistema.workspaceId, projectId, m).finally(() => {
+            prontas += 1;
+            aoAvancar(20 + (75 * prontas) / momentos.length);
+          }),
+        ),
+      );
       const ops: TimelineOperation[] = [];
       const falhas: string[] = [];
       feitas.forEach((f, i) => {
@@ -233,6 +248,7 @@ export class AnimacoesDaFalaService {
       const res = aplicarComando(agora, ops, {});
       if (!res.aplicadas) return { criadas: 0, nota: await registrar(`Sem animações: ${res.ignoradas.join('; ').slice(0, 380)}`) };
       await this.planos.salvar(sistema, projectId, res.plan, 'ai');
+      aoAvancar(100);
       for (const o of ops) {
         if (o.op !== 'adicionar_midia' || !o.composicao) continue;
         void this.animacoes.preparar(sistema, projectId, o.composicao, o.durationMs).catch((e) => this.log.warn(`vídeo da animação não pedido: ${e instanceof Error ? e.message : e}`));

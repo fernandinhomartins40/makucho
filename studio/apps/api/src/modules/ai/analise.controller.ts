@@ -12,7 +12,11 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { PrismaService } from '../../common/prisma.service';
 import { assertCanWrite, assertOwnership } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
+import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { PropostaService } from './proposta.service';
+
+/** A nota enquanto as animações são criadas (a tela espera ela mudar). */
+const NOTA_CRIANDO = 'Criando as animações…';
 
 @ApiTags('ai')
 @Controller()
@@ -20,7 +24,33 @@ export class AnaliseController {
   constructor(
     private readonly proposta: PropostaService,
     private readonly prisma: PrismaService,
+    private readonly animacoesDaFala: AnimacoesDaFalaService,
   ) {}
+
+  /** Projetos com animações sendo criadas agora (um pedido por vez). */
+  private readonly animando = new Set<string>();
+
+  /**
+   * As animações da fala sob demanda -- a mesma etapa do fim da montagem,
+   * para um projeto que já está no editor. Leva minutos: roda em segundo
+   * plano, e a tela acompanha pela nota do projeto (`animationNote`).
+   */
+  @Post('projects/:id/animar-fala')
+  async animarFala(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertCanWrite(tenant);
+    const projeto = await this.prisma.project.findUnique({ where: { id } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto) throw new BadRequestException('projeto não encontrado');
+    if (this.animando.has(id)) return { ok: true, nota: NOTA_CRIANDO };
+
+    this.animando.add(id);
+    await this.prisma.project.update({ where: { id }, data: { animationNote: NOTA_CRIANDO } });
+    void this.animacoesDaFala
+      .criarNaMontagem(tenant, id)
+      .catch(() => undefined)
+      .finally(() => this.animando.delete(id));
+    return { ok: true, nota: NOTA_CRIANDO };
+  }
 
   /**
    * Síncrona, e não por fila, por uma razão concreta: a requisição

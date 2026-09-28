@@ -222,8 +222,9 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
    */
   private async animarNaMontagem(sistema: TenantContext, projectId: string): Promise<number> {
     if (!this.animacoesDaFala || process.env.STUDIO_ANIMAR_NA_MONTAGEM === 'off') return 0;
-    await this.filas.publicarProgresso(projectId, 'montando', 88).catch(() => undefined);
-    const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId);
+    const avisar = (pct: number) => void this.filas.publicarProgresso(projectId, 'animando', pct).catch(() => undefined);
+    avisar(1);
+    const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId, avisar);
     return r.criadas;
   }
 

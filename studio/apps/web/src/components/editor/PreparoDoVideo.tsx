@@ -30,6 +30,7 @@ import {
   IconeTexto,
   IconeNotificacao,
   IconeMidia,
+  IconeAnimacao,
 } from '../icones';
 
 type Estado = 'INGESTING' | 'TRANSCRIBING' | 'ANALYZING' | 'PRONTO' | string;
@@ -46,7 +47,10 @@ interface Props {
 const FAIXAS: Record<string, { de: number; ate: number; etapa: ProgressoDoPreparo['etapa'] }> = {
   INGESTING: { de: 4, ate: 25, etapa: 'preparando' },
   TRANSCRIBING: { de: 25, ate: 80, etapa: 'transcrevendo' },
-  ANALYZING: { de: 80, ate: 99, etapa: 'montando' },
+  ANALYZING: { de: 80, ate: 90, etapa: 'montando' },
+  // Sub-etapa do fim da montagem: o projeto segue em ANALYZING, e é o
+  // progresso publicado ('animando') que a revela.
+  ANIMANDO: { de: 90, ate: 99, etapa: 'animando' },
 };
 
 const ETAPAS = [
@@ -54,6 +58,7 @@ const ETAPAS = [
   { chave: 'INGESTING', titulo: 'Preparando o vídeo', texto: 'Prévia leve, áudio separado e pausas detectadas.' },
   { chave: 'TRANSCRIBING', titulo: 'Ouvindo a sua fala', texto: 'Cada palavra com o tempo exato em que foi dita.' },
   { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'Gancho, cortes, legenda, zoom, transições e imagens para você aprovar.' },
+  { chave: 'ANIMANDO', titulo: 'Criando as animações', texto: 'A IA desenha animações que explicam a sua fala, no ritmo das palavras.' },
 ];
 
 const MENSAGENS: Record<string, string[]> = {
@@ -68,6 +73,12 @@ const MENSAGENS: Record<string, string[]> = {
     'Escrevendo o título de abertura…',
     'Buscando imagens e ícones que ilustram a fala…',
   ],
+  ANIMANDO: [
+    'Escolhendo os momentos que pedem uma explicação visual…',
+    'Desenhando as animações no ritmo das palavras…',
+    'Decidindo onde cada animação entra: meio a meio ou cartão…',
+    'Conferindo cada animação antes de colocar no vídeo…',
+  ],
 };
 
 /** O que o vídeo vai ganhar -- acende conforme o preparo avança. */
@@ -76,10 +87,13 @@ const GANHOS = [
   { a: 55, Icone: IconeCortar, texto: 'Cortes no ritmo certo' },
   { a: 82, Icone: IconeAjustarZoom, texto: 'Zoom e transições' },
   { a: 95, Icone: IconeTexto, texto: 'Título e chamada' },
-  { a: 97, Icone: IconeMidia, texto: 'Imagens para aprovar' },
+  { a: 89, Icone: IconeMidia, texto: 'Imagens para aprovar' },
+  { a: 97, Icone: IconeAnimacao, texto: 'Animações que explicam a fala' },
 ];
 
-export function PreparoDoVideo({ estado, progresso, miniaturaUrl, duracaoDaGravacaoMs, comemorando }: Props) {
+export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUrl, duracaoDaGravacaoMs, comemorando }: Props) {
+  // O fim da montagem (as animações) aparece como etapa própria.
+  const estado = estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'animando' ? 'ANIMANDO' : estadoDoProjeto;
   const faixa = FAIXAS[estado];
 
   // ---------- Progresso geral ----------
@@ -143,7 +157,7 @@ export function PreparoDoVideo({ estado, progresso, miniaturaUrl, duracaoDaGrava
     };
   }, [geral, comemorando]);
 
-  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING'];
+  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'ANIMANDO'];
   const atual = comemorando ? ordem.length : Math.max(1, ordem.indexOf(estado));
 
   const titulo = comemorando
@@ -152,6 +166,8 @@ export function PreparoDoVideo({ estado, progresso, miniaturaUrl, duracaoDaGrava
       ? 'A IA está ouvindo você'
       : estado === 'ANALYZING'
         ? 'A IA está montando seu vídeo'
+        : estado === 'ANIMANDO'
+          ? 'A IA está animando seu vídeo'
         : 'Recebemos seu vídeo';
 
   const subtitulo = comemorando

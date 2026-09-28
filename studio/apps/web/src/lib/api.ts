@@ -774,6 +774,10 @@ export const ia = {
   // usuário está olhando a tela esperando o resultado.
   analisar: (projectId: string) =>
     api<ResultadoDaAnalise>(`/projects/${projectId}/analyze`, { metodo: 'POST' }),
+  // As animações da fala (HyperFrames) num projeto já aberto. Roda em
+  // segundo plano: a tela acompanha pela nota do projeto.
+  animarFala: (projectId: string) =>
+    api<{ ok: boolean; nota: string }>(`/projects/${projectId}/animar-fala`, { metodo: 'POST' }),
   // #4 -- procura trechos bons que ficaram de fora. Devolve
   // CANDIDATOS: quem decide e o usuario, e o que entra na timeline e
   // uma operacao `inserir` disparada por um clique.

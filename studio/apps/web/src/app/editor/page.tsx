@@ -257,6 +257,35 @@ function Editor({ projectId }: { projectId: string }) {
     return p;
   }, [projectId]);
 
+  // ---------- Animações da fala, sob demanda ----------
+  // A mesma etapa do fim da montagem, num projeto já aberto. Roda no
+  // servidor em segundo plano; a tela acompanha pela nota do projeto e,
+  // quando ela muda, traz o plano com as animações.
+  const NOTA_CRIANDO = 'Criando as animações…';
+  const criandoAnimacoes = projeto?.animationNote === NOTA_CRIANDO;
+  const criarAnimacoesDaFala = useCallback(async () => {
+    try {
+      const r = await apiIa.animarFala(projectId);
+      setProjeto((p) => (p ? { ...p, animationNote: r.nota } : p));
+    } catch (e) {
+      setProjeto((p) => (p ? { ...p, animationNote: `Sem animações: ${e instanceof Error ? e.message : 'o pedido falhou'}` } : p));
+    }
+  }, [projectId]);
+  useEffect(() => {
+    if (!criandoAnimacoes) return;
+    const id = setInterval(() => {
+      void apiProjetos
+        .obter(projectId)
+        .then((p) => {
+          if (p.animationNote === NOTA_CRIANDO) return;
+          setProjeto(p);
+          void carregarPlano();
+        })
+        .catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [criandoAnimacoes, projectId, carregarPlano]);
+
   useEffect(() => {
     let cancelado = false;
     void (async () => {
@@ -1259,12 +1288,23 @@ function Editor({ projectId }: { projectId: string }) {
               rolagem: duas barras no mesmo painel confundiam. */}
           {aba === 'ia' && (
             <div className="ia-secao ia-secao--topo">
-              {projeto?.animationNote && (
-                <div className="aviso aviso--info" role="status">
+              {plano && (projeto?.animationNote || !plano.mediaLayers?.some((m) => m.kind === 'html')) && (
+                <div className="aviso aviso--info" role="status" style={{ flexWrap: 'wrap' }}>
                   <IconeAnimacao size={15} />
-                  <span style={{ fontSize: 12 }}>
-                    <strong>Animações:</strong> {projeto.animationNote.replace(/^Sem animações: /, 'nenhuma nesta montagem -- ')}
+                  <span style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
+                    <strong>Animações:</strong>{' '}
+                    {projeto?.animationNote
+                      ? projeto.animationNote.replace(/^Sem animações: /, 'nenhuma nesta montagem -- ')
+                      : 'este vídeo ainda não tem animações.'}
                   </span>
+                  <button
+                    type="button"
+                    className="botao botao--secundario botao--pequeno"
+                    disabled={criandoAnimacoes}
+                    onClick={() => void criarAnimacoesDaFala()}
+                  >
+                    {criandoAnimacoes ? 'Criando… (leva alguns minutos)' : 'Criar animações da fala'}
+                  </button>
                 </div>
               )}
               {semIa && (
