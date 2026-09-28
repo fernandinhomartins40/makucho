@@ -13749,3 +13749,18 @@ button.midia-cartao__previa:disabled {
   opacity: 0.8;
   word-break: break-word;
 }
+
+/* Emoji animado sendo trazido: o cartão pulsa. */
+.sticker-cartao[data-trazendo] {
+  animation: pulsar-cartao 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes pulsar-cartao {
+  to {
+    opacity: 0.4;
+  }
+}
+
+.emojis-animados .campo__entrada {
+  margin-bottom: var(--e2);
+}

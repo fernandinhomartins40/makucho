@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
+import { spriteDaMidiaSchema } from './emojis-animados';
 
 export const LAYOUTS_DE_MIDIA = [
   'tela_cheia',
@@ -134,6 +135,8 @@ export const camadaDeMidiaSchema = z
     frameColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
     /** Modo de mistura com o vídeo (ver `MISTURAS_DA_MIDIA`). */
     blend: z.enum(MISTURAS_DA_MIDIA).optional(),
+    /** Imagem que é uma folha de quadros (emoji animado): anima em loop. */
+    sprite: spriteDaMidiaSchema.optional(),
   })
   .strict();
 

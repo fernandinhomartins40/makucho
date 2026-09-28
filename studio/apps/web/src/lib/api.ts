@@ -21,6 +21,8 @@ import type {
   ResultadoDaBusca,
   ResultadoDeAudio,
   TipoDeAudioLivre,
+  EmojiAnimado,
+  SpriteDaMidia,
   SugestaoDeMarca,
   TipoDaBusca,
 } from '@makucho/studio-contracts';
@@ -856,6 +858,11 @@ export const bancoDeMidia = {
     api<{ total: number; resultados: ResultadoDeAudio[] }>(
       `/banco-de-midia/audio?${new URLSearchParams({ tipo: pedido.tipo, ...(pedido.q ? { q: pedido.q } : {}), ...(pedido.clima ? { clima: pedido.clima } : {}), pagina: String(pedido.pagina ?? 1) })}`,
     ),
+  /** O catálogo de emojis animados do Google (a tela filtra localmente). */
+  emojisAnimados: () => api<{ emojis: EmojiAnimado[]; credito: string }>('/banco-de-midia/emojis-animados'),
+  /** O emoji vira uma folha de quadros no workspace; `sprite` diz como animar. */
+  importarEmojiAnimado: (codigo: string) =>
+    api<{ asset: Asset; sprite: SpriteDaMidia }>('/banco-de-midia/importar-emoji-animado', { metodo: 'POST', corpo: { codigo } }),
   importarAudio: (r: Pick<ResultadoDeAudio, 'id' | 'tipo'>) =>
     api<Asset & { resultado: ResultadoDeAudio }>('/banco-de-midia/importar-audio', { metodo: 'POST', corpo: { id: r.id, tipo: r.tipo } }),
   importar: (r: Pick<ResultadoDaBusca, 'fonte' | 'tipo' | 'id'>) =>

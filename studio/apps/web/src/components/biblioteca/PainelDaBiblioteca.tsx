@@ -41,6 +41,7 @@ import { PainelDeCor } from './PainelDeCor';
 import { PainelDeMidias } from './PainelDeMidias';
 import { Sobreposicoes } from './Sobreposicoes';
 import { AudiosLivres } from './AudiosLivres';
+import { EmojisAnimados } from './EmojisAnimados';
 import { PainelDeEstilos } from './PainelDeEstilos';
 import { IconeTocar, IconePausar, IconeMais, IconeEnviar, IconeCheck, IconeLixeira } from '../icones';
 
@@ -232,6 +233,7 @@ function Stickers({ plan, posicaoMs, onOperacao, onSelecionarItem }: Props) {
         ))}
       </div>
       <p className="campo__ajuda">Emoji: Noto Emoji (Google, Apache 2.0). Os demais foram desenhados para o Studio.</p>
+      <EmojisAnimados noCursor={noCursor} duracaoTotal={duracaoTotal} onOperacao={onOperacao} onSelecionarItem={onSelecionarItem} />
     </>
   );
 }

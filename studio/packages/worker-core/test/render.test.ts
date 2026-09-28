@@ -468,6 +468,15 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   const fp = (() => { const x = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comPapel, midias }); return x[x.indexOf('-filter_complex') + 1]!; })();
   t('multiplicar: fundo branco e blend multiply', fp.includes('color=c=white:') && fp.includes('blend=all_mode=multiply'));
 
+  // Emoji animado: folha de 33 quadros em 6 colunas (6 linhas), 33 fps.
+  const comEmoji: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [{ id: 'e1', assetId: 'folha', kind: 'image', timelineStartMs: 1000, durationMs: 2000, layout: 'livre', x: 0.5, y: 0.4, width: 0.3, sprite: { quadros: 33, colunas: 6, fps: 33 } }],
+  };
+  const fe = (() => { const x = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comEmoji, midias: { folha: { caminho: '/a/folha.png', proporcao: 1 } } }); return x[x.indexOf('-filter_complex') + 1]!; })();
+  t('emoji animado: o quadro do instante por crop, antes de escalar', fe.includes("crop=w=iw/6:h=ih/6:x='iw/6*mod(mod(floor(n*33/30),33),6)'") && fe.indexOf('crop=w=iw/6') < fe.indexOf('scale=', fe.indexOf('crop=w=iw/6')));
+  t('emoji animado: a caixa é a de um quadro (quadrado), não a da folha', fe.includes('scale=324:324'));
+
   const semMidia = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia });
   t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
 }

@@ -12,8 +12,8 @@
 
 import { BadGatewayException, BadRequestException, Injectable, Logger, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import sharp from 'sharp';
-import { DURACAO_MAXIMA_DO_SOM_MS, DURACAO_MINIMA_DA_TRILHA_MS, FONTES_DO_TIPO, TAMANHO_MAXIMO, definicaoDoClima } from '@makucho/studio-contracts';
-import type { BuscaDeAudio, FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
+import { CREDITO_DO_EMOJI_ANIMADO, DURACAO_MAXIMA_DO_SOM_MS, DURACAO_MINIMA_DA_TRILHA_MS, FONTES_DO_TIPO, TAMANHO_MAXIMO, URL_DO_EMOJI_ANIMADO, definicaoDoClima, emojisDoCatalogoDoGoogle } from '@makucho/studio-contracts';
+import type { EmojiAnimado, SpriteDaMidia, BuscaDeAudio, FonteDeMidia, ImportacaoDeMidia, ResultadoDaBusca, ResultadoDeAudio, TipoDaBusca, TipoDeAudioLivre } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
@@ -246,6 +246,59 @@ export class BancoDeMidiaService {
     this.log.log(`áudio importado do Openverse (${pedido.tipo}) para o workspace ${tenant.workspaceId}`);
     return { ...asset, resultado: r };
   }
+
+  // ---------- Emojis animados (Noto Animated Emoji, Google, CC BY 4.0) ----------
+
+  private catalogoDeEmojis: { em: number; lista: EmojiAnimado[] } | null = null;
+
+  /** O catálogo do Google (881 emojis; sem as variações de tom de pele), 24 h em cache. */
+  async emojisAnimados(): Promise<EmojiAnimado[]> {
+    if (this.catalogoDeEmojis && Date.now() - this.catalogoDeEmojis.em < DIA) return this.catalogoDeEmojis.lista;
+    const api = await this.json<Parameters<typeof emojisDoCatalogoDoGoogle>[0]>('https://googlefonts.github.io/noto-emoji-animation/data/api.json', { headers: { 'User-Agent': AGENTE } }, 'catálogo de emojis do Google');
+    const lista = emojisDoCatalogoDoGoogle(api);
+    this.catalogoDeEmojis = { em: Date.now(), lista };
+    return lista;
+  }
+
+  /**
+   * Traz um emoji animado como FOLHA DE QUADROS: os quadros do WebP
+   * animado, a 256 px, numa grade quase quadrada (lado até 4096 px, o
+   * limite de textura dos celulares mais simples). Acima de 256 quadros,
+   * fica um sim, um não, na metade da velocidade.
+   */
+  async importarEmojiAnimado(tenant: TenantContext, codigo: string): Promise<{ asset: Awaited<ReturnType<AssetsService['enviar']>>; sprite: SpriteDaMidia }> {
+    const lista = await this.emojisAnimados();
+    if (!lista.some((e) => e.codigo === codigo)) throw new NotFoundException('emoji animado não encontrado');
+    const { conteudo } = await this.baixar(URL_DO_EMOJI_ANIMADO(codigo), 8 * 1024 * 1024, 'Google Fonts');
+    const meta = await sharp(conteudo, { animated: true }).metadata();
+    const total = meta.pages ?? 1;
+    const passo = total > 256 ? 2 : 1;
+    const indices = Array.from({ length: Math.ceil(total / passo) }, (_, i) => i * passo);
+    const atraso = meta.delay?.length ? meta.delay.reduce((a, b) => a + b, 0) / meta.delay.length : 1000 / 30;
+    const fps = Math.max(1, Math.min(60, Math.round(1000 / (atraso * passo))));
+    const lado = 256;
+    const colunas = Math.ceil(Math.sqrt(indices.length));
+    const linhas = Math.ceil(indices.length / colunas);
+    const quadros = await Promise.all(
+      indices.map((pagina) => sharp(conteudo, { page: pagina }).resize(lado, lado, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer()),
+    );
+    const folha = await sharp({ create: { width: colunas * lado, height: linhas * lado, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .composite(quadros.map((input, i) => ({ input, left: (i % colunas) * lado, top: Math.floor(i / colunas) * lado })))
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    const asset = await this.assets.enviar(tenant, {
+      kind: 'IMAGE',
+      originalName: `emoji-animado-${codigo}.png`,
+      mimeDeclarado: 'image/png',
+      conteudo: folha,
+      license: { holder: 'Google', type: 'creative_commons', url: 'https://googlefonts.github.io/noto-emoji-animation/', notes: `Noto Animated Emoji · CC BY 4.0 · crédito ao autor obrigatório` },
+    });
+    this.log.log(`emoji animado ${codigo} (${indices.length} quadros) importado para o workspace ${tenant.workspaceId}`);
+    return { asset, sprite: { quadros: indices.length, colunas, fps } };
+  }
+
+  /** O crédito que vai junto do emoji animado. */
+  readonly creditoDoEmojiAnimado = CREDITO_DO_EMOJI_ANIMADO;
 
   // ---------- Importação ----------
 

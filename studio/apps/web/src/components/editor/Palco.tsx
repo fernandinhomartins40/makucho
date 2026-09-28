@@ -36,7 +36,7 @@ import {
   bordaDaCortina,
   kenBurnsNoInstante,
   cabecaDaMascara,
-  caixaDaMidia,
+  caixaDaMidia, proporcaoDoQuadro,
   estadoDaMidia,
   midiaEstaAnimada,
   caixaDoTexto,
@@ -55,7 +55,7 @@ import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
 import { efeitosNoQuadro, estadoNoInstante, inicioDoUso, sonsQueComecam, sourceNoInstante } from './motorDaPrevia';
 import type { EstadoNoInstante } from './motorDaPrevia';
-import { misturaDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
+import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -308,7 +308,8 @@ export function Palco({
         // Moldura (cartão, polaroid...): a imagem composta num canvas, no
         // formato da caixa quando a camada cobre uma área.
         let fonteDaCamada: HTMLImageElement | HTMLVideoElement | QuadroExterno = el;
-        let proporcao = largura / altura;
+        // Folha de quadros (emoji animado): a proporção é a de UM quadro.
+        let proporcao = c.sprite ? proporcaoDoQuadro(c.sprite, largura / altura) : largura / altura;
         if (!(el instanceof HTMLVideoElement) && c.frame && c.frame !== 'nenhuma') {
           const caixaCheia = caixaDaMidia(c, 1, W, H);
           const m = moldurasRef.current.obter(c, el, largura, altura, marca?.cores.primary ?? '#2F66FF', caixaCheia.modo === 'cobrir' ? caixaCheia.w / caixaCheia.h : undefined);
@@ -334,7 +335,7 @@ export function Palco({
         };
         const seguir = Boolean(c.followPerson && cabecaRef.current);
         if (!midiaEstaAnimada(c) && !seguir) {
-          lista.push({ fonte: fonteDaCamada, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c) });
+          lista.push({ fonte: fonteDaCamada, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j) });
           continue;
         }
         // Animada: a mesma função que gera as expressões do render.
@@ -353,7 +354,7 @@ export function Palco({
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
           giro: est.rotation,
           ...extras,
-          ...misturaDaCamada(c),
+          ...misturaDaCamada(c), ...recorteDaCamada(c, j),
         });
       }
       return lista;

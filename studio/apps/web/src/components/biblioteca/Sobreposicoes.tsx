@@ -78,7 +78,9 @@ export function Sobreposicoes({ plan, posicaoMs, onOperacao, onSelecionarItem }:
 
   return (
     <>
-      <h3 className="biblioteca__subtitulo">Sobreposições</h3>
+      <span className="campo__rotulo" style={{ display: 'block', marginTop: 'var(--e3)' }}>
+        Sobreposições
+      </span>
       <p className="campo__ajuda">
         Luz, brilho e textura por cima do vídeo, de bancos gratuitos. Entram no cursor ({tempo(noCursor)}) em tela cheia; o fundo preto some.
       </p>

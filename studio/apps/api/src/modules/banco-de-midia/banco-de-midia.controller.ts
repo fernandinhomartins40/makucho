@@ -67,6 +67,19 @@ export class BancoDeMidiaController {
     return this.banco.importarAudio(tenant, importacaoDeAudioSchema.parse(body));
   }
 
+  /** O catálogo de emojis animados do Google (a tela filtra; a IA busca por palavras). */
+  @Get('emojis-animados')
+  async emojisAnimados() {
+    return { emojis: await this.banco.emojisAnimados(), credito: this.banco.creditoDoEmojiAnimado };
+  }
+
+  @Post('importar-emoji-animado')
+  importarEmojiAnimado(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertCanWrite(tenant);
+    const { codigo } = z.object({ codigo: z.string().regex(/^[0-9a-f_]{2,60}$/) }).parse(body);
+    return this.banco.importarEmojiAnimado(tenant, codigo);
+  }
+
   @Post('importar')
   importar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
     assertCanWrite(tenant);

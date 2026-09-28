@@ -37,6 +37,7 @@ export * from './efeitos-de-tela';
 export * from './midias';
 export * from './sobreposicoes';
 export * from './musica-livre';
+export * from './emojis-animados';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';

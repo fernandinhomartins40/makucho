@@ -28,7 +28,7 @@ import {
   arquivoDoSticker,
   bordaDaCortina,
   cabecaDaMascara,
-  caixaDaMidia,
+  caixaDaMidia, proporcaoDoQuadro,
   efeitoUsaPessoa,
   ehTextoAtras,
   estadoDaMidia,
@@ -52,7 +52,7 @@ import {
   getFirstEncodableVideoCodec,
   type InputVideoTrack,
 } from 'mediabunny';
-import { misturaDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from '../../components/editor/gl/compositor';
+import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from '../../components/editor/gl/compositor';
 import { INDICE_DA_TRANSICAO } from '../../components/editor/gl/transicoesGlsl';
 import { tabelaDaPrevia } from '../../components/editor/gl/cores';
 import { efeitosNoQuadro, estadoNoInstante, sourceNoInstante } from '../../components/editor/motorDaPrevia';
@@ -473,7 +473,7 @@ export async function exportarNoNavegador(
             altura = m.altura;
           }
         }
-        const base = caixaDaMidia(c, largura / altura, W, H);
+        const base = caixaDaMidia(c, c.sprite ? proporcaoDoQuadro(c.sprite, largura / altura) : largura / altura, W, H);
         const d = nf / 30;
         const tt = j / 30;
         let fade = 1;
@@ -488,7 +488,7 @@ export async function exportarNoNavegador(
         };
         const seguir = Boolean(c.followPerson && cabeca);
         if (!midiaEstaAnimada(c) && !seguir) {
-          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c) });
+          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j) });
           continue;
         }
         const est = estadoDaMidia(c, (j * 1000) / 30, { x: (base.x + base.w / 2) / W, y: (base.y + base.h / 2) / H });
@@ -505,7 +505,7 @@ export async function exportarNoNavegador(
           alfa: Math.min(1, Math.max(0, est.opacity)) * fade,
           giro: est.rotation,
           ...extras,
-          ...misturaDaCamada(c),
+          ...misturaDaCamada(c), ...recorteDaCamada(c, j),
         });
       }
 

@@ -19,6 +19,7 @@
 // ============================================================
 
 import { shaderDeTransicao } from './transicoesGlsl';
+import { recorteDoSprite, type SpriteDaMidia } from '@makucho/studio-contracts';
 import { INDICE_DO_EFEITO, SHADER_DE_EFEITO } from './efeitosGlsl';
 
 export type Enquadramento = 'ajustar' | 'preencher' | 'desfoque';
@@ -84,6 +85,13 @@ export interface MidiaNoQuadro {
   cortina?: { borda: number; lado: 'esquerda' | 'direita' };
   /** Modo de mistura (o `blend` do render): "tela" clareia, "multiplicar" escurece. */
   mistura?: 'tela' | 'multiplicar';
+  /** Só uma parte da textura (o quadro de uma folha de quadros), em frações. */
+  recorte?: { x: number; y: number; w: number; h: number };
+}
+
+/** A célula do quadro `j` de uma camada animada (folha de quadros), para o `MidiaNoQuadro`. */
+export function recorteDaCamada(c: { sprite?: SpriteDaMidia }, j: number): Pick<MidiaNoQuadro, 'recorte'> {
+  return c.sprite ? { recorte: recorteDoSprite(c.sprite, j) } : {};
 }
 
 /** O modo de mistura de uma camada do plano, para o `MidiaNoQuadro`. */
@@ -121,6 +129,7 @@ uniform float uGiro;
 uniform vec2 uKb;
 uniform vec2 uCortina;
 uniform float uMistura;
+uniform vec4 uRecorte;
 out vec4 cor;
 void main() {
   float X = floor(gl_FragCoord.x);
@@ -148,6 +157,8 @@ void main() {
     a *= clamp(uRaio - length(d) + 0.5, 0.0, 1.0);
   }
   // O alfa da própria mídia (PNG com transparência, como os stickers) conta.
+  // Folha de quadros: a célula do instante (uv de 0 a 1 dentro dela).
+  uv = uRecorte.xy + clamp(uv, 0.0, 1.0) * uRecorte.zw;
   vec4 m = texture(uM, vec2(uv.x, 1.0 - uv.y));
   float k = a * m.a;
   // Tela: a cor já pesada pelo alfa (o blend faz s + d(1 - s)).
@@ -261,7 +272,7 @@ export class Compositor {
     this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
-    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura']);
+    this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura', 'uRecorte']);
     gl.useProgram(this.efeito.programa);
     gl.uniform1i(this.efeito.uniforms.uOrig!, 1);
     gl.uniform1i(this.efeito.uniforms.uMascara!, 3);
@@ -585,6 +596,7 @@ export class Compositor {
       gl.uniform2f(p.uniforms.uKb!, m.kenBurns?.z ?? 1, m.kenBurns?.dx ?? 0);
       gl.uniform2f(p.uniforms.uCortina!, m.cortina?.borda ?? 1, m.cortina ? (m.cortina.lado === 'esquerda' ? 1 : 2) : 0);
       gl.uniform1f(p.uniforms.uMistura!, m.mistura === 'multiplicar' ? 2 : m.mistura === 'tela' ? 1 : 0);
+      gl.uniform4f(p.uniforms.uRecorte!, m.recorte?.x ?? 0, m.recorte?.y ?? 0, m.recorte?.w ?? 1, m.recorte?.h ?? 1);
       if (m.mistura === 'tela') gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE);
       else if (m.mistura === 'multiplicar') gl.blendFuncSeparate(gl.DST_COLOR, gl.ZERO, gl.ZERO, gl.ONE);
       else gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);

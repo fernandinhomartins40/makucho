@@ -36,8 +36,8 @@
 // validado pelo Zod; textos vao num ARQUIVO (.ass), nunca na linha.
 // ============================================================
 
-import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import type { EditPlanV1, SpriteDaMidia } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -395,7 +395,8 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     if (c.kind !== 'video') entradas.push('-loop', '1', '-framerate', String(FPS), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
     else entradas.push('-ss', ((c.sourceStartMs ?? 0) / 1000).toFixed(3), '-t', (d + 0.5).toFixed(3), '-i', m.caminho);
 
-    const cx = caixaDaMidia(c, m.proporcao, W, H);
+    // Folha de quadros (emoji animado): a caixa é a de UM quadro.
+    const cx = caixaDaMidia(c, c.sprite ? proporcaoDoQuadro(c.sprite, m.proporcao) : m.proporcao, W, H);
     const r = `md${i}`;
     const escala =
       cx.modo === 'cobrir'
@@ -404,7 +405,7 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     // Vídeo mais curto que a camada: o último quadro fica.
     let cadeia =
       `[${indice}:v]fps=${FPS},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${(d + 1).toFixed(3)},` +
-      `trim=end_frame=${nf},${escala},setsar=1`;
+      `trim=end_frame=${nf},${c.sprite ? `${cortarQuadroDoSprite(c.sprite)},` : ''}${escala},setsar=1`;
     // Ken Burns: zoom e deslizamento lentos na caixa, pelo `perspective`
     // (subpixel, como o shader). O quadro da camada é (in-1)/30.
     if (c.kenBurns && c.kenBurns !== 'nenhum' && cx.modo === 'cobrir') {
@@ -719,6 +720,17 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
 /** Lado do mapa de faixas/ondas/luz: 1/4 do quadro, ampliado depois. */
 const MAPA_L = 270;
 const MAPA_A = 480;
+
+/**
+ * O quadro da animação numa folha de quadros (contracts/emojis-animados):
+ * `crop` com a célula calculada pelo número do quadro (`n`, a 30 fps) --
+ * a mesma conta de `quadroDoSprite` na prévia.
+ */
+export function cortarQuadroDoSprite(s: SpriteDaMidia): string {
+  const linhas = linhasDoSprite(s);
+  const k = `mod(floor(n*${s.fps}/30),${s.quadros})`;
+  return `crop=w=iw/${s.colunas}:h=ih/${linhas}:x='iw/${s.colunas}*mod(${k},${s.colunas})':y='ih/${linhas}*floor(${k}/${s.colunas})':exact=1`;
+}
 
 /**
  * O filtro de uma transicao do catalogo (contracts/transicoes.ts) entre

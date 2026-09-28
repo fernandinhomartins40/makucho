@@ -71,6 +71,8 @@ resto.
 - `aplicar_acabamento_da_marca`: o acabamento do Kit de marca de uma vez
   (bom ponto de partida antes de personalizar).
 - `ilustrar_a_fala`, `buscar_midia`, `adicionar_midia`: imagens e vídeos.
+- `adicionar_emoji_animado`: só no tom descontraído ou quando pedirem
+  (emoji infantiliza vídeo profissional).
 - `escolher_trilha`: trilha de fundo grátis pelo clima do vídeo (sem trilha,
   quase todo vídeo fica mais vazio); se vier crédito, diga na resposta.
 - `adicionar_som_do_banco`: efeito que o catálogo não tem (aplausos, caixa

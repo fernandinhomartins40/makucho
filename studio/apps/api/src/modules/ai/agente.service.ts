@@ -18,6 +18,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import {
   CLIMAS_DE_MUSICA,
+  CREDITO_DO_EMOJI_ANIMADO,
   COMPOSICOES,
   RAMOS,
   RECEITAS,
@@ -27,6 +28,8 @@ import {
   agendaDoPlano,
   analisarFechamento,
   aplicarComando,
+  buscarEmojisAnimados,
+  caractereDoEmoji,
   catalogoDoStudioParaIa,
   creditoDoAudio,
   definicaoDoClima,
@@ -696,6 +699,48 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           return { ok: res.aplicadas > 0, inicioS: inicio / 1000, fimS: fim / 1000, video: escolhido.titulo, ignoradas: res.ignoradas };
+        },
+      },
+
+      adicionar_emoji_animado: {
+        rotulo: 'Pondo um emoji animado',
+        descricao:
+          'Põe um emoji ANIMADO (Noto, Google) livre na tela. SÓ em tom descontraído/humor ou quando a pessoa pedir: emoji infantiliza vídeo profissional, de venda séria ou institucional. busca: palavra em português (fogo, risada, palmas, dinheiro, coração...). x/y: centro (0-1); tamanho: largura (0.1-0.6). Crédito CC BY 4.0 na resposta.',
+        parametros: objeto(
+          { busca: { type: 'string' }, inicioS: { type: 'number' }, duracaoS: { type: 'number' }, x: { type: 'number' }, y: { type: 'number' }, tamanho: { type: 'number' } },
+          ['busca', 'inicioS'],
+        ),
+        executar: async (c, a) => {
+          const achado = buscarEmojisAnimados(await this.banco.emojisAnimados(), String(a.busca ?? ''))[0];
+          if (!achado) return { erro: 'nenhum emoji animado para essa palavra; tente outra' };
+          const { asset, sprite } = await this.banco.importarEmojiAnimado(c.tenant, achado.codigo);
+          c.biblioteca.push({ assetId: asset.id, tipo: 'IMAGE', nome: `emoji ${caractereDoEmoji(achado.codigo)}` });
+          const total = agendaDoPlano(c.plano).duracaoMs;
+          const inicio = Math.max(0, Math.min(Math.round(Number(a.inicioS) * 1000) || 0, total - 300));
+          const dur = Math.max(300, Math.min(total - inicio, typeof a.duracaoS === 'number' ? Math.round(a.duracaoS * 1000) : 2500));
+          const entre = (v: unknown, min: number, max: number, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : padrao);
+          const res = aplicarComando(
+            c.plano,
+            [
+              {
+                op: 'adicionar_midia',
+                assetId: asset.id,
+                kind: 'image',
+                layout: 'livre',
+                x: entre(a.x, 0.1, 0.9, 0.5),
+                y: entre(a.y, 0.1, 0.9, 0.35),
+                width: entre(a.tamanho, 0.1, 0.6, 0.28),
+                sprite,
+                timelineStartMs: inicio,
+                durationMs: dur,
+                fadeOutMs: 120,
+              },
+            ],
+            { biblioteca: c.biblioteca },
+          );
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          return { ok: res.aplicadas > 0, emoji: caractereDoEmoji(achado.codigo), inicioS: inicio / 1000, credito: CREDITO_DO_EMOJI_ANIMADO, ignoradas: res.ignoradas };
         },
       },
 
