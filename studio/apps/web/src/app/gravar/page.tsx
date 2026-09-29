@@ -7,10 +7,10 @@
 // assustava quem só queria enviar um vídeo pronto, disparava o pedido
 // de permissão sem contexto e acendia a luz da câmera sem motivo.
 //
-//   escolher   título, os dois caminhos (enviar vários arquivos,
-//              gravar tomadas) e a LISTA dos vídeos do projeto: cada um
-//              com o seu envio, na ordem em que vão entrar, com setas
-//              para trocar e lixeira para tirar;
+//   escolher   um assistente em 4 passos, um assunto por vez: o vídeo
+//              (enviar ou gravar, e a LISTA com o envio de cada um),
+//              sobre o vídeo (tipo, nome, o que a IA precisa saber), o
+//              visual das animações (cartões) e a revisão;
 //   câmera     só aqui o navegador pede câmera e microfone. Cada
 //              gravação volta para a lista, e dá para gravar outra.
 //
@@ -30,8 +30,8 @@ import { useGravacao } from '../../lib/useGravacao';
 import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVertical';
 import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
 import type { TipoDeVideo } from '@makucho/studio-contracts';
-import { EstiloDasAnimacoes } from '../../components/editor/EstiloDasAnimacoes';
-import { TipoDoVideo } from '../../components/editor/TipoDoVideo';
+import { EscolhaDoEstilo } from '../../components/novo-video/EscolhaDoEstilo';
+import { RECEITAS, TIPOS_DE_VIDEO, estiloDeAnimacao } from '@makucho/studio-contracts';
 import {
   enviar,
   duracaoDe,
@@ -70,6 +70,11 @@ import {
   IconeFechar,
   IconeParametros,
   IconeDesfazer,
+  IconeMais,
+  IconeMidia,
+  IconeSticker,
+  IconeEfeito,
+  IconeLegenda,
 } from '../../components/icones';
 
 interface BlocoDoRoteiro {
@@ -141,6 +146,8 @@ function NovoVideo() {
 
   // "Gravar agora" (Criar vídeo) chega direto na câmera.
   const [etapa, setEtapa] = useState<Etapa>(parametros.get('modo') === 'camera' ? 'camera' : 'escolher');
+  // O passo do assistente fica aqui: voltar da câmera não perde o lugar.
+  const [passo, setPasso] = useState(0);
   const [projeto, setProjeto] = useState<ProjetoDetalhado | null>(null);
   const [titulo, setTitulo] = useState('');
   // Que vídeo é (null = automático) e o que a IA não vê (preço, oferta).
@@ -445,6 +452,8 @@ function NovoVideo() {
           </div>
         ) : etapa === 'escolher' ? (
           <Composicao
+            passo={passo}
+            onPasso={setPasso}
             titulo={titulo}
             onTitulo={setTitulo}
             tipoDoVideo={tipoDoVideo}
@@ -514,7 +523,28 @@ function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
   };
 }
 
+// Os quatro passos. Um de cada vez: a tela antiga mostrava tudo junto
+// (nome, tipo, resumo, estilo, envio, gravação, lista) e quem não é da
+// área não sabia por onde começar.
+const PASSOS = [
+  { titulo: 'Seu vídeo', pergunta: 'Envie ou grave o seu vídeo' },
+  { titulo: 'Sobre o vídeo', pergunta: 'Conte para a IA do que se trata' },
+  { titulo: 'Visual', pergunta: 'Escolha o visual das animações' },
+  { titulo: 'Revisar', pergunta: 'Tudo certo? A IA monta o resto' },
+] as const;
+
+const ICONE_DO_TIPO: Record<TipoDeVideo, typeof IconeCamera> = {
+  fala_camera: IconeCamera,
+  produto: IconeMidia,
+  promocao: IconeSticker,
+  novidade: IconeEfeito,
+  bastidores: IconeVideo,
+  tutorial: IconeLegenda,
+};
+
 function Composicao({
+  passo,
+  onPasso,
   titulo,
   onTitulo,
   tipoDoVideo,
@@ -538,6 +568,8 @@ function Composicao({
   pendentes,
   onIrParaEdicao,
 }: {
+  passo: number;
+  onPasso: (p: number) => void;
   titulo: string;
   onTitulo: (v: string) => void;
   tipoDoVideo: TipoDeVideo | null;
@@ -564,6 +596,7 @@ function Composicao({
   const [arrastando, setArrastando] = useState(false);
   const entradaRef = useRef<HTMLInputElement>(null);
   const galeriaRef = useRef<HTMLInputElement>(null);
+  const topoRef = useRef<HTMLDivElement>(null);
   // Decidido depois de montar: no servidor não há navegador para ler.
   const [android, setAndroid] = useState(false);
   useEffect(() => setAndroid(/Android/i.test(navigator.userAgent)), []);
@@ -574,287 +607,438 @@ function Composicao({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const enviados = itens.filter((i) => i.parteId);
   const temItens = itens.length > 0;
+  const comErro = itens.some((i) => i.estado === 'erro');
+  // O envio continua enquanto a pessoa responde os outros passos.
+  const podeAvancar = passo > 0 || (temItens && itens.some((i) => i.estado !== 'erro'));
+  const ultimo = passo === PASSOS.length - 1;
+
+  const irPara = (p: number) => {
+    onPasso(p);
+    // No celular, o passo novo começa do topo.
+    requestAnimationFrame(() => topoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  const soltar = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastando(false);
+    const arquivos = [...(e.dataTransfer.files ?? [])];
+    if (arquivos.length) onArquivos(arquivos);
+  };
+
+  const entradas = (
+    <>
+      <input
+        ref={entradaRef}
+        type="file"
+        multiple
+        accept={ACEITAR_VIDEOS_EM_ARQUIVOS}
+        style={{ display: 'none' }}
+        aria-label="Escolher vídeos"
+        onChange={(e) => {
+          const arquivos = [...(e.target.files ?? [])];
+          e.target.value = '';
+          if (arquivos.length) onArquivos(arquivos);
+        }}
+      />
+      <input
+        ref={galeriaRef}
+        type="file"
+        multiple
+        accept={ACEITAR_VIDEOS_DA_GALERIA}
+        style={{ display: 'none' }}
+        aria-label="Escolher vídeos da galeria"
+        onChange={(e) => {
+          const arquivos = [...(e.target.files ?? [])];
+          e.target.value = '';
+          if (arquivos.length) onArquivos(arquivos);
+        }}
+      />
+    </>
+  );
 
   return (
-    <div style={{ maxWidth: 980, width: '100%', margin: '0 auto', display: 'grid', gap: 'var(--e5)' }}>
-      <div>
-        <h1 style={{ marginBottom: 'var(--e2)' }}>Novo vídeo</h1>
-        <p className="texto-secundario dica">
-          Envie um ou vários vídeos ou grave; a IA junta e monta a edição.
-        </p>
-      </div>
+    <div className="assistente" ref={topoRef}>
+      {entradas}
 
-      <label className="campo" style={{ maxWidth: 520 }}>
-        <span className="campo__rotulo">Nome do vídeo</span>
-        <input
-          className="campo__entrada"
-          value={titulo}
-          maxLength={120}
-          placeholder="Ex.: 3 erros no atendimento pelo WhatsApp"
-          onChange={(e) => onTitulo(e.target.value)}
-        />
-        <span className="campo__ajuda">Opcional. Sem nome, usamos o nome do primeiro arquivo.</span>
-      </label>
-
-      {/* Produto, promoção, bastidores: sem narração, a IA monta pelas
-          cenas; a escolha e o resumo só deixam a montagem mais certa. */}
-      {/* Sempre à vista: dá para escolher depois de enviar (vai ao "Ir para a edição"). */}
-      <div style={{ maxWidth: 720 }}>
-        <TipoDoVideo tipo={tipoDoVideo} onTipo={onTipoDoVideo} resumo={resumo} onResumo={onResumo} />
-        <div style={{ marginTop: 'var(--e3)' }}>
-          <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--e4)' }}>
-        {/* ---------- Enviar ---------- */}
-        <section
-          className="cartao"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setArrastando(true);
-          }}
-          onDragLeave={() => setArrastando(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setArrastando(false);
-            const arquivos = [...(e.dataTransfer.files ?? [])];
-            if (arquivos.length) onArquivos(arquivos);
-          }}
-          style={{
-            display: 'grid',
-            gap: 'var(--e3)',
-            alignContent: 'start',
-            borderStyle: 'dashed',
-            borderWidth: 2,
-            borderColor: arrastando ? 'var(--accent)' : 'var(--border-forte)',
-            background: arrastando ? 'var(--surface-2)' : undefined,
-            transition: 'border-color .15s, background .15s',
-          }}
-        >
-          <span className="vazio__icone" aria-hidden>
-            <IconeNuvem size={26} />
-          </span>
-          <h2>{temItens ? 'Enviar mais vídeos' : 'Enviar vídeos'}</h2>
-          <p className="texto-secundario" style={{ fontSize: 14 }}>
-            Arraste um ou vários arquivos para cá, ou escolha no computador ou celular. MP4, MOV, WebM,
-            MKV ou AVI, até 2 GB cada e 30 minutos no total.
-          </p>
-          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
-            <button type="button" className="botao" onClick={() => entradaRef.current?.click()}>
-              <IconeEnviar size={16} />
-              Escolher arquivos
-            </button>
-            {/* Android: o botão principal abre o gerenciador de arquivos
-                (Downloads, WhatsApp, Drive...); a galeria fica aqui. */}
-            {android && (
-              <button type="button" className="botao botao--secundario" onClick={() => galeriaRef.current?.click()}>
-                <IconeVideo size={16} />
-                Da galeria
+      {/* ---------- Onde estou ---------- */}
+      <nav className="assistente__passos" aria-label="Passos">
+        <ol>
+          {PASSOS.map((p, i) => (
+            <li key={p.titulo} data-estado={i < passo ? 'feito' : i === passo ? 'atual' : 'depois'}>
+              <button
+                type="button"
+                disabled={i > passo && !(i === passo + 1 && podeAvancar)}
+                aria-current={i === passo ? 'step' : undefined}
+                onClick={() => irPara(i)}
+              >
+                <span className="assistente__bola">{i < passo ? <IconeCheck size={13} weight="bold" /> : i + 1}</span>
+                <span className="assistente__nome-do-passo">{p.titulo}</span>
               </button>
-            )}
-          </div>
-          {android && (
-            <p className="campo__ajuda">
-              Não achou o vídeo? Em &quot;Escolher arquivos&quot;, toque em ☰ e escolha Downloads, WhatsApp ou Drive.
-            </p>
-          )}
-          <input
-            ref={entradaRef}
-            type="file"
-            multiple
-            accept={ACEITAR_VIDEOS_EM_ARQUIVOS}
-            style={{ display: 'none' }}
-            aria-label="Escolher vídeos"
-            onChange={(e) => {
-              const arquivos = [...(e.target.files ?? [])];
-              e.target.value = '';
-              if (arquivos.length) onArquivos(arquivos);
-            }}
-          />
-          <input
-            ref={galeriaRef}
-            type="file"
-            multiple
-            accept={ACEITAR_VIDEOS_DA_GALERIA}
-            style={{ display: 'none' }}
-            aria-label="Escolher vídeos da galeria"
-            onChange={(e) => {
-              const arquivos = [...(e.target.files ?? [])];
-              e.target.value = '';
-              if (arquivos.length) onArquivos(arquivos);
-            }}
-          />
-        </section>
+            </li>
+          ))}
+        </ol>
+      </nav>
 
-        {/* ---------- Gravar ---------- */}
-        <section className="cartao" style={{ display: 'grid', gap: 'var(--e3)', alignContent: 'start' }}>
-          <span className="vazio__icone" aria-hidden>
-            <IconeGravar size={26} weight="fill" />
-          </span>
-          <h2>{temItens ? 'Gravar outra tomada' : 'Gravar com teleprompter'}</h2>
-          <p className="texto-secundario" style={{ fontSize: 14 }}>
-            {temRoteiroProprio
-              ? 'O roteiro deste projeto aparece ao lado da câmera, bloco a bloco.'
-              : 'O roteiro aparece ao lado da câmera, bloco a bloco. Sem roteiro salvo, usamos um guia de estrutura.'}{' '}
-            Cada gravação entra na lista abaixo. O navegador pede a câmera só quando você entrar.
-          </p>
-          <div className="linha" style={{ gap: 'var(--e3)', flexWrap: 'wrap' }}>
-            <button type="button" className="botao botao--secundario" onClick={onGravar}>
-              <IconeCamera size={16} />
-              Abrir a câmera
-            </button>
-            {!temRoteiroProprio && !temItens && (
-              <Link href="/roteiros" className="botao botao--fantasma">
-                <IconeRoteiro size={16} />
-                Escrever um roteiro antes
-              </Link>
-            )}
-          </div>
-        </section>
-      </div>
+      <header className="assistente__cabeca">
+        <span className="assistente__contagem">
+          Passo {passo + 1} de {PASSOS.length}
+        </span>
+        <h1>{PASSOS[passo]!.pergunta}</h1>
+      </header>
 
-      {/* ---------- Os vídeos deste projeto ---------- */}
-      {temItens && (
-        <section className="cartao" aria-labelledby="titulo-dos-videos" style={{ display: 'grid', gap: 'var(--e3)' }}>
-          <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
-            <div>
-              <h2 id="titulo-dos-videos">
-                {itens.length} {itens.length === 1 ? 'vídeo' : 'vídeos'} neste projeto
-              </h2>
-              <p className="texto-secundario" style={{ fontSize: 13 }}>
-                {itens.length > 1
-                  ? 'Eles viram um vídeo só, nesta ordem. Use as setas para trocar.'
-                  : 'Pode enviar ou gravar mais antes de ir para a edição.'}
-              </p>
-            </div>
-            <ResumoDoEnvio itens={itens} />
-          </div>
-
-          <ol className="lista-de-partes">
-            {itens.map((item) => {
-              const posicao = enviados.findIndex((i) => i.chave === item.chave);
-              return (
-                <li
-                  key={item.chave}
-                  className={`lista-de-partes__item${item.acabouAgora ? ' lista-de-partes__item--recem' : ''}`}
-                  data-estado={item.estado}
-                >
-                  <MarcadorDaParte item={item} numero={itens.indexOf(item) + 1} />
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <strong className="lista-de-partes__nome" title={item.nome}>
-                      {item.nome}
-                    </strong>
-                    <span className="lista-de-partes__detalhes">
-                      <SituacaoDaParte item={item} />
-                      <span className="texto-secundario">
-                        {formatarBytes(item.tamanhoBytes)}
-                        {item.duracaoMs ? ` · ${formatarDuracao(item.duracaoMs)}` : ''}
-                        {item.estado === 'enviando' && item.bytesPorSegundo
-                          ? ` · ${formatarBytes(item.bytesPorSegundo)}/s${restante(item)}`
-                          : ''}
-                      </span>
-                    </span>
-                    {item.estado === 'enviando' && (
-                      <span
-                        className="barra lista-de-partes__barra"
-                        role="progressbar"
-                        aria-valuenow={item.progresso}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-label={`Envio de ${item.nome}`}
-                      >
-                        <span className="barra__preenchida" style={{ width: `${item.progresso}%`, display: 'block' }} />
-                      </span>
-                    )}
-                    {item.estado === 'erro' && (
-                      <span style={{ fontSize: 12, color: 'var(--danger)', display: 'block', marginTop: 4 }}>{item.erro}</span>
-                    )}
-                  </span>
-
-                  <span className="linha" style={{ gap: 4, flexShrink: 0 }}>
-                    {item.estado === 'pronto' && enviados.length > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          className="botao-icone botao-icone--pequeno"
-                          aria-label={`Mover ${item.nome} para cima`}
-                          disabled={posicao <= 0}
-                          onClick={() => onMover(item, -1)}
-                        >
-                          <IconeSubir size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="botao-icone botao-icone--pequeno"
-                          aria-label={`Mover ${item.nome} para baixo`}
-                          disabled={posicao >= enviados.length - 1}
-                          onClick={() => onMover(item, 1)}
-                        >
-                          <IconeDescer size={15} />
-                        </button>
-                      </>
-                    )}
-                    {item.estado === 'erro' && (
-                      <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => onTentarDeNovo(item)}>
-                        Tentar de novo
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="botao-icone botao-icone--pequeno"
-                      aria-label={item.estado === 'enviando' ? `Cancelar envio de ${item.nome}` : `Remover ${item.nome}`}
-                      onClick={() => onRemover(item)}
-                    >
-                      <IconeLixeira size={15} />
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
-
-          {podeIr || finalizando ? (
-            <div className="aviso aviso--sucesso lista-de-partes__pronto" role="status" aria-live="polite">
-              <IconeCheck size={18} weight="bold" />
-              <span>
-                <strong>
-                  {itens.length === 1 ? 'Vídeo enviado.' : `Os ${itens.length} vídeos foram enviados.`}
-                </strong>{' '}
-                Pode enviar mais ou ir para a edição: a IA prepara, transcreve e monta a proposta, e você
-                acompanha no editor.
-              </span>
+      {/* ---------- 1. O vídeo ---------- */}
+      {passo === 0 && (
+        <div className="assistente__corpo">
+          {!temItens ? (
+            <div className="assistente__caminhos">
+              <button
+                type="button"
+                className="caminho caminho--principal"
+                data-arrastando={arrastando || undefined}
+                onClick={() => entradaRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setArrastando(true);
+                }}
+                onDragLeave={() => setArrastando(false)}
+                onDrop={soltar}
+              >
+                <span className="caminho__icone" aria-hidden>
+                  <IconeNuvem size={30} />
+                </span>
+                <span className="caminho__titulo">Enviar um vídeo pronto</span>
+                <span className="caminho__texto">Do computador ou do celular. Pode ser mais de um: eles viram um vídeo só.</span>
+                <span className="caminho__acao">
+                  <IconeEnviar size={16} /> Escolher vídeos
+                </span>
+              </button>
+              <button type="button" className="caminho" onClick={onGravar}>
+                <span className="caminho__icone" aria-hidden>
+                  <IconeGravar size={30} weight="fill" />
+                </span>
+                <span className="caminho__titulo">Gravar agora</span>
+                <span className="caminho__texto">
+                  {temRoteiroProprio ? 'Com o seu roteiro ao lado da câmera.' : 'Com um teleprompter que guia o que falar.'}
+                </span>
+                <span className="caminho__acao">
+                  <IconeCamera size={16} /> Abrir a câmera
+                </span>
+              </button>
             </div>
           ) : (
-            <p className="texto-secundario" style={{ fontSize: 13 }} role="status" aria-live="polite">
-              {pendentes
-                ? `Aguarde ${pendentes === 1 ? 'o envio' : `os ${pendentes} envios`} terminar. Mantenha esta aba aberta.`
-                : itens.some((i) => i.estado === 'erro')
-                  ? 'Algum envio falhou: tente de novo ou remova o vídeo para continuar.'
-                  : ''}
+            <section
+              className="cartao assistente__lista"
+              aria-labelledby="titulo-dos-videos"
+              data-arrastando={arrastando || undefined}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setArrastando(true);
+              }}
+              onDragLeave={() => setArrastando(false)}
+              onDrop={soltar}
+            >
+              <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
+                <h2 id="titulo-dos-videos" style={{ fontSize: 16 }}>
+                  {itens.length === 1 ? '1 vídeo' : `${itens.length} vídeos`}
+                  {itens.length > 1 && <span className="texto-secundario" style={{ fontWeight: 400, fontSize: 13 }}> · viram um só, nesta ordem</span>}
+                </h2>
+                <ResumoDoEnvio itens={itens} />
+              </div>
+              <ListaDeVideos itens={itens} onRemover={onRemover} onMover={onMover} onTentarDeNovo={onTentarDeNovo} />
+              <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+                <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => entradaRef.current?.click()}>
+                  <IconeMais size={15} /> Adicionar vídeo
+                </button>
+                {android && (
+                  <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => galeriaRef.current?.click()}>
+                    <IconeVideo size={15} /> Da galeria
+                  </button>
+                )}
+                <button type="button" className="botao botao--fantasma botao--pequeno" onClick={onGravar}>
+                  <IconeCamera size={15} /> Gravar outra tomada
+                </button>
+              </div>
+              {pendentes > 0 && (
+                <p className="campo__ajuda" role="status">
+                  Pode seguir para o próximo passo: o envio continua. Só não feche esta aba.
+                </p>
+              )}
+            </section>
+          )}
+          {!temItens && (
+            <p className="campo__ajuda">
+              MP4, MOV, WebM, MKV ou AVI · até 2 GB cada · 30 minutos no total.
+              {android && ' Não achou o vídeo? Toque em ☰ e escolha Downloads, WhatsApp ou Drive.'}
+              {android && (
+                <>
+                  {' '}
+                  <button type="button" className="link-botao" onClick={() => galeriaRef.current?.click()}>
+                    Abrir a galeria
+                  </button>
+                </>
+              )}
             </p>
           )}
-
-          <div className="linha" style={{ justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              className={`botao${podeIr ? ' botao--chamando' : ''}`}
-              disabled={!podeIr}
-              onClick={onIrParaEdicao}
-            >
-              <IconeIA size={16} weight="fill" />
-              {finalizando
-                ? 'Abrindo a edição…'
-                : pendentes
-                  ? `Enviando ${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length}…`
-                  : 'Ir para a edição com IA'}
-            </button>
-          </div>
-        </section>
+          {!temItens && !temRoteiroProprio && (
+            <p className="campo__ajuda">
+              Quer escrever o que vai falar antes? <Link href="/roteiros">Criar um roteiro</Link>
+            </p>
+          )}
+        </div>
       )}
+
+      {/* ---------- 2. Sobre o vídeo ---------- */}
+      {passo === 1 && (
+        <div className="assistente__corpo">
+          <div className="campo" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo" id="rotulo-do-tipo">
+              Que tipo de vídeo é?
+            </span>
+            <div className="tipos-em-cartoes" role="radiogroup" aria-labelledby="rotulo-do-tipo">
+              <button type="button" role="radio" aria-checked={tipoDoVideo === null} onClick={() => onTipoDoVideo(null)}>
+                <IconeIA size={22} weight="fill" />
+                <strong>Não sei / Automático</strong>
+                <span>A IA descobre pelo vídeo</span>
+              </button>
+              {TIPOS_DE_VIDEO.map((t) => {
+                const Icone = ICONE_DO_TIPO[t];
+                return (
+                  <button key={t} type="button" role="radio" aria-checked={tipoDoVideo === t} onClick={() => onTipoDoVideo(t)}>
+                    <Icone size={22} />
+                    <strong>{RECEITAS[t].rotulo}</strong>
+                    <span>{RECEITAS[t].ajuda}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <label className="campo" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">
+              Nome do vídeo <span className="texto-secundario">(opcional)</span>
+            </span>
+            <input
+              className="campo__entrada"
+              value={titulo}
+              maxLength={120}
+              placeholder="Ex.: 3 erros no atendimento pelo WhatsApp"
+              onChange={(e) => onTitulo(e.target.value)}
+            />
+            <span className="campo__ajuda">Só para você achar depois. Sem nome, usamos o do arquivo.</span>
+          </label>
+
+          <label className="campo" style={{ marginBottom: 0 }}>
+            <span className="campo__rotulo">
+              Algo que a IA precisa saber? <span className="texto-secundario">(opcional)</span>
+            </span>
+            <textarea
+              className="campo__entrada"
+              rows={2}
+              maxLength={400}
+              value={resumo}
+              placeholder="Ex.: Promoção Heineken 3 por R$ 10, só neste sábado"
+              onChange={(e) => onResumo(e.target.value)}
+              style={{ resize: 'vertical', minHeight: 64 }}
+            />
+            <span className="campo__ajuda">Preço, oferta, nome do produto. A IA usa isso nos textos da tela e nunca inventa o que não está aqui.</span>
+          </label>
+        </div>
+      )}
+
+      {/* ---------- 3. Visual ---------- */}
+      {passo === 2 && (
+        <div className="assistente__corpo">
+          <p className="texto-secundario" style={{ fontSize: 14, margin: 0 }}>
+            As animações são os títulos, números e gráficos que aparecem junto da sua fala. Toque num estilo para escolher, ou deixe no
+            Automático.
+          </p>
+          <EscolhaDoEstilo valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
+        </div>
+      )}
+
+      {/* ---------- 4. Revisar ---------- */}
+      {passo === 3 && (
+        <div className="assistente__corpo">
+          <dl className="revisao">
+            <LinhaDaRevisao
+              rotulo="Vídeo"
+              valor={
+                itens.length === 1
+                  ? itens[0]!.nome
+                  : `${itens.length} vídeos, juntados nesta ordem`
+              }
+              detalhe={pendentes ? `Enviando… ${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length} prontos` : comErro ? 'Algum envio falhou' : 'Enviado'}
+              onAlterar={() => irPara(0)}
+            />
+            <LinhaDaRevisao
+              rotulo="Tipo"
+              valor={tipoDoVideo ? RECEITAS[tipoDoVideo].rotulo : 'Automático'}
+              detalhe={[titulo.trim(), resumo.trim()].filter(Boolean).join(' · ') || undefined}
+              onAlterar={() => irPara(1)}
+            />
+            <LinhaDaRevisao
+              rotulo="Visual"
+              valor={estiloDeAnimacao(estilo)?.nome ?? 'Automático'}
+              detalhe={estiloDeAnimacao(estilo)?.carater ?? 'A IA escolhe pelo tom da fala'}
+              onAlterar={() => irPara(2)}
+            />
+          </dl>
+
+          <div className="aviso aviso--info" style={{ alignItems: 'flex-start' }}>
+            <IconeIA size={18} weight="fill" />
+            <span>
+              A IA transcreve, corta, põe legenda e cria as animações. Leva alguns minutos, e você acompanha tudo no editor, onde dá para
+              mudar o que quiser.
+            </span>
+          </div>
+
+          {comErro && (
+            <p className="campo__ajuda" style={{ color: 'var(--danger)' }} role="alert">
+              Algum envio falhou. Volte ao passo 1 para tentar de novo ou tirar o vídeo.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ---------- Navegação ---------- */}
+      <div className="assistente__rodape">
+        {passo > 0 ? (
+          <button type="button" className="botao botao--fantasma" onClick={() => irPara(passo - 1)}>
+            <IconeVoltar size={16} />
+            Voltar
+          </button>
+        ) : (
+          <span />
+        )}
+        {ultimo ? (
+          <button type="button" className={`botao${podeIr ? ' botao--chamando' : ''}`} disabled={!podeIr} onClick={onIrParaEdicao}>
+            <IconeIA size={16} weight="fill" />
+            {finalizando
+              ? 'Abrindo a edição…'
+              : pendentes
+                ? `Terminando o envio (${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length})…`
+                : 'Criar meu vídeo com IA'}
+          </button>
+        ) : (
+          <button type="button" className="botao" disabled={!podeAvancar} onClick={() => irPara(passo + 1)}>
+            {passo === 0 && !temItens ? 'Envie ou grave para continuar' : 'Continuar'}
+            <IconeAvancar size={16} />
+          </button>
+        )}
+      </div>
     </div>
+  );
+}
+
+function LinhaDaRevisao({ rotulo, valor, detalhe, onAlterar }: { rotulo: string; valor: string; detalhe?: string | undefined; onAlterar: () => void }) {
+  return (
+    <div className="revisao__linha">
+      <dt>{rotulo}</dt>
+      <dd>
+        <strong>{valor}</strong>
+        {detalhe && <span className="texto-secundario">{detalhe}</span>}
+      </dd>
+      <button type="button" className="botao botao--fantasma botao--pequeno" onClick={onAlterar}>
+        Alterar
+      </button>
+    </div>
+  );
+}
+
+function ListaDeVideos({
+  itens,
+  onRemover,
+  onMover,
+  onTentarDeNovo,
+}: {
+  itens: ItemDoVideo[];
+  onRemover: (i: ItemDoVideo) => void;
+  onMover: (i: ItemDoVideo, direcao: -1 | 1) => void;
+  onTentarDeNovo: (i: ItemDoVideo) => void;
+}) {
+  const enviados = itens.filter((i) => i.parteId);
+  return (
+    <ol className="lista-de-partes">
+      {itens.map((item) => {
+        const posicao = enviados.findIndex((i) => i.chave === item.chave);
+        return (
+          <li
+            key={item.chave}
+            className={`lista-de-partes__item${item.acabouAgora ? ' lista-de-partes__item--recem' : ''}`}
+            data-estado={item.estado}
+          >
+            <MarcadorDaParte item={item} numero={itens.indexOf(item) + 1} />
+            <span style={{ minWidth: 0, flex: 1 }}>
+              <strong className="lista-de-partes__nome" title={item.nome}>
+                {item.nome}
+              </strong>
+              <span className="lista-de-partes__detalhes">
+                <SituacaoDaParte item={item} />
+                <span className="texto-secundario">
+                  {formatarBytes(item.tamanhoBytes)}
+                  {item.duracaoMs ? ` · ${formatarDuracao(item.duracaoMs)}` : ''}
+                  {item.estado === 'enviando' && item.bytesPorSegundo ? restante(item) : ''}
+                </span>
+              </span>
+              {item.estado === 'enviando' && (
+                <span
+                  className="barra lista-de-partes__barra"
+                  role="progressbar"
+                  aria-valuenow={item.progresso}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Envio de ${item.nome}`}
+                >
+                  <span className="barra__preenchida" style={{ width: `${item.progresso}%`, display: 'block' }} />
+                </span>
+              )}
+              {item.estado === 'erro' && (
+                <span style={{ fontSize: 12, color: 'var(--danger)', display: 'block', marginTop: 4 }}>{item.erro}</span>
+              )}
+            </span>
+
+            <span className="linha" style={{ gap: 4, flexShrink: 0 }}>
+              {item.estado === 'pronto' && enviados.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="botao-icone botao-icone--pequeno"
+                    aria-label={`Mover ${item.nome} para cima`}
+                    disabled={posicao <= 0}
+                    onClick={() => onMover(item, -1)}
+                  >
+                    <IconeSubir size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    className="botao-icone botao-icone--pequeno"
+                    aria-label={`Mover ${item.nome} para baixo`}
+                    disabled={posicao >= enviados.length - 1}
+                    onClick={() => onMover(item, 1)}
+                  >
+                    <IconeDescer size={15} />
+                  </button>
+                </>
+              )}
+              {item.estado === 'erro' && (
+                <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => onTentarDeNovo(item)}>
+                  Tentar de novo
+                </button>
+              )}
+              <button
+                type="button"
+                className="botao-icone botao-icone--pequeno"
+                aria-label={item.estado === 'enviando' ? `Cancelar envio de ${item.nome}` : `Remover ${item.nome}`}
+                onClick={() => onRemover(item)}
+              >
+                <IconeLixeira size={15} />
+              </button>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

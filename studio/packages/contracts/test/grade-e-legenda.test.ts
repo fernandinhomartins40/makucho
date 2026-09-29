@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { GRADE, NOMES_DOS_COMPONENTES, camadasDaLegendaHyperFrames, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { ESTILOS_DE_ANIMACAO, contrasteDasCores, GRADE,NOMES_DOS_COMPONENTES, camadasDaLegendaHyperFrames, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -126,6 +126,12 @@ const planoLongo = { ...comHf, sourceDurationMs: 60_000, clips: [{ ...comHf.clip
 const pedacos = camadasDaLegendaHyperFrames(planoLongo, longas);
 t('legenda HF: vídeo longo em pedaços de até ~20 s (o render tem limite)', pedacos.length >= 3 && pedacos.every((c) => c.durationMs <= 21_000));
 t('legenda HF: sem estilo HF, nenhuma camada', camadasDaLegendaHyperFrames(plano, palavras).length === 0);
+
+const ilegiveis = ESTILOS_DE_ANIMACAO.filter((e) => {
+  const tm = temaDaAnimacao(e.chave)!;
+  return contrasteDasCores(tm.texto, tm.fundo) < 4.5;
+}).map((e) => e.chave);
+t(`tema: o texto de todo estilo é legível no fundo (4,5:1)${ilegiveis.length ? ' -- ' + ilegiveis.join(', ') : ''}`, ilegiveis.length === 0);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

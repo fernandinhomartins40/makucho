@@ -56,6 +56,19 @@ const saturacao = (h: string) => {
   const min = Math.min(r, g, b);
   return max === 0 ? 0 : (max - min) / max;
 };
+/** Contraste WCAG entre duas cores (1 a 21). */
+export function contrasteDasCores(a: string, b: string): number {
+  const lum = (h: string) => {
+    const [r, g, bb] = hexParaRgb(h).map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bb;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m) as [number, number];
+  return (x + 0.05) / (y + 0.05);
+}
+
 /** a misturado com b (t = quanto de b). */
 export function misturarCores(a: string, b: string, t: number): string {
   const x = hexParaRgb(a);
@@ -81,9 +94,16 @@ export function temaDaAnimacao(estilo: string | undefined | null, paleta?: strin
     texto = e.escuro ? porLuz[porLuz.length - 1]! : porLuz[0]!;
     destaques = p.cores.filter((c) => c !== fundo && c !== texto).sort((a, b) => saturacao(b) - saturacao(a));
   } else {
+    // As cores do catálogo nem sempre vêm em [fundo, texto, destaque]:
+    // os presets trazem [fundo, superfície, tinta], e a 2ª é quase o
+    // fundo (título invisível). O texto é a de MAIS contraste com o
+    // fundo; sem uma legível (4,5:1), o preto ou o branco.
     fundo = e.cores[0] ?? (e.escuro ? '#0b0e13' : '#ffffff');
-    texto = e.cores[1] ?? (e.escuro ? '#f1f3f4' : '#111111');
-    destaques = e.cores.slice(2);
+    const resto = e.cores.slice(1);
+    const melhor = [...resto].sort((a, b) => contrasteDasCores(b, fundo) - contrasteDasCores(a, fundo))[0];
+    texto = melhor && contrasteDasCores(melhor, fundo) >= 4.5 ? melhor : contrasteDasCores('#111111', fundo) >= contrasteDasCores('#f1f3f4', fundo) ? '#111111' : '#f1f3f4';
+    // Destaque que some no fundo não destaca nada.
+    destaques = resto.filter((c) => c !== texto && contrasteDasCores(c, fundo) >= 2).sort((a, b) => saturacao(b) - saturacao(a));
   }
   const destaque = destaques[0] ?? texto;
   return {
