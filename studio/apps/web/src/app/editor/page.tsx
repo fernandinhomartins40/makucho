@@ -1767,6 +1767,12 @@ function Editor({ projectId }: { projectId: string }) {
                 <IconeIA size={24} weight="fill" />
               </button>
             )}
+            {/* As animações (HyperFrames) à mão no celular: no menu ficavam
+                escondidas dentro de "Efeitos". */}
+            <button type="button" className="botao-de-animacoes" onClick={() => abrirBiblioteca('animacoes')}>
+              <IconeAnimacao size={20} weight="fill" />
+              Animações
+            </button>
           </>
         )}
 

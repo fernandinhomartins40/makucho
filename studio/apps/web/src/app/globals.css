@@ -12576,6 +12576,9 @@ html:not([data-dicas]) :is(
 .botao-da-ia {
   display: none;
 }
+.botao-de-animacoes {
+  display: none;
+}
 
 @media (max-width: 899px) {
   .editor,
@@ -12857,6 +12860,41 @@ html:not([data-dicas]) :is(
     color: var(--accent);
     box-shadow: 0 8px 22px rgb(0 0 0 / 50%);
     cursor: pointer;
+  }
+
+  /* Animações: pílula laranja à direita (a IA fica à esquerda). */
+  .botao-de-animacoes {
+    position: fixed;
+    right: 12px;
+    bottom: calc(86px + var(--seguro-baixo, 0px));
+    z-index: 30;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 18px 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ff9a1f, #ff5a1f);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    box-shadow: 0 8px 22px rgb(255 90 31 / 38%), 0 2px 6px rgb(0 0 0 / 40%);
+    cursor: pointer;
+  }
+  .botao-de-animacoes:active {
+    transform: scale(0.96);
+  }
+  .botao-de-animacoes:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+  }
+  /* Com uma gaveta aberta, os botões flutuantes saem da frente. */
+  .editor[data-folha] .botao-de-animacoes,
+  .editor[data-folha] .botao-da-ia {
+    display: none !important;
   }
 
   /* As gavetas cobrem a barra (como no CapCut), com título e X. */
