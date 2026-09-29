@@ -428,12 +428,24 @@ ${fala}${
       if (!c.success) return { erro: c.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`), resposta: r.texto };
       const locais = problemasDaComposicao(c.data);
       const problemas = locais.length ? locais : await this.animacoes.problemas(c.data, duracaoMs);
-      return problemas.length ? { erro: problemas, resposta: r.texto } : { composicao: c.data };
+      if (problemas.length) return { erro: problemas, resposta: r.texto };
+      // A conferência de sobreposição (no Chrome do worker): texto sobre a
+      // legenda, o cabeçalho do app, a janela do vídeo ou outro texto.
+      const layout = (await this.animacoes.problemasDeLayout(c.data, duracaoMs)) ?? [];
+      return layout.length ? { erro: layout, soLayout: true, resposta: r.texto, composicao: c.data } : { composicao: c.data };
     };
     let r = await tentar(pedido);
     if ('erro' in r) {
       this.log.warn(`animação (${m.ideia.slice(0, 40)}): corrigindo -- ${r.erro!.join('; ').slice(0, 300)}`);
+      const anterior = r;
       r = await tentar(`${pedido}\n\nSua resposta anterior:\n${(r.resposta ?? '').slice(0, 14_000)}\n\nEla tem estes problemas; corrija e responda o JSON inteiro de novo:\n- ${r.erro!.join('\n- ')}`);
+      // A correção quebrou algo técnico mas a anterior só tinha layout: fica a anterior.
+      if ('erro' in r && !('soLayout' in r) && 'soLayout' in anterior) r = anterior;
+    }
+    // Só sobraram problemas de layout: a animação entra (melhor que perdê-la).
+    if ('erro' in r && 'soLayout' in r && r.composicao) {
+      this.log.warn(`animação (${m.ideia.slice(0, 40)}) entrou com avisos de layout: ${r.erro!.join('; ').slice(0, 300)}`);
+      return { composicao: r.composicao, duracaoMs };
     }
     if ('erro' in r) throw new Error(r.erro!.slice(0, 3).join('; '));
     return { composicao: r.composicao!, duracaoMs };

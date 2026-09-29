@@ -61,9 +61,19 @@ function montar(respostas: (usuario: string, sistema: string) => string) {
     },
   };
   const planos = { atual: async () => ({ document: atual }), salvar: async (_t: unknown, _p: string, doc: EditPlanV1) => { atual = doc; } };
-  const animacoes = { problemas: async () => [], preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return {}; } };
+  // A conferência de layout: devolve um problema enquanto o título tiver "Sobreposta".
+  const layoutRuim = { vezes: 0 };
+  const animacoes = {
+    problemas: async () => [],
+    problemasDeLayout: async (c: { titulo?: string }) => {
+      if (!c.titulo?.includes('Sobreposta')) return [];
+      layoutRuim.vezes += 1;
+      return ['o texto "2023" invade a área reservada (legenda do vídeo) aos 1.4 s'];
+    },
+    preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return {}; },
+  };
   const servico = new AnimacoesDaFalaService(prisma as never, ai as never, planos as never, animacoes as never);
-  return { servico, notas, chamadas, pedidos, atual: () => atual, prisma, planos };
+  return { servico, notas, chamadas, pedidos, atual: () => atual, prisma, planos, layoutRuim };
 }
 
 async function main() {
@@ -139,6 +149,21 @@ async function main() {
   await g.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { paleta: 'neon-electric:1' });
   const cp = g.atual().mediaLayers![0]!.composicao!;
   t('paleta: recolore sem redesenhar (pedido com a animação atual) e fica guardada', cp.paleta === 'neon-electric:1' && sis2.at(-1)!.startsWith('PALETA ESCOLHIDA (Neon)') && us2.at(-1)!.includes('Troque as cores pela PALETA ESCOLHIDA'));
+
+  // 1e. Conferência de sobreposição: o problema volta para a IA; se persistir, a animação entra mesmo assim.
+  const us3: string[] = [];
+  let respostas = 0;
+  const h = montar((usuario, sis) => {
+    if (sis.includes('diretor')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'numero', intencao: 'o ano', conteudo: '2023' }] });
+    us3.push(usuario);
+    respostas += 1;
+    return boa(respostas === 1 ? 'Sobreposta' : 'Arrumada');
+  });
+  const rh = await h.servico.criarNaMontagem(sistema as never, 'p1');
+  t('conferência: o problema de layout volta para a IA corrigir', rh.criadas === 1 && us3[1]!.includes('invade a área reservada (legenda do vídeo)') && h.atual().mediaLayers![0]!.composicao!.titulo === 'Arrumada');
+  const k = montar((_u, sis) => (sis.includes('diretor') ? JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'numero', intencao: 'o ano' }] }) : boa('Sobreposta')));
+  const rk = await k.servico.criarNaMontagem(sistema as never, 'p1');
+  t('conferência: se só sobrar problema de layout, a animação entra mesmo assim', rk.criadas === 1 && k.layoutRuim.vezes === 2);
 
   // 2. IA fora do ar: sem animação, mas com o motivo gravado.
   const b = montar(() => {

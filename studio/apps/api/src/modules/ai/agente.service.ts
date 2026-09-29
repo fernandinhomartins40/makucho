@@ -943,6 +943,8 @@ export class AgenteService {
           const locais = problemasDaComposicao(r.data);
           const problemas = locais.length || !this.animacoes ? locais : await this.animacoes.problemas(r.data, dur);
           if (problemas.length) return { erro: 'a animação tem problemas', problemas };
+          const sobreposicao = (await this.animacoes?.problemasDeLayout(r.data, dur)) ?? [];
+          if (sobreposicao.length) return { erro: 'a animação invade áreas da grade ou sobrepõe textos: corrija e chame de novo', problemas: sobreposicao };
           const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
           const res = aplicarComando(
             c.plano,
@@ -976,6 +978,8 @@ export class AgenteService {
           const locais = problemasDaComposicao(r.data);
           const problemas = locais.length || !this.animacoes ? locais : await this.animacoes.problemas(r.data, dur);
           if (problemas.length) return { erro: 'a animação tem problemas', problemas };
+          const sobreposicao = (await this.animacoes?.problemasDeLayout(r.data, dur)) ?? [];
+          if (sobreposicao.length) return { erro: 'a animação invade áreas da grade ou sobrepõe textos: corrija e chame de novo', problemas: sobreposicao };
           const res = aplicarComando(
             c.plano,
             [{ op: 'editar_midia', mediaId: atual.id, composicao: r.data, durationMs: dur, ...(typeof a.inicioS === 'number' ? { timelineStartMs: Math.max(0, Math.round(a.inicioS * 1000)) } : {}) }],

@@ -12,11 +12,12 @@
 // ============================================================
 
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { Queue } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import IORedis from 'ioredis';
 import {
   FILA_ANALISE,
   FILA_ANIMACAO,
+  FILA_CONFERENCIA_DE_LAYOUT,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -25,7 +26,7 @@ import {
   VALIDADE_DO_PROGRESSO_S,
   chaveDoProgresso,
 } from '@makucho/studio-contracts';
-import type { EtapaDoPreparo, JobDeAnimacao, ProgressoDoPreparo } from '@makucho/studio-contracts';
+import type { EtapaDoPreparo, JobDeAnimacao, JobDeConferencia, ProgressoDoPreparo } from '@makucho/studio-contracts';
 
 export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
@@ -34,6 +35,8 @@ export class FilaService implements OnModuleDestroy {
   private readonly log = new Logger(FilaService.name);
   private readonly conexao: IORedis;
   private readonly filas = new Map<string, Queue>();
+  /** Eventos da fila da conferência (conexão própria: o QueueEvents bloqueia a dele). */
+  private eventosDaConferencia: QueueEvents | null = null;
 
   constructor() {
     this.conexao = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
@@ -243,7 +246,32 @@ export class FilaService implements OnModuleDestroy {
     return contagens;
   }
 
+  /**
+   * A conferência de sobreposição de uma animação (worker de render, que
+   * tem o Chrome). Espera a resposta: os problemas voltam para a IA
+   * corrigir. `null` quando o worker não respondeu a tempo -- quem chama
+   * segue sem a conferência, nunca trava a montagem por ela.
+   */
+  async conferir(dados: JobDeConferencia, tempoMs = 90_000): Promise<string[] | null> {
+    try {
+      if (!this.eventosDaConferencia) {
+        this.eventosDaConferencia = new QueueEvents(FILA_CONFERENCIA_DE_LAYOUT, {
+          connection: new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: null }),
+          prefix: PREFIXO_DAS_FILAS,
+        });
+        await this.eventosDaConferencia.waitUntilReady();
+      }
+      const job = await this.fila(FILA_CONFERENCIA_DE_LAYOUT).add('conferir', dados, { attempts: 1, removeOnComplete: true, removeOnFail: true });
+      const r: unknown = await job.waitUntilFinished(this.eventosDaConferencia, tempoMs);
+      return Array.isArray(r) ? r.map(String) : [];
+    } catch (e) {
+      this.log.warn(`conferência de layout indisponível: ${e instanceof Error ? e.message : e}`);
+      return null;
+    }
+  }
+
   async onModuleDestroy() {
+    await this.eventosDaConferencia?.close().catch(() => undefined);
     await Promise.all([...this.filas.values()].map((f) => f.close()));
     await this.conexao.quit();
   }

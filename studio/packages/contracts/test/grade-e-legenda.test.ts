@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { GRADE, aplicarOperacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { GRADE, aplicarOperacao, problemasDeLayout, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -79,6 +79,15 @@ const ajuste = aplicarOperacao(movida.plan!, { op: 'posicionar_legenda_no_trecho
 t('o ajuste manual vale mais que a animação', baseDaLegendaNoInstante(ajuste.plan!, 2500) === 0.9);
 const cortado = aplicarOperacao(ajuste.plan!, { op: 'posicionar_legenda_no_trecho', inicioMs: 6500, fimMs: 9000, y: null });
 t('tirar o ajuste de parte do trecho corta o que sobrou', cortado.ok && baseDaLegendaNoInstante(cortado.plan!, 6200) === 0.3 && baseDaLegendaNoInstante(cortado.plan!, 6800) === undefined);
+
+// ---------- A conferência de sobreposição ----------
+const medida = (t: number, ...textos: Array<[string, number, number, number, number]>) => ({ t, textos: textos.map(([texto, x, y, w, h]) => ({ texto, r: { x, y, w, h } })) });
+t('texto dentro da área útil passa', problemasDeLayout({ layout: 'tela_cheia' }, [medida(1, ['Título', 64, 300, 800, 120])]).length === 0);
+t('texto na faixa da legenda é apontado', problemasDeLayout({ layout: 'tela_cheia' }, [medida(1, ['2023', 100, 1250, 700, 160])]).some((p) => p.includes('legenda do vídeo')));
+t('texto atrás do cabeçalho do app (e do logo) é apontado', problemasDeLayout({ layout: 'tela_cheia' }, [medida(1, ['CONCEITO', 64, 40, 300, 40])]).some((p) => p.includes('cabeçalho do app')));
+t('texto sob a janela do pip é apontado', problemasDeLayout({ layout: 'pip', canto: 'inf-dir' }, [medida(2, ['Quem não mexe', 700, 700, 300, 60])]).some((p) => p.includes('janela do vídeo')));
+t('texto sobre texto é apontado (o carimbo sobre a frase)', problemasDeLayout({ layout: 'tela_cheia' }, [medida(3, ['e depois', 400, 400, 300, 60], ['APROVADO', 420, 390, 280, 70])]).some((p) => p.includes('fica sobre')));
+t('texto fora do quadro é apontado', problemasDeLayout({ layout: 'tela_cheia' }, [medida(1, ['longo demais', 900, 400, 400, 60])]).some((p) => p.includes('sai do quadro')));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

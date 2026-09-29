@@ -20,6 +20,7 @@ import { PrismaClient } from '@makucho/studio-database';
 import {
   CORES_PADRAO_DA_MARCA,
   FILA_ANIMACAO,
+  FILA_CONFERENCIA_DE_LAYOUT,
   FILA_RENDER,
   chaveDaAnimacao,
   chaveDoArquivoDaAnimacao,
@@ -41,8 +42,9 @@ import {
   presetDaLegenda,
   resolverEstiloDaLegenda,
 } from '@makucho/studio-contracts';
-import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, MarcaDoVideo } from '@makucho/studio-contracts';
+import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, JobDeConferencia, MarcaDoVideo } from '@makucho/studio-contracts';
 import { prepararAnimacao } from './animacoes';
+import { conferirAnimacao } from './conferencia';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -643,6 +645,20 @@ const workerDeAnimacoes = new Worker<JobDeAnimacao>(
   { connection: redis, prefix: PREFIXO_DAS_FILAS, concurrency: 1 },
 );
 workerDeAnimacoes.on('failed', (job, erro) => console.error(`[animacao] ${job?.id} falhou:`, erro.message));
+
+// ---------- Conferência de sobreposição (grade das animações) ----------
+// Rápida (um Chrome reaproveitado, que fecha quando fica parado): a API
+// espera a resposta para mandar os problemas de volta à IA. Uma por vez --
+// cada uma leva poucos segundos, e o worker tem pouca memória.
+const workerDeConferencia = new Worker<JobDeConferencia, string[]>(
+  FILA_CONFERENCIA_DE_LAYOUT,
+  async (job) => {
+    const composicao = composicaoHtmlSchema.parse(job.data.composicao);
+    return conferirAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
+  },
+  { connection: redis, prefix: PREFIXO_DAS_FILAS, concurrency: 1 },
+);
+workerDeConferencia.on('failed', (job, erro) => console.error(`[conferencia] ${job?.id} falhou:`, erro.message));
 
 // ---------- Heartbeat ----------
 const HEARTBEAT = '/tmp/studio/heartbeat';

@@ -184,7 +184,7 @@ async function main() {
 
   // ---------- Animação em HTML (HyperFrames) ----------
   const pedidos: string[] = [];
-  const animacoesFalsas = { problemas: async () => [], preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return { chave: 'x', estado: 'preparando' }; } };
+  const animacoesFalsas = { problemas: async () => [], problemasDeLayout: async () => [], preparar: async (_t: unknown, _p: string, c: { titulo?: string }) => { pedidos.push(c.titulo ?? '?'); return { chave: 'x', estado: 'preparando' }; } };
   const hf = montar(
     [
       { chamadas: [{ nome: 'criar_animacao', args: { layout: 'meio_a_meio', html: '<div id="a">Oi</div>', script: "tl.to('#a', { x: Math.random() }, 0);", inicioS: 1, duracaoS: 3 } }] },

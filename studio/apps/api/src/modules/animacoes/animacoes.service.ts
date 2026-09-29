@@ -58,6 +58,15 @@ export class AnimacoesService {
    * O que impede a animação de ir para o vídeo: a checagem do Studio e o
    * lint oficial do HyperFrames (só os erros). Vazio = pode.
    */
+  /**
+   * A conferência de sobreposição (grade do layout, texto sobre texto),
+   * medida no Chrome do worker. Vazio = ok; `null` = não deu para conferir.
+   */
+  async problemasDeLayout(c: ComposicaoHtml, duracaoMs: number): Promise<string[] | null> {
+    if (process.env.STUDIO_CONFERIR_LAYOUT === 'off') return null;
+    return this.filas.conferir({ composicao: c, duracaoMs });
+  }
+
   async problemas(c: ComposicaoHtml, duracaoMs: number): Promise<string[]> {
     const nossos = problemasDaComposicao(c);
     if (nossos.length) return nossos;

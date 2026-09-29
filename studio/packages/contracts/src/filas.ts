@@ -29,7 +29,10 @@ export const FILA_ANALISE = 'studio-analysis';
  */
 export const FILA_ANIMACAO = 'studio-animation';
 
-export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER, FILA_ANIMACAO] as const;
+/** A conferência de sobreposição das animações (conferencia-de-layout.ts). */
+export const FILA_CONFERENCIA_DE_LAYOUT = 'studio-animation-check';
+
+export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER, FILA_ANIMACAO, FILA_CONFERENCIA_DE_LAYOUT] as const;
 export type NomeDeFila = (typeof FILAS)[number];
 
 /**
