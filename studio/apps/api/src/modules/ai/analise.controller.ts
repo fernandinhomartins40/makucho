@@ -6,17 +6,31 @@
 // duas no mesmo lugar faria uma delas nascer com caminho errado.
 // ============================================================
 
-import { BadRequestException, Controller, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Param, Post } from '@nestjs/common';
+import { CHAVES_DOS_ESTILOS_DE_ANIMACAO } from '@makucho/studio-contracts';
+import { z } from 'zod';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { PrismaService } from '../../common/prisma.service';
 import { assertCanWrite, assertOwnership } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
-import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
+import { AnimacoesDaFalaService, NOTA_REFAZENDO } from './animacoes-da-fala.service';
 import { PropostaService } from './proposta.service';
 
 /** A nota enquanto as animações são criadas (a tela espera ela mudar). */
 const NOTA_CRIANDO = 'Criando as animações…';
+
+/** Refazer animações no editor: quais (ou todas) e o que muda. */
+const pedidoDeRefazerSchema = z
+  .object({
+    camadas: z.array(z.string().max(80)).max(30).optional(),
+    estilo: z.string().refine((e) => CHAVES_DOS_ESTILOS_DE_ANIMACAO.includes(e), 'estilo desconhecido').optional(),
+    layout: z.enum(['meio_a_meio', 'cartao', 'tela_cheia']).optional(),
+    lado: z.enum(['cima', 'baixo']).optional(),
+    pedido: z.string().trim().min(2).max(600).optional(),
+  })
+  .strict()
+  .refine((p) => p.estilo || p.layout || p.lado || p.pedido, 'diga o que mudar (estilo, lugar ou pedido)');
 
 @ApiTags('ai')
 @Controller()
@@ -50,6 +64,31 @@ export class AnaliseController {
       .catch(() => undefined)
       .finally(() => this.animando.delete(id));
     return { ok: true, nota: NOTA_CRIANDO };
+  }
+
+  /**
+   * Refaz animações que já estão no vídeo (uma, várias ou todas): outro
+   * estilo, outro lugar ou um pedido ("troca o azul pelo verde"). A IA
+   * mantém o que cada uma explica. Em segundo plano, como a de cima.
+   */
+  @Post('projects/:id/animacoes-da-fala/refazer')
+  async refazerAnimacoes(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Body() corpo: unknown) {
+    assertCanWrite(tenant);
+    const projeto = await this.prisma.project.findUnique({ where: { id } });
+    assertOwnership(tenant, projeto, 'projeto');
+    if (!projeto) throw new BadRequestException('projeto não encontrado');
+    const p = pedidoDeRefazerSchema.safeParse(corpo);
+    if (!p.success) throw new BadRequestException(p.error.issues[0]?.message ?? 'pedido inválido');
+    if (this.animando.has(id)) return { ok: true, nota: NOTA_REFAZENDO };
+
+    this.animando.add(id);
+    await this.prisma.project.update({ where: { id }, data: { animationNote: NOTA_REFAZENDO } });
+    const { camadas, ...opcoes } = p.data;
+    void this.animacoesDaFala
+      .refazerNoProjeto(tenant, id, camadas?.length ? camadas : 'todas', opcoes)
+      .catch(() => undefined)
+      .finally(() => this.animando.delete(id));
+    return { ok: true, nota: NOTA_REFAZENDO };
   }
 
   /**

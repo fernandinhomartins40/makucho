@@ -1,32 +1,39 @@
 // ============================================================
-// As animações (HyperFrames) que a montagem cria a partir da fala.
+// As animações (HyperFrames) que a IA cria a partir da fala -- na
+// montagem, no "Peça à IA" e no editor (refazer, trocar o estilo).
 //
-// Não passa pelo agente: cada volta dele tem 2 minutos, e escrever uma
-// animação inteira (html + css + script) não cabe. Aqui são chamadas
+// Não passa pelas voltas do agente: escrever uma animação inteira
+// (html + css + script) é uma resposta longa. Aqui são chamadas
 // próprias, com mais tempo e em paralelo:
 //
 //   1. planejar -- o storyboard da skill talking-head-recut do HyperFrames:
-//      UM estilo para o vídeo (pelo tom da fala, entre os 10 da skill e o
-//      "tecnologia" das referências) e os cartões pela densidade da fala,
-//      com tipo, layout e conteúdo variados;
-//   2. escrever -- uma chamada por cartão, em paralelo, com o cartão de
-//      referência do estilo e a doutrina de movimento do HyperFrames;
+//      UM estilo para o vídeo (pelo tom da fala, entre os do catálogo
+//      ESTILOS_DE_ANIMACAO) e os cartões pela densidade da fala, com tipo,
+//      layout e conteúdo variados;
+//   2. escrever -- uma chamada por cartão, com a referência do estilo e a
+//      doutrina de movimento do HyperFrames;
 //   3. conferir -- a checagem do Studio e o lint do HyperFrames; o que
 //      falhar volta UMA vez para a IA corrigir.
 //
-// O resultado (ou o motivo de não ter animação) fica no projeto
-// (`animationNote`), para o editor mostrar -- nada falha em silêncio.
+// Cada animação guarda o estilo e o briefing (tipo, ideia, conteúdo):
+// é o que permite refazê-la em outro estilo ou lugar sem perder o que
+// ela explica. O resultado (ou o motivo de não ter animação) fica no
+// projeto (`animationNote`), para o editor mostrar.
 // ============================================================
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  ESTILOS_DE_ANIMACAO,
   REGRAS_DA_ANIMACAO_HTML,
   agendaDoPlano,
   aplicarComando,
   composicaoHtmlSchema,
+  estiloDeAnimacao,
   problemasDaComposicao,
+  type CamadaDeMidia,
   type ComposicaoHtml,
   type EditPlanV1,
+  type EstiloDeAnimacao,
   type TimelineOperation,
 } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
@@ -34,25 +41,28 @@ import type { TenantContext } from '../../common/tenant';
 import { AnimacoesService } from '../animacoes/animacoes.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AiService } from './ai.service';
-import { ESTILOS_DE_CARTAO, type EstiloDeCartao } from './hyperframes/estilos';
+import { referenciaDoEstilo } from './hyperframes/estilos';
 
-// v2: o método da skill talking-head-recut do HyperFrames -- um estilo
-// por vídeo escolhido pelo tom, cartões pela densidade da fala, tipos
-// variados e a doutrina de movimento (revelar no ritmo das palavras).
-const VERSAO = 'animar-fala-v2';
+// v3: catálogo com as identidades visuais do HyperFrames, estilo e
+// briefing guardados em cada animação, refazer/trocar estilo.
+const VERSAO = 'animar-fala-v3';
 /** Uma animação é uma resposta longa: mais tempo que as outras chamadas. */
 const TEMPO_PARA_ESCREVER_MS = 240_000;
 /** Teto de cartões por montagem (cada um é uma chamada à IA, em paralelo). */
 const MAX_ANIMACOES = 8;
+/** A nota enquanto a IA trabalha (termina em "…": a tela acompanha até mudar). */
+export const NOTA_REFAZENDO = 'Refazendo as animações…';
 
-type Layout = 'meio_a_meio' | 'cartao' | 'tela_cheia';
+export type LayoutDaAnimacao = 'meio_a_meio' | 'cartao' | 'tela_cheia';
 
 interface Momento {
   inicioS: number;
   fimS: number;
-  layout: Layout;
+  layout: LayoutDaAnimacao;
   /** No meio a meio: onde fica o painel (cima = rosto embaixo; baixo = rosto em cima). */
   lado?: 'cima' | 'baixo';
+  divisao?: number;
+  foco?: number;
   /** O tipo de cartão (número, lista, citação...), para variar. */
   tipo: string;
   ideia: string;
@@ -63,17 +73,28 @@ interface Momento {
   palavras: Array<{ s: number; texto: string }>;
 }
 
-/** O estilo "tecnologia" dos vídeos de referência (cartões escuros de interface). */
-const TECNOLOGIA: EstiloDeCartao = {
-  chave: 'tecnologia',
-  nome: 'Tecnologia',
-  carater: 'escuro, cartões de interface arredondados, pílulas com bolinha colorida, ondas de áudio em barras, cores do Google',
-  quando: 'lançamento de tecnologia, IA, aplicativos, novidades digitais',
-  escuro: true,
-  fontes: ["'Inter ExtraBold'", "'Inter SemiBold'"],
-  tokens: 'fundo #0B0E13 com brilho azul suave; cartão #1E2126, borda 2px rgba(255,255,255,.10), cantos 28-36px; texto #F1F3F4, apagado #9AA0A6; destaques #4285F4 #EA4335 #FBBC04 #34A853 #A142F4',
-  referencia: '',
-};
+/** O que mudar ao refazer uma animação que já está no vídeo. */
+export interface OpcoesDeRefazer {
+  estilo?: string;
+  layout?: LayoutDaAnimacao;
+  lado?: 'cima' | 'baixo';
+  /** O pedido da pessoa ("troca o azul pelo verde", "deixa o número maior"). */
+  pedido?: string;
+}
+
+/** Um trecho para animar (o "Peça à IA" pede assim, sem escrever o HTML). */
+export interface PedidoDeTrecho {
+  inicioS: number;
+  fimS: number;
+  layout: LayoutDaAnimacao;
+  lado?: 'cima' | 'baixo';
+  tipo?: string;
+  ideia: string;
+  conteudo?: string;
+  estilo?: string;
+}
+
+const TECNOLOGIA = estiloDeAnimacao('tecnologia')!;
 
 /** Exemplo completo (já no formato html/css/script) do estilo tecnologia. */
 const EXEMPLO_TECNOLOGIA = JSON.stringify({
@@ -102,8 +123,6 @@ tl.fromTo('.painel', { scale: 1 }, { scale: 1.05, duration: 6, ease: 'none' }, 0
   .to('.painel', { opacity: 0, y: -30, duration: 0.3, ease: 'power2.in' }, 5.7);`,
 });
 
-const TODOS_OS_ESTILOS: readonly EstiloDeCartao[] = [...ESTILOS_DE_CARTAO, TECNOLOGIA];
-
 const TIPOS_DE_CARTAO = [
   'numero (estatística que conta até o valor)',
   'lista (itens que entram um a um, com check)',
@@ -116,6 +135,11 @@ const TIPOS_DE_CARTAO = [
   'destaque (uma palavra-chave enorme, tipografia cinética)',
 ] as const;
 
+/** A lista de estilos, para a IA escolher (montagem e "Peça à IA"). */
+export function listaDeEstilos(): string {
+  return ESTILOS_DE_ANIMACAO.map((e) => `- ${e.chave} (${e.nome}): ${e.carater}. Para: ${e.quando}.`).join('\n');
+}
+
 /** Quantos cartões, pela duração e a densidade (a regra da skill talking-head-recut). */
 function faixaDeCartoes(duracaoS: number): { min: number; max: number; passo: number } {
   const passo = duracaoS < 60 ? 7 : duracaoS < 180 ? 10 : duracaoS < 600 ? 16 : 28;
@@ -126,10 +150,9 @@ function faixaDeCartoes(duracaoS: number): { min: number; max: number; passo: nu
 
 function sistemaDoPlano(duracaoS: number): string {
   const f = faixaDeCartoes(duracaoS);
-  const estilos = TODOS_OS_ESTILOS.map((e) => `- ${e.chave}: ${e.carater}. Para: ${e.quando}.`).join('\n');
   return `Você é diretor de motion design (método HyperFrames / talking-head-recut): empacota um vídeo vertical 9:16 de alguém falando com CARTÕES GRÁFICOS animados, sincronizados com a fala, que EXPLICAM o que é dito. O vídeo em si não muda; os cartões entram por cima ou dividem a tela com ele.
-1. Leia a fala inteira e decida o TOM. Escolha UM estilo visual para o vídeo todo, pelo tom (não pelo assunto):
-${estilos}
+1. Leia a fala inteira e decida o TOM ("o que quem assiste deve SENTIR?"). Escolha UM estilo visual para o vídeo todo, pelo tom (não pelo assunto):
+${listaDeEstilos()}
 2. Escolha de ${f.min} a ${f.max} cartões (cerca de 1 a cada ${f.passo} s; mais se a fala é densa -- números, listas, afirmações em sequência; menos se é uma história só). Cada cartão cobre um trecho de 3 a 10 s que ganha com explicação visual, sem sobrepor outro e com respiro de 1 s ou mais entre eles.
 3. VARIE o tipo de cartão (não repita o mesmo tipo em seguida): ${TIPOS_DE_CARTAO.join('; ')}.
 4. Layout de cada cartão: meio_a_meio (o cartão ocupa metade da tela e o rosto a outra; lado "cima" = cartão em cima, rosto embaixo; "baixo" = rosto em cima, cartão embaixo -- o melhor para explicar dados e listas), cartao (cartão menor por cima do vídeo, fora do rosto -- para um termo, um número rápido, uma citação curta) ou tela_cheia (só para o ponto alto: no máximo um). Alterne layouts para dar ritmo.
@@ -149,21 +172,28 @@ const DOUTRINA_DE_MOVIMENTO = `MOVIMENTO (doutrina do HyperFrames -- é o que se
 8. Nada de balanço infinito (pulsar/flutuar à toa). A "câmera" pode agir: um push-in lento de 3-6% no cartão inteiro ao longo da duração (ease none), para o quadro nunca congelar.
 9. Nos últimos 0.3-0.4 s o cartão sai (opacity + y ou clipPath) e a animação termina limpa.`;
 
-function sistemaDaEscrita(estilo: EstiloDeCartao): string {
-  const referencia =
-    estilo.chave === 'tecnologia'
-      ? `Exemplo completo neste estilo (já no formato da resposta; painel meio_a_meio 1080x960):\n${EXEMPLO_TECNOLOGIA}`
-      : `Cartão de REFERÊNCIA deste estilo (skill talking-head-recut; feito para 1920x1080 -- aumente ~1.3x para o vertical). Copie o visual: fundo, cores, ornamentos, hierarquia e composição. As animações dele estão declaradas em data-anim-* (at = segundo, duration, stagger): traduza para tl no seu script. O texto de exemplo é chinês: troque pelo conteúdo real em português. Troque as fontes pelas nossas, listadas acima.\n${estilo.referencia}`;
+/** A referência do estilo, no formato que ele tem (cartão, identidade ou exemplo pronto). */
+function referenciaParaEscrita(estilo: EstiloDeAnimacao): string {
+  if (estilo.familia === 'referencia') {
+    return `Exemplo completo neste estilo (já no formato da resposta; painel meio_a_meio 1080x960):\n${EXEMPLO_TECNOLOGIA}`;
+  }
+  const r = referenciaDoEstilo(estilo.chave);
+  if (!r) return '';
+  if (estilo.familia === 'identidade') {
+    return `IDENTIDADE do estilo (skill hyperframes-creative do HyperFrames): siga as cores (hex exatos), a tipografia (com as NOSSAS fontes acima no lugar das citadas), o espaçamento, a atmosfera e o caráter do movimento (energia, eases e durações). Onde ela pedir bounce/elastic ou texto que embaralha ao acaso, a doutrina acima prevalece.\n${r.referencia}`;
+  }
+  return `Cartão de REFERÊNCIA deste estilo (skill talking-head-recut; feito para 1920x1080 -- aumente ~1.3x para o vertical). Copie o visual: fundo, cores, ornamentos, hierarquia e composição. As animações dele estão declaradas em data-anim-* (at = segundo, duration, stagger): traduza para tl no seu script. O texto de exemplo é chinês: troque pelo conteúdo real em português. Troque as fontes pelas nossas, listadas acima.\nCores e tipografia:\n${r.tokens}\n${r.referencia}`;
+}
+
+function sistemaDaEscrita(estilo: EstiloDeAnimacao): string {
   return `Você é motion designer do HyperFrames. Desenha UM cartão animado (HTML/CSS/GSAP) que explica um trecho de um vídeo vertical de alguém falando. É um cartão de uma série: todos seguem o mesmo estilo, mas cada um tem estrutura própria para o que explica -- não é um modelo com o texto trocado.
 ESTILO DO VÍDEO: ${estilo.nome} -- ${estilo.carater}.
-Cores e tipografia do estilo:
-${estilo.tokens}
-Fontes a usar neste estilo (as nossas): ${estilo.fontes.join(', ')}.
+Fontes deste estilo (as nossas): ${estilo.fontes.join(', ')}. Cores-base: ${estilo.cores.join(' ')}.
 Pinte o fundo do estilo em #area inteira no meio_a_meio e na tela_cheia (o painel é do cartão); no cartao, só o cartão tem fundo (o resto transparente, o vídeo aparece).
 ${DOUTRINA_DE_MOVIMENTO}
 ${REGRAS_DA_ANIMACAO_HTML}
 Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.
-${referencia}`;
+${referenciaParaEscrita(estilo)}`;
 }
 
 /** O primeiro objeto JSON de uma resposta (a IA às vezes cerca com ```). */
@@ -173,6 +203,30 @@ function lerJson(texto: string): unknown {
   const f = limpo.lastIndexOf('}');
   if (i < 0 || f <= i) throw new Error('a resposta não trouxe JSON');
   return JSON.parse(limpo.slice(i, f + 1));
+}
+
+function briefingDe(m: Pick<Momento, 'tipo' | 'ideia' | 'conteudo'>): string {
+  return JSON.stringify({ tipo: m.tipo, ideia: m.ideia, conteudo: m.conteudo }).slice(0, 2000);
+}
+
+function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo: string } {
+  try {
+    const b = JSON.parse(c.briefing ?? '') as Record<string, unknown>;
+    return { tipo: String(b.tipo ?? ''), ideia: String(b.ideia ?? c.titulo ?? ''), conteudo: String(b.conteudo ?? '') };
+  } catch {
+    return { tipo: '', ideia: c.titulo ?? '', conteudo: '' };
+  }
+}
+
+/** O estilo mais usado nas animações do vídeo (o "estilo do vídeo"). */
+export function estiloDoPlano(plano: EditPlanV1): EstiloDeAnimacao | undefined {
+  const conta = new Map<string, number>();
+  for (const m of plano.mediaLayers ?? []) {
+    const e = m.kind === 'html' ? m.composicao?.estilo : undefined;
+    if (e) conta.set(e, (conta.get(e) ?? 0) + 1);
+  }
+  const [chave] = [...conta.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+  return estiloDeAnimacao(chave);
 }
 
 @Injectable()
@@ -209,7 +263,7 @@ export class AnimacoesDaFalaService {
     projectId: string,
     palavras: Array<{ s: number; texto: string }>,
     duracaoS: number,
-  ): Promise<{ estilo: EstiloDeCartao; momentos: Momento[] }> {
+  ): Promise<{ estilo: EstiloDeAnimacao; momentos: Momento[] }> {
     const fala = palavras.slice(0, 1500).map((p) => `${p.s.toFixed(2)} ${p.texto}`).join('\n');
     const r = await this.ai.chamar({
       workspaceId,
@@ -223,14 +277,14 @@ export class AnimacoesDaFalaService {
       tempoMaximoMs: 150_000,
     });
     const bruto = lerJson(r.texto) as { estilo?: unknown; cartoes?: unknown[]; momentos?: unknown[] };
-    const estilo = TODOS_OS_ESTILOS.find((e) => e.chave === bruto.estilo) ?? TECNOLOGIA;
+    const estilo = estiloDeAnimacao(typeof bruto.estilo === 'string' ? bruto.estilo : undefined) ?? TECNOLOGIA;
     const momentos: Momento[] = [];
     for (const m of bruto.cartoes ?? bruto.momentos ?? []) {
       const x = m as Record<string, unknown>;
       const inicio = Number(x.inicioS);
       const fim = Number(x.fimS);
       if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim - inicio < 2) continue;
-      const layout: Layout = x.layout === 'cartao' || x.layout === 'tela_cheia' ? x.layout : 'meio_a_meio';
+      const layout: LayoutDaAnimacao = x.layout === 'cartao' || x.layout === 'tela_cheia' ? x.layout : 'meio_a_meio';
       const inicioOk = Math.max(0, Math.min(inicio, duracaoS - 2));
       const fimOk = Math.min(duracaoS, Math.max(inicioOk + 3, Math.min(fim, inicioOk + 12)));
       if (momentos.some((o) => inicioOk < o.fimS && fimOk > o.inicioS)) continue;
@@ -251,13 +305,17 @@ export class AnimacoesDaFalaService {
     return { estilo, momentos };
   }
 
-  /** Escreve e confere o cartão de um momento (uma correção, se precisar). */
+  /**
+   * Escreve e confere o cartão de um momento (uma correção, se precisar).
+   * `base`: a animação atual, quando é uma edição em cima dela.
+   */
   private async escrever(
     workspaceId: string,
     projectId: string,
     m: Momento,
-    estilo: EstiloDeCartao,
+    estilo: EstiloDeAnimacao,
     serie: Momento[],
+    extra: { base?: ComposicaoHtml; pedido?: string; soOsTextos?: boolean } = {},
   ): Promise<{ composicao: ComposicaoHtml; duracaoMs: number }> {
     const duracaoMs = Math.round((m.fimS - m.inicioS) * 1000);
     const area =
@@ -273,13 +331,20 @@ export class AnimacoesDaFalaService {
       .filter((o) => o !== m)
       .map((o) => `${o.inicioS.toFixed(0)}s ${o.tipo || '?'} (${o.layout})`)
       .join('; ');
-    const pedido = `Cartão ${serie.indexOf(m) + 1} de ${serie.length}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
+    const atual = extra.base ? JSON.stringify({ titulo: extra.base.titulo, html: extra.base.html, css: extra.base.css, script: extra.base.script }).slice(0, 14_000) : '';
+    const pedido = `Cartão ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
 Duração: ${(duracaoMs / 1000).toFixed(1)} s. Cor de destaque: a ${m.acento + 1}ª do estilo.
 O que explica: ${m.ideia}
 Conteúdo: ${m.conteudo || '(tire da fala)'}
 Os outros cartões da série (não repita a estrutura deles): ${outros || 'nenhum'}.
 Fala do trecho (segundo DENTRO da animação, palavra) -- cada elemento entra no segundo da palavra que ele representa:
-${fala}`;
+${fala}${
+      extra.pedido
+        ? `\n\nPEDIDO DA PESSOA (faça exatamente isto; mantenha o resto como está):\n${extra.pedido}\nAnimação atual (edite em cima dela):\n${atual}`
+        : atual && extra.soOsTextos
+          ? `\n\nA animação anterior deste trecho (reaproveite SÓ os textos e a ideia; o desenho é novo, no estilo e no lugar acima):\n${atual}`
+          : ''
+    }`;
     const tentar = async (usuario: string) => {
       const r = await this.ai.chamar({
         workspaceId,
@@ -299,9 +364,13 @@ ${fala}`;
         script: j.script ?? '',
         layout: m.layout,
         ...(m.lado ? { lado: m.lado } : {}),
-        // O estilo pinta o próprio fundo (o painel escuro padrão é do modelo "tecnologia").
+        ...(m.divisao !== undefined ? { divisao: m.divisao } : {}),
+        ...(m.foco !== undefined ? { foco: m.foco } : {}),
+        // O estilo pinta o próprio fundo (o painel escuro padrão é dos modelos prontos).
         semFundo: true,
         titulo: String(j.titulo ?? m.ideia).slice(0, 60),
+        estilo: estilo.chave,
+        briefing: briefingDe(m),
       });
       if (!c.success) return { erro: c.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`), resposta: r.texto };
       const locais = problemasDaComposicao(c.data);
@@ -315,6 +384,140 @@ ${fala}`;
     }
     if ('erro' in r) throw new Error(r.erro!.slice(0, 3).join('; '));
     return { composicao: r.composicao!, duracaoMs };
+  }
+
+  /** As animações do plano como momentos (para a série e para refazer). */
+  private momentosDoPlano(plano: EditPlanV1, palavras: Array<{ s: number; texto: string }>): Array<{ camada: CamadaDeMidia; momento: Momento }> {
+    return (plano.mediaLayers ?? [])
+      .filter((c) => c.kind === 'html' && c.composicao)
+      .map((camada) => {
+        const c = camada.composicao!;
+        const b = lerBriefing(c);
+        const inicioS = camada.timelineStartMs / 1000;
+        const fimS = (camada.timelineStartMs + camada.durationMs) / 1000;
+        const momento: Momento = {
+          inicioS,
+          fimS,
+          layout: c.layout,
+          ...(c.lado ? { lado: c.lado } : {}),
+          ...(c.divisao !== undefined ? { divisao: c.divisao } : {}),
+          ...(c.foco !== undefined ? { foco: c.foco } : {}),
+          tipo: b.tipo,
+          ideia: b.ideia,
+          conteudo: b.conteudo,
+          acento: 0,
+          palavras: palavras.filter((p) => p.s >= inicioS && p.s < fimS),
+        };
+        return { camada, momento };
+      });
+  }
+
+  /**
+   * Uma animação nova para um trecho, pelo método da montagem (o "Peça à
+   * IA" usa isto em vez de escrever o HTML). Não salva: devolve a
+   * composição para quem chamou pôr no plano.
+   */
+  async animarTrecho(workspaceId: string, projectId: string, plano: EditPlanV1, p: PedidoDeTrecho): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo: EstiloDeAnimacao }> {
+    const palavras = await this.palavrasNoVideo(projectId, plano);
+    const total = agendaDoPlano(plano).duracaoMs / 1000;
+    const inicioS = Math.max(0, Math.min(p.inicioS, total - 1));
+    const fimS = Math.min(total, Math.max(inicioS + 2, Math.min(p.fimS, inicioS + 15)));
+    const estilo = estiloDeAnimacao(p.estilo) ?? estiloDoPlano(plano) ?? TECNOLOGIA;
+    const m: Momento = {
+      inicioS,
+      fimS,
+      layout: p.layout,
+      ...(p.layout === 'meio_a_meio' ? { lado: p.lado ?? 'cima' } : {}),
+      tipo: (p.tipo ?? '').slice(0, 40),
+      ideia: p.ideia.slice(0, 300),
+      conteudo: (p.conteudo ?? '').slice(0, 800),
+      acento: 0,
+      palavras: palavras.filter((x) => x.s >= inicioS && x.s < fimS),
+    };
+    const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
+    const r = await this.escrever(workspaceId, projectId, m, estilo, serie);
+    return { ...r, estilo };
+  }
+
+  /**
+   * Redesenha uma animação que já está no vídeo: outro estilo, outro
+   * lugar (layout/lado) ou um pedido da pessoa. Mantém o que ela explica
+   * (o briefing) e o tempo. Não salva: devolve a composição nova.
+   */
+  async redesenhar(workspaceId: string, projectId: string, plano: EditPlanV1, camadaId: string, o: OpcoesDeRefazer): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo: EstiloDeAnimacao }> {
+    const palavras = await this.palavrasNoVideo(projectId, plano);
+    const todos = this.momentosDoPlano(plano, palavras);
+    const achado = todos.find((x) => x.camada.id === camadaId);
+    if (!achado) throw new Error('animação não encontrada');
+    const atual = achado.camada.composicao!;
+    const m: Momento = { ...achado.momento };
+    if (o.layout && o.layout !== m.layout) {
+      m.layout = o.layout;
+      delete m.divisao;
+      delete m.foco;
+      if (o.layout !== 'meio_a_meio') delete m.lado;
+      else m.lado = o.lado ?? 'cima';
+    }
+    if (o.lado && m.layout === 'meio_a_meio') m.lado = o.lado;
+    const estilo = estiloDeAnimacao(o.estilo) ?? estiloDeAnimacao(atual.estilo) ?? estiloDoPlano(plano) ?? TECNOLOGIA;
+    const mudouODesenho = estilo.chave !== atual.estilo || m.layout !== atual.layout;
+    const semBriefing = !atual.briefing;
+    const serie = todos.map((x) => (x.camada.id === camadaId ? m : x.momento));
+    const r = await this.escrever(workspaceId, projectId, m, estilo, serie, {
+      base: atual,
+      ...(o.pedido && !mudouODesenho ? { pedido: o.pedido } : {}),
+      // Estilo ou lugar novo: o desenho é outro; os textos são os mesmos.
+      soOsTextos: mudouODesenho || semBriefing,
+      ...(o.pedido && mudouODesenho ? { pedido: `${o.pedido} (redesenhe no estilo e no lugar novos)` } : {}),
+    });
+    return { ...r, estilo };
+  }
+
+  /**
+   * Refaz animações do projeto (uma, várias ou todas) e salva uma versão
+   * do plano com elas. Usado pelo editor (trocar o estilo, o lugar, pedir
+   * uma mudança) -- em segundo plano, com a nota do projeto.
+   */
+  async refazerNoProjeto(sistema: TenantContext, projectId: string, camadas: string[] | 'todas', o: OpcoesDeRefazer): Promise<{ feitas: number; nota: string }> {
+    const registrar = async (nota: string) => {
+      await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500) } }).catch(() => undefined);
+      this.log.log(`animações do projeto ${projectId}: ${nota}`);
+      return nota;
+    };
+    try {
+      const plano = (await this.planos.atual(sistema, projectId)).document;
+      const ids = (plano.mediaLayers ?? []).filter((m) => m.kind === 'html' && m.composicao && (camadas === 'todas' || camadas.includes(m.id))).map((m) => m.id);
+      if (!ids.length) return { feitas: 0, nota: await registrar('Nenhuma animação para refazer.') };
+      const feitas = await Promise.allSettled(ids.map((id) => this.redesenhar(sistema.workspaceId, projectId, plano, id, o)));
+      const ops: TimelineOperation[] = [];
+      const falhas: string[] = [];
+      let estilo: EstiloDeAnimacao | undefined;
+      feitas.forEach((f, i) => {
+        if (f.status === 'rejected') {
+          falhas.push(f.reason instanceof Error ? f.reason.message : String(f.reason));
+          return;
+        }
+        estilo = f.value.estilo;
+        ops.push({ op: 'editar_midia', mediaId: ids[i]!, composicao: f.value.composicao });
+      });
+      if (!ops.length) return { feitas: 0, nota: await registrar(`Não deu para refazer: ${falhas.join(' | ').slice(0, 400)}`) };
+      // O plano pode ter mudado enquanto a IA escrevia: aplica sobre o atual.
+      const agora = (await this.planos.atual(sistema, projectId)).document;
+      const res = aplicarComando(agora, ops, {});
+      if (!res.aplicadas) return { feitas: 0, nota: await registrar(`Não deu para refazer: ${res.ignoradas.join('; ').slice(0, 400)}`) };
+      await this.planos.salvar(sistema, projectId, res.plan, 'ai');
+      for (const op of ops) {
+        if (op.op !== 'editar_midia' || !op.composicao) continue;
+        const camada = res.plan.mediaLayers?.find((m) => m.id === op.mediaId);
+        if (camada) void this.animacoes.preparar(sistema, projectId, op.composicao, camada.durationMs).catch(() => undefined);
+      }
+      const n = res.aplicadas;
+      const nota = `A IA refez ${n} ${n === 1 ? 'animação' : 'animações'}${estilo ? ` no estilo ${estilo.nome}` : ''} (${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})${falhas.length ? `; ${falhas.length} ficou como estava` : ''}.`;
+      return { feitas: n, nota: await registrar(nota) };
+    } catch (e) {
+      const motivo = e && typeof e === 'object' && 'publico' in e ? String((e as { publico: unknown }).publico) : e instanceof Error ? e.message : String(e);
+      return { feitas: 0, nota: await registrar(`Não deu para refazer: ${motivo.slice(0, 400)}`) };
+    }
   }
 
   /**

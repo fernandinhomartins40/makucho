@@ -103,6 +103,22 @@ async function main() {
   const docF = documentoDaComposicao({ html: '<p>x</p>', css: ".t { font-family: 'Playfair Display'; }", script: 'tl.to("p", { opacity: 1 }, 0);', layout: 'cartao' }, { duracaoMs: 3000, gsap: 'g.js', fontes: '/fonts/', origens: "'self'" });
   t('o documento carrega as fontes que o CSS usa (e não as outras)', docF.includes("url('/fonts/PlayfairDisplay-Bold.ttf')") && docF.includes('Inter-SemiBold.ttf') && !docF.includes('Bangers'));
 
+  // 1c. Refazer no editor: outro estilo mantém o que a animação explica; um pedido edita em cima da atual.
+  const idE = e.atual().mediaLayers![0]!.id;
+  const usuarios: string[] = [];
+  const f = montar((usuario, sis) => {
+    usuarios.push(usuario);
+    sistemas.push(sis);
+    return boa('Gemini novo');
+  });
+  // o plano do segundo harness começa com a animação do primeiro
+  await f.planos.salvar(null, 'p1', e.atual());
+  const rf = await f.servico.refazerNoProjeto(sistema as never, 'p1', [idE], { estilo: 'swiss-pulse' });
+  const cf = f.atual().mediaLayers![0]!.composicao!;
+  t('trocar o estilo redesenha no estilo novo e guarda o que ela explica', rf.feitas === 1 && cf.estilo === 'swiss-pulse' && cf.briefing?.includes('a frase forte') === true && sistemas.at(-1)!.includes('Swiss Pulse') && sistemas.at(-1)!.includes('IDENTIDADE'));
+  await f.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { pedido: 'troca o vermelho pelo verde' });
+  t('o pedido da pessoa vai com a animação atual para editar em cima', usuarios.at(-1)!.includes('PEDIDO DA PESSOA') && usuarios.at(-1)!.includes('troca o vermelho pelo verde') && usuarios.at(-1)!.includes('Gemini'));
+
   // 2. IA fora do ar: sem animação, mas com o motivo gravado.
   const b = montar(() => {
     throw Object.assign(new Error('x'), { publico: 'a chave da IA foi recusada' });

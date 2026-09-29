@@ -60,11 +60,12 @@ import {
   tirarPausas,
   traduzirBusca,
 } from '@makucho/studio-contracts';
-import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca } from '@makucho/studio-contracts';
+import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
 import { AnimacoesService } from '../animacoes/animacoes.service';
+import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, type LayoutDaAnimacao } from './animacoes-da-fala.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
@@ -139,6 +140,7 @@ export class AgenteService {
     private readonly refino: RefinoService,
     private readonly banco: BancoDeMidiaService,
     @Optional() private readonly animacoes?: AnimacoesService,
+    @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
   ) {}
 
   /** Os passos do pedido em andamento (ou do último) e o resultado, para a tela. */
@@ -771,9 +773,134 @@ export class AgenteService {
         },
       },
 
+      // ---------- Animações pelo método do HyperFrames (estilos) ----------
+      estilos_e_animacoes: {
+        rotulo: 'Vendo os estilos e as animações',
+        descricao: 'As animações que estão no vídeo (id, tempo, lugar, estilo, o que explicam), o estilo do vídeo e o catálogo de estilos do HyperFrames. Leia antes de criar, refazer ou trocar o estilo das animações.',
+        parametros: objeto(),
+        executar: async (c) => {
+          const atual = estiloDoPlano(c.plano);
+          return {
+            estiloDoVideo: atual ? `${atual.chave} (${atual.nome})` : 'nenhum ainda',
+            animacoes: (c.plano.mediaLayers ?? [])
+              .filter((m) => m.kind === 'html' && m.composicao)
+              .map((m) => ({
+                id: m.id,
+                inicioS: m.timelineStartMs / 1000,
+                fimS: (m.timelineStartMs + m.durationMs) / 1000,
+                layout: m.composicao!.layout,
+                lado: m.composicao!.lado,
+                estilo: m.composicao!.estilo ?? 'sem estilo (feita à mão)',
+                titulo: m.composicao!.titulo,
+                briefing: m.composicao!.briefing?.slice(0, 300),
+              })),
+            estilos: listaDeEstilos(),
+          };
+        },
+      },
+
+      animar_trecho: {
+        rotulo: 'Desenhando uma animação (HyperFrames)',
+        descricao: `O JEITO PADRÃO de criar uma animação: você diz o trecho, o lugar, o tipo e o que ela explica, e o motion designer do HyperFrames desenha no estilo do vídeo (ou no estilo pedido), com a doutrina de movimento e cada elemento entrando no instante da palavra. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-12 s). layout: meio_a_meio (painel + rosto na outra metade; lado cima = animação em cima, baixo = embaixo), cartao (menor, por cima do vídeo, fora do rosto), tela_cheia (só o ponto alto). tipo: numero, lista, comparacao, citacao, passos, grafico, termo, pergunta, destaque. estilo: chave de estilos_e_animacoes (omita para seguir o estilo do vídeo). Demora ~1-2 min.`,
+        parametros: objeto(
+          {
+            inicioS: { type: 'number' },
+            fimS: { type: 'number' },
+            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] },
+            lado: { type: 'string', enum: ['cima', 'baixo'] },
+            tipo: { type: 'string' },
+            ideia: { type: 'string', description: 'o que a animação explica, em uma frase' },
+            conteudo: { type: 'string', description: 'os textos: kicker, título, detalhe, números, itens' },
+            estilo: { type: 'string' },
+          },
+          ['inicioS', 'fimS', 'layout', 'ideia'],
+        ),
+        executar: async (c, a) => {
+          if (!this.animacoesDaFala) return { erro: 'animações indisponíveis agora' };
+          const r = await this.animacoesDaFala.animarTrecho(c.tenant.workspaceId, c.projectId, c.plano, {
+            inicioS: Number(a.inicioS) || 0,
+            fimS: Number(a.fimS) || 0,
+            layout: (['meio_a_meio', 'cartao', 'tela_cheia'].includes(String(a.layout)) ? a.layout : 'meio_a_meio') as LayoutDaAnimacao,
+            ...(a.lado === 'baixo' || a.lado === 'cima' ? { lado: a.lado } : {}),
+            ...(typeof a.tipo === 'string' ? { tipo: a.tipo } : {}),
+            ideia: String(a.ideia ?? ''),
+            ...(typeof a.conteudo === 'string' ? { conteudo: a.conteudo } : {}),
+            ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
+          });
+          const inicio = Math.round((Number(a.inicioS) || 0) * 1000);
+          const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
+          const res = aplicarComando(c.plano, [{ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao: r.composicao, timelineStartMs: inicio, durationMs: r.duracaoMs }], { biblioteca: c.biblioteca });
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          void this.animacoes?.preparar(c.tenant, c.projectId, r.composicao, r.duracaoMs).catch(() => undefined);
+          const nova = (c.plano.mediaLayers ?? []).find((m) => !antes.has(m.id));
+          return { ok: res.aplicadas > 0, id: nova?.id, estilo: r.estilo.nome, titulo: r.composicao.titulo, ignoradas: res.ignoradas };
+        },
+      },
+
+      refazer_animacao: {
+        rotulo: 'Redesenhando a animação',
+        descricao: 'Redesenha uma animação que já está no vídeo, mantendo o que ela explica e o tempo: em outro estilo (estilo), em outro lugar (layout/lado -- trocar o layout EXIGE redesenhar, o desenho de um painel não serve num cartão) e/ou com um pedido da pessoa (pedido: "troca o azul pelo verde", "deixa o número maior", "tira o carimbo"). Para só mover no tempo ou mudar a duração, use mudar_animacao. Demora ~1-2 min.',
+        parametros: objeto(
+          {
+            id: { type: 'string' },
+            estilo: { type: 'string' },
+            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] },
+            lado: { type: 'string', enum: ['cima', 'baixo'] },
+            pedido: { type: 'string' },
+          },
+          ['id'],
+        ),
+        executar: async (c, a) => {
+          if (!this.animacoesDaFala) return { erro: 'animações indisponíveis agora' };
+          const id = String(a.id);
+          const camada = (c.plano.mediaLayers ?? []).find((m) => m.id === id && m.kind === 'html');
+          if (!camada) return { erro: 'animação não encontrada: leia estilos_e_animacoes' };
+          const r = await this.animacoesDaFala.redesenhar(c.tenant.workspaceId, c.projectId, c.plano, id, {
+            ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
+            ...(['meio_a_meio', 'cartao', 'tela_cheia'].includes(String(a.layout)) ? { layout: a.layout as LayoutDaAnimacao } : {}),
+            ...(a.lado === 'baixo' || a.lado === 'cima' ? { lado: a.lado } : {}),
+            ...(typeof a.pedido === 'string' ? { pedido: a.pedido } : {}),
+          });
+          const res = aplicarComando(c.plano, [{ op: 'editar_midia', mediaId: id, composicao: r.composicao }], { biblioteca: c.biblioteca });
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          void this.animacoes?.preparar(c.tenant, c.projectId, r.composicao, camada.durationMs).catch(() => undefined);
+          return { ok: res.aplicadas > 0, estilo: r.estilo.nome, titulo: r.composicao.titulo, ignoradas: res.ignoradas };
+        },
+      },
+
+      trocar_estilo_das_animacoes: {
+        rotulo: 'Trocando o estilo das animações',
+        descricao: 'Redesenha TODAS as animações do vídeo (ou as de ids) em outro estilo do catálogo, mantendo o que cada uma explica, o tempo e o lugar. Use quando pedirem "muda o estilo das animações", "deixa mais sério/divertido/escuro", "usa o estilo X". Escolha o estilo pelo pedido e pelo tom (veja estilos_e_animacoes). Demora ~2 min (em paralelo).',
+        parametros: objeto({ estilo: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } }, ['estilo']),
+        executar: async (c, a) => {
+          if (!this.animacoesDaFala) return { erro: 'animações indisponíveis agora' };
+          const pedidos = Array.isArray(a.ids) ? a.ids.map(String) : null;
+          const alvos = (c.plano.mediaLayers ?? []).filter((m) => m.kind === 'html' && m.composicao && (!pedidos || pedidos.includes(m.id)));
+          if (!alvos.length) return { erro: 'nenhuma animação para trocar' };
+          const plano = c.plano;
+          const feitas = await Promise.allSettled(alvos.map((m) => this.animacoesDaFala!.redesenhar(c.tenant.workspaceId, c.projectId, plano, m.id, { estilo: String(a.estilo) })));
+          const ops: TimelineOperation[] = [];
+          const falhas: string[] = [];
+          feitas.forEach((f, i) => {
+            if (f.status === 'fulfilled') ops.push({ op: 'editar_midia', mediaId: alvos[i]!.id, composicao: f.value.composicao });
+            else falhas.push(f.reason instanceof Error ? f.reason.message : String(f.reason));
+          });
+          const res = aplicarComando(c.plano, ops, { biblioteca: c.biblioteca });
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          for (const op of ops) {
+            const camada = alvos.find((m) => op.op === 'editar_midia' && m.id === op.mediaId);
+            if (op.op === 'editar_midia' && op.composicao && camada) void this.animacoes?.preparar(c.tenant, c.projectId, op.composicao, camada.durationMs).catch(() => undefined);
+          }
+          return { ok: res.aplicadas > 0, trocadas: res.aplicadas, falhas: falhas.slice(0, 3) };
+        },
+      },
+
       criar_animacao: {
         rotulo: 'Criando uma animação (HyperFrames)',
-        descricao: `Cria uma ANIMAÇÃO em HTML (HyperFrames) e põe no vídeo: o melhor jeito de EXPLICAR a fala com motion design (títulos que entram palavra a palavra, cartões, ondas de áudio, barras, seletores, gráficos, passo a passo). layout: meio_a_meio (painel com a animação e o vídeo com o rosto na outra parte -- o melhor para explicar; lado cima|baixo, divisao 0.3-0.65, foco = altura do rosto no vídeo 0-1), cartao (sobre o vídeo, sem cobrir o rosto), tela_cheia (só a animação; no máximo 1-2 por vídeo). Antes, leia ler_fala palavras=true: o tempo de cada movimento é (instante da palavra - inicioS) em segundos. Uma ideia por animação (4-12 s). Se voltar "problemas", corrija e chame de novo.\n${REGRAS_DA_ANIMACAO_HTML}`,
+        descricao: `Escreve à mão uma ANIMAÇÃO em HTML (HyperFrames) -- PREFIRA animar_trecho, que desenha no estilo do vídeo com o método do HyperFrames; use esta só quando a pessoa ditar o desenho exato. O melhor jeito de EXPLICAR a fala com motion design (títulos que entram palavra a palavra, cartões, ondas de áudio, barras, seletores, gráficos, passo a passo). layout: meio_a_meio (painel com a animação e o vídeo com o rosto na outra parte -- o melhor para explicar; lado cima|baixo, divisao 0.3-0.65, foco = altura do rosto no vídeo 0-1), cartao (sobre o vídeo, sem cobrir o rosto), tela_cheia (só a animação; no máximo 1-2 por vídeo). Antes, leia ler_fala palavras=true: o tempo de cada movimento é (instante da palavra - inicioS) em segundos. Uma ideia por animação (4-12 s). Se voltar "problemas", corrija e chame de novo.\n${REGRAS_DA_ANIMACAO_HTML}`,
         parametros: objeto(
           {
             html: { type: 'string' },
@@ -824,7 +951,7 @@ export class AgenteService {
 
       mudar_animacao: {
         rotulo: 'Ajustando a animação',
-        descricao: 'Muda uma animação em HTML que já está no vídeo (id de criar_animacao ou de ver_projeto): mande só o que muda (html, css, script, layout, lado, divisao, foco) e/ou inicioS/duracaoS. Leia antes a atual com ver_animacao para editar em cima dela.',
+        descricao: 'Ajuste fino numa animação em HTML que já está no vídeo: mover no tempo (inicioS), mudar a duração (duracaoS), o lado do meio a meio, divisao e foco, ou um retoque pontual no html/css/script (leia antes com ver_animacao). Para trocar o estilo, o layout ou redesenhar a pedido, use refazer_animacao.',
         parametros: objeto(
           { id: { type: 'string' }, html: { type: 'string' }, css: { type: 'string' }, script: { type: 'string' }, layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] }, lado: { type: 'string', enum: ['cima', 'baixo'] }, divisao: { type: 'number' }, foco: { type: 'number' }, inicioS: { type: 'number' }, duracaoS: { type: 'number' } },
           ['id'],

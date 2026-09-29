@@ -18,6 +18,7 @@
 //   editando        a proposta real, salva a cada ajuste.
 // ============================================================
 
+import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -261,15 +262,16 @@ function Editor({ projectId }: { projectId: string }) {
   // A mesma etapa do fim da montagem, num projeto já aberto. Roda no
   // servidor em segundo plano; a tela acompanha pela nota do projeto e,
   // quando ela muda, traz o plano com as animações.
-  const NOTA_CRIANDO = 'Criando as animações…';
-  const criandoAnimacoes = projeto?.animationNote === NOTA_CRIANDO;
+  // Criando ou refazendo: a nota termina em "…" até a IA terminar.
+  const criandoAnimacoes = !!projeto?.animationNote?.endsWith('…');
   const temAnimacoes = !!plano?.mediaLayers?.some((m) => m.kind === 'html');
   // Uma linha: quantas e o estilo; o texto completo da nota fica no title.
   const resumoDasAnimacoes = (() => {
     const nota = projeto?.animationNote;
-    if (criandoAnimacoes) return 'Criando animações… (alguns minutos)';
-    const feitas = nota?.match(/criou (\d+) anima\S+(?: no estilo ([^(]+?))? \(/);
-    if (feitas) return `${feitas[1]} animações${feitas[2] ? ` · estilo ${feitas[2]}` : ''}`;
+    if (criandoAnimacoes) return nota?.startsWith('Refazendo') ? 'Refazendo animações… (1-2 min)' : 'Criando animações… (alguns minutos)';
+    const feitas = nota?.match(/(criou|refez) (\d+) anima\S+(?: no estilo ([^(]+?))? \(/);
+    if (feitas) return `${feitas[2]} ${feitas[1] === 'refez' ? 'refeitas' : 'animações'}${feitas[3] ? ` · estilo ${feitas[3]}` : ''}`;
+    if (nota?.startsWith('Não deu para refazer')) return 'Não deu para refazer (veja o motivo)';
     if (temAnimacoes) return 'Animações no vídeo';
     return nota?.startsWith('Sem animações') ? 'Sem animações nesta montagem' : 'Sem animações';
   })();
@@ -281,13 +283,25 @@ function Editor({ projectId }: { projectId: string }) {
       setProjeto((p) => (p ? { ...p, animationNote: `Sem animações: ${e instanceof Error ? e.message : 'o pedido falhou'}` } : p));
     }
   }, [projectId]);
+  const refazerAnimacoes = useCallback(
+    async (camadas: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => {
+      try {
+        const r = await apiIa.refazerAnimacoes(projectId, { ...(camadas === 'todas' ? {} : { camadas }), ...o });
+        setProjeto((p) => (p ? { ...p, animationNote: r.nota } : p));
+      } catch (e) {
+        setProjeto((p) => (p ? { ...p, animationNote: `Não deu para refazer: ${e instanceof Error ? e.message : 'o pedido falhou'}` } : p));
+      }
+    },
+    [projectId],
+  );
+  const animacoesDaIa = useMemo(() => ({ trabalhando: criandoAnimacoes, refazer: (c: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => void refazerAnimacoes(c, o) }), [criandoAnimacoes, refazerAnimacoes]);
   useEffect(() => {
     if (!criandoAnimacoes) return;
     const id = setInterval(() => {
       void apiProjetos
         .obter(projectId)
         .then((p) => {
-          if (p.animationNote === NOTA_CRIANDO) return;
+          if (p.animationNote?.endsWith('…')) return;
           setProjeto(p);
           void carregarPlano();
         })
@@ -1237,7 +1251,7 @@ function Editor({ projectId }: { projectId: string }) {
   }
 
   return (
-    <>
+    <AnimacoesDaIaContexto.Provider value={animacoesDaIa}>
       {/* No computador o topo vai para dentro da grade (só sobre o vídeo e
           a timeline, como no CapCut); no celular fica em cima de tudo. */}
       {celular && cabecalho}
@@ -1776,7 +1790,7 @@ function Editor({ projectId }: { projectId: string }) {
           }}
         />
       </div>
-    </>
+    </AnimacoesDaIaContexto.Provider>
   );
 }
 

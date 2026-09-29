@@ -41,6 +41,10 @@ export const composicaoHtmlSchema = z
     semFundo: z.boolean().optional(),
     /** Nome curto, para a timeline. */
     titulo: z.string().max(60).optional(),
+    /** O estilo (chave de ESTILOS_DE_ANIMACAO): a IA o mantém ao refazer e o troca quando pedem. */
+    estilo: z.string().max(40).optional(),
+    /** O que a animação explica (tipo, ideia, conteúdo): a IA a redesenha a partir disto. */
+    briefing: z.string().max(2000).optional(),
   })
   .strict();
 

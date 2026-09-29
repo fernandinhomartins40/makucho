@@ -778,6 +778,11 @@ export const ia = {
   // segundo plano: a tela acompanha pela nota do projeto.
   animarFala: (projectId: string) =>
     api<{ ok: boolean; nota: string }>(`/projects/${projectId}/animar-fala`, { metodo: 'POST' }),
+  /** Refaz animações que já estão no vídeo (estilo, lugar ou pedido), em segundo plano. */
+  refazerAnimacoes: (
+    projectId: string,
+    corpo: { camadas?: string[]; estilo?: string; layout?: 'meio_a_meio' | 'cartao' | 'tela_cheia'; lado?: 'cima' | 'baixo'; pedido?: string },
+  ) => api<{ ok: boolean; nota: string }>(`/projects/${projectId}/animacoes-da-fala/refazer`, { metodo: 'POST', corpo }),
   // #4 -- procura trechos bons que ficaram de fora. Devolve
   // CANDIDATOS: quem decide e o usuario, e o que entra na timeline e
   // uma operacao `inserir` disparada por um clique.

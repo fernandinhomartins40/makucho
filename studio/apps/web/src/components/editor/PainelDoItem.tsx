@@ -10,10 +10,12 @@
 // ============================================================
 
 import { useEffect, useState } from 'react';
-import type { CenaAnimada, ComposicaoHtml } from '@makucho/studio-contracts';
+import type { CenaAnimada, ComposicaoHtml, EstiloDeAnimacao } from '@makucho/studio-contracts';
 import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
+  ESTILOS_DE_ANIMACAO,
   LAYOUTS_DA_CENA,
+  estiloDeAnimacao,
   NOME_DO_LAYOUT_DA_CENA,
   ANIMACOES_DURANTE,
   CATEGORIAS_DE_EFEITO_DE_TELA,
@@ -58,6 +60,7 @@ import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { IconeLixeira, IconeTocar, IconeMudo } from '../icones';
 import { assets as apiAssets } from '../../lib/api';
 import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
+import { useAnimacoesDaIa, type OpcoesDeRefazerAnimacao } from './animacoesDaIa';
 import { Segmentado } from './Inspector';
 
 interface Props {
@@ -644,7 +647,7 @@ function MidiaDoItem({
   const editar = (mudanca: Omit<Extract<TimelineOperation, { op: 'editar_midia' }>, 'op' | 'mediaId'>) =>
     onOperacao({ op: 'editar_midia', mediaId: id, ...mudanca });
   if (m.kind === 'cena' && m.cena) return <CenaDoItem cena={m.cena} editar={(cena) => editar({ cena })} />;
-  if (m.kind === 'html' && m.composicao) return <AnimacaoHtmlDoItem composicao={m.composicao} editar={(composicao) => editar({ composicao })} />;
+  if (m.kind === 'html' && m.composicao) return <AnimacaoHtmlDoItem id={m.id} composicao={m.composicao} editar={(composicao) => editar({ composicao })} />;
   const posicionavel = m.layout === 'pip' || m.layout === 'livre';
   const padrao = padraoDaCaixa(m);
   return (
@@ -788,23 +791,105 @@ function MidiaDoItem({
  * o lado, o tamanho do painel e a altura do rosto no vídeo. O desenho
  * e os movimentos mudam pela IA ("muda a cor do cartão", "sobe o título").
  */
-function AnimacaoHtmlDoItem({ composicao, editar }: { composicao: ComposicaoHtml; editar: (c: ComposicaoHtml) => void }) {
+function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao: ComposicaoHtml; editar: (c: ComposicaoHtml) => void }) {
+  const ia = useAnimacoesDaIa();
+  const ocupada = !!ia?.trabalhando;
+  const atual = estiloDeAnimacao(composicao.estilo);
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  const [trocando, setTrocando] = useState(false);
+  const [pedido, setPedido] = useState('');
   const mudar = (m: Partial<ComposicaoHtml>) => editar({ ...composicao, ...m });
+  const grupos: Array<[string, EstiloDeAnimacao[]]> = [
+    ['Cartões', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'cartao')],
+    ['Identidades', ESTILOS_DE_ANIMACAO.filter((e) => e.familia !== 'cartao')],
+  ];
+  const refazer = (camadas: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => {
+    ia?.refazer(camadas, o);
+    setEscolhido(null);
+    setTrocando(false);
+  };
   return (
-    <div className="pilha" style={{ gap: 'var(--e3)' }}>
-      <p className="campo__ajuda" style={{ marginTop: 0 }}>
-        Animação feita com HyperFrames. Arraste na faixa Mídia para mover e puxe as bordas para mudar o tempo. Para mudar o desenho ou os movimentos, peça à IA
-        (&ldquo;deixa o título maior&rdquo;, &ldquo;troca o azul pela cor da marca&rdquo;).
-      </p>
+    <div className="pilha" style={{ gap: 'var(--e4)' }}>
+      {ocupada && (
+        <p className="aviso aviso--info" role="status" style={{ margin: 0, fontSize: 12 }}>
+          A IA está redesenhando as animações… (1-2 min)
+        </p>
+      )}
+
+      <div className="campo" style={{ marginBottom: 0 }}>
+        <span className="campo__rotulo">Estilo</span>
+        {/* Recolhido: o estilo atual e um botão; o catálogo só abre quando pedem. */}
+        <div className="linha" style={{ gap: 'var(--e2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          {atual ? (
+            <span className="estilo-da-animacao" aria-label={`Estilo atual: ${atual.nome}`} title={`${atual.carater}.`}>
+              <span className="estilo-da-animacao__amostra" aria-hidden>
+                {atual.cores.slice(0, 3).map((c) => (
+                  <i key={c} style={{ background: c }} />
+                ))}
+              </span>
+              {atual.nome}
+            </span>
+          ) : (
+            <span className="campo__ajuda" style={{ margin: 0 }}>Feita à mão (sem estilo do catálogo)</span>
+          )}
+          <button type="button" className="botao-link" aria-expanded={trocando} disabled={ocupada} onClick={() => { setTrocando((v) => !v); setEscolhido(null); }}>
+            {trocando ? 'Fechar' : 'Trocar estilo'}
+          </button>
+        </div>
+        {trocando && grupos.map(([nome, estilos]) => (
+          <div key={nome} className="estilos-da-animacao" role="radiogroup" aria-label={`Estilos: ${nome}`}>
+            {estilos.map((e) => (
+              <button
+                key={e.chave}
+                type="button"
+                role="radio"
+                aria-checked={(escolhido ?? composicao.estilo) === e.chave}
+                className="estilo-da-animacao"
+                title={`${e.carater}. Para: ${e.quando}.`}
+                disabled={ocupada}
+                onClick={() => setEscolhido(e.chave === composicao.estilo ? null : e.chave)}
+              >
+                <span className="estilo-da-animacao__amostra" aria-hidden>
+                  {e.cores.slice(0, 3).map((c) => (
+                    <i key={c} style={{ background: c }} />
+                  ))}
+                </span>
+                {e.nome}
+              </button>
+            ))}
+          </div>
+        ))}
+        {escolhido && (
+          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap', marginTop: 'var(--e2)' }}>
+            <button type="button" className="botao botao--primario botao--pequeno" disabled={ocupada} onClick={() => refazer([id], { estilo: escolhido })}>
+              Refazer esta
+            </button>
+            <button type="button" className="botao botao--secundario botao--pequeno" disabled={ocupada} onClick={() => refazer('todas', { estilo: escolhido })}>
+              Aplicar em todas
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="campo" style={{ marginBottom: 0 }}>
         <span className="campo__rotulo">Onde a animação passa</span>
         <div className="biblioteca__chips" role="radiogroup" aria-label="Onde a animação passa">
           {LAYOUTS_DA_CENA.map((l) => (
-            <button key={l} type="button" role="radio" aria-checked={composicao.layout === l} className="biblioteca__chip" onClick={() => mudar({ layout: l })}>
+            <button
+              key={l}
+              type="button"
+              role="radio"
+              aria-checked={composicao.layout === l}
+              className="biblioteca__chip"
+              disabled={ocupada}
+              // Outro lugar é outro desenho (um painel não cabe num cartão): a IA redesenha.
+              onClick={() => l !== composicao.layout && refazer([id], { layout: l })}
+            >
               {NOME_DO_LAYOUT_DA_CENA[l]}
             </button>
           ))}
         </div>
+        <p className="campo__ajuda">Trocar o lugar redesenha a animação com a IA, mantendo o que ela explica.</p>
       </div>
       {composicao.layout === 'meio_a_meio' && (
         <>
@@ -819,11 +904,41 @@ function AnimacaoHtmlDoItem({ composicao, editar }: { composicao: ComposicaoHtml
           <Deslizante rotulo="Altura do rosto no vídeo" valor={Math.round((composicao.foco ?? 0.4) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ foco: v / 100 })} />
         </>
       )}
-      {composicao.layout !== 'cartao' && (
+      {composicao.layout !== 'cartao' && !composicao.estilo && (
         <label className="biblioteca__opcao">
           <input type="checkbox" checked={!composicao.semFundo} onChange={(e) => mudar({ semFundo: !e.target.checked })} /> Fundo escuro no painel
         </label>
       )}
+
+      <form
+        className="campo"
+        style={{ marginBottom: 0 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pedido.trim().length < 2) return;
+          refazer([id], { pedido: pedido.trim() });
+          setPedido('');
+        }}
+      >
+        <label className="campo__rotulo" htmlFor={`pedido-${id}`}>
+          Pedir uma mudança
+        </label>
+        <textarea
+          id={`pedido-${id}`}
+          className="campo__entrada"
+          rows={2}
+          maxLength={600}
+          placeholder="Ex.: troca o vermelho pelo verde, deixa o número maior"
+          value={pedido}
+          onChange={(e) => setPedido(e.target.value)}
+        />
+        <button type="submit" className="botao botao--secundario botao--pequeno" style={{ marginTop: 'var(--e2)' }} disabled={ocupada || pedido.trim().length < 2}>
+          Pedir à IA
+        </button>
+      </form>
+      <p className="campo__ajuda" style={{ margin: 0 }}>
+        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.
+      </p>
     </div>
   );
 }
