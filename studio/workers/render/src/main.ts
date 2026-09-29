@@ -23,6 +23,9 @@ import {
   FILA_CONFERENCIA_DE_LAYOUT,
   FILA_RENDER,
   chaveDaAnimacao,
+  camadasDaLegendaHyperFrames,
+  legendaHyperFrames,
+  PREFIXO_DA_LEGENDA_HF,
   chaveDoArquivoDaAnimacao,
   composicaoHtmlSchema,
   PREFIXO_DAS_FILAS,
@@ -226,20 +229,37 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 
       // Animações em HTML (HyperFrames): o vídeo com a transparência lado
       // a lado, preparado pela fila de animações (o mesmo da exportação).
+      // Legenda do HyperFrames: camadas de animação (o ASS não a desenha).
+      // Se o vídeo de algum pedaço ainda não foi preparado, sai aqui mesmo.
+      const legendaHf = legendaHyperFrames(plano.captions.hyperframes) && plano.captions.enabled
+        ? camadasDaLegendaHyperFrames(plano, await palavrasDo(projectId), job.data.clipsDesligados ?? [])
+        : [];
+      const planoFinal: EditPlanV1 = legendaHf.length ? { ...plano, mediaLayers: [...(plano.mediaLayers ?? []), ...legendaHf] } : plano;
       const animacoes: Record<string, string> = {};
-      for (const c of plano.mediaLayers ?? []) {
+      for (const c of planoFinal.mediaLayers ?? []) {
         if (c.kind !== 'html' || !c.composicao) continue;
         const ws = await workspaceDo(projectId);
         if (!ws) break;
-        const arquivo = caminhoDe(chaveDoArquivoDaAnimacao(ws, chaveDaAnimacao(c.composicao, c.durationMs, marca.cores.primary)));
+        const chave = chaveDaAnimacao(c.composicao, c.durationMs, marca.cores.primary);
+        const arquivo = caminhoDe(chaveDoArquivoDaAnimacao(ws, chave));
         if (existsSync(arquivo)) animacoes[c.id] = arquivo;
-        else console.warn(`[render] animação ${c.id} ainda não foi preparada; fica de fora`);
+        else if (c.id.startsWith(PREFIXO_DA_LEGENDA_HF)) {
+          try {
+            animacoes[c.id] = await prepararAnimacao(
+              { workspaceId: ws, chave, composicao: c.composicao, duracaoMs: c.durationMs, corDaMarca: marca.cores.primary },
+              espaco.arquivo(`legenda-${c.id}`),
+              { pastaDeFontes: PASTA_DE_FONTES, aoProgredir: () => { void renovar(); bater(); } },
+            );
+          } catch (e) {
+            console.warn(`[render] pedaço da legenda ${c.id} não pôde ser preparado; fica de fora:`, e);
+          }
+        } else console.warn(`[render] animação ${c.id} ainda não foi preparada; fica de fora`);
       }
 
       await renderizar({
         entrada,
         saida: saidaTmp,
-        plano,
+        plano: planoFinal,
         legendas,
         ...(mascara ? { mascara } : {}),
         ...(mascara && (plano.mediaLayers ?? []).some((m) => m.followPerson) ? { cabeca: await trilhaDaCabeca(mascara) } : {}),

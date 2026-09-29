@@ -37,6 +37,7 @@ import {
   kenBurnsNoInstante,
   midiaEstaAnimada,
   planoPrecisaDeAss,
+  camadasDaLegendaHyperFrames,
   resolverEstiloDaLegenda,
 } from '@makucho/studio-contracts';
 import {
@@ -186,7 +187,12 @@ export async function exportarNoNavegador(
   const falta = faltaNoNavegador();
   if (falta) throw new Error(falta);
 
-  const { plano, opcoes } = pedido;
+  const { opcoes } = pedido;
+  // Legenda do HyperFrames: camadas de animação (preparadas no servidor como
+  // as outras); o ASS deixa de desenhar a legenda sozinho (gerarAss).
+  const plano: EditPlanV1 = opcoes.legendas
+    ? { ...pedido.plano, mediaLayers: [...(pedido.plano.mediaLayers ?? []), ...camadasDaLegendaHyperFrames(pedido.plano, pedido.palavras, pedido.desligados)] }
+    : pedido.plano;
   const avisos: string[] = [];
   const agenda = agendaDoPlano(plano, [...pedido.desligados]);
   if (!agenda.trechos.length) throw new Error('não há trechos ligados para exportar.');

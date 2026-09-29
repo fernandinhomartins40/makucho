@@ -174,7 +174,12 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Gera, salva e ativa a proposta da IA. Uma falha volta para quem pediu. */
-  async gerar(workspaceId: string, projectId: string): Promise<ResultadoDaProposta> {
+  /**
+   * `animacoesEmSegundoPlano`: o "Refazer a análise" espera a resposta pela
+   * requisição (o nginx corta em 600 s); as animações, que levam minutos,
+   * seguem depois -- o editor acompanha pela nota e carrega quando saem.
+   */
+  async gerar(workspaceId: string, projectId: string, opcoes: { animacoesEmSegundoPlano?: boolean } = {}): Promise<ResultadoDaProposta> {
     const resultado = await this.analise.analisar(workspaceId, projectId, { semCache: true });
     if (!resultado.ok) {
       return { ok: false, origem: 'ia', confianca: 0, avisos: [], problemas: [], erro: resultado.erro, temporario: resultado.temporario };
@@ -212,8 +217,14 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       // projeto: o vídeo já chega animado, e a IA não grava por cima de
       // uma edição que a pessoa tenha começado. Falhar aqui não derruba a
       // montagem -- o vídeo sai sem animação.
-      const criadas = await this.animarNaMontagem(sistema, projectId);
-      if (criadas > 0) resposta.avisos = [...resposta.avisos, `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} para explicar a fala (faixa Mídia).`];
+      if (opcoes.animacoesEmSegundoPlano) {
+        await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: 'Criando as animações…' } }).catch(() => undefined);
+        void this.animarNaMontagem(sistema, projectId).catch(() => undefined);
+        resposta.avisos = [...resposta.avisos, 'A IA está criando as animações: elas entram sozinhas em alguns minutos.'];
+      } else {
+        const criadas = await this.animarNaMontagem(sistema, projectId);
+        if (criadas > 0) resposta.avisos = [...resposta.avisos, `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} para explicar a fala (faixa Mídia).`];
+      }
     }
     await this.ativar(projectId);
     await this.prisma.project.update({ where: { id: projectId }, data: { aiFallbackReason: null } }).catch(() => undefined);

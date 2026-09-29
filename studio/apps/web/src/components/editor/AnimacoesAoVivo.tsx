@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CamadaDeMidia } from '@makucho/studio-contracts';
-import { componentesDaComposicao, documentoDaComposicao } from '@makucho/studio-contracts';
+import { PREFIXO_DA_LEGENDA_HF, componentesDaComposicao, documentoDaComposicao } from '@makucho/studio-contracts';
 import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import { animacoes as apiAnimacoes } from '../../lib/api';
 
@@ -110,10 +110,19 @@ export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca }: P
   const assinatura = html.map((c) => `${c.id}:${c.durationMs}:${c.composicao!.html.length}:${c.composicao!.script.length}:${c.composicao!.layout}`).join('|');
   useEffect(() => {
     if (!projectId || !html.length) return;
-    const t = setTimeout(() => {
-      for (const c of html) void apiAnimacoes.preparar(projectId, c.composicao!, c.durationMs).catch(() => undefined);
-    }, 1500);
-    return () => clearTimeout(t);
+    // A legenda do HyperFrames muda a cada ajuste de texto ou posição e cada
+    // pedaço é um render pesado: só é pedida depois de 20 s sem mudança.
+    const legenda = html.filter((c) => c.id.startsWith(PREFIXO_DA_LEGENDA_HF));
+    const animacoes = html.filter((c) => !c.id.startsWith(PREFIXO_DA_LEGENDA_HF));
+    const pedir = (lista: typeof html) => {
+      for (const c of lista) void apiAnimacoes.preparar(projectId, c.composicao!, c.durationMs).catch(() => undefined);
+    };
+    const t1 = setTimeout(() => pedir(animacoes), 1500);
+    const t2 = setTimeout(() => pedir(legenda), 20_000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [projectId, assinatura]);
 
   if (!html.length || !origem) return null;

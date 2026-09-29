@@ -27,6 +27,7 @@
 // ============================================================
 
 import { gradeDaComposicao } from './grade-dos-layouts';
+import { legendaHyperFrames } from './legendas-hyperframes-catalogo';
 import { efeitoUsaPessoa } from './efeitos-de-tela';
 import type { CaptionStyleInput } from './brand';
 import { duracaoNaTimeline, velocidadeDoTrecho } from './edit-plan';
@@ -1017,7 +1018,8 @@ export function gerarAss(opcoes: OpcoesDoAss): string {
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, Effect, Text',
   ];
 
-  const legendas = plano.captions.enabled ? eventosDaLegenda(plano, estilo, montarBlocos(opcoes)) : [];
+  // Legenda do HyperFrames: quem desenha é a camada de animação (legendas-hyperframes).
+  const legendas = plano.captions.enabled && !legendaHyperFrames(plano.captions.hyperframes) ? eventosDaLegenda(plano, estilo, montarBlocos(opcoes)) : [];
   const textos = eventosDosTextos(plano, duracaoDoVideo(plano, opcoes.clipsDesligados), marca);
 
   return [...cabecalho, ...legendas, ...textos, ''].join('\n');

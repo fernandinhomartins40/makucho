@@ -273,6 +273,8 @@ export const captionTrackSchema = z
      * layout (no meio a meio, a metade do vídeo). Ausente = sim.
      */
     seguirAnimacoes: z.boolean().optional(),
+    /** Legenda do HyperFrames (LEGENDAS_HYPERFRAMES) no lugar da do Studio; ausente = a do Studio. */
+    hyperframes: z.string().max(40).optional(),
   })
   // Uma palavra corrigida duas vezes tornaria o resultado dependente
   // da ordem do array.

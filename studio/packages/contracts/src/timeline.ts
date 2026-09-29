@@ -230,6 +230,8 @@ export const configurarLegendaSchema = z.object({
   blockEntrance: z.enum(['nenhuma', 'surgir', 'pop', 'subir', 'zoom', 'desfocar']).nullable().optional(),
   /** A legenda vai para a faixa da grade durante as animações; `null` volta ao padrão (sim). */
   seguirAnimacoes: z.boolean().nullable().optional(),
+  /** Legenda do HyperFrames (LEGENDAS_HYPERFRAMES); `null` volta à do Studio. */
+  hyperframes: z.string().max(40).nullable().optional(),
 });
 
 /**

@@ -23,7 +23,7 @@ import { PainelDoItem, Cor } from './PainelDoItem';
 import type { ItemDaTimeline } from '../timeline/camadas';
 import { useEffect, useMemo, useState } from 'react';
 import type { EditPlanV1, MarcaDoVideo, TimelineOperation, TipoDeTransicao } from '@makucho/studio-contracts';
-import { CATEGORIAS_DE_TRANSICAO, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano, duracaoNaTimeline, velocidadeDoTrecho, VELOCIDADES_DO_TRECHO, FORMATOS, FORMATOS_DO_VIDEO, type FormatoDoVideo } from '@makucho/studio-contracts';
+import { CATEGORIAS_DE_TRANSICAO, LEGENDAS_HYPERFRAMES, FONTES_DE_VIDEO, PRESETS_DE_LEGENDA, TRANSICOES_DO_CATALOGO, agendaDoPlano, duracaoNaTimeline, velocidadeDoTrecho, VELOCIDADES_DO_TRECHO, FORMATOS, FORMATOS_DO_VIDEO, type FormatoDoVideo } from '@makucho/studio-contracts';
 import { NOME_DO_EFEITO, NOME_DO_SOM } from '../biblioteca/catalogo';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
 import { AmostraDeEstilo } from './AmostraDeEstilo';
@@ -355,6 +355,33 @@ function AbaDeLegendas({
         </div>
         <p className="campo__ajuda">
           {PRESETS_DE_LEGENDA.find((p) => p.id === c.styleId)?.descricao ?? 'As cores vêm do Kit de marca.'}
+        </p>
+      </div>
+
+      <div className="campo">
+        <span className="campo__rotulo">Legenda animada (HyperFrames)</span>
+        <div className="estilos-da-animacao" role="radiogroup" aria-label="Legenda animada do HyperFrames">
+          <button type="button" role="radio" aria-checked={!c.hyperframes} className="estilo-da-animacao" onClick={() => onOperacao({ op: 'configurar_legenda', hyperframes: null })}>
+            A do Studio
+          </button>
+          {LEGENDAS_HYPERFRAMES.map((l) => (
+            <button
+              key={l.nome}
+              type="button"
+              role="radio"
+              aria-checked={c.hyperframes === l.nome}
+              className="estilo-da-animacao"
+              title={l.descricao}
+              onClick={() => onOperacao({ op: 'configurar_legenda', hyperframes: l.nome })}
+            >
+              {l.rotulo}
+            </button>
+          ))}
+        </div>
+        <p className="campo__ajuda">
+          {c.hyperframes
+            ? 'Legenda animada do HyperFrames: posição, palavras por bloco e correções continuam valendo; fonte, cores e entrada são as do estilo dela. Na exportação ela é preparada no servidor (pode levar alguns minutos).'
+            : 'Estilos animados do HyperFrames (palavra acendendo, neon, glitch, pílula...). Escolha um para trocar a legenda do Studio.'}
         </p>
       </div>
 

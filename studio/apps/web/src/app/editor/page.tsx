@@ -868,7 +868,8 @@ function Editor({ projectId }: { projectId: string }) {
         urlDaAnimacao: async (composicao, duracaoMs, aoEsperar) => {
           // Pede (ou acha) o vídeo com transparência e espera ficar pronto.
           let r = await apiAnimacoes.preparar(projectId, composicao, duracaoMs);
-          const limite = Date.now() + 8 * 60_000;
+          // Folga para a fila: os pedaços da legenda do HyperFrames saem um por vez.
+          const limite = Date.now() + 20 * 60_000;
           while (r.estado !== 'pronta') {
             if (r.estado === 'falhou') throw new Error(`uma animação não pôde ser preparada: ${r.erro ?? 'erro no servidor'}`);
             if (Date.now() > limite) throw new Error('as animações demoraram demais para ficar prontas; tente de novo');

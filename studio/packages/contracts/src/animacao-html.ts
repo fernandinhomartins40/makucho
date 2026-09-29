@@ -25,6 +25,7 @@ import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 import { QUADRO_DA_GRADE, cssDaGrade, janelaDoPip } from './grade-dos-layouts';
 import { cssDoTema } from './tema-da-animacao';
 import { NOMES_DOS_COMPONENTES } from './catalogo-de-componentes';
+import { legendaHyperFrames } from './legendas-hyperframes-catalogo';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
 
@@ -147,7 +148,7 @@ export function problemasDaComposicao(c: ComposicaoHtml): string[] {
   if (!/\btl\s*\./.test(c.script)) out.push('script: monte os movimentos em `tl` (tl.from, tl.to, tl.fromTo...)');
   for (const m of c.html.matchAll(/<[^>]*\bdata-hf\s*=\s*["']([^"']+)["'][^>]*>/g)) {
     const nome = m[1]!;
-    if (!NOMES_DOS_COMPONENTES.includes(nome)) out.push(`html: o componente "${nome}" não existe no catálogo (use um de: ${NOMES_DOS_COMPONENTES.join(', ')})`);
+    if (!NOMES_DOS_COMPONENTES.includes(nome) && !legendaHyperFrames(nome)) out.push(`html: o componente "${nome}" não existe no catálogo (use um de: ${NOMES_DOS_COMPONENTES.join(', ')})`);
     const vars = /data-vars\s*=\s*'([^']*)'/.exec(m[0]!)?.[1];
     if (vars) {
       try {
@@ -170,12 +171,14 @@ export function problemasDaComposicao(c: ComposicaoHtml): string[] {
 const MONTAR_COMPONENTES = `(function () {
   var dados = document.getElementById('hf-componentes');
   var fontes = dados ? JSON.parse(dados.textContent) : {};
+  // Os fontes vêm em base64 (UTF-8): o lint não lê como código o que só é montado aqui.
+  function decodificar(b64) { var bin = atob(b64); var bytes = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
   var montados = [];
   var hosts = document.querySelectorAll('#area [data-hf]');
   for (var k = 0; k < hosts.length; k++) {
     var el = hosts[k];
     var nome = el.getAttribute('data-hf');
-    var src = fontes[nome];
+    var src = fontes[nome] ? decodificar(fontes[nome]) : '';
     if (!src) continue;
     var uid = 'hf' + (k + 1) + '-' + nome;
     var inicio = parseFloat(el.getAttribute('data-inicio')) || 0;
@@ -210,6 +213,16 @@ const ENCAIXAR_COMPONENTES = `(window.__hfMontados || []).forEach(function (m) {
     tl.set(m.el, { autoAlpha: 1 }, m.inicio);
     tl.set(m.el, { autoAlpha: 0 }, m.inicio + m.dur);
   });`;
+
+/** Texto em base64 (UTF-8), igual no Node e no navegador. */
+function paraBase64(texto: string): string {
+  // Globais do Node e do navegador (o pacote não carrega os tipos do DOM).
+  const g = globalThis as unknown as { TextEncoder: new () => { encode(s: string): Uint8Array }; btoa(s: string): string };
+  const bytes = new g.TextEncoder().encode(texto);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return g.btoa(bin);
+}
 
 /** Os componentes do catálogo que o html declara (data-hf="nome"). */
 export function componentesDaComposicao(html: string): string[] {
@@ -347,7 +360,7 @@ ${c.html}
 </div>
 ${moldura}
 </div>
-${usados.length ? `<script type="application/json" id="hf-componentes">${JSON.stringify(Object.fromEntries(usados.map((n) => [n, o.componentes![n]]))).replace(/</g, '\\u003c')}</script>
+${usados.length ? `<script type="application/json" id="hf-componentes">${JSON.stringify(Object.fromEntries(usados.map((n) => [n, paraBase64(o.componentes![n]!)])))}</script>
 <script>${MONTAR_COMPONENTES}</script>` : ''}
 <script>
   window.__timelines = window.__timelines || {};
@@ -383,7 +396,8 @@ function cyrb53(s: string, semente = 0): string {
 // v3: a grade de segurança (variáveis --util-*) e o pip entre o cabeçalho e a legenda.
 // v4: a escala e o tema em variáveis (--t-*, --cor-*, --fonte-*).
 // v5: componentes do catálogo do HyperFrames (data-hf).
-const VERSAO_DO_VIDEO = 'v5';
+// v6: fontes dos componentes em base64 no documento.
+const VERSAO_DO_VIDEO = 'v6';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área

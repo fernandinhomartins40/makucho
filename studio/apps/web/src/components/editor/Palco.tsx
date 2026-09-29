@@ -37,7 +37,7 @@ import {
   bordaDaCortina,
   kenBurnsNoInstante,
   cabecaDaMascara,
-  caixaDaMidia, divisaoNoInstante, janelaNoInstante, proporcaoDoQuadro,
+  caixaDaMidia, camadasDaLegendaHyperFrames, divisaoNoInstante, janelaNoInstante, proporcaoDoQuadro,
   estadoDaMidia,
   midiaEstaAnimada,
   caixaDoTexto,
@@ -848,6 +848,11 @@ export function Palco({
     if (arrasteDaLegenda) p = { ...p, captions: { ...p.captions, ...arrasteDaLegenda } };
     return p;
   }, [plan, arrasteDoTexto, arrasteDaLegenda]);
+  // Legenda do HyperFrames: camadas de animação por cima das outras.
+  const camadasComLegenda = useMemo(
+    () => [...(plan.mediaLayers ?? []), ...camadasDaLegendaHyperFrames(planoDaPrevia, palavras, [...(desligados ?? [])])],
+    [plan.mediaLayers, planoDaPrevia, palavras, desligados],
+  );
 
   // Com texto atrás da pessoa, são dois .ass: o de trás (só esses
   // textos) e o da frente (o resto), com a pessoa recortada no meio --
@@ -1287,7 +1292,7 @@ export function Palco({
         {/* Animações em HTML (HyperFrames): acima do vídeo, abaixo dos textos. */}
         <AnimacoesAoVivo
           {...(plan.projectId ? { projectId: plan.projectId } : {})}
-          camadas={plan.mediaLayers ?? []}
+          camadas={camadasComLegenda}
           posicaoMs={posicaoMs}
           {...(marca?.cores.primary ? { corDaMarca: marca.cores.primary } : {})}
         />

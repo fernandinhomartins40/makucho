@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { GRADE, NOMES_DOS_COMPONENTES, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { GRADE, NOMES_DOS_COMPONENTES, camadasDaLegendaHyperFrames, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -107,11 +107,23 @@ const comp = {
 const fontes = { 'conic-progress-ring': '<div id="root" data-composition-id="conic-progress-ring"><script>var r = document.getElementById("root");</script></div>' };
 const docComp = documentoDaComposicao(comp, { duracaoMs: 4000, gsap: 'g', fontes: '', origens: "'self'", componentes: fontes });
 t('componentes: o documento leva só os usados, com o montador e o encaixe na tl', docComp.includes('id="hf-componentes"') && docComp.includes('window.__hfMontados') && docComp.includes('tl.add(m.sub, m.inicio)'));
-t('componentes: o fonte vai como JSON seguro (sem fechar a tag do script)', !/<\/script><\/div>"/.test(docComp) && docComp.includes('\\u003cscript'));
+t('componentes: o fonte vai em base64 (não fecha a tag do script nem é lido como código)', !docComp.includes('var r = document.getElementById') && docComp.includes('id="hf-componentes"'));
 t('componentes: sem fontes (ou sem uso), o documento fica como antes', !documentoDaComposicao(comp, { duracaoMs: 4000, gsap: 'g', fontes: '', origens: "'self'" }).includes('hf-componentes'));
 t('componentes: o nome é conferido contra o catálogo', problemasDaComposicao({ ...comp, html: '<div data-hf="nao-existe"></div>' }).some((p) => p.includes('não existe no catálogo')));
 t('componentes: data-vars precisa ser JSON', problemasDaComposicao({ ...comp, html: `<div data-hf="count-up" data-vars='{end:10}'></div>` }).some((p) => p.includes('não é JSON')));
 t('componentes: o catálogo tem os de dados, texto e destaque', ['conic-progress-ring', 'count-up', 'marker-highlight', 'notification-stack'].every((n) => NOMES_DOS_COMPONENTES.includes(n)));
+
+// ---------- Legendas do HyperFrames ----------
+const comHf = { ...plano, captions: { ...plano.captions, wordsPerBlock: 1, hyperframes: 'caption-highlight' } };
+const camadasHf = camadasDaLegendaHyperFrames(comHf, palavras);
+t('legenda HF: vira camadas de animação que montam o estilo escolhido', camadasHf.length === 1 && camadasHf[0]!.kind === 'html' && camadasHf[0]!.composicao!.html.includes('data-hf="caption-highlight"'));
+t('legenda HF: o ASS deixa de desenhar a legenda (sem trabalho em dobro)', !gerarAss({ plano: comHf, estilo, palavras }).split('\n').some((l) => l.startsWith('Dialogue') && l.includes('durante')));
+t('legenda HF: o bloco durante a animação sobe para a faixa da grade (painel embaixo)', camadasHf[0]!.composicao!.script.includes(`y: ${Math.round((baixo.baseDaLegenda - 0.3) * 1920)} }`));
+const longas = Array.from({ length: 90 }, (_, i) => w(`l${i}`, i * 600, `palavra${i}`));
+const planoLongo = { ...comHf, sourceDurationMs: 60_000, clips: [{ ...comHf.clips[0]!, sourceEndMs: 60_000 }], mediaLayers: [] };
+const pedacos = camadasDaLegendaHyperFrames(planoLongo, longas);
+t('legenda HF: vídeo longo em pedaços de até ~20 s (o render tem limite)', pedacos.length >= 3 && pedacos.every((c) => c.durationMs <= 21_000));
+t('legenda HF: sem estilo HF, nenhuma camada', camadasDaLegendaHyperFrames(plano, palavras).length === 0);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);
