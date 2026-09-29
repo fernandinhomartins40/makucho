@@ -468,6 +468,8 @@ model Project {
   animationNote String?
   /// O estilo das animações escolhido pela pessoa (chave de ESTILOS_DE_ANIMACAO); nulo = a IA escolhe pelo tom.
   animationStyle String?
+  /// A paleta das animações ("clima:indice", PALETAS_DE_ANIMACAO); nula = as cores do estilo.
+  animationPalette String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

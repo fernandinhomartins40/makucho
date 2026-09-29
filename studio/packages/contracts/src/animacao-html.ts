@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-animadas';
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 import { QUADRO_DA_GRADE, cssDaGrade, janelaDoPip } from './grade-dos-layouts';
+import { cssDoTema } from './tema-da-animacao';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
 
@@ -193,18 +194,24 @@ export function fontesDaComposicao(css: string): Array<{ familia: string; arquiv
   return usadas.map(({ familia, arquivo }) => ({ familia, arquivo }));
 }
 
+/** As fontes que o documento carrega: as do CSS da IA e as do tema (var(--fonte-*)). */
+export function fontesDoDocumento(c: Pick<ComposicaoHtml, 'css' | 'estilo' | 'paleta'>): Array<{ familia: string; arquivo: string }> {
+  return fontesDaComposicao(`${c.css}\n${cssDoTema(c)}`);
+}
+
 /** O CSS base: fontes, cores da paleta e o fundo escuro do painel (o visual das referências). */
-function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean, css: string, grade = '') {
+function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean, css: string, grade = '', tema = '') {
   // font-display: block -- o quadro espera a fonte em vez de desenhar
   // com a reserva (serifada) e trocar depois.
-  const faces = fontesDaComposicao(css)
+  const faces = fontesDaComposicao(`${css}\n${tema}`)
     .map((f) => `@font-face { font-family: '${f.familia}'; src: url('${o.fontes}${f.arquivo}'); font-display: block; }`)
     .join('\n');
   return `${faces}
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
 #cena { position: relative; width: 100%; height: 100%; overflow: hidden; font-family: 'Inter SemiBold', 'Inter ExtraBold', sans-serif; color: #F1F3F4;
   --azul: #7BAAF7; --azul-forte: #4285F4; --vermelho: #EA4335; --amarelo: #FBBC04; --verde: #34A853; --roxo: #A142F4; --laranja: #FA7B17;
-  --texto: #F1F3F4; --apagado: #9AA0A6; --cartao: #1E2126; --borda: rgba(255,255,255,0.10); --marca: ${o.corDaMarca ?? '#7BAAF7'}; }
+  --texto: #F1F3F4; --apagado: #9AA0A6; --cartao: #1E2126; --borda-cor: rgba(255,255,255,0.10); --marca: ${o.corDaMarca ?? '#7BAAF7'};
+  ${tema} }
 #cena * { box-sizing: border-box; }
 #area { position: absolute; left: ${area.x}px; top: ${area.y}px; width: ${area.w}px; height: ${area.h}px; ${grade} }
 ${comFundo ? `#area-fundo { position: absolute; inset: 0; background:
@@ -252,7 +259,7 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>${cssBase(o, area, comFundo, c.css, cssDaGrade(c, area))}
+<style>${cssBase(o, area, comFundo, c.css, cssDaGrade(c, area), cssDoTema(c))}
 ${ESC(c.css)}
 ${furo}</style>
 <script src="${o.gsap}"></script>
@@ -294,7 +301,8 @@ function cyrb53(s: string, semente = 0): string {
 /** Versão do formato do vídeo pronto: mudar invalida os antigos. */
 // v2: as fontes que o CSS usa (antes só as Inter carregavam).
 // v3: a grade de segurança (variáveis --util-*) e o pip entre o cabeçalho e a legenda.
-const VERSAO_DO_VIDEO = 'v3';
+// v4: a escala e o tema em variáveis (--t-*, --cor-*, --fonte-*).
+const VERSAO_DO_VIDEO = 'v4';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área
@@ -302,7 +310,7 @@ const VERSAO_DO_VIDEO = 'v3';
  */
 export function chaveDaAnimacao(c: ComposicaoHtml, duracaoMs: number, corDaMarca = ''): string {
   const quadros = Math.max(1, Math.round((duracaoMs * 30) / 1000));
-  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca, c.canto ?? null, c.tamanhoPip ?? null]);
+  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca, c.canto ?? null, c.tamanhoPip ?? null, c.estilo ?? null, c.paleta ?? null]);
   return `${cyrb53(texto)}${cyrb53(texto, 7)}`.slice(0, 24);
 }
 
@@ -343,7 +351,7 @@ export const REGRAS_DA_ANIMACAO_HTML = `ANIMAÇÃO EM HTML (HyperFrames). Você 
 - html: o miolo. Ele vai DENTRO de #area (a área da animação: no meio_a_meio é o painel, 1080 x a altura do painel; no cartão e na tela cheia é o quadro todo, 1080x1920). Use position:absolute ou flex dentro de #area.
 - css: estilos (classes e ids seus). Use SÓ estas fontes, pelo nome exato entre aspas (outra fonte não existe no servidor e sai serifada):
   ${listaDeFontes()}
-  Variáveis prontas (opcionais): var(--texto) var(--apagado) var(--cartao) var(--borda) var(--marca) var(--azul) var(--vermelho) var(--amarelo) var(--verde) var(--roxo) var(--laranja).
+  Variáveis prontas (opcionais): var(--texto) var(--apagado) var(--cartao) var(--borda-cor) var(--marca) var(--azul) var(--vermelho) var(--amarelo) var(--verde) var(--roxo) var(--laranja).
 - script: os movimentos, com GSAP, na linha do tempo \`tl\` que JÁ EXISTE (pausada). Ex.: tl.from('#titulo', { y: 40, opacity: 0, duration: 0.4, ease: 'back.out(1.6)' }, 0.2). O 3º argumento é o SEGUNDO em que o movimento começa, contado do início da animação -- ponha cada coisa no instante da palavra que a fala diz.
 Regras técnicas (senão a animação é recusada ou sai errada):
 - Nada de rede, fetch, imagens de fora, emoji (não há fonte de emoji no servidor): ícones e desenhos em SVG no próprio html.

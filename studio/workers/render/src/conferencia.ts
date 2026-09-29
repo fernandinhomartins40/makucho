@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import {
   INSTANTES_DA_CONFERENCIA,
   documentoDaComposicao,
-  fontesDaComposicao,
+  fontesDoDocumento,
   problemasDeLayout,
   type JobDeConferencia,
   type MedidasDaAnimacao,
@@ -121,7 +121,7 @@ export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeF
   const doc = documentoDaComposicao(job.composicao, { duracaoMs: job.duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'" });
   const gsap = await readFile(require.resolve('gsap/dist/gsap.min.js'));
   const fontes = new Map<string, Buffer>();
-  for (const { arquivo } of fontesDaComposicao(job.composicao.css)) {
+  for (const { arquivo } of fontesDoDocumento(job.composicao)) {
     const b = await readFile(join(opcoes.pastaDeFontes, arquivo)).catch(() => null);
     if (b) fontes.set(arquivo, b);
   }

@@ -109,6 +109,8 @@ async function main() {
   const re = await e.servico.criarNaMontagem(sistema as never, 'p1');
   const ce = e.atual().mediaLayers?.[0]?.composicao;
   t('o estilo escolhido chega à escrita com o cartão de referência', re.criadas === 1 && sistemas[0]!.includes('ESTILO DO VÍDEO: Editorial') && sistemas[0]!.includes('ref-editorial'));
+  t('a escrita recebe as regras de design e o tema do estilo', sistemas[0]!.includes('DESIGN PARA VÍDEO') && sistemas[0]!.includes('TEMA (já nas variáveis): fundo #f1e8d5'));
+  t('a legenda acompanha o tema (palavra falada na cor de destaque)', e.atual().captions.highlightColor === '#ff3a2d');
   t('meio a meio respeita o lado planejado e o estilo pinta o próprio fundo', ce?.lado === 'baixo' && ce?.semFundo === true && e.notas.some((n) => n.includes('estilo Editorial')));
   const docF = documentoDaComposicao({ html: '<p>x</p>', css: ".t { font-family: 'Playfair Display'; }", script: 'tl.to("p", { opacity: 1 }, 0);', layout: 'cartao' }, { duracaoMs: 3000, gsap: 'g.js', fontes: '/fonts/', origens: "'self'" });
   t('o documento carrega as fontes que o CSS usa (e não as outras)', docF.includes("url('/fonts/PlayfairDisplay-Bold.ttf')") && docF.includes('Inter-SemiBold.ttf') && !docF.includes('Bangers'));

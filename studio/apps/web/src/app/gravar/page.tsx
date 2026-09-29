@@ -147,6 +147,7 @@ function NovoVideo() {
   const [tipoDoVideo, setTipoDoVideo] = useState<TipoDeVideo | null>(null);
   const [resumo, setResumo] = useState('');
   const [estiloDasAnimacoes, setEstiloDasAnimacoes] = useState<string | null>(null);
+  const [paletaDasAnimacoes, setPaletaDasAnimacoes] = useState<string | null>(null);
   const [roteiro, setRoteiro] = useState<BlocoDoRoteiro[]>(ROTEIRO_PADRAO);
   const [temRoteiroProprio, setTemRoteiroProprio] = useState(false);
   const [scriptId, setScriptId] = useState<string | null>(roteiroDaUrl);
@@ -205,11 +206,12 @@ function NovoVideo() {
         videoKind: tipoDoVideo,
         contentBrief: resumo.trim() ? resumo.trim().slice(0, 400) : null,
         animationStyle: estiloDasAnimacoes,
+        animationPalette: estiloDasAnimacoes ? paletaDasAnimacoes : null,
       });
       projetoRef.current = criado.id;
       return criado.id;
     },
-    [titulo, scriptId, tipoDoVideo, resumo, estiloDasAnimacoes],
+    [titulo, scriptId, tipoDoVideo, resumo, estiloDasAnimacoes, paletaDasAnimacoes],
   );
 
   const atualizar = (chave: string, mudanca: Partial<ItemDoVideo>) =>
@@ -370,6 +372,7 @@ function NovoVideo() {
           videoKind: tipoDoVideo,
           contentBrief: resumo.trim() ? resumo.trim().slice(0, 400) : null,
           animationStyle: estiloDasAnimacoes,
+          animationPalette: estiloDasAnimacoes ? paletaDasAnimacoes : null,
         })
         .catch(() => undefined);
       await apiProjetos.finalizarPartes(projetoRef.current);
@@ -378,7 +381,7 @@ function NovoVideo() {
       setFinalizando(false);
       setErro(e instanceof Error ? e.message : 'não foi possível ir para a edição.');
     }
-  }, [router, titulo, projeto?.title, tipoDoVideo, resumo, estiloDasAnimacoes]);
+  }, [router, titulo, projeto?.title, tipoDoVideo, resumo, estiloDasAnimacoes, paletaDasAnimacoes]);
 
   // Aviso ao sair no meio do envio: fechar a aba perde o que falta.
   const pendentes = itens.filter((i) => i.estado === 'enviando' || i.estado === 'esperando').length;
@@ -450,6 +453,8 @@ function NovoVideo() {
             onResumo={setResumo}
             estilo={estiloDasAnimacoes}
             onEstilo={setEstiloDasAnimacoes}
+            paleta={paletaDasAnimacoes}
+            onPaleta={setPaletaDasAnimacoes}
             onGravar={() => setEtapa('camera')}
             onArquivos={(a) => void adicionarArquivos(a)}
             temRoteiroProprio={temRoteiroProprio}
@@ -518,6 +523,8 @@ function Composicao({
   onResumo,
   estilo,
   onEstilo,
+  paleta,
+  onPaleta,
   onGravar,
   onArquivos,
   temRoteiroProprio,
@@ -539,6 +546,8 @@ function Composicao({
   onResumo: (r: string) => void;
   estilo: string | null;
   onEstilo: (e: string | null) => void;
+  paleta: string | null;
+  onPaleta: (p: string | null) => void;
   onGravar: () => void;
   onArquivos: (arquivos: File[]) => void;
   temRoteiroProprio: boolean;
@@ -595,7 +604,7 @@ function Composicao({
       <div style={{ maxWidth: 720 }}>
         <TipoDoVideo tipo={tipoDoVideo} onTipo={onTipoDoVideo} resumo={resumo} onResumo={onResumo} />
         <div style={{ marginTop: 'var(--e3)' }}>
-          <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} />
+          <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
         </div>
       </div>
 

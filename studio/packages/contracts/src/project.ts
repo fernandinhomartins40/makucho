@@ -40,6 +40,8 @@ export const projectInputSchema = z.object({
   contentBrief: z.string().trim().max(400).nullable().optional(),
   /** O estilo das animações (ESTILOS_DE_ANIMACAO) escolhido pela pessoa; nulo = a IA escolhe pelo tom. */
   animationStyle: z.string().trim().max(40).nullable().optional(),
+  /** A paleta das animações ("clima:indice"); nula = as cores do estilo. */
+  animationPalette: z.string().trim().max(40).nullable().optional(),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;

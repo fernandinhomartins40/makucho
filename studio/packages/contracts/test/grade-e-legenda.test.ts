@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { GRADE, aplicarOperacao, problemasDeLayout, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { GRADE, aplicarOperacao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -88,6 +88,14 @@ t('texto atrás do cabeçalho do app (e do logo) é apontado', problemasDeLayout
 t('texto sob a janela do pip é apontado', problemasDeLayout({ layout: 'pip', canto: 'inf-dir' }, [medida(2, ['Quem não mexe', 700, 700, 300, 60])]).some((p) => p.includes('janela do vídeo')));
 t('texto sobre texto é apontado (o carimbo sobre a frase)', problemasDeLayout({ layout: 'tela_cheia' }, [medida(3, ['e depois', 400, 400, 300, 60], ['APROVADO', 420, 390, 280, 70])]).some((p) => p.includes('fica sobre')));
 t('texto fora do quadro é apontado', problemasDeLayout({ layout: 'tela_cheia' }, [medida(1, ['longo demais', 900, 400, 400, 60])]).some((p) => p.includes('sai do quadro')));
+
+// ---------- O tema ----------
+const docTema = documentoDaComposicao({ layout: 'tela_cheia', estilo: 'editorial', html: '<h1>x</h1>', css: 'h1{font-family:var(--fonte-titulo)}', script: 'tl.to("h1",{opacity:1},0);' }, { duracaoMs: 2000, gsap: 'g', fontes: '/f/', origens: "'self'" });
+t('o documento traz a escala e o tema em variáveis', docTema.includes('--t-titulo: 104px') && docTema.includes('--cor-destaque: #ff3a2d') && docTema.includes("--fonte-titulo: 'DM Serif Display'"));
+t('a fonte do tema carrega mesmo usada só por variável', docTema.includes("url('/f/DMSerifDisplay-Regular.ttf')"));
+const tNeon = temaDaAnimacao('editorial', 'neon-electric:0')!;
+t('a paleta recolore o tema (estilo claro: fundo = a cor mais clara)', tNeon.fundo !== '#f1e8d5' && tNeon.destaque !== '#ff3a2d');
+t('sem estilo, só a escala', !documentoDaComposicao({ layout: 'tela_cheia', html: '<p>x</p>', css: '', script: 'tl.to("p",{opacity:1},0);' }, { duracaoMs: 2000, gsap: 'g', fontes: '', origens: "'self'" }).includes('--cor-destaque:'));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

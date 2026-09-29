@@ -30,6 +30,9 @@ import {
   composicaoHtmlSchema,
   coresDaPaleta,
   PALETAS_DE_ANIMACAO,
+  REGRAS_DE_DESIGN,
+  temaDaAnimacao,
+  textoDoTema,
   estiloDeAnimacao,
   problemasDaComposicao,
   type CamadaDeMidia,
@@ -222,6 +225,8 @@ function sistemaDaEscrita(estilo: EstiloDeAnimacao, paleta?: string): string {
 ESTILO DO VÍDEO: ${estilo.nome} -- ${estilo.carater}.
 Fontes deste estilo (as nossas): ${estilo.fontes.join(', ')}. Cores-base: ${estilo.cores.join(' ')}.
 Pinte o fundo do estilo em #area inteira no meio_a_meio e na tela_cheia (o painel é do cartão); no cartao, só o cartão tem fundo (o resto transparente, o vídeo aparece).
+${textoDoTema({ estilo: estilo.chave, ...(paleta ? { paleta } : {}) })}
+${REGRAS_DE_DESIGN}
 ${DOUTRINA_DE_MOVIMENTO}
 ${REGRAS_DA_ANIMACAO_HTML}
 Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.
@@ -584,7 +589,10 @@ ${fala}${
       if (!res.aplicadas) return { feitas: 0, nota: await registrar(`Não deu para refazer: ${res.ignoradas.join('; ').slice(0, 400)}`) };
       await this.planos.salvar(sistema, projectId, res.plan, 'ai');
       // "Aplicar em todas": o estilo passa a ser o do projeto (as próximas animações seguem).
-      if (camadas === 'todas' && o.estilo) await this.prisma.project.update({ where: { id: projectId }, data: { animationStyle: o.estilo } }).catch(() => undefined);
+      if (camadas === 'todas' && (o.estilo || o.paleta !== undefined))
+        await this.prisma.project
+          .update({ where: { id: projectId }, data: { ...(o.estilo ? { animationStyle: o.estilo } : {}), ...(o.paleta !== undefined ? { animationPalette: o.paleta || null } : {}) } })
+          .catch(() => undefined);
       for (const op of ops) {
         if (op.op !== 'editar_midia' || !op.composicao) continue;
         const camada = res.plan.mediaLayers?.find((m) => m.id === op.mediaId);
@@ -621,7 +629,8 @@ ${fala}${
       if (palavras.length < 8) return { criadas: 0, nota: await registrar('Sem animações: o vídeo não tem fala suficiente para a IA explicar.') };
       const duracaoS = agendaDoPlano(plano).duracaoMs / 1000;
       aoAvancar(5);
-      const projeto = await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationStyle: true } }).catch(() => null);
+      const projeto = await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationStyle: true, animationPalette: true } }).catch(() => null);
+      const paletaFixa = coresDaPaleta(projeto?.animationPalette) ? projeto!.animationPalette! : undefined;
       const fixo = estiloDeAnimacao(projeto?.animationStyle);
       const { estilo, momentos } = await this.planejar(sistema.workspaceId, projectId, palavras, duracaoS, fixo);
       aoAvancar(20);
@@ -630,7 +639,7 @@ ${fala}${
       let prontas = 0;
       const feitas = await Promise.allSettled(
         momentos.map((m) =>
-          this.escrever(sistema.workspaceId, projectId, m, estilo, momentos).finally(() => {
+          this.escrever(sistema.workspaceId, projectId, m, estilo, momentos, paletaFixa ? { paleta: paletaFixa } : {}).finally(() => {
             prontas += 1;
             aoAvancar(20 + (75 * prontas) / momentos.length);
           }),
@@ -651,8 +660,15 @@ ${fala}${
       // O plano pode ter mudado enquanto a IA escrevia (a montagem salva
       // antes): aplica sobre o atual.
       const agora = (await this.planos.atual(sistema, projectId)).document;
+      // A legenda acompanha o tema: a palavra falada na cor de destaque dele
+      // (só se a pessoa não escolheu uma cor).
+      const tema = temaDaAnimacao(estilo.chave, paletaFixa);
       const res = aplicarComando(agora, ops, {});
       if (!res.aplicadas) return { criadas: 0, nota: await registrar(`Sem animações: ${res.ignoradas.join('; ').slice(0, 380)}`) };
+      if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
+        const comLegenda = aplicarComando(res.plan, [{ op: 'configurar_legenda', highlightColor: tema.destaque }], {});
+        if (comLegenda.aplicadas) res.plan = comLegenda.plan;
+      }
       await this.planos.salvar(sistema, projectId, res.plan, 'ai');
       aoAvancar(100);
       for (const o of ops) {

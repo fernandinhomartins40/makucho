@@ -614,12 +614,14 @@ function Editor({ projectId }: { projectId: string }) {
   const [tipoDoVideo, setTipoDoVideo] = useState<TipoDeVideo | null>(null);
   const [resumoDoVideo, setResumoDoVideo] = useState('');
   const [estiloDasAnimacoes, setEstiloDasAnimacoes] = useState<string | null>(null);
+  const [paletaDasAnimacoes, setPaletaDasAnimacoes] = useState<string | null>(null);
   useEffect(() => {
     if (!projeto) return;
     const lido = tipoDeVideoSchema.safeParse(projeto.videoKind);
     setTipoDoVideo(lido.success ? lido.data : null);
     setResumoDoVideo(projeto.contentBrief ?? '');
     setEstiloDasAnimacoes(projeto.animationStyle ?? null);
+    setPaletaDasAnimacoes(projeto.animationPalette ?? null);
     // Só quando o projeto muda (não a cada recarga do mesmo).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projeto?.id]);
@@ -646,9 +648,9 @@ function Editor({ projectId }: { projectId: string }) {
 
   const refazerComOTipo = async () => {
     const resumo = resumoDoVideo.trim().slice(0, 400) || null;
-    if ((projeto?.videoKind ?? null) !== tipoDoVideo || (projeto?.contentBrief ?? null) !== resumo || (projeto?.animationStyle ?? null) !== estiloDasAnimacoes) {
+    if ((projeto?.videoKind ?? null) !== tipoDoVideo || (projeto?.contentBrief ?? null) !== resumo || (projeto?.animationStyle ?? null) !== estiloDasAnimacoes || (projeto?.animationPalette ?? null) !== paletaDasAnimacoes) {
       try {
-        await apiProjetos.atualizar(projectId, { videoKind: tipoDoVideo, contentBrief: resumo, animationStyle: estiloDasAnimacoes });
+        await apiProjetos.atualizar(projectId, { videoKind: tipoDoVideo, contentBrief: resumo, animationStyle: estiloDasAnimacoes, animationPalette: estiloDasAnimacoes ? paletaDasAnimacoes : null });
       } catch (e) {
         return setErro(e instanceof Error ? e.message : 'não foi possível salvar o tipo do vídeo.');
       }
@@ -1457,6 +1459,8 @@ function Editor({ projectId }: { projectId: string }) {
               onResumo={setResumoDoVideo}
                   estilo={estiloDasAnimacoes}
                   onEstilo={setEstiloDasAnimacoes}
+                  paleta={paletaDasAnimacoes}
+                  onPaleta={setPaletaDasAnimacoes}
             />
           )}
           {aba === 'biblioteca' && (
@@ -1847,6 +1851,8 @@ function SobreOVideo({
   onResumo,
   estilo,
   onEstilo,
+  paleta,
+  onPaleta,
 }: {
   entendimento: ProjetoDetalhado['entendimentoDaIa'] | null;
   analisando: boolean;
@@ -1858,6 +1864,8 @@ function SobreOVideo({
   onResumo: (r: string) => void;
   estilo: string | null;
   onEstilo: (e: string | null) => void;
+  paleta: string | null;
+  onPaleta: (p: string | null) => void;
 }) {
   return (
     <details className="ia-sobre">
@@ -1889,7 +1897,7 @@ function SobreOVideo({
       <div className="ia-sobre__refazer">
         <p>Não ficou bom? Diga que vídeo é e o que tem nele: a IA monta de novo. A edição atual continua salva.</p>
         <TipoDoVideo tipo={tipo} onTipo={onTipo} resumo={resumo} onResumo={onResumo} id="resumo-no-editor" />
-        <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} id="estilo-no-editor" />
+        <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} id="estilo-no-editor" />
         <button type="button" className="botao botao--secundario botao--pequeno" disabled={analisando} onClick={onRefazer}>
           <IconeIA size={14} weight="fill" />
           {analisando ? 'Analisando…' : 'Refazer a análise'}

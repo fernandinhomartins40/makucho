@@ -44,6 +44,7 @@ export * from './animacao-html';
 export * from './estilos-de-animacao';
 export * from './grade-dos-layouts';
 export * from './conferencia-de-layout';
+export * from './tema-da-animacao';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';

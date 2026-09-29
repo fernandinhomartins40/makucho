@@ -247,6 +247,7 @@ export interface ProjetoDetalhado {
   animationNote?: string | null;
   /** O estilo das animações escolhido pela pessoa (nulo = a IA escolhe). */
   animationStyle?: string | null;
+  animationPalette?: string | null;
   /** Que áudio o vídeo tem (medido na transcrição): guia a montagem. */
   audioProfile?: { tipo: 'fala' | 'fala_parcial' | 'musica_ou_ambiente' | 'mudo'; coberturaDeFala: number; fracaoDeSilencio: number; descartados?: number } | null;
   /** O tipo de vídeo escolhido (null = automático). */
@@ -274,9 +275,9 @@ export interface ParteDoProjeto {
 export const projetos = {
   listar: (arquivados = false) => api<Projeto[]>(`/projects${arquivados ? '?arquivados=true' : ''}`),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
-  criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null; animationStyle?: string | null }) =>
+  criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null; animationStyle?: string | null; animationPalette?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),
-  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null; videoKind: string | null; contentBrief: string | null; animationStyle: string | null }>) =>
+  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null; videoKind: string | null; contentBrief: string | null; animationStyle: string | null; animationPalette: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
   /** Esconde da lista; os arquivos continuam no disco. */
   arquivar: (id: string) => api<Projeto>(`/projects/${id}/archive`, { metodo: 'POST' }),
