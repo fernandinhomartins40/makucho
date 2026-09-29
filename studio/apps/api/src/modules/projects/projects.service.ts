@@ -157,7 +157,10 @@ export class ProjectsService {
     // Um projeto em processamento não aceita mudança: o worker já leu
     // os parâmetros e mudá-los no meio produziria um resultado que não
     // corresponde a nenhuma das duas versões.
-    if (projeto && ['UPLOADING', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'RENDERING'].includes(projeto.state)) {
+    // UPLOADING fica de fora: no envio em partes nada é processado antes de
+    // "Ir para a edição", e é aí que o nome, o tipo e o estilo escolhidos
+    // depois do envio são gravados.
+    if (projeto && ['INGESTING', 'TRANSCRIBING', 'ANALYZING', 'RENDERING'].includes(projeto.state)) {
       throw new BadRequestException(
         'o projeto está sendo processado; aguarde terminar para editar',
       );

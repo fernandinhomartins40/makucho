@@ -362,16 +362,23 @@ function NovoVideo() {
     setFinalizando(true);
     setErro(null);
     try {
-      if (titulo.trim() && titulo.trim() !== projeto?.title) {
-        await apiProjetos.atualizar(projetoRef.current, { title: titulo.trim() }).catch(() => undefined);
-      }
+      // O projeto nasce no primeiro envio: o que foi escolhido depois (nome,
+      // tipo, resumo, estilo das animações) vai agora, antes da montagem.
+      await apiProjetos
+        .atualizar(projetoRef.current, {
+          ...(titulo.trim() && titulo.trim() !== projeto?.title ? { title: titulo.trim() } : {}),
+          videoKind: tipoDoVideo,
+          contentBrief: resumo.trim() ? resumo.trim().slice(0, 400) : null,
+          animationStyle: estiloDasAnimacoes,
+        })
+        .catch(() => undefined);
       await apiProjetos.finalizarPartes(projetoRef.current);
       router.push(`/editor?projeto=${projetoRef.current}`);
     } catch (e) {
       setFinalizando(false);
       setErro(e instanceof Error ? e.message : 'não foi possível ir para a edição.');
     }
-  }, [router, titulo, projeto?.title]);
+  }, [router, titulo, projeto?.title, tipoDoVideo, resumo, estiloDasAnimacoes]);
 
   // Aviso ao sair no meio do envio: fechar a aba perde o que falta.
   const pendentes = itens.filter((i) => i.estado === 'enviando' || i.estado === 'esperando').length;
@@ -584,14 +591,13 @@ function Composicao({
 
       {/* Produto, promoção, bastidores: sem narração, a IA monta pelas
           cenas; a escolha e o resumo só deixam a montagem mais certa. */}
-      {!temItens && (
-        <div style={{ maxWidth: 720 }}>
-          <TipoDoVideo tipo={tipoDoVideo} onTipo={onTipoDoVideo} resumo={resumo} onResumo={onResumo} />
-          <div style={{ marginTop: 'var(--e3)' }}>
-            <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} />
-          </div>
+      {/* Sempre à vista: dá para escolher depois de enviar (vai ao "Ir para a edição"). */}
+      <div style={{ maxWidth: 720 }}>
+        <TipoDoVideo tipo={tipoDoVideo} onTipo={onTipoDoVideo} resumo={resumo} onResumo={onResumo} />
+        <div style={{ marginTop: 'var(--e3)' }}>
+          <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} />
         </div>
-      )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(280px, 100%), 1fr))', gap: 'var(--e4)' }}>
         {/* ---------- Enviar ---------- */}
