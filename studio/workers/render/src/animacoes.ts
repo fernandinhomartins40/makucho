@@ -11,6 +11,7 @@
 //    navegador (e o iPhone) decodifica; o compositor junta de volta.
 // ============================================================
 
+import { FONTES_DOS_COMPONENTES } from '@makucho/studio-contracts/dist/componentes-hyperframes';
 import { copyFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,6 +46,7 @@ export async function prepararAnimacao(
       gsap: 'gsap.min.js',
       fontes: '',
       origens: "'self'",
+      componentes: FONTES_DOS_COMPONENTES,
       ...(job.corDaMarca ? { corDaMarca: job.corDaMarca } : {}),
     }),
     'utf8',

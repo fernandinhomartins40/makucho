@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./componentes-hyperframes": {
+      "types": "./dist/componentes-hyperframes.d.ts",
+      "default": "./dist/componentes-hyperframes.js"
+    },
+    "./dist/componentes-hyperframes": {
+      "types": "./dist/componentes-hyperframes.d.ts",
+      "default": "./dist/componentes-hyperframes.js"
     }
   },
   "scripts": {

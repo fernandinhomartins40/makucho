@@ -7,6 +7,7 @@
 // pasta do workspace.
 // ============================================================
 
+import { FONTES_DOS_COMPONENTES } from '@makucho/studio-contracts/dist/componentes-hyperframes';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createReadStream } from 'node:fs';
 import {
@@ -72,7 +73,7 @@ export class AnimacoesService {
     if (nossos.length) return nossos;
     try {
       const { lintHyperframeHtml } = await importarEsm<Lint>('@hyperframes/lint');
-      const doc = documentoDaComposicao(c, { duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'" });
+      const doc = documentoDaComposicao(c, { duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'", componentes: FONTES_DOS_COMPONENTES });
       const r = await lintHyperframeHtml(doc, { filePath: 'index.html' });
       return r.findings
         .filter((f) => f.severity === 'error')

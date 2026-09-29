@@ -31,6 +31,7 @@ import {
   coresDaPaleta,
   PALETAS_DE_ANIMACAO,
   REGRAS_DE_DESIGN,
+  textoDosComponentes,
   temaDaAnimacao,
   textoDoTema,
   estiloDeAnimacao,
@@ -227,6 +228,7 @@ Fontes deste estilo (as nossas): ${estilo.fontes.join(', ')}. Cores-base: ${esti
 Pinte o fundo do estilo em #area inteira no meio_a_meio e na tela_cheia (o painel é do cartão); no cartao, só o cartão tem fundo (o resto transparente, o vídeo aparece).
 ${textoDoTema({ estilo: estilo.chave, ...(paleta ? { paleta } : {}) })}
 ${REGRAS_DE_DESIGN}
+${textoDosComponentes()}
 ${DOUTRINA_DE_MOVIMENTO}
 ${REGRAS_DA_ANIMACAO_HTML}
 Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.

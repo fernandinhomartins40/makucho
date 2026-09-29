@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CamadaDeMidia } from '@makucho/studio-contracts';
-import { documentoDaComposicao } from '@makucho/studio-contracts';
+import { componentesDaComposicao, documentoDaComposicao } from '@makucho/studio-contracts';
 import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import { animacoes as apiAnimacoes } from '../../lib/api';
 
@@ -24,22 +24,43 @@ interface Props {
   corDaMarca?: string;
 }
 
+/**
+ * Os fontes dos componentes do catálogo do HyperFrames (~270 KB): num
+ * pedaço próprio do bundle, carregado só quando uma animação usa componente.
+ */
+let fontesDosComponentes: Promise<Record<string, string>> | null = null;
+function carregarComponentes(): Promise<Record<string, string>> {
+  fontesDosComponentes ??= import('@makucho/studio-contracts/componentes-hyperframes').then((m) => m.FONTES_DOS_COMPONENTES);
+  return fontesDosComponentes;
+}
+
 function Animacao({ camada, origem, corDaMarca, posicaoMs, escala }: { camada: CamadaDeMidia; origem: string; corDaMarca?: string | undefined; posicaoMs: number; escala: number }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [visivel, setVisivel] = useState(false);
+  const usaComponentes = !!camada.composicao && componentesDaComposicao(camada.composicao.html).length > 0;
+  const [componentes, setComponentes] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (!usaComponentes || componentes) return;
+    let vivo = true;
+    void carregarComponentes().then((c) => vivo && setComponentes(c));
+    return () => {
+      vivo = false;
+    };
+  }, [usaComponentes, componentes]);
   const doc = useMemo(
     () =>
-      camada.composicao
+      camada.composicao && (!usaComponentes || componentes)
         ? documentoDaComposicao(camada.composicao, {
             duracaoMs: camada.durationMs,
             gsap: `${origem}/hyperframes/gsap.min.js`,
             fontes: `${origem}/fonts/`,
             origens: origem,
             previa: true,
+            ...(componentes ? { componentes } : {}),
             ...(corDaMarca ? { corDaMarca } : {}),
           })
         : '',
-    [camada.composicao, camada.durationMs, origem, corDaMarca],
+    [camada.composicao, camada.durationMs, origem, corDaMarca, usaComponentes, componentes],
   );
 
   const ultimo = useRef(posicaoMs);

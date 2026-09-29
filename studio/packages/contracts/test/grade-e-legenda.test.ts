@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { GRADE, aplicarOperacao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { GRADE, NOMES_DOS_COMPONENTES, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -96,6 +96,22 @@ t('a fonte do tema carrega mesmo usada só por variável', docTema.includes("url
 const tNeon = temaDaAnimacao('editorial', 'neon-electric:0')!;
 t('a paleta recolore o tema (estilo claro: fundo = a cor mais clara)', tNeon.fundo !== '#f1e8d5' && tNeon.destaque !== '#ff3a2d');
 t('sem estilo, só a escala', !documentoDaComposicao({ layout: 'tela_cheia', html: '<p>x</p>', css: '', script: 'tl.to("p",{opacity:1},0);' }, { duracaoMs: 2000, gsap: 'g', fontes: '', origens: "'self'" }).includes('--cor-destaque:'));
+
+// ---------- Componentes do catálogo do HyperFrames ----------
+const comp = {
+  layout: 'tela_cheia' as const,
+  html: `<h1>x</h1><div data-hf="conic-progress-ring" data-inicio="1" data-duracao="3" data-vars='{"progress":72}' style="position:absolute"></div>`,
+  css: '',
+  script: 'tl.to("h1",{opacity:1},0);',
+};
+const fontes = { 'conic-progress-ring': '<div id="root" data-composition-id="conic-progress-ring"><script>var r = document.getElementById("root");</script></div>' };
+const docComp = documentoDaComposicao(comp, { duracaoMs: 4000, gsap: 'g', fontes: '', origens: "'self'", componentes: fontes });
+t('componentes: o documento leva só os usados, com o montador e o encaixe na tl', docComp.includes('id="hf-componentes"') && docComp.includes('window.__hfMontados') && docComp.includes('tl.add(m.sub, m.inicio)'));
+t('componentes: o fonte vai como JSON seguro (sem fechar a tag do script)', !/<\/script><\/div>"/.test(docComp) && docComp.includes('\\u003cscript'));
+t('componentes: sem fontes (ou sem uso), o documento fica como antes', !documentoDaComposicao(comp, { duracaoMs: 4000, gsap: 'g', fontes: '', origens: "'self'" }).includes('hf-componentes'));
+t('componentes: o nome é conferido contra o catálogo', problemasDaComposicao({ ...comp, html: '<div data-hf="nao-existe"></div>' }).some((p) => p.includes('não existe no catálogo')));
+t('componentes: data-vars precisa ser JSON', problemasDaComposicao({ ...comp, html: `<div data-hf="count-up" data-vars='{end:10}'></div>` }).some((p) => p.includes('não é JSON')));
+t('componentes: o catálogo tem os de dados, texto e destaque', ['conic-progress-ring', 'count-up', 'marker-highlight', 'notification-stack'].every((n) => NOMES_DOS_COMPONENTES.includes(n)));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

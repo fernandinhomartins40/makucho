@@ -24,6 +24,7 @@ import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 import { QUADRO_DA_GRADE, cssDaGrade, janelaDoPip } from './grade-dos-layouts';
 import { cssDoTema } from './tema-da-animacao';
+import { NOMES_DOS_COMPONENTES } from './catalogo-de-componentes';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
 
@@ -144,7 +145,75 @@ export function problemasDaComposicao(c: ComposicaoHtml): string[] {
   for (const [re, msg] of PROIBIDOS_NO_CSS) if (re.test(c.css)) out.push(`css: ${msg}`);
   if (/https?:\/\//i.test(c.html)) out.push('html: sem endereços de fora (imagens vão como SVG no próprio html)');
   if (!/\btl\s*\./.test(c.script)) out.push('script: monte os movimentos em `tl` (tl.from, tl.to, tl.fromTo...)');
+  for (const m of c.html.matchAll(/<[^>]*\bdata-hf\s*=\s*["']([^"']+)["'][^>]*>/g)) {
+    const nome = m[1]!;
+    if (!NOMES_DOS_COMPONENTES.includes(nome)) out.push(`html: o componente "${nome}" não existe no catálogo (use um de: ${NOMES_DOS_COMPONENTES.join(', ')})`);
+    const vars = /data-vars\s*=\s*'([^']*)'/.exec(m[0]!)?.[1];
+    if (vars) {
+      try {
+        JSON.parse(vars);
+      } catch {
+        out.push(`html: data-vars do componente "${nome}" não é JSON válido (use aspas simples fora e duplas dentro)`);
+      }
+    }
+  }
   return out;
+}
+
+/**
+ * Monta os componentes do catálogo do HyperFrames que a IA declarou no
+ * html (`<div data-hf="nome" data-inicio data-duracao data-vars>`): cada
+ * instância com id próprio, as variáveis dela em getVariables() e a linha
+ * do tempo dela guardada para entrar na `tl` no segundo pedido. Roda
+ * antes do script da IA (o DOM dos componentes já existe para ela).
+ */
+const MONTAR_COMPONENTES = `(function () {
+  var dados = document.getElementById('hf-componentes');
+  var fontes = dados ? JSON.parse(dados.textContent) : {};
+  var montados = [];
+  var hosts = document.querySelectorAll('#area [data-hf]');
+  for (var k = 0; k < hosts.length; k++) {
+    var el = hosts[k];
+    var nome = el.getAttribute('data-hf');
+    var src = fontes[nome];
+    if (!src) continue;
+    var uid = 'hf' + (k + 1) + '-' + nome;
+    var inicio = parseFloat(el.getAttribute('data-inicio')) || 0;
+    var dur = parseFloat(el.getAttribute('data-duracao')) || 3;
+    var vars = {};
+    try { vars = JSON.parse(el.getAttribute('data-vars') || '{}'); } catch (e) {}
+    var html = src.split('id="root"').join('id="' + uid + '"').split('getElementById("root")').join('getElementById("' + uid + '")').split("getElementById('root')").join("getElementById('" + uid + "')").split('#root').join('#' + uid);
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    var scripts = Array.prototype.slice.call(tmp.querySelectorAll('script'));
+    scripts.forEach(function (s) { s.parentNode.removeChild(s); });
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    while (tmp.firstChild) el.appendChild(tmp.firstChild);
+    var raiz = document.getElementById(uid);
+    if (raiz) { raiz.setAttribute('data-duration', String(dur)); raiz.style.position = 'absolute'; raiz.style.inset = '0'; }
+    window.__hyperframes = { getVariables: function () { return vars; } };
+    var tls = (window.__timelines = window.__timelines || {});
+    var antes = {};
+    Object.keys(tls).forEach(function (c) { antes[c] = tls[c]; });
+    scripts.forEach(function (s) { var x = document.createElement('script'); x.text = s.textContent; el.appendChild(x); });
+    var sub = null;
+    Object.keys(tls).forEach(function (c) { if (c !== 'cena' && tls[c] !== antes[c]) { sub = tls[c]; delete tls[c]; } });
+    montados.push({ el: el, sub: sub, inicio: inicio, dur: dur });
+  }
+  window.__hfMontados = montados;
+})();`;
+
+/** Depois do script da IA: cada componente entra na `tl` no seu segundo, visível só na sua janela. */
+const ENCAIXAR_COMPONENTES = `(window.__hfMontados || []).forEach(function (m) {
+    if (m.sub) { m.sub.paused(false); tl.add(m.sub, m.inicio); }
+    tl.set(m.el, { autoAlpha: 0 }, 0);
+    tl.set(m.el, { autoAlpha: 1 }, m.inicio);
+    tl.set(m.el, { autoAlpha: 0 }, m.inicio + m.dur);
+  });`;
+
+/** Os componentes do catálogo que o html declara (data-hf="nome"). */
+export function componentesDaComposicao(html: string): string[] {
+  return [...new Set([...html.matchAll(/data-hf\s*=\s*["']([a-z0-9-]+)["']/g)].map((m) => m[1]!))];
 }
 
 // ---------- O documento ----------
@@ -162,6 +231,12 @@ export interface OpcoesDoDocumento {
   corDaMarca?: string;
   largura?: number;
   altura?: number;
+  /**
+   * Os fontes dos componentes do catálogo (FONTES_DOS_COMPONENTES, em
+   * '@makucho/studio-contracts/componentes-hyperframes'): só os que o html
+   * usa entram no documento.
+   */
+  componentes?: Record<string, string>;
 }
 
 const ESC = (s: string) => s.replace(/<\/(script|style)/gi, '<\\/$1');
@@ -235,6 +310,8 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   const comFundo = c.layout !== 'cartao' && !c.semFundo;
   // Pip: um furo de cantos arredondados em #area (máscara SVG, alfa) por
   // onde o vídeo aparece, e a moldura por cima, fora da máscara.
+  // Os componentes do catálogo que o html declara e que vieram com fonte.
+  const usados = componentesDaComposicao(c.html).filter((n) => o.componentes?.[n]);
   const janela = janelaDaComposicao(c);
   let furo = '';
   let moldura = '';
@@ -270,12 +347,15 @@ ${c.html}
 </div>
 ${moldura}
 </div>
+${usados.length ? `<script type="application/json" id="hf-componentes">${JSON.stringify(Object.fromEntries(usados.map((n) => [n, o.componentes![n]]))).replace(/</g, '\\u003c')}</script>
+<script>${MONTAR_COMPONENTES}</script>` : ''}
 <script>
   window.__timelines = window.__timelines || {};
   var tl = gsap.timeline({ paused: true });
   (function (tl) {
 ${ESC(c.script)}
   })(tl);
+  ${usados.length ? ENCAIXAR_COMPONENTES : ''}
   window.__timelines["cena"] = tl;
   ${escuta}
 </script>
@@ -302,7 +382,8 @@ function cyrb53(s: string, semente = 0): string {
 // v2: as fontes que o CSS usa (antes só as Inter carregavam).
 // v3: a grade de segurança (variáveis --util-*) e o pip entre o cabeçalho e a legenda.
 // v4: a escala e o tema em variáveis (--t-*, --cor-*, --fonte-*).
-const VERSAO_DO_VIDEO = 'v4';
+// v5: componentes do catálogo do HyperFrames (data-hf).
+const VERSAO_DO_VIDEO = 'v5';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área

@@ -12,6 +12,7 @@
 // solto: o vídeo inteiro fica coerente e a legenda pode seguir o tema.
 // ============================================================
 
+import { COMPONENTES_DO_CATALOGO } from './catalogo-de-componentes';
 import { coresDaPaleta, estiloDeAnimacao } from './estilos-de-animacao';
 
 /** A escala de vídeo (px no quadro 1080x1920). */
@@ -101,9 +102,14 @@ export function temaDaAnimacao(estilo: string | undefined | null, paleta?: strin
 export function cssDoTema(c: { estilo?: string | undefined; paleta?: string | undefined }): string {
   const s = ESCALA_DA_ANIMACAO;
   const escala = `--t-display: ${s.display}px; --t-titulo: ${s.titulo}px; --t-subtitulo: ${s.subtitulo}px; --t-texto: ${s.texto}px; --t-rotulo: ${s.rotulo}px; --t-numero: ${s.numero}px; --espaco: ${s.espaco}px; --espaco-p: ${s.espacoPequeno}px; --raio: ${s.raio}px; --borda: ${s.borda}px;`;
+  // Os tokens que os componentes do catálogo do HyperFrames leem (--fg,
+  // --bg, --brand...), ligados ao nosso tema: o componente sai nas cores e
+  // fontes do estilo escolhido.
+  const tokensHf =
+    '--fg: var(--cor-texto, #F1F3F4); --bg: var(--cor-fundo, #0B0E13); --muted: var(--cor-apagado, #9AA0A6); --brand: var(--cor-destaque, #4285F4); --accent: var(--cor-destaque-2, #34A853); --accent-2: var(--cor-destaque-3, #FBBC04); --surface: color-mix(in srgb, var(--fg) 7%, var(--bg)); --border: color-mix(in srgb, var(--fg) 18%, transparent); --font-display: var(--fonte-titulo, \'Inter ExtraBold\'); --font-body: var(--fonte-texto, \'Inter SemiBold\'); --font-mono: \'Space Grotesk Bold\', monospace; --radius: var(--raio);';
   const t = temaDaAnimacao(c.estilo, c.paleta);
-  if (!t) return escala;
-  return `${escala} --cor-fundo: ${t.fundo}; --cor-texto: ${t.texto}; --cor-apagado: ${t.apagado}; --cor-destaque: ${t.destaque}; --cor-destaque-2: ${t.destaque2}; --cor-destaque-3: ${t.destaque3}; --fonte-titulo: ${t.fonteTitulo}, sans-serif; --fonte-texto: ${t.fonteTexto}, sans-serif;`;
+  if (!t) return `${escala} ${tokensHf}`;
+  return `${escala} --cor-fundo: ${t.fundo}; --cor-texto: ${t.texto}; --cor-apagado: ${t.apagado}; --cor-destaque: ${t.destaque}; --cor-destaque-2: ${t.destaque2}; --cor-destaque-3: ${t.destaque3}; --fonte-titulo: ${t.fonteTitulo}, sans-serif; --fonte-texto: ${t.fonteTexto}, sans-serif; ${tokensHf}`;
 }
 
 /** As regras de design (HyperFrames video-composition + typography), para a IA. */
@@ -120,4 +126,26 @@ export function textoDoTema(c: { estilo?: string | undefined; paleta?: string | 
   const t = temaDaAnimacao(c.estilo, c.paleta);
   if (!t) return '';
   return `TEMA (já nas variáveis): fundo ${t.fundo}, texto ${t.texto}, apagado ${t.apagado}, destaques ${t.destaque} ${t.destaque2} ${t.destaque3}; fonte do título ${t.fonteTitulo}, do texto ${t.fonteTexto}.`;
+}
+
+/**
+ * O catálogo de componentes do HyperFrames, para a IA: como montar e o
+ * que cada um faz (variáveis com o padrão). Prontos e testados -- a IA
+ * monta em vez de desenhar do zero o que já existe.
+ */
+export function textoDosComponentes(): string {
+  const valor = (v: unknown) => (typeof v === 'string' ? `"${v}"` : JSON.stringify(v));
+  const linhas = COMPONENTES_DO_CATALOGO.map((c) => {
+    const vars = c.variaveis
+      .map((v) => `${v.id}${v.opcoes ? `(${v.opcoes.join('|')})` : `:${v.tipo}`}=${valor(v.padrao)}`)
+      .join(' ');
+    return `- ${c.nome} [${c.grupo}]: ${c.oQue}${c.quando ? ` Quando: ${c.quando}` : ''}${c.evitar ? ` Evite: ${c.evitar}` : ''} Variáveis: ${vars || 'nenhuma'}.`;
+  });
+  return `COMPONENTES PRONTOS DO HYPERFRAMES (prefira quando servirem ao que a fala diz: são testados, animam sozinhos e já saem nas cores e fontes do tema):
+Monte assim, dentro da área útil: <div data-hf="nome" data-inicio="1.2" data-duracao="3" data-vars='{"variavel":"valor"}' style="position:absolute; left:...; top:...; width:...; height:..."></div>
+- data-inicio = segundo em que ele começa (contado do início da animação, no instante da palavra); data-duracao = quanto fica (ele tem entrada, espera e saída próprias).
+- data-vars é JSON (aspas simples por fora, duplas por dentro); só as variáveis que mudam. "accent": green = var(--cor-destaque), blue = var(--cor-destaque-2), violet = var(--cor-destaque-3).
+- O componente preenche a caixa: dê largura e altura generosas (ex.: anel 380x380, contador 520x260, texto 952x220). Não anime os elementos de dentro dele; pode animar a caixa.
+- Um ou dois componentes por animação, somados ao seu próprio desenho (título, rótulos, fundo).
+${linhas.join(String.fromCharCode(10))}`;
 }

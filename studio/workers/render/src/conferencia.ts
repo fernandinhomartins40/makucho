@@ -10,6 +10,7 @@
 // ('self'), e gsap e fontes carregam como lá.
 // ============================================================
 
+import { FONTES_DOS_COMPONENTES } from '@makucho/studio-contracts/dist/componentes-hyperframes';
 import { existsSync, realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -118,7 +119,7 @@ const MEDIR = `function (t) {
 
 /** Mede e julga uma animação. Devolve os problemas de layout (vazio = ok). */
 export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeFontes: string }): Promise<string[]> {
-  const doc = documentoDaComposicao(job.composicao, { duracaoMs: job.duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'" });
+  const doc = documentoDaComposicao(job.composicao, { duracaoMs: job.duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'", componentes: FONTES_DOS_COMPONENTES });
   const gsap = await readFile(require.resolve('gsap/dist/gsap.min.js'));
   const fontes = new Map<string, Buffer>();
   for (const { arquivo } of fontesDoDocumento(job.composicao)) {
