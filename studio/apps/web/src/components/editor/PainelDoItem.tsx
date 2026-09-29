@@ -22,6 +22,7 @@ import {
   coresDaPaleta,
   LAYOUTS_DA_CENA,
   estiloDeAnimacao,
+  baseDaLegendaNoInstante,
   NOME_DO_LAYOUT_DA_CENA,
   ANIMACOES_DURANTE,
   CATEGORIAS_DE_EFEITO_DE_TELA,
@@ -95,7 +96,7 @@ export function PainelDoItem({ plan, item, onOperacao, onOperacoes, onFechar, ma
           Voltar
         </button>
       </div>
-      {item.tipo === 'legenda' && <Legenda item={item} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
+      {item.tipo === 'legenda' && <Legenda plan={plan} item={item} onOperacao={onOperacao} onOperacoes={onOperacoes} onFechar={onFechar} />}
       {item.tipo === 'corte' && <Corte plan={plan} clipId={item.clipId} onOperacao={onOperacao} />}
       {item.tipo === 'elemento' && (
         <Elemento
@@ -141,11 +142,13 @@ function titulo(plan: EditPlanV1, item: ItemDaTimeline): string {
 // ---------- Legenda ----------
 
 function Legenda({
+  plan,
   item,
   onOperacao,
   onOperacoes,
   onFechar,
 }: {
+  plan: EditPlanV1;
   item: Extract<ItemDaTimeline, { tipo: 'legenda' }>;
   onOperacao: (op: TimelineOperation) => void;
   onOperacoes: (ops: TimelineOperation[]) => void;
@@ -211,6 +214,7 @@ function Legenda({
           De {segundos(item.inicioMs)} s a {segundos(item.fimMs)} s, no tempo exato da fala. Ao reescrever, o tempo se mantém.
         </p>
       )}
+      <PosicaoDoTrecho plan={plan} inicioMs={item.inicioMs} fimMs={item.fimMs} onOperacao={onOperacao} />
       <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
         <button type="button" className="botao botao--pequeno" onClick={salvar}>
           Salvar
@@ -227,6 +231,50 @@ function Legenda({
           <IconeLixeira size={15} /> Excluir legenda
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A posição de UM trecho da legenda: automática (a geral, ou a faixa da
+ * grade quando há animação) ou uma altura só para ele.
+ */
+function PosicaoDoTrecho({ plan, inicioMs, fimMs, onOperacao }: { plan: EditPlanV1; inicioMs: number; fimMs: number; onOperacao: (op: TimelineOperation) => void }) {
+  const manual = plan.captions.posicoes?.find((p) => inicioMs >= p.inicioMs && inicioMs < p.fimMs);
+  const automatica = baseDaLegendaNoInstante({ ...plan, captions: { ...plan.captions, posicoes: [] } }, inicioMs);
+  const atual = manual?.y ?? automatica;
+  const pos = (y: number | null) => onOperacao({ op: 'posicionar_legenda_no_trecho', inicioMs, fimMs, y });
+  const opcoes: Array<[string, number | null]> = [
+    ['Automática', null],
+    ['Em cima', 0.3],
+    ['No meio', 0.55],
+    ['Embaixo', 0.75],
+  ];
+  return (
+    <div className="campo" style={{ marginBottom: 0 }}>
+      <span className="campo__rotulo">Posição deste trecho</span>
+      <div className="biblioteca__chips" role="radiogroup" aria-label="Posição deste trecho da legenda">
+        {opcoes.map(([nome, y]) => (
+          <button
+            key={nome}
+            type="button"
+            role="radio"
+            aria-checked={y === null ? !manual : manual?.y === y}
+            className="biblioteca__chip"
+            onClick={() => pos(y)}
+          >
+            {nome}
+          </button>
+        ))}
+      </div>
+      <Deslizante rotulo="Altura" valor={Math.round((atual ?? 0.76) * 100)} min={8} max={97} passo={1} unidade="%" onSoltar={(v) => pos(v / 100)} />
+      <p className="campo__ajuda">
+        {manual
+          ? 'Só este trecho está nesta altura; os outros continuam onde estavam.'
+          : automatica !== undefined
+            ? 'Automática: tem animação aqui, então a legenda foi para a faixa livre do layout.'
+            : 'Automática: segue a posição geral da legenda.'}
+      </p>
     </div>
   );
 }

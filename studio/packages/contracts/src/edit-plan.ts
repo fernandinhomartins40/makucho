@@ -260,6 +260,19 @@ export const captionTrackSchema = z
     hiddenWordIds: z.array(idSchema).max(3000).optional(),
     /** Legendas incluídas ou reescritas à mão. */
     manual: z.array(legendaManualSchema).max(200).optional(),
+    /**
+     * Posição de um TRECHO da legenda (a base do bloco, 0-1), por cima da
+     * posição geral: mover uma legenda sem mover todas.
+     */
+    posicoes: z
+      .array(z.object({ inicioMs: msSchema, fimMs: msSchema, y: z.number().min(0.08).max(0.97) }).strict())
+      .max(200)
+      .optional(),
+    /**
+     * Durante uma animação, a legenda vai para a faixa da grade daquele
+     * layout (no meio a meio, a metade do vídeo). Ausente = sim.
+     */
+    seguirAnimacoes: z.boolean().optional(),
   })
   // Uma palavra corrigida duas vezes tornaria o resultado dependente
   // da ordem do array.

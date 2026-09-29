@@ -135,7 +135,7 @@ async function main() {
   await g.servico.criarNaMontagem(sistema as never, 'p1');
   const cg = g.atual().mediaLayers?.[0]?.composicao;
   t('o estilo que a pessoa escolheu vale sobre o da IA (e o preset vai com o sistema de design)', cg?.estilo === 'coral' && sis2[0]!.includes('ESTILO JÁ ESCOLHIDO PELA PESSOA: coral') && sis2[1]!.includes('SISTEMA DE DESIGN'));
-  t('pip: a janela no canto pedido e a IA sabe onde não pôr conteúdo', cg?.layout === 'pip' && cg?.canto === 'sup-esq' && us2[0]!.includes('left 54px, top 154px, 389x691px'));
+  t('pip: a janela no canto pedido e a IA sabe onde não pôr conteúdo', cg?.layout === 'pip' && cg?.canto === 'sup-esq' && us2[0]!.includes('GRADE DE SEGURANÇA (vídeo no canto (pip)') && us2[0]!.includes('RESERVADA (janela do vídeo): left 40, top 168'));
   await g.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { paleta: 'neon-electric:1' });
   const cp = g.atual().mediaLayers![0]!.composicao!;
   t('paleta: recolore sem redesenhar (pedido com a animação atual) e fica guardada', cp.paleta === 'neon-electric:1' && sis2.at(-1)!.startsWith('PALETA ESCOLHIDA (Neon)') && us2.at(-1)!.includes('Troque as cores pela PALETA ESCOLHIDA'));

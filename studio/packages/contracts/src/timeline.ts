@@ -228,6 +228,19 @@ export const configurarLegendaSchema = z.object({
   highlightColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   /** Como cada bloco entra; `null` tira. */
   blockEntrance: z.enum(['nenhuma', 'surgir', 'pop', 'subir', 'zoom', 'desfocar']).nullable().optional(),
+  /** A legenda vai para a faixa da grade durante as animações; `null` volta ao padrão (sim). */
+  seguirAnimacoes: z.boolean().nullable().optional(),
+});
+
+/**
+ * A posição de um TRECHO da legenda (a base do bloco, 0-1): só aquele
+ * pedaço muda. `y: null` tira o ajuste e o trecho volta à posição geral.
+ */
+export const posicionarLegendaNoTrechoSchema = z.object({
+  op: z.literal('posicionar_legenda_no_trecho'),
+  inicioMs: msSchema,
+  fimMs: msSchema,
+  y: z.number().min(0.08).max(0.97).nullable(),
 });
 
 /** Exclui legendas: as palavras continuam na fala, somem da tela. */
@@ -572,6 +585,7 @@ export const timelineOperationSchema = z
     ajustarAudioDoClipeSchema,
     editarEfeitoSonoroSchema,
     configurarLegendaSchema,
+    posicionarLegendaNoTrechoSchema,
     definirTransicaoSchema,
     transicaoEmTodosSchema,
     definirEfeitoSchema,
@@ -957,6 +971,24 @@ export function aplicarOperacao(
         else captions[chave] = valor;
       }
       novo = { ...novo, captions: captions as EditPlanV1['captions'] };
+      break;
+    }
+
+    case 'posicionar_legenda_no_trecho': {
+      if (operacao.fimMs <= operacao.inicioMs) return { ok: false, erro: 'o trecho da legenda precisa terminar depois de começar' };
+      // Tira o que cai no trecho (cortando o que só encosta) e põe o novo.
+      const resto: Array<{ inicioMs: number; fimMs: number; y: number }> = [];
+      for (const p of novo.captions.posicoes ?? []) {
+        if (p.fimMs <= operacao.inicioMs || p.inicioMs >= operacao.fimMs) resto.push(p);
+        else {
+          if (p.inicioMs < operacao.inicioMs) resto.push({ ...p, fimMs: operacao.inicioMs });
+          if (p.fimMs > operacao.fimMs) resto.push({ ...p, inicioMs: operacao.fimMs });
+        }
+      }
+      if (operacao.y !== null) resto.push({ inicioMs: operacao.inicioMs, fimMs: operacao.fimMs, y: operacao.y });
+      if (resto.length > 200) return { ok: false, erro: 'o vídeo já tem o máximo de ajustes de posição da legenda' };
+      resto.sort((a, b) => a.inicioMs - b.inicioMs);
+      novo = { ...novo, captions: { ...novo.captions, posicoes: resto } };
       break;
     }
 

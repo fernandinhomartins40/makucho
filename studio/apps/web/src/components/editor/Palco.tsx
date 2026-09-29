@@ -25,6 +25,7 @@
 //     J/L-cut; efeitos sonoros e trilha tocando no ponto certo.
 // ============================================================
 
+import { GradeDoPalco } from './GradeDoPalco';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, FonteDeVideo, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
 import {
@@ -1347,7 +1348,7 @@ export function Palco({
           />
         )}
 
-        {zonasSeguras && plan.canvas.aspectRatio === '9:16' && <span className="palco__zonas" aria-hidden />}
+        {zonasSeguras && plan.canvas.aspectRatio === '9:16' && !tocando && <GradeDoPalco plan={plan} ms={posicaoMs} />}
 
         {!tocando &&
           (() => {

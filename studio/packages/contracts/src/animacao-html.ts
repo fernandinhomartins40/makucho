@@ -22,6 +22,7 @@
 import { z } from 'zod';
 import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-animadas';
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
+import { QUADRO_DA_GRADE, cssDaGrade, janelaDoPip } from './grade-dos-layouts';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
 
@@ -84,11 +85,10 @@ export type ComposicaoHtml = z.infer<typeof composicaoHtmlSchema>;
  */
 export function janelaDaComposicao(c: Pick<ComposicaoHtml, 'layout' | 'canto' | 'tamanhoPip'>): { x: number; y: number; w: number; h: number } | null {
   if (c.layout !== 'pip') return null;
-  const t = c.tamanhoPip ?? 0.36;
-  const canto = c.canto ?? 'inf-dir';
-  const x = canto.endsWith('esq') ? 0.05 : 0.95 - t;
-  const y = canto.startsWith('sup') ? 0.08 : 0.72 - t;
-  return { x, y, w: t, h: t };
+  // A conta mora na grade (grade-dos-layouts): a janela fica entre o
+  // cabeçalho do app e a faixa da legenda.
+  const j = janelaDoPip(c.canto, c.tamanhoPip);
+  return { x: j.x / QUADRO_DA_GRADE.w, y: j.y / QUADRO_DA_GRADE.h, w: j.w / QUADRO_DA_GRADE.w, h: j.h / QUADRO_DA_GRADE.h };
 }
 
 /** Raio dos cantos da janela do pip (px no quadro de 1080). */
@@ -194,7 +194,7 @@ export function fontesDaComposicao(css: string): Array<{ familia: string; arquiv
 }
 
 /** O CSS base: fontes, cores da paleta e o fundo escuro do painel (o visual das referências). */
-function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean, css: string) {
+function cssBase(o: OpcoesDoDocumento, area: { x: number; y: number; w: number; h: number }, comFundo: boolean, css: string, grade = '') {
   // font-display: block -- o quadro espera a fonte em vez de desenhar
   // com a reserva (serifada) e trocar depois.
   const faces = fontesDaComposicao(css)
@@ -206,7 +206,7 @@ html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
   --azul: #7BAAF7; --azul-forte: #4285F4; --vermelho: #EA4335; --amarelo: #FBBC04; --verde: #34A853; --roxo: #A142F4; --laranja: #FA7B17;
   --texto: #F1F3F4; --apagado: #9AA0A6; --cartao: #1E2126; --borda: rgba(255,255,255,0.10); --marca: ${o.corDaMarca ?? '#7BAAF7'}; }
 #cena * { box-sizing: border-box; }
-#area { position: absolute; left: ${area.x}px; top: ${area.y}px; width: ${area.w}px; height: ${area.h}px; }
+#area { position: absolute; left: ${area.x}px; top: ${area.y}px; width: ${area.w}px; height: ${area.h}px; ${grade} }
 ${comFundo ? `#area-fundo { position: absolute; inset: 0; background:
   radial-gradient(ellipse 70% 45% at 50% 0%, rgba(66,133,244,0.22), transparent 70%),
   radial-gradient(ellipse 55% 40% at 85% 100%, rgba(52,168,83,0.16), transparent 70%),
@@ -252,7 +252,7 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>${cssBase(o, area, comFundo, c.css)}
+<style>${cssBase(o, area, comFundo, c.css, cssDaGrade(c, area))}
 ${ESC(c.css)}
 ${furo}</style>
 <script src="${o.gsap}"></script>
@@ -293,7 +293,8 @@ function cyrb53(s: string, semente = 0): string {
 
 /** Versão do formato do vídeo pronto: mudar invalida os antigos. */
 // v2: as fontes que o CSS usa (antes só as Inter carregavam).
-const VERSAO_DO_VIDEO = 'v2';
+// v3: a grade de segurança (variáveis --util-*) e o pip entre o cabeçalho e a legenda.
+const VERSAO_DO_VIDEO = 'v3';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área
@@ -351,4 +352,5 @@ Regras técnicas (senão a animação é recusada ou sai errada):
 - Estado inicial dentro do tween (tl.from / tl.fromTo), não num transform do CSS do mesmo elemento.
 - Nada de <br>; o texto quebra sozinho (defina largura). Centralize com flex, não com translate(-50%).
 - Vídeo vertical, visto no celular: título 88-132px, texto 30-40px, rótulo 20-24px, número em destaque 64-120px; margens laterais 48-72px.
-- No cartão (sobre o vídeo), não cubra o rosto: topo do quadro (top 140-360px) ou a faixa de baixo (acima da legenda, bottom 380-700px). Fundo transparente fora do cartão.`;
+- GRADE DE SEGURANÇA: cada pedido traz a grade do layout com números. Todo texto e elemento importante fica DENTRO da área útil (use var(--util-x/-y/-w/-h)); nada sobre as áreas reservadas (cabeçalho do app e logo, faixa da legenda, interface do app embaixo, janela do vídeo). O fundo pode ocupar #area inteira. Carimbos, selos e setas também respeitam a área útil e não cobrem outro texto.
+- No cartão (sobre o vídeo), fundo transparente fora do cartão.`;

@@ -371,7 +371,15 @@ function AbaDeLegendas({
           ]}
           onTrocar={(v) => v !== 'livre' && onOperacao({ op: 'configurar_legenda', position: v as 'top' | 'center' | 'bottom', y: null })}
         />
-        <p className="campo__ajuda">Ou arraste a legenda na prévia para qualquer altura; o canto muda o tamanho.</p>
+        <p className="campo__ajuda">Ou arraste a legenda na prévia para qualquer altura; o canto muda o tamanho. Para mover só um trecho, clique nele na faixa Legendas.</p>
+        <label className="biblioteca__opcao" style={{ marginTop: 'var(--e2)' }}>
+          <input
+            type="checkbox"
+            checked={c.seguirAnimacoes !== false}
+            onChange={(e) => onOperacao({ op: 'configurar_legenda', seguirAnimacoes: e.target.checked ? null : false })}
+          />{' '}
+          Acompanhar as animações (a legenda sai de cima delas)
+        </label>
       </div>
 
       <div className="campo">

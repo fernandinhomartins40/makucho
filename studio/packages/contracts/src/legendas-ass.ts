@@ -26,6 +26,7 @@
 // comando, o que fecha a porta para injecao de argumento.
 // ============================================================
 
+import { gradeDaComposicao } from './grade-dos-layouts';
 import { efeitoUsaPessoa } from './efeitos-de-tela';
 import type { CaptionStyleInput } from './brand';
 import { duracaoNaTimeline, velocidadeDoTrecho } from './edit-plan';
@@ -577,6 +578,26 @@ function ancora(plano: EditPlanV1, e: EstiloResolvido) {
   return { x, y };
 }
 
+/**
+ * A base do bloco de legenda num instante, quando algo manda nela além
+ * da posição geral: o ajuste daquele trecho (`captions.posicoes`) ou,
+ * durante uma animação, a faixa da legenda na grade do layout dela (no
+ * meio a meio a legenda vai para a metade do vídeo, nunca sobre o
+ * painel). Indefinida = vale a posição geral.
+ */
+export function baseDaLegendaNoInstante(plano: EditPlanV1, ms: number): number | undefined {
+  const manual = plano.captions.posicoes?.find((p) => ms >= p.inicioMs && ms < p.fimMs);
+  if (manual) return manual.y;
+  if (plano.captions.seguirAnimacoes === false || plano.canvas.aspectRatio !== '9:16') return undefined;
+  let achada: number | undefined;
+  for (const c of plano.mediaLayers ?? []) {
+    if (ms < c.timelineStartMs || ms >= c.timelineStartMs + c.durationMs) continue;
+    const comp = c.kind === 'html' ? c.composicao : c.kind === 'cena' ? c.cena : undefined;
+    if (comp) achada = gradeDaComposicao(comp).baseDaLegenda;
+  }
+  return achada;
+}
+
 function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDeLegenda[]): string[] {
   const destacar = plano.captions.highlightActiveWord;
   const animacao =
@@ -584,10 +605,14 @@ function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDe
   const brilho = e.brilho > 0 ? `{\\blur${e.brilho}}` : '';
   const eventos: string[] = [];
 
-  // Entrada de cada bloco (além da animação do estilo): vai nos eventos
-  // que começam junto com o bloco.
-  const entradaDoBloco = entradaDoBlocoDeLegenda(plano, e, animacao);
+  const estiloGeral = e;
   for (const bloco of blocos) {
+    // A posição deste bloco: a do trecho ou a da animação, se houver.
+    const baseDoBloco = baseDaLegendaNoInstante(plano, bloco.inicioMs);
+    e = baseDoBloco !== undefined ? { ...estiloGeral, posicao: 'bottom', baseY: baseDoBloco } : estiloGeral;
+    // Entrada de cada bloco (além da animação do estilo): vai nos eventos
+    // que começam junto com o bloco.
+    const entradaDoBloco = entradaDoBlocoDeLegenda(plano, e, animacao);
     const palavras = bloco.palavras.map((p) => ({ ...p, texto: escaparAss(p.texto) }));
     const primeiro = eventos.length;
     try {
@@ -662,6 +687,15 @@ function eventosDaLegenda(plano: EditPlanV1, e: EstiloResolvido, blocos: BlocoDe
       if (entradaDoBloco) {
         for (let k = primeiro; k < eventos.length; k += 1) {
           if (eventos[k]!.includes(`,${tempoAss(bloco.inicioMs)},`)) eventos[k] = comTagNoComeco(eventos[k]!, entradaDoBloco);
+        }
+      }
+      // Posição própria do bloco: \pos (ou só \an2 onde já há \move,
+      // que já veio da âncora deste bloco) -- a margem do estilo é a geral.
+      if (baseDoBloco !== undefined) {
+        const { width, height } = plano.canvas;
+        const pos = `{\\an2\\pos(${Math.round(width / 2)},${Math.round(height * baseDoBloco)})}`;
+        for (let k = primeiro; k < eventos.length; k += 1) {
+          eventos[k] = comTagNoComeco(eventos[k]!, eventos[k]!.includes('\\move(') ? '{\\an2}' : pos);
         }
       }
     }

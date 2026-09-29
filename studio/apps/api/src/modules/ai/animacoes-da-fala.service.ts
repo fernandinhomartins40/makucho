@@ -35,7 +35,7 @@ import {
   type CamadaDeMidia,
   type CantoDoPip,
   CANTOS_DO_PIP,
-  janelaDaComposicao,
+  textoDaGrade,
   type ComposicaoHtml,
   type EditPlanV1,
   type EstiloDeAnimacao,
@@ -366,16 +366,16 @@ export class AnimacoesDaFalaService {
     const area =
       m.layout === 'meio_a_meio'
         ? m.lado === 'baixo'
-          ? 'o painel de BAIXO, 1080x960 (o rosto fica na metade de cima)'
-          : 'o painel de CIMA, 1080x960 (o rosto fica na metade de baixo)'
+          ? 'o painel de BAIXO (o rosto fica na metade de cima)'
+          : 'o painel de CIMA (o rosto fica na metade de baixo)'
         : m.layout === 'cartao'
-          ? 'o quadro todo 1080x1920, mas o cartão fica no topo (top 140-360px) ou na faixa de baixo (bottom 380-700px), fora do rosto; transparente fora dele'
+          ? 'o quadro todo, mas só o cartão tem fundo (o vídeo aparece em volta)'
           : m.layout === 'pip'
-            ? (() => {
-                const j = janelaDaComposicao({ layout: 'pip', canto: m.canto ?? 'inf-dir' })!;
-                return `o quadro todo 1080x1920, com fundo pintado; o vídeo com o rosto aparece numa janela arredondada em left ${Math.round(j.x * 1080)}px, top ${Math.round(j.y * 1920)}px, ${Math.round(j.w * 1080)}x${Math.round(j.h * 1920)}px (o Studio recorta e emoldura) -- NÃO ponha nada importante nesse retângulo; organize o conteúdo no espaço livre ao redor`;
-              })()
-            : 'o quadro todo 1080x1920 (o ponto alto do vídeo)';
+            ? 'o quadro todo, com fundo pintado; o vídeo com o rosto aparece numa janela arredondada (o Studio recorta e emoldura)'
+            : 'o quadro todo (o ponto alto do vídeo)';
+    // A grade de segurança do layout, com números: onde o conteúdo vai e
+    // o que ele não pode cobrir (app, logo, legenda, vídeo).
+    const grade = textoDaGrade({ layout: m.layout, ...(m.lado ? { lado: m.lado } : {}), ...(m.divisao !== undefined ? { divisao: m.divisao } : {}), ...(m.canto ? { canto: m.canto } : {}) });
     const fala = m.palavras.map((p) => `${(p.s - m.inicioS).toFixed(2)} ${p.texto}`).join('\n');
     const outros = serie
       .filter((o) => o !== m)
@@ -383,6 +383,7 @@ export class AnimacoesDaFalaService {
       .join('; ');
     const atual = extra.base ? JSON.stringify({ titulo: extra.base.titulo, html: extra.base.html, css: extra.base.css, script: extra.base.script }).slice(0, 14_000) : '';
     const pedido = `Cartão ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
+${grade}
 Duração: ${(duracaoMs / 1000).toFixed(1)} s. Cor de destaque: a ${m.acento + 1}ª do estilo.
 O que explica: ${m.ideia}
 Conteúdo: ${m.conteudo || '(tire da fala)'}

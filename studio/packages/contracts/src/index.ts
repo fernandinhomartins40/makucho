@@ -42,6 +42,7 @@ export * from './imagem-por-ia';
 export * from './cenas-animadas';
 export * from './animacao-html';
 export * from './estilos-de-animacao';
+export * from './grade-dos-layouts';
 export * from './stickers';
 export * from './animacao-da-midia';
 export * from './cabeca';
