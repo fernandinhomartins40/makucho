@@ -263,6 +263,16 @@ function Editor({ projectId }: { projectId: string }) {
   // quando ela muda, traz o plano com as animações.
   const NOTA_CRIANDO = 'Criando as animações…';
   const criandoAnimacoes = projeto?.animationNote === NOTA_CRIANDO;
+  const temAnimacoes = !!plano?.mediaLayers?.some((m) => m.kind === 'html');
+  // Uma linha: quantas e o estilo; o texto completo da nota fica no title.
+  const resumoDasAnimacoes = (() => {
+    const nota = projeto?.animationNote;
+    if (criandoAnimacoes) return 'Criando animações… (alguns minutos)';
+    const feitas = nota?.match(/criou (\d+) anima\S+(?: no estilo ([^(]+?))? \(/);
+    if (feitas) return `${feitas[1]} animações${feitas[2] ? ` · estilo ${feitas[2]}` : ''}`;
+    if (temAnimacoes) return 'Animações no vídeo';
+    return nota?.startsWith('Sem animações') ? 'Sem animações nesta montagem' : 'Sem animações';
+  })();
   const criarAnimacoesDaFala = useCallback(async () => {
     try {
       const r = await apiIa.animarFala(projectId);
@@ -1288,23 +1298,15 @@ function Editor({ projectId }: { projectId: string }) {
               rolagem: duas barras no mesmo painel confundiam. */}
           {aba === 'ia' && (
             <div className="ia-secao ia-secao--topo">
-              {plano && (projeto?.animationNote || !plano.mediaLayers?.some((m) => m.kind === 'html')) && (
-                <div className="aviso aviso--info" role="status" style={{ flexWrap: 'wrap' }}>
+              {plano && (projeto?.animationNote || !temAnimacoes) && (
+                <div className="aviso aviso--info aviso--linha" role="status" title={projeto?.animationNote ?? undefined}>
                   <IconeAnimacao size={15} />
-                  <span style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
-                    <strong>Animações:</strong>{' '}
-                    {projeto?.animationNote
-                      ? projeto.animationNote.replace(/^Sem animações: /, 'nenhuma nesta montagem -- ')
-                      : 'este vídeo ainda não tem animações.'}
-                  </span>
-                  <button
-                    type="button"
-                    className="botao botao--secundario botao--pequeno"
-                    disabled={criandoAnimacoes}
-                    onClick={() => void criarAnimacoesDaFala()}
-                  >
-                    {criandoAnimacoes ? 'Criando… (leva alguns minutos)' : 'Criar animações da fala'}
-                  </button>
+                  <span className="aviso__texto">{resumoDasAnimacoes}</span>
+                  {!temAnimacoes && (
+                    <button type="button" className="botao-link" disabled={criandoAnimacoes} onClick={() => void criarAnimacoesDaFala()}>
+                      {criandoAnimacoes ? 'Criando…' : 'Criar'}
+                    </button>
+                  )}
                 </div>
               )}
               {semIa && (
