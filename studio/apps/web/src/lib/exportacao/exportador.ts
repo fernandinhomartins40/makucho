@@ -29,7 +29,7 @@ import {
   arquivoDoSticker,
   bordaDaCortina,
   cabecaDaMascara,
-  caixaDaMidia, divisaoNoInstante, proporcaoDoQuadro,
+  caixaDaMidia, divisaoNoInstante, janelaNoInstante, proporcaoDoQuadro,
   efeitoUsaPessoa,
   ehTextoAtras,
   estadoDaMidia,
@@ -552,6 +552,7 @@ export async function exportarNoNavegador(
         efeitos,
         midias,
         divisao: divisaoNoInstante(plano.mediaLayers, ms),
+        janela: janelaNoInstante(plano.mediaLayers, ms),
       } as const;
 
       // 3. A máscara da pessoa, do quadro montado (antes dos efeitos),

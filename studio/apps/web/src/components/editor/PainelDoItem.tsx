@@ -14,6 +14,12 @@ import type { CenaAnimada, ComposicaoHtml, EstiloDeAnimacao } from '@makucho/stu
 import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
   ESTILOS_DE_ANIMACAO,
+  PALETAS_DE_ANIMACAO,
+  CANTOS_DO_PIP,
+  LAYOUTS_DA_ANIMACAO,
+  NOME_DO_LAYOUT_DA_ANIMACAO,
+  NOME_DO_CANTO_DO_PIP,
+  coresDaPaleta,
   LAYOUTS_DA_CENA,
   estiloDeAnimacao,
   NOME_DO_LAYOUT_DA_CENA,
@@ -796,16 +802,21 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
   const ocupada = !!ia?.trabalhando;
   const atual = estiloDeAnimacao(composicao.estilo);
   const [escolhido, setEscolhido] = useState<string | null>(null);
+  // Paleta escolhida: "clima:indice", "" = cores do estilo, null = sem mudança.
+  const [paletaEscolhida, setPaletaEscolhida] = useState<string | null>(null);
   const [trocando, setTrocando] = useState(false);
   const [pedido, setPedido] = useState('');
   const mudar = (m: Partial<ComposicaoHtml>) => editar({ ...composicao, ...m });
   const grupos: Array<[string, EstiloDeAnimacao[]]> = [
     ['Cartões', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'cartao')],
-    ['Identidades', ESTILOS_DE_ANIMACAO.filter((e) => e.familia !== 'cartao')],
+    ['Identidades visuais', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'identidade' || e.familia === 'referencia')],
+    ['Presets de quadro', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'preset')],
   ];
+  const paletaAtual = coresDaPaleta(composicao.paleta);
   const refazer = (camadas: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => {
     ia?.refazer(camadas, o);
     setEscolhido(null);
+    setPaletaEscolhida(null);
     setTrocando(false);
   };
   return (
@@ -836,6 +847,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
             {trocando ? 'Fechar' : 'Trocar estilo'}
           </button>
         </div>
+        {trocando && <span className="campo__ajuda" style={{ margin: 'var(--e2) 0 0' }}>Passe o mouse para ver quando usar cada um.</span>}
         {trocando && grupos.map(([nome, estilos]) => (
           <div key={nome} className="estilos-da-animacao" role="radiogroup" aria-label={`Estilos: ${nome}`}>
             {estilos.map((e) => (
@@ -859,12 +871,70 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
             ))}
           </div>
         ))}
-        {escolhido && (
+        {trocando && (
+          <>
+            <span className="campo__rotulo" style={{ marginTop: 'var(--e3)' }}>
+              Cores{paletaAtual ? `: ${paletaAtual.paleta.nome}` : ' do estilo'}
+            </span>
+            <div className="estilos-da-animacao" role="radiogroup" aria-label="Paletas de cores">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={(paletaEscolhida ?? composicao.paleta ?? '') === ''}
+                className="estilo-da-animacao"
+                disabled={ocupada}
+                onClick={() => setPaletaEscolhida(composicao.paleta ? '' : null)}
+              >
+                Cores do estilo
+              </button>
+              {PALETAS_DE_ANIMACAO.map((p) => {
+                const valor = `${p.chave}:0`;
+                const marcada = (paletaEscolhida ?? composicao.paleta ?? '').startsWith(`${p.chave}:`);
+                return (
+                  <button
+                    key={p.chave}
+                    type="button"
+                    role="radio"
+                    aria-checked={marcada}
+                    className="estilo-da-animacao"
+                    title={`${p.clima}. Clique de novo para outra combinação.`}
+                    disabled={ocupada}
+                    onClick={() => {
+                      // Clicar de novo na mesma paleta passa para a próxima combinação dela.
+                      const agora = paletaEscolhida ?? composicao.paleta ?? '';
+                      const i = agora.startsWith(`${p.chave}:`) ? (Number(agora.split(':')[1]) + 1) % p.conjuntos.length : 0;
+                      const novo = `${p.chave}:${i}`;
+                      setPaletaEscolhida(novo === composicao.paleta ? null : novo);
+                    }}
+                  >
+                    <span className="estilo-da-animacao__amostra" aria-hidden>
+                      {(coresDaPaleta(marcada ? paletaEscolhida ?? composicao.paleta : valor)?.cores ?? []).slice(0, 4).map((c, k) => (
+                        <i key={k} style={{ background: c }} />
+                      ))}
+                    </span>
+                    {p.nome}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {(escolhido || paletaEscolhida !== null) && (
           <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap', marginTop: 'var(--e2)' }}>
-            <button type="button" className="botao botao--primario botao--pequeno" disabled={ocupada} onClick={() => refazer([id], { estilo: escolhido })}>
+            <button
+              type="button"
+              className="botao botao--primario botao--pequeno"
+              disabled={ocupada}
+              onClick={() => refazer([id], { ...(escolhido ? { estilo: escolhido } : {}), ...(paletaEscolhida !== null ? { paleta: paletaEscolhida } : {}) })}
+            >
               Refazer esta
             </button>
-            <button type="button" className="botao botao--secundario botao--pequeno" disabled={ocupada} onClick={() => refazer('todas', { estilo: escolhido })}>
+            <button
+              type="button"
+              className="botao botao--secundario botao--pequeno"
+              disabled={ocupada}
+              onClick={() => refazer('todas', { ...(escolhido ? { estilo: escolhido } : {}), ...(paletaEscolhida !== null ? { paleta: paletaEscolhida } : {}) })}
+            >
               Aplicar em todas
             </button>
           </div>
@@ -874,7 +944,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
       <div className="campo" style={{ marginBottom: 0 }}>
         <span className="campo__rotulo">Onde a animação passa</span>
         <div className="biblioteca__chips" role="radiogroup" aria-label="Onde a animação passa">
-          {LAYOUTS_DA_CENA.map((l) => (
+          {LAYOUTS_DA_ANIMACAO.map((l) => (
             <button
               key={l}
               type="button"
@@ -885,7 +955,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
               // Outro lugar é outro desenho (um painel não cabe num cartão): a IA redesenha.
               onClick={() => l !== composicao.layout && refazer([id], { layout: l })}
             >
-              {NOME_DO_LAYOUT_DA_CENA[l]}
+              {NOME_DO_LAYOUT_DA_ANIMACAO[l]}
             </button>
           ))}
         </div>
@@ -904,7 +974,28 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
           <Deslizante rotulo="Altura do rosto no vídeo" valor={Math.round((composicao.foco ?? 0.4) * 100)} min={0} max={100} passo={1} unidade="%" onSoltar={(v) => mudar({ foco: v / 100 })} />
         </>
       )}
-      {composicao.layout !== 'cartao' && !composicao.estilo && (
+      {composicao.layout === 'pip' && (
+        <>
+          <div className="biblioteca__chips" role="radiogroup" aria-label="Canto do vídeo">
+            {CANTOS_DO_PIP.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="radio"
+                aria-checked={(composicao.canto ?? 'inf-dir') === c}
+                className="biblioteca__chip"
+                disabled={ocupada}
+                // O conteúdo se organiza ao redor da janela: outro canto, outro desenho.
+                onClick={() => c !== (composicao.canto ?? 'inf-dir') && refazer([id], { canto: c })}
+              >
+                {NOME_DO_CANTO_DO_PIP[c]}
+              </button>
+            ))}
+          </div>
+          <Deslizante rotulo="Tamanho do vídeo" valor={Math.round((composicao.tamanhoPip ?? 0.36) * 100)} min={25} max={50} passo={1} unidade="%" onSoltar={(v) => mudar({ tamanhoPip: v / 100 })} />
+        </>
+      )}
+      {composicao.layout !== 'cartao' && composicao.layout !== 'pip' && !composicao.estilo && (
         <label className="biblioteca__opcao">
           <input type="checkbox" checked={!composicao.semFundo} onChange={(e) => mudar({ semFundo: !e.target.checked })} /> Fundo escuro no painel
         </label>

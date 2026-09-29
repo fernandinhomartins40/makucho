@@ -20,10 +20,30 @@
 // ============================================================
 
 import { z } from 'zod';
-import { LAYOUTS_DA_CENA, divisaoDaCena } from './cenas-animadas';
+import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-animadas';
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 
 export const LIMITES_DA_ANIMACAO_HTML = { html: 40_000, css: 30_000, script: 30_000 } as const;
+
+/**
+ * Onde a animação passa. Além dos da cena, o "pip" (skill talking-head-
+ * recut): a animação ocupa a tela e o vídeo com o rosto vai para uma
+ * janela de cantos arredondados num canto -- para conteúdo denso.
+ */
+export const LAYOUTS_DA_ANIMACAO = [...LAYOUTS_DA_CENA, 'pip'] as const;
+export type LayoutDaAnimacaoHtml = (typeof LAYOUTS_DA_ANIMACAO)[number];
+export const NOME_DO_LAYOUT_DA_ANIMACAO: Record<LayoutDaAnimacaoHtml, string> = {
+  ...NOME_DO_LAYOUT_DA_CENA,
+  pip: 'Vídeo no canto (PiP)',
+};
+export const CANTOS_DO_PIP = ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'] as const;
+export type CantoDoPip = (typeof CANTOS_DO_PIP)[number];
+export const NOME_DO_CANTO_DO_PIP: Record<CantoDoPip, string> = {
+  'sup-esq': 'Em cima, à esquerda',
+  'sup-dir': 'Em cima, à direita',
+  'inf-esq': 'Embaixo, à esquerda',
+  'inf-dir': 'Embaixo, à direita',
+};
 
 export const composicaoHtmlSchema = z
   .object({
@@ -33,22 +53,46 @@ export const composicaoHtmlSchema = z
     /** Monta os movimentos em `tl` (gsap.timeline pausada, já criada). */
     script: z.string().max(LIMITES_DA_ANIMACAO_HTML.script).default(''),
     /** Onde passa: meio a meio (o vídeo desloca), cartão ou tela cheia. */
-    layout: z.enum(LAYOUTS_DA_CENA),
+    layout: z.enum(LAYOUTS_DA_ANIMACAO),
     divisao: z.number().min(0.3).max(0.65).optional(),
     lado: z.enum(['cima', 'baixo']).optional(),
     foco: z.number().min(0).max(1).optional(),
+    /** No pip: o canto da janela do vídeo e o tamanho dela (fração da largura). */
+    canto: z.enum(CANTOS_DO_PIP).optional(),
+    tamanhoPip: z.number().min(0.25).max(0.5).optional(),
     /** Sem o fundo escuro padrão no painel (meio a meio e tela cheia). */
     semFundo: z.boolean().optional(),
     /** Nome curto, para a timeline. */
     titulo: z.string().max(60).optional(),
     /** O estilo (chave de ESTILOS_DE_ANIMACAO): a IA o mantém ao refazer e o troca quando pedem. */
     estilo: z.string().max(40).optional(),
+    /** Paleta que recolore o estilo ("clima:indice", PALETAS_DE_ANIMACAO). */
+    paleta: z.string().max(40).optional(),
     /** O que a animação explica (tipo, ideia, conteúdo): a IA a redesenha a partir disto. */
     briefing: z.string().max(2000).optional(),
   })
   .strict();
 
 export type ComposicaoHtml = z.infer<typeof composicaoHtmlSchema>;
+
+/**
+ * A janela do vídeo no pip, em frações do quadro (x, y de cima-esquerda).
+ * Largura e altura na MESMA fração: a janela tem a proporção do quadro,
+ * e o vídeo inteiro cabe nela. Longe das bordas e da faixa da legenda.
+ * A mesma conta na prévia (shader), no render (scale + overlay) e no
+ * documento (o furo arredondado por onde o vídeo aparece).
+ */
+export function janelaDaComposicao(c: Pick<ComposicaoHtml, 'layout' | 'canto' | 'tamanhoPip'>): { x: number; y: number; w: number; h: number } | null {
+  if (c.layout !== 'pip') return null;
+  const t = c.tamanhoPip ?? 0.36;
+  const canto = c.canto ?? 'inf-dir';
+  const x = canto.endsWith('esq') ? 0.05 : 0.95 - t;
+  const y = canto.startsWith('sup') ? 0.08 : 0.72 - t;
+  return { x, y, w: t, h: t };
+}
+
+/** Raio dos cantos da janela do pip (px no quadro de 1080). */
+export const RAIO_DO_PIP = 36;
 
 /** A área da animação no quadro (pixels de 1080x1920): o painel no meio a meio, o quadro todo no resto. */
 export function areaDaComposicao(c: Pick<ComposicaoHtml, 'layout' | 'divisao' | 'lado' | 'foco'>, W = 1080, H = 1920): { x: number; y: number; w: number; h: number } {
@@ -182,6 +226,23 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   const H = o.altura ?? 1920;
   const area = areaDaComposicao(c, W, H);
   const comFundo = c.layout !== 'cartao' && !c.semFundo;
+  // Pip: um furo de cantos arredondados em #area (máscara SVG, alfa) por
+  // onde o vídeo aparece, e a moldura por cima, fora da máscara.
+  const janela = janelaDaComposicao(c);
+  let furo = '';
+  let moldura = '';
+  if (janela) {
+    const x = Math.round(janela.x * W);
+    const y = Math.round(janela.y * H);
+    const w = Math.round(janela.w * W);
+    const h = Math.round(janela.h * H);
+    const r = RAIO_DO_PIP;
+    const d = `M0 0H${W}V${H}H0Z M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${W}' height='${H}'><path fill-rule='evenodd' d='${d}'/></svg>`;
+    const url = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    furo = `#area { -webkit-mask: ${url} 0 0 / 100% 100% no-repeat; mask: ${url} 0 0 / 100% 100% no-repeat; }`;
+    moldura = `<div id="pip-moldura" style="position:absolute;left:${x - 3}px;top:${y - 3}px;width:${w + 6}px;height:${h + 6}px;border:6px solid rgba(255,255,255,0.92);border-radius:${r + 3}px;box-shadow:0 18px 50px rgba(0,0,0,0.35);box-sizing:border-box;pointer-events:none"></div>`;
+  }
   const duracaoS = Math.max(0.5, o.duracaoMs / 1000).toFixed(3);
   const csp = `default-src 'none'; script-src 'unsafe-inline' ${o.origens}; style-src 'unsafe-inline'; font-src ${o.origens} data:; img-src ${o.origens} data: blob:; connect-src 'none'; frame-src 'none'; form-action 'none'`;
   const escuta = o.previa
@@ -192,13 +253,15 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>${cssBase(o, area, comFundo, c.css)}
-${ESC(c.css)}</style>
+${ESC(c.css)}
+${furo}</style>
 <script src="${o.gsap}"></script>
 </head><body>
 <div id="cena" data-composition-id="cena" data-start="0" data-duration="${duracaoS}" data-width="${W}" data-height="${H}">
 ${comFundo ? `<div id="area"><div id="area-fundo"></div>` : `<div id="area">`}
 ${c.html}
 </div>
+${moldura}
 </div>
 <script>
   window.__timelines = window.__timelines || {};
@@ -238,7 +301,7 @@ const VERSAO_DO_VIDEO = 'v2';
  */
 export function chaveDaAnimacao(c: ComposicaoHtml, duracaoMs: number, corDaMarca = ''): string {
   const quadros = Math.max(1, Math.round((duracaoMs * 30) / 1000));
-  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca]);
+  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca, c.canto ?? null, c.tamanhoPip ?? null]);
   return `${cyrb53(texto)}${cyrb53(texto, 7)}`.slice(0, 24);
 }
 

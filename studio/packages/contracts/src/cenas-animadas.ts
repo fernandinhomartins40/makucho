@@ -274,7 +274,7 @@ export type CenaAnimada = z.infer<typeof cenaAnimadaSchema>;
  * de `a`, altura `h`) e de onde ele vem (`y0`) -- a MESMA conta no render
  * (crop + overlay) e na prévia (deslocamento no shader que enquadra).
  */
-export function divisaoDaCena(c: Pick<CenaAnimada, 'layout' | 'divisao' | 'lado' | 'foco'>): { a: number; h: number; y0: number } | null {
+export function divisaoDaCena(c: { layout: string; divisao?: number | undefined; lado?: 'cima' | 'baixo' | undefined; foco?: number | undefined }): { a: number; h: number; y0: number } | null {
   if (c.layout !== 'meio_a_meio') return null;
   const d = c.divisao ?? 0.5;
   const h = 1 - d;

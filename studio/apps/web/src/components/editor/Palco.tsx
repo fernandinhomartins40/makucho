@@ -36,7 +36,7 @@ import {
   bordaDaCortina,
   kenBurnsNoInstante,
   cabecaDaMascara,
-  caixaDaMidia, divisaoNoInstante, proporcaoDoQuadro,
+  caixaDaMidia, divisaoNoInstante, janelaNoInstante, proporcaoDoQuadro,
   estadoDaMidia,
   midiaEstaAnimada,
   caixaDoTexto,
@@ -428,6 +428,7 @@ export function Palco({
         efeitos: efeitosNoQuadro(plan.screenEffects, ultimoMs.current, agenda.duracaoQuadros),
         midias: midiasNoInstante(ultimoMs.current),
         divisao: divisaoNoInstante(plan.mediaLayers, ultimoMs.current),
+        janela: janelaNoInstante(plan.mediaLayers, ultimoMs.current),
         guardarQuadro: (plan.mediaLayers ?? []).some((m) => m.followPerson),
       });
     },

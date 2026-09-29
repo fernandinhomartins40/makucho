@@ -489,6 +489,15 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   const semQuadros = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comCena });
   t('cena sem quadros prontos: fica de fora (e o vídeo não desloca)', !semQuadros[semQuadros.indexOf('-filter_complex') + 1]!.includes('crop=1080:960'));
 
+  // Pip: o vídeo inteiro encolhe para a janela do canto, só nos quadros da animação.
+  const comPip: EditPlanV1 = {
+    ...plano,
+    mediaLayers: [{ id: 'h1', assetId: 'html', kind: 'html', timelineStartMs: 1000, durationMs: 2000, layout: 'tela_cheia', composicao: { layout: 'pip', canto: 'inf-dir', tamanhoPip: 0.36, html: '<p>x</p>', css: '', script: 'tl.to("p",{opacity:1},0);' } }],
+  };
+  const ap = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comPip, animacoes: { h1: '/tmp/h1.mp4' } });
+  const fpip = ap[ap.indexOf('-filter_complex') + 1]!;
+  t('pip: o vídeo encolhe para 388x692 e vai para o canto de baixo à direita, só nos quadros dela', fpip.includes('scale=388:692') && fpip.includes("overlay=638:692:enable='between(n,30,89)'") && fpip.includes('drawbox=x=0:y=0:w=1080:h=1920:color=black:t=fill'));
+
   const semMidia = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comMidia });
   t('sem o arquivo da mídia, a camada fica de fora', !semMidia[semMidia.indexOf('-filter_complex') + 1]!.includes('[md0]'));
 }

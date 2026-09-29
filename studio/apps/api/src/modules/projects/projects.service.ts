@@ -144,6 +144,7 @@ export class ProjectsService {
         targetDurationMs: dados.targetDurationMs ?? null,
         videoKind: dados.videoKind ?? null,
         contentBrief: dados.contentBrief ?? null,
+        animationStyle: dados.animationStyle ?? null,
       },
       select: RESUMO,
     });
@@ -174,6 +175,7 @@ export class ProjectsService {
         }),
         ...(dados.videoKind !== undefined && { videoKind: dados.videoKind }),
         ...(dados.contentBrief !== undefined && { contentBrief: dados.contentBrief }),
+        ...(dados.animationStyle !== undefined && { animationStyle: dados.animationStyle }),
       },
       select: RESUMO,
     });

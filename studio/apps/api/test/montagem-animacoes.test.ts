@@ -119,6 +119,27 @@ async function main() {
   await f.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { pedido: 'troca o vermelho pelo verde' });
   t('o pedido da pessoa vai com a animação atual para editar em cima', usuarios.at(-1)!.includes('PEDIDO DA PESSOA') && usuarios.at(-1)!.includes('troca o vermelho pelo verde') && usuarios.at(-1)!.includes('Gemini'));
 
+  // 1d. Estilo escolhido pela pessoa, preset de quadro, pip e paleta.
+  const sis2: string[] = [];
+  const us2: string[] = [];
+  const g = montar((usuario, sis) => {
+    if (sis.includes('diretor')) {
+      sis2.push(sis);
+      return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'pip', canto: 'sup-esq', tipo: 'lista', intencao: 'os passos', conteudo: 'um, dois, três' }] });
+    }
+    sis2.push(sis);
+    us2.push(usuario);
+    return boa('Passos');
+  });
+  (g.prisma.project as unknown as { findUnique: () => Promise<unknown> }).findUnique = async () => ({ id: 'p1', state: 'ANALYZING', animationStyle: 'coral' });
+  await g.servico.criarNaMontagem(sistema as never, 'p1');
+  const cg = g.atual().mediaLayers?.[0]?.composicao;
+  t('o estilo que a pessoa escolheu vale sobre o da IA (e o preset vai com o sistema de design)', cg?.estilo === 'coral' && sis2[0]!.includes('ESTILO JÁ ESCOLHIDO PELA PESSOA: coral') && sis2[1]!.includes('SISTEMA DE DESIGN'));
+  t('pip: a janela no canto pedido e a IA sabe onde não pôr conteúdo', cg?.layout === 'pip' && cg?.canto === 'sup-esq' && us2[0]!.includes('left 54px, top 154px, 389x691px'));
+  await g.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { paleta: 'neon-electric:1' });
+  const cp = g.atual().mediaLayers![0]!.composicao!;
+  t('paleta: recolore sem redesenhar (pedido com a animação atual) e fica guardada', cp.paleta === 'neon-electric:1' && sis2.at(-1)!.startsWith('PALETA ESCOLHIDA (Neon)') && us2.at(-1)!.includes('Troque as cores pela PALETA ESCOLHIDA'));
+
   // 2. IA fora do ar: sem animação, mas com o motivo gravado.
   const b = montar(() => {
     throw Object.assign(new Error('x'), { publico: 'a chave da IA foi recusada' });

@@ -466,6 +466,8 @@ model Project {
   contentBrief String?
   /// O que a montagem fez nas animações (ou por que não fez), para o editor mostrar.
   animationNote String?
+  /// O estilo das animações escolhido pela pessoa (chave de ESTILOS_DE_ANIMACAO); nulo = a IA escolhe pelo tom.
+  animationStyle String?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

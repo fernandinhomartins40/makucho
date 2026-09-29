@@ -11,8 +11,11 @@ import { createContext, useContext } from 'react';
 
 export interface OpcoesDeRefazerAnimacao {
   estilo?: string;
-  layout?: 'meio_a_meio' | 'cartao' | 'tela_cheia';
+  /** "clima:indice"; "" volta às cores do estilo. */
+  paleta?: string;
+  layout?: 'meio_a_meio' | 'cartao' | 'tela_cheia' | 'pip';
   lado?: 'cima' | 'baixo';
+  canto?: 'sup-esq' | 'sup-dir' | 'inf-esq' | 'inf-dir';
   pedido?: string;
 }
 

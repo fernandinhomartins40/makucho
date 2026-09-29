@@ -7,7 +7,7 @@
 // ============================================================
 
 import { BadRequestException, Body, Controller, Param, Post } from '@nestjs/common';
-import { CHAVES_DOS_ESTILOS_DE_ANIMACAO } from '@makucho/studio-contracts';
+import { CHAVES_DOS_ESTILOS_DE_ANIMACAO, coresDaPaleta } from '@makucho/studio-contracts';
 import { z } from 'zod';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
@@ -25,12 +25,14 @@ const pedidoDeRefazerSchema = z
   .object({
     camadas: z.array(z.string().max(80)).max(30).optional(),
     estilo: z.string().refine((e) => CHAVES_DOS_ESTILOS_DE_ANIMACAO.includes(e), 'estilo desconhecido').optional(),
-    layout: z.enum(['meio_a_meio', 'cartao', 'tela_cheia']).optional(),
+    layout: z.enum(['meio_a_meio', 'cartao', 'tela_cheia', 'pip']).optional(),
+    canto: z.enum(['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir']).optional(),
     lado: z.enum(['cima', 'baixo']).optional(),
     pedido: z.string().trim().min(2).max(600).optional(),
+    paleta: z.string().refine((p) => p === '' || coresDaPaleta(p) !== null, 'paleta desconhecida').optional(),
   })
   .strict()
-  .refine((p) => p.estilo || p.layout || p.lado || p.pedido, 'diga o que mudar (estilo, lugar ou pedido)');
+  .refine((p) => p.estilo || p.layout || p.lado || p.canto || p.pedido || p.paleta !== undefined, 'diga o que mudar (estilo, lugar ou pedido)');
 
 @ApiTags('ai')
 @Controller()

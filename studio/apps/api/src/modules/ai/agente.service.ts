@@ -65,7 +65,7 @@ import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
 import { AnimacoesService } from '../animacoes/animacoes.service';
-import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, type LayoutDaAnimacao } from './animacoes-da-fala.service';
+import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, listaDePaletas, type LayoutDaAnimacao } from './animacoes-da-fala.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
@@ -795,19 +795,22 @@ export class AgenteService {
                 briefing: m.composicao!.briefing?.slice(0, 300),
               })),
             estilos: listaDeEstilos(),
+            paletas: listaDePaletas(),
           };
         },
       },
 
       animar_trecho: {
         rotulo: 'Desenhando uma animação (HyperFrames)',
-        descricao: `O JEITO PADRÃO de criar uma animação: você diz o trecho, o lugar, o tipo e o que ela explica, e o motion designer do HyperFrames desenha no estilo do vídeo (ou no estilo pedido), com a doutrina de movimento e cada elemento entrando no instante da palavra. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-12 s). layout: meio_a_meio (painel + rosto na outra metade; lado cima = animação em cima, baixo = embaixo), cartao (menor, por cima do vídeo, fora do rosto), tela_cheia (só o ponto alto). tipo: numero, lista, comparacao, citacao, passos, grafico, termo, pergunta, destaque. estilo: chave de estilos_e_animacoes (omita para seguir o estilo do vídeo). Demora ~1-2 min.`,
+        descricao: `O JEITO PADRÃO de criar uma animação: você diz o trecho, o lugar, o tipo e o que ela explica, e o motion designer do HyperFrames desenha no estilo do vídeo (ou no estilo pedido), com a doutrina de movimento e cada elemento entrando no instante da palavra. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-12 s). layout: meio_a_meio (painel + rosto na outra metade; lado cima = animação em cima, baixo = embaixo), cartao (menor, por cima do vídeo, fora do rosto), tela_cheia (só o ponto alto), pip (a animação ocupa a tela e o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir -- para conteúdo denso). tipo: numero, lista, comparacao, citacao, passos, grafico, termo, pergunta, destaque. estilo: chave de estilos_e_animacoes (omita para seguir o estilo do vídeo). Demora ~1-2 min.`,
         parametros: objeto(
           {
             inicioS: { type: 'number' },
             fimS: { type: 'number' },
-            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] },
+            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia', 'pip'] },
             lado: { type: 'string', enum: ['cima', 'baixo'] },
+            canto: { type: 'string', enum: ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'] },
+            paleta: { type: 'string', description: 'clima:indice de estilos_e_animacoes (ex.: dark-premium:2); "" volta às cores do estilo' },
             tipo: { type: 'string' },
             ideia: { type: 'string', description: 'o que a animação explica, em uma frase' },
             conteudo: { type: 'string', description: 'os textos: kicker, título, detalhe, números, itens' },
@@ -820,12 +823,14 @@ export class AgenteService {
           const r = await this.animacoesDaFala.animarTrecho(c.tenant.workspaceId, c.projectId, c.plano, {
             inicioS: Number(a.inicioS) || 0,
             fimS: Number(a.fimS) || 0,
-            layout: (['meio_a_meio', 'cartao', 'tela_cheia'].includes(String(a.layout)) ? a.layout : 'meio_a_meio') as LayoutDaAnimacao,
+            layout: (['meio_a_meio', 'cartao', 'tela_cheia', 'pip'].includes(String(a.layout)) ? a.layout : 'meio_a_meio') as LayoutDaAnimacao,
+            ...(typeof a.canto === 'string' && ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'].includes(a.canto) ? { canto: a.canto as 'sup-esq' } : {}),
             ...(a.lado === 'baixo' || a.lado === 'cima' ? { lado: a.lado } : {}),
             ...(typeof a.tipo === 'string' ? { tipo: a.tipo } : {}),
             ideia: String(a.ideia ?? ''),
             ...(typeof a.conteudo === 'string' ? { conteudo: a.conteudo } : {}),
             ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
+            ...(typeof a.paleta === 'string' && a.paleta ? { paleta: a.paleta } : {}),
           });
           const inicio = Math.round((Number(a.inicioS) || 0) * 1000);
           const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
@@ -840,13 +845,15 @@ export class AgenteService {
 
       refazer_animacao: {
         rotulo: 'Redesenhando a animação',
-        descricao: 'Redesenha uma animação que já está no vídeo, mantendo o que ela explica e o tempo: em outro estilo (estilo), em outro lugar (layout/lado -- trocar o layout EXIGE redesenhar, o desenho de um painel não serve num cartão) e/ou com um pedido da pessoa (pedido: "troca o azul pelo verde", "deixa o número maior", "tira o carimbo"). Para só mover no tempo ou mudar a duração, use mudar_animacao. Demora ~1-2 min.',
+        descricao: 'Redesenha uma animação que já está no vídeo, mantendo o que ela explica e o tempo: em outro estilo (estilo), com outra paleta de cores (paleta), em outro lugar (layout/lado/canto -- trocar o layout ou o canto do pip EXIGE redesenhar, o desenho de um painel não serve num cartão) e/ou com um pedido da pessoa (pedido: "troca o azul pelo verde", "deixa o número maior", "tira o carimbo"). Para só mover no tempo ou mudar a duração, use mudar_animacao. Demora ~1-2 min.',
         parametros: objeto(
           {
             id: { type: 'string' },
             estilo: { type: 'string' },
-            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia'] },
+            layout: { type: 'string', enum: ['meio_a_meio', 'cartao', 'tela_cheia', 'pip'] },
             lado: { type: 'string', enum: ['cima', 'baixo'] },
+            canto: { type: 'string', enum: ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'] },
+            paleta: { type: 'string', description: 'clima:indice de estilos_e_animacoes (ex.: dark-premium:2); "" volta às cores do estilo' },
             pedido: { type: 'string' },
           },
           ['id'],
@@ -858,9 +865,11 @@ export class AgenteService {
           if (!camada) return { erro: 'animação não encontrada: leia estilos_e_animacoes' };
           const r = await this.animacoesDaFala.redesenhar(c.tenant.workspaceId, c.projectId, c.plano, id, {
             ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
-            ...(['meio_a_meio', 'cartao', 'tela_cheia'].includes(String(a.layout)) ? { layout: a.layout as LayoutDaAnimacao } : {}),
+            ...(['meio_a_meio', 'cartao', 'tela_cheia', 'pip'].includes(String(a.layout)) ? { layout: a.layout as LayoutDaAnimacao } : {}),
+            ...(typeof a.canto === 'string' && ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'].includes(a.canto) ? { canto: a.canto as 'sup-esq' } : {}),
             ...(a.lado === 'baixo' || a.lado === 'cima' ? { lado: a.lado } : {}),
             ...(typeof a.pedido === 'string' ? { pedido: a.pedido } : {}),
+            ...(typeof a.paleta === 'string' ? { paleta: a.paleta } : {}),
           });
           const res = aplicarComando(c.plano, [{ op: 'editar_midia', mediaId: id, composicao: r.composicao }], { biblioteca: c.biblioteca });
           c.plano = res.plan;
@@ -872,15 +881,15 @@ export class AgenteService {
 
       trocar_estilo_das_animacoes: {
         rotulo: 'Trocando o estilo das animações',
-        descricao: 'Redesenha TODAS as animações do vídeo (ou as de ids) em outro estilo do catálogo, mantendo o que cada uma explica, o tempo e o lugar. Use quando pedirem "muda o estilo das animações", "deixa mais sério/divertido/escuro", "usa o estilo X". Escolha o estilo pelo pedido e pelo tom (veja estilos_e_animacoes). Demora ~2 min (em paralelo).',
-        parametros: objeto({ estilo: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } }, ['estilo']),
+        descricao: 'Redesenha TODAS as animações do vídeo (ou as de ids) em outro estilo do catálogo (e, se pedirem outras cores, com uma paleta), mantendo o que cada uma explica, o tempo e o lugar. Use quando pedirem "muda o estilo das animações", "deixa mais sério/divertido/escuro", "usa o estilo X". Escolha o estilo pelo pedido e pelo tom (veja estilos_e_animacoes). Demora ~2 min (em paralelo).',
+        parametros: objeto({ estilo: { type: 'string' }, paleta: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } }, ['estilo']),
         executar: async (c, a) => {
           if (!this.animacoesDaFala) return { erro: 'animações indisponíveis agora' };
           const pedidos = Array.isArray(a.ids) ? a.ids.map(String) : null;
           const alvos = (c.plano.mediaLayers ?? []).filter((m) => m.kind === 'html' && m.composicao && (!pedidos || pedidos.includes(m.id)));
           if (!alvos.length) return { erro: 'nenhuma animação para trocar' };
           const plano = c.plano;
-          const feitas = await Promise.allSettled(alvos.map((m) => this.animacoesDaFala!.redesenhar(c.tenant.workspaceId, c.projectId, plano, m.id, { estilo: String(a.estilo) })));
+          const feitas = await Promise.allSettled(alvos.map((m) => this.animacoesDaFala!.redesenhar(c.tenant.workspaceId, c.projectId, plano, m.id, { estilo: String(a.estilo), ...(typeof a.paleta === 'string' ? { paleta: a.paleta } : {}) })));
           const ops: TimelineOperation[] = [];
           const falhas: string[] = [];
           feitas.forEach((f, i) => {

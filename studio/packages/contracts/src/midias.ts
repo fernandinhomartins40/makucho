@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSchema } from './animacao-da-midia';
 import { spriteDaMidiaSchema } from './emojis-animados';
 import { cenaAnimadaSchema, divisaoDaCena } from './cenas-animadas';
+import { janelaDaComposicao } from './animacao-html';
 import { composicaoHtmlSchema } from './animacao-html';
 
 export const LAYOUTS_DE_MIDIA = [
@@ -282,6 +283,16 @@ export function divisaoNoInstante(camadas: readonly CamadaDeMidia[] | undefined,
   for (const c of camadas ?? []) {
     if (ms < c.timelineStartMs || ms >= c.timelineStartMs + c.durationMs) continue;
     achada = divisaoDaCamada(c) ?? achada;
+  }
+  return achada;
+}
+
+/** A janela do pip ativa no instante (a animação mais de cima que a pede). */
+export function janelaNoInstante(camadas: readonly CamadaDeMidia[] | undefined, ms: number): { x: number; y: number; w: number; h: number } | null {
+  let achada: { x: number; y: number; w: number; h: number } | null = null;
+  for (const c of camadas ?? []) {
+    if (ms < c.timelineStartMs || ms >= c.timelineStartMs + c.durationMs) continue;
+    if (c.kind === 'html' && c.composicao) achada = janelaDaComposicao(c.composicao) ?? achada;
   }
   return achada;
 }

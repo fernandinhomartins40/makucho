@@ -18,6 +18,7 @@
 //   editando        a proposta real, salva a cada ajuste.
 // ============================================================
 
+import { EstiloDasAnimacoes } from '../../components/editor/EstiloDasAnimacoes';
 import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -612,11 +613,13 @@ function Editor({ projectId }: { projectId: string }) {
   // Que vídeo é (e o que a IA não vê): editáveis no "Refazer a análise".
   const [tipoDoVideo, setTipoDoVideo] = useState<TipoDeVideo | null>(null);
   const [resumoDoVideo, setResumoDoVideo] = useState('');
+  const [estiloDasAnimacoes, setEstiloDasAnimacoes] = useState<string | null>(null);
   useEffect(() => {
     if (!projeto) return;
     const lido = tipoDeVideoSchema.safeParse(projeto.videoKind);
     setTipoDoVideo(lido.success ? lido.data : null);
     setResumoDoVideo(projeto.contentBrief ?? '');
+    setEstiloDasAnimacoes(projeto.animationStyle ?? null);
     // Só quando o projeto muda (não a cada recarga do mesmo).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projeto?.id]);
@@ -643,9 +646,9 @@ function Editor({ projectId }: { projectId: string }) {
 
   const refazerComOTipo = async () => {
     const resumo = resumoDoVideo.trim().slice(0, 400) || null;
-    if ((projeto?.videoKind ?? null) !== tipoDoVideo || (projeto?.contentBrief ?? null) !== resumo) {
+    if ((projeto?.videoKind ?? null) !== tipoDoVideo || (projeto?.contentBrief ?? null) !== resumo || (projeto?.animationStyle ?? null) !== estiloDasAnimacoes) {
       try {
-        await apiProjetos.atualizar(projectId, { videoKind: tipoDoVideo, contentBrief: resumo });
+        await apiProjetos.atualizar(projectId, { videoKind: tipoDoVideo, contentBrief: resumo, animationStyle: estiloDasAnimacoes });
       } catch (e) {
         return setErro(e instanceof Error ? e.message : 'não foi possível salvar o tipo do vídeo.');
       }
@@ -1452,6 +1455,8 @@ function Editor({ projectId }: { projectId: string }) {
               onTipo={setTipoDoVideo}
               resumo={resumoDoVideo}
               onResumo={setResumoDoVideo}
+                  estilo={estiloDasAnimacoes}
+                  onEstilo={setEstiloDasAnimacoes}
             />
           )}
           {aba === 'biblioteca' && (
@@ -1835,6 +1840,8 @@ function SobreOVideo({
   onTipo,
   resumo,
   onResumo,
+  estilo,
+  onEstilo,
 }: {
   entendimento: ProjetoDetalhado['entendimentoDaIa'] | null;
   analisando: boolean;
@@ -1844,6 +1851,8 @@ function SobreOVideo({
   onTipo: (t: TipoDeVideo | null) => void;
   resumo: string;
   onResumo: (r: string) => void;
+  estilo: string | null;
+  onEstilo: (e: string | null) => void;
 }) {
   return (
     <details className="ia-sobre">
@@ -1875,6 +1884,7 @@ function SobreOVideo({
       <div className="ia-sobre__refazer">
         <p>Não ficou bom? Diga que vídeo é e o que tem nele: a IA monta de novo. A edição atual continua salva.</p>
         <TipoDoVideo tipo={tipo} onTipo={onTipo} resumo={resumo} onResumo={onResumo} id="resumo-no-editor" />
+        <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} id="estilo-no-editor" />
         <button type="button" className="botao botao--secundario botao--pequeno" disabled={analisando} onClick={onRefazer}>
           <IconeIA size={14} weight="fill" />
           {analisando ? 'Analisando…' : 'Refazer a análise'}

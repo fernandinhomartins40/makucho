@@ -245,6 +245,8 @@ export interface ProjetoDetalhado {
   aiFallbackReason?: string | null;
   /** O que a montagem fez nas animações (ou por que não fez). */
   animationNote?: string | null;
+  /** O estilo das animações escolhido pela pessoa (nulo = a IA escolhe). */
+  animationStyle?: string | null;
   /** Que áudio o vídeo tem (medido na transcrição): guia a montagem. */
   audioProfile?: { tipo: 'fala' | 'fala_parcial' | 'musica_ou_ambiente' | 'mudo'; coberturaDeFala: number; fracaoDeSilencio: number; descartados?: number } | null;
   /** O tipo de vídeo escolhido (null = automático). */
@@ -272,9 +274,9 @@ export interface ParteDoProjeto {
 export const projetos = {
   listar: (arquivados = false) => api<Projeto[]>(`/projects${arquivados ? '?arquivados=true' : ''}`),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
-  criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null }) =>
+  criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null; animationStyle?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),
-  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null; videoKind: string | null; contentBrief: string | null }>) =>
+  atualizar: (id: string, dados: Partial<{ title: string; objective: string | null; videoKind: string | null; contentBrief: string | null; animationStyle: string | null }>) =>
     api<Projeto>(`/projects/${id}`, { metodo: 'PATCH', corpo: dados }),
   /** Esconde da lista; os arquivos continuam no disco. */
   arquivar: (id: string) => api<Projeto>(`/projects/${id}/archive`, { metodo: 'POST' }),
@@ -781,7 +783,7 @@ export const ia = {
   /** Refaz animações que já estão no vídeo (estilo, lugar ou pedido), em segundo plano. */
   refazerAnimacoes: (
     projectId: string,
-    corpo: { camadas?: string[]; estilo?: string; layout?: 'meio_a_meio' | 'cartao' | 'tela_cheia'; lado?: 'cima' | 'baixo'; pedido?: string },
+    corpo: { camadas?: string[]; estilo?: string; paleta?: string; layout?: 'meio_a_meio' | 'cartao' | 'tela_cheia' | 'pip'; lado?: 'cima' | 'baixo'; canto?: 'sup-esq' | 'sup-dir' | 'inf-esq' | 'inf-dir'; pedido?: string },
   ) => api<{ ok: boolean; nota: string }>(`/projects/${projectId}/animacoes-da-fala/refazer`, { metodo: 'POST', corpo }),
   // #4 -- procura trechos bons que ficaram de fora. Devolve
   // CANDIDATOS: quem decide e o usuario, e o que entra na timeline e

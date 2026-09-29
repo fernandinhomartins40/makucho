@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1, SpriteDaMidia } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, divisaoDaCamada, divisaoDaCena, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, divisaoDaCamada, divisaoDaCena, janelaDaComposicao, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -375,6 +375,24 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     partes.push(`[${video}]split[${r}a][${r}b]`);
     partes.push(`[${r}b]crop=${W}:${hPx}:0:${Math.round((H * div.y0) / 2) * 2}[${r}c]`);
     partes.push(`[${r}a][${r}c]overlay=0:${Math.round((H * div.a) / 2) * 2}:enable='between(n,${n0},${n1})'[${r}o]`);
+    video = `${r}o`;
+  });
+
+  // ---------- Pip: o vídeo inteiro numa janela no canto ----------
+  // A animação ocupa a tela e tem um furo arredondado na janela; aqui o
+  // vídeo encolhe para ela, sobre preto (a animação cobre o resto).
+  (plano.mediaLayers ?? []).forEach((c, i) => {
+    const j = c.kind === 'html' && c.composicao ? janelaDaComposicao(c.composicao) : null;
+    if (!j || !opcoes.animacoes?.[c.id]) return;
+    const n0 = Math.round((c.timelineStartMs * FPS) / 1000);
+    const n1 = Math.min(acumulado, n0 + Math.max(1, Math.round((c.durationMs * FPS) / 1000))) - 1;
+    const par = (v: number) => Math.round(v / 2) * 2;
+    const r = `pip${i}`;
+    const entre = `enable='between(n,${n0},${n1})'`;
+    partes.push(`[${video}]split[${r}a][${r}b]`);
+    partes.push(`[${r}b]scale=${par(W * j.w)}:${par(H * j.h)}:flags=bicubic[${r}c]`);
+    partes.push(`[${r}a]drawbox=x=0:y=0:w=${W}:h=${H}:color=black:t=fill:${entre}[${r}p]`);
+    partes.push(`[${r}p][${r}c]overlay=${par(W * j.x)}:${par(H * j.y)}:${entre}[${r}o]`);
     video = `${r}o`;
   });
 

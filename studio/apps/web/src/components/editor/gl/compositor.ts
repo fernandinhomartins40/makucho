@@ -113,6 +113,8 @@ export interface QuadroParaDesenhar {
   guardarQuadro?: boolean;
   /** Meio a meio de uma cena animada (contracts: `divisaoNoInstante`). */
   divisao?: { a: number; h: number; y0: number } | null;
+  /** Pip de uma animação em HTML (contracts: `janelaNoInstante`). */
+  janela?: { x: number; y: number; w: number; h: number } | null;
 }
 
 /**
@@ -202,6 +204,8 @@ uniform float uLado;
 // Meio a meio (cena animada): o vídeo aparece de a até a+h (frações de
 // cima) e vem de y0 -- a mesma conta do crop + overlay do render.
 uniform vec3 uDivisao;
+// Pip (animação em HTML): o vídeo inteiro numa janela x, y (de cima), w, h.
+uniform vec4 uJanela;
 in vec2 vUv;
 out vec4 cor;
 vec3 video(vec2 uv, float escala, float lod) {
@@ -213,12 +217,19 @@ vec3 video(vec2 uv, float escala, float lod) {
 }
 vec3 montar() {
   vec2 f = vUv;
+  float lod = 0.0;
+  if (uJanela.z > 0.0) {
+    vec2 q = vec2((f.x - uJanela.x) / uJanela.z, ((1.0 - f.y) - uJanela.y) / uJanela.w);
+    if (q.x < 0.0 || q.x > 1.0 || q.y < 0.0 || q.y > 1.0) return vec3(0.0);
+    f = vec2(q.x, 1.0 - q.y);
+    lod = log2(1.0 / uJanela.z);
+  }
   if (uDivisao.y > 0.0) f.y = 1.0 - ((1.0 - f.y) - uDivisao.x + uDivisao.z);
   vec2 uv = 0.5 + (f - 0.5) / uZoom;
   float cabe = min(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
   float cobre = max(uQuadroTam.x / uVideoTam.x, uQuadroTam.y / uVideoTam.y);
-  if (uModo == 1) return max(video(uv, cobre, 0.0), 0.0);
-  vec3 frente = video(uv, cabe, 0.0);
+  if (uModo == 1) return max(video(uv, cobre, lod), 0.0);
+  vec3 frente = video(uv, cabe, lod);
   if (frente.r >= 0.0) return frente;
   if (uModo == 2) return clamp(max(video(uv, cobre, 5.0), 0.0) - 0.06, 0.0, 1.0);
   return vec3(0.0);
@@ -247,6 +258,7 @@ export class Compositor {
   private enquadrar: Programa;
   /** O meio a meio do quadro sendo desenhado. */
   private divisaoAtual: { a: number; h: number; y0: number } | null = null;
+  private janelaAtual: { x: number; y: number; w: number; h: number } | null = null;
   /** Um programa por transição (ver `programaDaTransicao`). */
   private transicoes = new Map<number, Programa>();
   private copiar: Programa;
@@ -287,7 +299,7 @@ export class Compositor {
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado', 'uDivisao']);
+    this.enquadrar = this.compilar(ENQUADRAR, ['uVideo', 'uVideoTam', 'uQuadroTam', 'uModo', 'uZoom', 'uLut', 'uLado', 'uDivisao', 'uJanela']);
     this.copiar = this.compilar(COPIAR, ['uA']);
     this.efeito = this.compilar(SHADER_DE_EFEITO, ['uC', 'uTipo', 'uK', 'uJ', 'uNf', 'uTamanho', 'uDir', 'uMascara', 'uOrig', 'uTemMascara']);
     this.camada = this.compilar(CAMADA, ['uM', 'uCaixa', 'uTamanho', 'uProporcao', 'uCobrir', 'uRaio', 'uAlfa', 'uGiro', 'uKb', 'uCortina', 'uMistura', 'uRecorte', 'uLadoALado']);
@@ -398,6 +410,8 @@ export class Compositor {
     gl.uniform1f(p.uniforms.uZoom!, c.zoom);
     const d = this.divisaoAtual;
     gl.uniform3f(p.uniforms.uDivisao!, d?.a ?? 0, d?.h ?? 0, d?.y0 ?? 0);
+    const j = this.janelaAtual;
+    gl.uniform4f(p.uniforms.uJanela!, j?.x ?? 0, j?.y ?? 0, j?.w ?? 0, j?.h ?? 0);
     this.usarCor(c.cor);
     this.desenharRetangulo();
     return true;
@@ -471,6 +485,7 @@ export class Compositor {
     gl.uniform1i(p.uniforms.uModo!, 1);
     gl.uniform1f(p.uniforms.uZoom!, 1);
     gl.uniform3f(p.uniforms.uDivisao!, 0, 0, 0);
+    gl.uniform4f(p.uniforms.uJanela!, 0, 0, 0, 0);
     this.usarCor(cor);
     this.desenharRetangulo();
   }
@@ -526,6 +541,7 @@ export class Compositor {
 
   desenhar(quadro: QuadroParaDesenhar): void {
     this.divisaoAtual = quadro.divisao ?? null;
+    this.janelaAtual = quadro.janela ?? null;
     const gl = this.gl;
     const canvas = gl.canvas as HTMLCanvasElement;
     this.garantirTamanho(canvas.width, canvas.height);

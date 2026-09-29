@@ -33,7 +33,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { QuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import type { EditPlanV1, PalavraDaTranscricao, TimelineOperation } from '@makucho/studio-contracts';
-import { NOME_DO_LAYOUT, NOME_DO_LAYOUT_DA_CENA, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela, definicaoDoSticker } from '@makucho/studio-contracts';
+import { NOME_DO_LAYOUT, NOME_DO_LAYOUT_DA_ANIMACAO, NOME_DO_LAYOUT_DA_CENA, PRESETS_DE_TEXTO, TEXTOS_DE_TELA, agendaDoPlano, definicaoDoEfeitoDeTela, definicaoDoSticker } from '@makucho/studio-contracts';
 import {
   COMPONENTES_DE_TEXTO,
   COR_DO_ELEMENTO,
@@ -1256,7 +1256,7 @@ export function Timeline({
                           cor={m.kind === 'cena' || m.kind === 'html' ? '#6d28d9' : m.kind === 'video' ? '#0e7490' : m.kind === 'sticker' ? '#c2410c' : '#15803d'}
                           rotulo={
                             m.kind === 'html'
-                              ? `Animação · ${m.composicao?.titulo ?? (m.composicao ? NOME_DO_LAYOUT_DA_CENA[m.composicao.layout].split(' (')[0] : '')}`
+                              ? `Animação · ${m.composicao?.titulo ?? (m.composicao ? NOME_DO_LAYOUT_DA_ANIMACAO[m.composicao.layout].split(' (')[0] : '')}`
                               : m.kind === 'cena'
                               ? `Animação · ${m.cena ? NOME_DO_LAYOUT_DA_CENA[m.cena.layout].split(' (')[0] : ''}`
                               : m.kind === 'sticker'

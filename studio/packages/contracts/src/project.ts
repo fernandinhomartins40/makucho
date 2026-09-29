@@ -38,6 +38,8 @@ export const projectInputSchema = z.object({
   videoKind: tipoDeVideoSchema.nullable().optional(),
   /** "O que tem neste vídeo?": o que a IA não vê (preço, oferta, prazo). */
   contentBrief: z.string().trim().max(400).nullable().optional(),
+  /** O estilo das animações (ESTILOS_DE_ANIMACAO) escolhido pela pessoa; nulo = a IA escolhe pelo tom. */
+  animationStyle: z.string().trim().max(40).nullable().optional(),
 });
 
 export type ProjectInput = z.infer<typeof projectInputSchema>;
