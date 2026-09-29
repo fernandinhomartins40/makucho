@@ -32,6 +32,8 @@ for (const layout of [
 }
 const baixo = gradeDaComposicao({ layout: 'meio_a_meio', lado: 'baixo' });
 t('meio a meio com o painel embaixo: a legenda sobe para a base do vídeo', baixo.legenda.y + baixo.legenda.h <= 960 && baixo.baseDaLegenda < 0.5);
+const cima = gradeDaComposicao({ layout: 'meio_a_meio', lado: 'cima' });
+t('meio a meio com o painel em cima: a legenda fica na linha da divisão, fora do rosto', cima.legenda.y < 960 && cima.legenda.y + cima.legenda.h > 960 && cima.legenda.y + cima.legenda.h <= 1100);
 const j = janelaDaComposicao({ layout: 'pip', canto: 'inf-dir' })!;
 t('pip embaixo: a janela termina antes da faixa da legenda', (j.y + j.h) * 1920 <= GRADE.legendaTopo);
 t('a grade vai à IA com números', textoDaGrade({ layout: 'tela_cheia' }).includes('ÁREA ÚTIL') && textoDaGrade({ layout: 'tela_cheia' }).includes('left 64, top 192'));

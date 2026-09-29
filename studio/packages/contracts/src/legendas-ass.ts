@@ -583,8 +583,8 @@ function ancora(plano: EditPlanV1, e: EstiloResolvido) {
  * A base do bloco de legenda num instante, quando algo manda nela além
  * da posição geral: o ajuste daquele trecho (`captions.posicoes`) ou,
  * durante uma animação, a faixa da legenda na grade do layout dela (no
- * meio a meio a legenda vai para a metade do vídeo, nunca sobre o
- * painel). Indefinida = vale a posição geral.
+ * meio a meio com o painel em cima ela fica sobre a linha da divisão, longe do rosto e
+ * fora do conteúdo do painel). Indefinida = vale a posição geral.
  */
 export function baseDaLegendaNoInstante(plano: EditPlanV1, ms: number): number | undefined {
   const manual = plano.captions.posicoes?.find((p) => ms >= p.inicioMs && ms < p.fimMs);

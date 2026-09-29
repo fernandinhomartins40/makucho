@@ -270,7 +270,7 @@ export const captionTrackSchema = z
       .optional(),
     /**
      * Durante uma animação, a legenda vai para a faixa da grade daquele
-     * layout (no meio a meio, a metade do vídeo). Ausente = sim.
+     * layout (no meio a meio com o painel em cima, sobre a linha da divisão). Ausente = sim.
      */
     seguirAnimacoes: z.boolean().optional(),
     /** Legenda do HyperFrames (LEGENDAS_HYPERFRAMES) no lugar da do Studio; ausente = a do Studio. */

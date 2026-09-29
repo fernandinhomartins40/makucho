@@ -45,6 +45,8 @@ export const GRADE = {
   /** A faixa padrão da legenda (a base do bloco em `legendaBase`). */
   legendaTopo: 1200,
   legendaBase: 1440,
+  /** Meio a meio com o painel em cima: a legenda ocupa ± isto em volta da linha da divisão. */
+  legendaCostura: 120,
   /** Folga entre áreas (px). */
   folga: 24,
 } as const;
@@ -93,13 +95,15 @@ export function gradeDaComposicao(c: Pick<ComposicaoHtml, 'layout' | 'lado' | 'd
     const d = c.divisao ?? 0.5;
     const painel = Math.round(d * H);
     if ((c.lado ?? 'cima') === 'cima') {
-      // Painel em cima, rosto embaixo: a legenda fica na metade do vídeo.
-      const legenda = faixaDaLegenda(GRADE.legendaTopo, GRADE.legendaBase);
+      // Painel em cima, rosto embaixo: a legenda fica SOBRE A LINHA da
+      // divisão (metade no painel, metade no vídeo), longe do rosto -- na
+      // faixa padrão ela caía bem na cara de quem fala.
+      const legenda = faixaDaLegenda(painel - GRADE.legendaCostura, painel + GRADE.legendaCostura);
       return {
         layout: 'meio_a_meio (painel em cima)',
-        util: { x: GRADE.margemX, y: GRADE.topo, w: larguraUtil, h: painel - GRADE.folga - GRADE.topo },
+        util: { x: GRADE.margemX, y: GRADE.topo, w: larguraUtil, h: legenda.y - GRADE.folga - GRADE.topo },
         legenda,
-        baseDaLegenda: GRADE.legendaBase / H,
+        baseDaLegenda: (legenda.y + legenda.h) / H,
         video: { x: 0, y: painel, w: W, h: H - painel },
         reservadas: [topoDoApp, { nome: 'legenda do vídeo', r: legenda }],
       };
