@@ -252,8 +252,15 @@ export class FilaService implements OnModuleDestroy {
    * corrigir. `null` quando o worker não respondeu a tempo -- quem chama
    * segue sem a conferência, nunca trava a montagem por ela.
    */
-  async conferir(dados: JobDeConferencia, tempoMs = 90_000): Promise<string[] | null> {
+  async conferir(dados: JobDeConferencia, tempoMs = 30_000): Promise<string[] | null> {
     try {
+      // Sem worker ouvindo a fila (worker antigo, reiniciando, sem memória),
+      // nem enfileira: a conferência é um extra e não pode segurar a montagem.
+      const fila = this.fila(FILA_CONFERENCIA_DE_LAYOUT);
+      if ((await fila.getWorkersCount()) === 0) {
+        this.log.warn('conferência de layout: nenhum worker na fila; seguindo sem ela');
+        return null;
+      }
       if (!this.eventosDaConferencia) {
         this.eventosDaConferencia = new QueueEvents(FILA_CONFERENCIA_DE_LAYOUT, {
           connection: new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: null }),
@@ -261,7 +268,7 @@ export class FilaService implements OnModuleDestroy {
         });
         await this.eventosDaConferencia.waitUntilReady();
       }
-      const job = await this.fila(FILA_CONFERENCIA_DE_LAYOUT).add('conferir', dados, { attempts: 1, removeOnComplete: true, removeOnFail: true });
+      const job = await fila.add('conferir', dados, { attempts: 1, removeOnComplete: true, removeOnFail: true });
       const r: unknown = await job.waitUntilFinished(this.eventosDaConferencia, tempoMs);
       return Array.isArray(r) ? r.map(String) : [];
     } catch (e) {

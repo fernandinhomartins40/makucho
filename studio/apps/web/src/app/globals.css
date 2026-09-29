@@ -502,6 +502,18 @@ h3 {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.botao-sem-estilo {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.botao-sem-estilo:disabled {
+  cursor: default;
+}
 .botao-link {
   flex: none;
   background: none;

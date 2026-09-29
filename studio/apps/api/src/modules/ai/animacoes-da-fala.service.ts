@@ -620,10 +620,14 @@ ${fala}${
     aoAvancar: (pct: number) => void = () => undefined,
   ): Promise<{ criadas: number; nota: string }> {
     const registrar = async (nota: string) => {
-      await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500) } }).catch(() => undefined);
+      await this.prisma.project
+        .update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500) } })
+        .catch((e: unknown) => this.log.error(`nota das animações não gravada no projeto ${projectId}: ${e instanceof Error ? e.message : e}`));
       this.log.log(`animações do projeto ${projectId}: ${nota}`);
       return nota;
     };
+    // Marca o começo: se o processo cair no meio, a nota mostra onde parou.
+    await registrar('Criando as animações…');
     try {
       const atual = await this.planos.atual(sistema, projectId);
       const plano = atual.document;

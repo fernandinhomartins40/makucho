@@ -266,6 +266,7 @@ function Editor({ projectId }: { projectId: string }) {
   // Criando ou refazendo: a nota termina em "…" até a IA terminar.
   const criandoAnimacoes = !!projeto?.animationNote?.endsWith('…');
   const temAnimacoes = !!plano?.mediaLayers?.some((m) => m.kind === 'html');
+  const [verNotaDasAnimacoes, setVerNotaDasAnimacoes] = useState(false);
   // Uma linha: quantas e o estilo; o texto completo da nota fica no title.
   const resumoDasAnimacoes = (() => {
     const nota = projeto?.animationNote;
@@ -1318,13 +1319,26 @@ function Editor({ projectId }: { projectId: string }) {
           {aba === 'ia' && (
             <div className="ia-secao ia-secao--topo">
               {plano && (projeto?.animationNote || !temAnimacoes) && (
-                <div className="aviso aviso--info aviso--linha" role="status" title={projeto?.animationNote ?? undefined}>
+                <div className="aviso aviso--info aviso--linha" role="status" style={{ flexWrap: 'wrap' }}>
                   <IconeAnimacao size={15} />
-                  <span className="aviso__texto">{resumoDasAnimacoes}</span>
+                  {/* Tocar abre a nota inteira: o motivo de não ter animação (no celular não há "passar o mouse"). */}
+                  <button
+                    type="button"
+                    className="aviso__texto botao-sem-estilo"
+                    aria-expanded={verNotaDasAnimacoes}
+                    disabled={!projeto?.animationNote}
+                    onClick={() => setVerNotaDasAnimacoes((v) => !v)}
+                  >
+                    {resumoDasAnimacoes}
+                    {projeto?.animationNote && !criandoAnimacoes ? (verNotaDasAnimacoes ? ' ▴' : ' ▾') : ''}
+                  </button>
                   {!temAnimacoes && (
                     <button type="button" className="botao-link" disabled={criandoAnimacoes} onClick={() => void criarAnimacoesDaFala()}>
                       {criandoAnimacoes ? 'Criando…' : 'Criar'}
                     </button>
+                  )}
+                  {verNotaDasAnimacoes && projeto?.animationNote && (
+                    <span style={{ flexBasis: '100%', fontSize: 12, opacity: 0.85, whiteSpace: 'normal' }}>{projeto.animationNote}</span>
                   )}
                 </div>
               )}

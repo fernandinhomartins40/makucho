@@ -195,6 +195,11 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     // logos, fotos, vídeos) -- para APROVAR no editor, não aplicadas.
     // Sem fala (montagem pelas cenas), não há fala a ilustrar.
     const pelasCenas = (plano as EditPlanV1).clips.every((c) => c.origin === 'cena');
+    if (pelasCenas) {
+      await this.prisma.project
+        .update({ where: { id: projectId }, data: { animationNote: 'Sem animações: o vídeo foi montado pelas cenas (sem fala para explicar).' } })
+        .catch(() => undefined);
+    }
     if (!pelasCenas) {
       await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
       const n = await this.midias.separarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
@@ -221,11 +226,31 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
    * entraram; o motivo de não ter nenhuma fica no projeto.
    */
   private async animarNaMontagem(sistema: TenantContext, projectId: string): Promise<number> {
-    if (!this.animacoesDaFala || process.env.STUDIO_ANIMAR_NA_MONTAGEM === 'off') return 0;
+    // Toda saída deixa um motivo no projeto: "sem animação e sem nota" não
+    // diz nada a ninguém (e foi assim que uma falha passou despercebida).
+    const anotar = (nota: string) =>
+      this.prisma.project
+        .update({ where: { id: projectId }, data: { animationNote: nota } })
+        .catch((e: unknown) => this.log.error(`nota das animações não gravada no projeto ${projectId}: ${e instanceof Error ? e.message : e}`));
+    if (process.env.STUDIO_ANIMAR_NA_MONTAGEM === 'off') {
+      await anotar('Sem animações: desligadas neste servidor (STUDIO_ANIMAR_NA_MONTAGEM=off).');
+      return 0;
+    }
+    if (!this.animacoesDaFala) {
+      this.log.error('animações da montagem: o serviço não foi carregado');
+      await anotar('Sem animações: o serviço de animações não carregou no servidor.');
+      return 0;
+    }
     const avisar = (pct: number) => void this.filas.publicarProgresso(projectId, 'animando', pct).catch(() => undefined);
     avisar(1);
-    const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId, avisar);
-    return r.criadas;
+    try {
+      const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId, avisar);
+      return r.criadas;
+    } catch (e) {
+      this.log.error(`animações da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.stack : e}`);
+      await anotar(`Sem animações: ${e instanceof Error ? e.message : String(e)}`.slice(0, 500));
+      return 0;
+    }
   }
 
   /**
