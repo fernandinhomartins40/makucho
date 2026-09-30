@@ -3367,3 +3367,21 @@
   .pn-passos-rodape .pn-botao { flex: 1; justify-content: center; }
   .pn-passos-rodape > span:empty { display: none; }
 }
+
+/* Anúncio em 3 passos, dentro do modal. */
+.pn-passos-compactos { margin-bottom: 14px; }
+.pn-passos-compactos button { padding: 8px 10px; }
+.pn-passos-compactos .pn-passo-bola { width: 24px; height: 24px; font-size: 0.78rem; }
+.pn-ads-form .pn-ads-grupo + .pn-ads-grupo { margin-top: 10px; }
+
+/* O modal nunca passa da tela: o conteúdo (passos, linhas) se ajusta a ele. */
+.pn-veu { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.pn-modal { min-width: 0; max-width: 100%; }
+.pn-passos > button { min-width: 0; }
+@media (max-width: 520px) {
+  .pn-veu { padding: 8px; }
+  .pn-passos-compactos { display: flex; }
+  .pn-passos-compactos button { flex: none; }
+  .pn-passos-compactos button[data-estado='atual'] { flex: 1; }
+  .pn-passos-compactos button:not([data-estado='atual']) .pn-passo-texto { display: none; }
+}

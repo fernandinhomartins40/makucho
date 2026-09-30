@@ -132,6 +132,8 @@ interface Formulario {
   priority: string;
 }
 
+const PASSOS_DO_ANUNCIO = ['Cliente e peça', 'Onde e quando', 'Valor e cobrança'] as const;
+
 function novoFormulario(): Formulario {
   const inicio = new Date();
   inicio.setMinutes(0, 0, 0);
@@ -283,6 +285,24 @@ function Anuncios() {
   const [resumo, setResumo] = useState<AdsSummaryDto | null>(null);
 
   const [form, setForm] = useState<Formulario | null>(null);
+  // O formulário em 3 passos: cliente e peça, onde e quando, valor e cobrança.
+  const [passoAnuncio, setPassoAnuncio] = useState(0);
+  const formAberto = form !== null;
+  useEffect(() => {
+    if (formAberto) setPassoAnuncio(0);
+  }, [formAberto]);
+  function irParaPassoDoAnuncio(p: number) {
+    if (!form) return;
+    // Anúncio novo: só avança com o que o passo pede.
+    if (!form.id && p > passoAnuncio) {
+      if (passoAnuncio === 0 && form.name.trim().length < 2) return setErro('Dê um nome ao anúncio para continuar.');
+      if (passoAnuncio === 0 && !form.targetUrl.trim()) return setErro('Informe o endereço para onde o anúncio leva.');
+      if (passoAnuncio === 0 && !form.alt.trim()) return setErro('Descreva o anúncio no texto alternativo (para leitores de tela).');
+      if (passoAnuncio === 1 && form.placements.length === 0) return setErro('Escolha ao menos uma posição no site.');
+    }
+    setErro('');
+    setPassoAnuncio(p);
+  }
   const [excluir, setExcluir] = useState<AdvertisementDto | null>(null);
   const [renovar, setRenovar] = useState<{ anuncio: AdvertisementDto; dias: number; valor: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -377,7 +397,13 @@ function Anuncios() {
   async function salvar() {
     if (!form || salvando) return;
     setErro('');
-    const falha = (m: string) => { setErro(m); return; };
+    const falha = (m: string) => {
+      setErro(m);
+      // Leva ao passo onde está o que falta.
+      if (/nome|destino|alternativo|imagem/i.test(m)) setPassoAnuncio(0);
+      else if (/posição|datas/i.test(m)) setPassoAnuncio(1);
+      else setPassoAnuncio(2);
+    };
 
     if (form.name.trim().length < 2) return falha('Informe o nome do anúncio.');
     if (!form.targetUrl.trim()) return falha('Informe o endereço de destino.');
@@ -621,17 +647,32 @@ function Anuncios() {
         largura={760}
         rodape={
           <>
-            <Botao variante="fantasma" disabled={salvando} onClick={() => setForm(null)}>Cancelar</Botao>
-            <Botao variante="primario" carregando={salvando} onClick={salvar}>Salvar</Botao>
+            <Botao variante="fantasma" disabled={salvando} onClick={() => (passoAnuncio > 0 ? irParaPassoDoAnuncio(passoAnuncio - 1) : setForm(null))}>{passoAnuncio > 0 ? '← Voltar' : 'Cancelar'}</Botao>
+            {/* Editando, dá para salvar de qualquer passo; um anúncio novo salva no fim. */}
+            {form?.id && passoAnuncio < 2 && <Botao variante="neutro" carregando={salvando} onClick={salvar}>Salvar</Botao>}
+            {passoAnuncio < 2 ? (
+              <Botao variante="primario" onClick={() => irParaPassoDoAnuncio(passoAnuncio + 1)}>Continuar →</Botao>
+            ) : (
+              <Botao variante="primario" carregando={salvando} onClick={salvar}>{form?.id ? 'Salvar' : 'Salvar anúncio'}</Botao>
+            )}
           </>
         }
       >
         {form && (
           <div className="pn-ads-form">
             <Aviso tipo="erro">{erro}</Aviso>
+            <nav className="pn-passos pn-passos-compactos" aria-label="Passos do anúncio">
+              {PASSOS_DO_ANUNCIO.map((p, i) => (
+                <button key={p} type="button" data-estado={i < passoAnuncio ? 'feito' : i === passoAnuncio ? 'atual' : 'depois'} aria-current={i === passoAnuncio ? 'step' : undefined} onClick={() => irParaPassoDoAnuncio(i)}>
+                  <span className="pn-passo-bola">{i + 1}</span>
+                  <span className="pn-passo-texto"><strong>{p}</strong></span>
+                </button>
+              ))}
+            </nav>
 
-            <fieldset>
-              <legend>1. Cliente</legend>
+            {passoAnuncio === 0 && (
+              <>
+            <fieldset className="pn-ads-grupo">
               <div className="pn-linha">
                 <Campo rotulo="Nome interno do anúncio" obrigatorio>
                   <Entrada value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus maxLength={160} placeholder="Campanha Primavera — Banco X" />
@@ -640,6 +681,8 @@ function Anuncios() {
                   <Entrada value={form.advertiser} onChange={(e) => setForm({ ...form, advertiser: e.target.value })} maxLength={160} placeholder="Banco X" />
                 </Campo>
               </div>
+              <details className="pn-detalhes-simples">
+                <summary>Contato do cliente (opcional)</summary>
               <div className="pn-linha">
                 <Campo rotulo="Contato">
                   <Entrada value={form.contactName} onChange={(e) => setForm({ ...form, contactName: e.target.value })} maxLength={160} />
@@ -651,10 +694,9 @@ function Anuncios() {
                   <Entrada type="tel" value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} maxLength={40} />
                 </Campo>
               </div>
+              </details>
             </fieldset>
-
-            <fieldset>
-              <legend>2. Formato e posições</legend>
+            <fieldset className="pn-ads-grupo">
               <Campo rotulo="Formato" dica={formato ? `${formato.width}×${formato.height} px · ${formato.description}` : 'Sem formato definido: vale em qualquer posição (anúncios antigos).'}>
                 <Selecao
                   value={form.format}
@@ -670,30 +712,6 @@ function Anuncios() {
                   {!form.format && <option value="">Sem formato</option>}
                 </Selecao>
               </Campo>
-              <Campo rotulo="Onde aparece" obrigatorio dica="Só as posições que comportam o formato escolhido.">
-                <div className="pn-posicoes">
-                  {posicoesPermitidas.map((p) => {
-                    const marcada = form.placements.includes(p);
-                    return (
-                      <button key={p} type="button" className={`pn-tag ${marcada ? 'pn-tag-on' : ''}`} aria-pressed={marcada}
-                        onClick={() => setForm({ ...form, placements: marcada ? form.placements.filter((x) => x !== p) : [...form.placements, p] })}>
-                        {POSICOES[p]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </Campo>
-              <Campo rotulo="Aparelho">
-                <Selecao value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })}>
-                  <option value="ALL">Computador e celular</option>
-                  <option value="DESKTOP">Só computador</option>
-                  <option value="MOBILE">Só celular</option>
-                </Selecao>
-              </Campo>
-            </fieldset>
-
-            <fieldset>
-              <legend>3. Peça</legend>
               <div className="pn-linha">
                 <CampoImagem
                   rotulo={formato ? `Imagem ${formato.width}×${formato.height}` : 'Imagem'}
@@ -718,9 +736,34 @@ function Anuncios() {
               </Campo>
               <Alternador marcado={form.openInNewTab} aoMudar={(v) => setForm({ ...form, openInNewTab: v })} rotulo="Abrir em nova aba" />
             </fieldset>
+              </>
+            )}
 
-            <fieldset>
-              <legend>4. Período no ar</legend>
+            {passoAnuncio === 1 && (
+              <>
+            <fieldset className="pn-ads-grupo">
+              <Campo rotulo="Onde aparece" obrigatorio dica="Só as posições que comportam o formato escolhido.">
+                <div className="pn-posicoes">
+                  {posicoesPermitidas.map((p) => {
+                    const marcada = form.placements.includes(p);
+                    return (
+                      <button key={p} type="button" className={`pn-tag ${marcada ? 'pn-tag-on' : ''}`} aria-pressed={marcada}
+                        onClick={() => setForm({ ...form, placements: marcada ? form.placements.filter((x) => x !== p) : [...form.placements, p] })}>
+                        {POSICOES[p]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Campo>
+              <Campo rotulo="Aparelho">
+                <Selecao value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })}>
+                  <option value="ALL">Computador e celular</option>
+                  <option value="DESKTOP">Só computador</option>
+                  <option value="MOBILE">Só celular</option>
+                </Selecao>
+              </Campo>
+            </fieldset>
+            <fieldset className="pn-ads-grupo">
               <div className="pn-linha">
                 <Campo rotulo="Situação">
                   <Selecao value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
@@ -744,9 +787,12 @@ function Anuncios() {
                 ))}
               </div>
             </fieldset>
+              </>
+            )}
 
-            <fieldset>
-              <legend>5. Contrato e cobrança</legend>
+            {passoAnuncio === 2 && (
+              <>
+            <fieldset className="pn-ads-grupo">
               <div className="pn-linha">
                 <Campo rotulo="Como o cliente paga">
                   <Selecao value={form.pricingModel} onChange={(e) => setForm({ ...form, pricingModel: e.target.value as AdPricingModel })}>
@@ -776,9 +822,8 @@ function Anuncios() {
                 <AreaTexto value={form.billingNotes} onChange={(e) => setForm({ ...form, billingNotes: e.target.value })} maxLength={2000} rows={2} placeholder="Nota fiscal, forma de pagamento, combinado com o cliente…" />
               </Campo>
             </fieldset>
-
-            <fieldset>
-              <legend>6. Competição pela posição</legend>
+            <details className="pn-detalhes-simples">
+              <summary>Avançado: competição pela posição (já vem com o padrão)</summary>
               <p className="pn-dica">
                 Quando vários anúncios dividem uma posição, cada exibição é sorteada com chance proporcional
                 a quanto o anúncio rende por mil exibições: quem paga mais aparece mais vezes. A prioridade
@@ -793,7 +838,9 @@ function Anuncios() {
                   <Alternador marcado={form.isExclusive} aoMudar={(v) => setForm({ ...form, isExclusive: v })} rotulo="Exclusivo nas posições escolhidas" />
                 </div>
               </div>
-            </fieldset>
+            </details>
+              </>
+            )}
           </div>
         )}
       </Modal>
