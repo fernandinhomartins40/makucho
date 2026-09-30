@@ -70,6 +70,26 @@ const VAZIO: Estado = {
   scheduledFor: '',
 };
 
+/** Os três passos da matéria: um assunto por vez. */
+const PASSOS_DA_MATERIA = [
+  { titulo: 'Escrever', ajuda: 'Título, texto, foto e vídeo' },
+  { titulo: 'Onde aparece', ajuda: 'Editoria, destaque e assuntos' },
+  { titulo: 'Publicar', ajuda: 'Prévia, resumo e quando vai ao ar' },
+] as const;
+
+const NOME_DA_PLATAFORMA: Record<string, string> = { YOUTUBE: 'YouTube', INSTAGRAM: 'Instagram', TIKTOK: 'TikTok' };
+
+/** A plataforma pelo link colado (a pessoa não precisa escolher). */
+function plataformaDoLink(url: string): 'YOUTUBE' | 'INSTAGRAM' | 'TIKTOK' | null {
+  const u = url.toLowerCase();
+  if (/youtube\.com|youtu\.be/.test(u)) return 'YOUTUBE';
+  if (/instagram\.com/.test(u)) return 'INSTAGRAM';
+  if (/tiktok\.com/.test(u)) return 'TIKTOK';
+  return null;
+}
+
+const normalizarNome = (n: string) => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
 /** Converte ISO para o formato aceito por datetime-local, no fuso local. */
 function paraCampoData(iso: string | null): string {
   if (!iso) return '';
@@ -100,6 +120,13 @@ export function FormularioPost({ id }: { id?: string }) {
   const [excluindo, setExcluindo] = useState(false);
   const [revisoesAbertas, setRevisoesAbertas] = useState(false);
   const [slugTocado, setSlugTocado] = useState(Boolean(id));
+  // O passo (1 Escrever, 2 Onde aparece, 3 Publicar). Depois de criar a
+  // matéria nova a tela recarrega com o id: ?passo=3 volta ao mesmo lugar.
+  const [passo, setPasso] = useState(0);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('passo') === '3') setPasso(2);
+  }, []);
+  const [decisao, setDecisao] = useState<'PUBLISHED' | 'SCHEDULED' | 'REVIEW' | 'DRAFT'>(podePublicar ? 'PUBLISHED' : 'REVIEW');
 
   // O autosave compara com o ultimo estado salvo para nao gravar igual.
   const referencia = useRef<string>('');
@@ -161,11 +188,13 @@ export function FormularioPost({ id }: { id?: string }) {
           setDados(estado);
           referencia.current = JSON.stringify(estado);
         } catch (e) {
-          setErroCarga(e instanceof ErroApi ? e.message : 'Não foi possível carregar a publicação.');
+          setErroCarga(e instanceof ErroApi ? e.message : 'Não foi possível carregar a matéria.');
         }
       } else {
         // Categoria padrao evita um erro bobo de validacao no primeiro save.
-        setDados((d) => ({ ...d, categoryId: cats[0]?.id ?? '' }));
+        // A assinatura padrao e a da propria pessoa, quando existe uma com o nome dela.
+        const minha = auts.find((a) => normalizarNome(a.name) === normalizarNome(usuario?.name ?? ''));
+        setDados((d) => ({ ...d, categoryId: cats[0]?.id ?? '', authorId: d.authorId || minha?.id || '' }));
       }
 
       setCarregando(false);
@@ -174,7 +203,14 @@ export function FormularioPost({ id }: { id?: string }) {
     return () => {
       vivo = false;
     };
-  }, [id, tentativaPost]);
+  }, [id, tentativaPost, usuario?.name]);
+
+  useEffect(() => {
+    if (carregando) return;
+    if (dados.status === 'SCHEDULED') setDecisao('SCHEDULED');
+    else if (dados.status === 'REVIEW' && !podePublicar) setDecisao('REVIEW');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carregando]);
 
   // O slug acompanha o título até alguém editá-lo à mão.
   useEffect(() => {
@@ -261,11 +297,13 @@ export function FormularioPost({ id }: { id?: string }) {
     setCampos({});
 
     if (!dados.title.trim()) {
-      setErro('Informe o título da publicação.');
+      setErro('Escreva o título da matéria.');
+      setPasso(0);
       return;
     }
     if (!dados.categoryId) {
-      setErro('Escolha a categoria.');
+      setErro('Escolha a editoria da matéria.');
+      setPasso(1);
       return;
     }
 
@@ -279,7 +317,7 @@ export function FormularioPost({ id }: { id?: string }) {
         corpo.status = novoStatus;
         if (novoStatus === 'SCHEDULED') {
           if (!dados.scheduledFor) {
-            setErro('Informe a data do agendamento.');
+            setErro('Escolha o dia e a hora do agendamento.');
             return;
           }
           const data = new Date(dados.scheduledFor);
@@ -308,7 +346,7 @@ export function FormularioPost({ id }: { id?: string }) {
       }));
       recado.ok(novoStatus === 'PUBLISHED' ? 'Publicado.' : novoStatus === 'REVIEW' ? 'Enviado para revisão.' : novoStatus === 'SCHEDULED' ? 'Publicação agendada.' : 'Alterações salvas.');
 
-      if (!id) router.replace(`/painel/publicacoes/${salvo.id}`);
+      if (!id) router.replace(`/painel/publicacoes/${salvo.id}${passo === 2 ? '?passo=3' : ''}`);
     } catch (e) {
       if (e instanceof ErroApi) {
         setErro(e.message);
@@ -349,311 +387,339 @@ export function FormularioPost({ id }: { id?: string }) {
     }
   }
 
-  if (carregando) return <Carregando texto="Carregando a publicação…" />;
+  if (carregando) return <Carregando texto="Carregando a matéria…" />;
   if (erroCarga) return <div className="pn-bloco pn-erro-lista"><Aviso tipo="erro">{erroCarga}</Aviso><Botao variante="neutro" onClick={() => setTentativaPost((valor) => valor + 1)}>Tentar novamente</Botao></div>;
 
   const publicado = dados.status === 'PUBLISHED';
+  const novo = !id;
+  const nomeDaEditoria = categorias.find((c) => c.id === dados.categoryId)?.name ?? '';
+  const destaque: 'normal' | 'destaque' | 'manchete' = dados.isHomepageTop ? 'manchete' : dados.isFeatured ? 'destaque' : 'normal';
+  const podeAvancar = passo === 0 ? dados.title.trim().length > 0 : passo === 1 ? Boolean(dados.categoryId) : true;
+  const irPara = (p: number) => {
+    // Numa matéria nova, só avança com o passo anterior completo.
+    if (novo && p > passo && !podeAvancar) {
+      setErro(passo === 0 ? 'Escreva o título para continuar.' : 'Escolha a editoria para continuar.');
+      return;
+    }
+    setErro('');
+    setPasso(p);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const acaoFinal = publicado ? 'salvar' : decisao;
+  const rotuloFinal =
+    acaoFinal === 'salvar' ? 'Salvar alterações' : acaoFinal === 'PUBLISHED' ? 'Publicar agora' : acaoFinal === 'SCHEDULED' ? 'Agendar publicação' : acaoFinal === 'REVIEW' ? 'Enviar para revisão' : 'Salvar rascunho';
+  const concluir = () => {
+    if (acaoFinal === 'salvar') return void salvar();
+    // "Ainda não": grava como está; volta a rascunho só o que estava agendado ou em revisão.
+    if (acaoFinal === 'DRAFT') return void salvar(!novo && dados.status !== 'DRAFT' ? 'DRAFT' : undefined);
+    void salvar(acaoFinal);
+  };
+  const urlDoSite = `makucho.com.br/artigo/${dados.slug || gerarSlug(dados.title) || '…'}`;
 
   return (
     <>
       <TituloPagina
-        titulo={id ? 'Editar publicação' : 'Nova publicação'}
+        fixo
+        titulo={novo ? 'Escrever matéria' : 'Editar matéria'}
         descricao={
           autosaveEstado === 'salvando' ? 'Salvando automaticamente…' : autosaveEstado === 'erro' ? 'Salvamento automático falhou; use Salvar para tentar novamente.' : id && estadoAtual.current !== referencia.current ? 'Alterações ainda não salvas' : salvoEm
             ? `Salvo às ${new Date(salvoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-            : undefined
+            : novo ? 'Três passos: escrever, onde aparece, publicar.' : undefined
         }
         acoes={
           <>
-            <SeloStatus status={dados.status} />
+            {!novo && <SeloStatus status={dados.status} />}
             {id && (
               <Botao variante="fantasma" onClick={() => setRevisoesAbertas(true)}>
-                Revisões
+                Versões anteriores
               </Botao>
             )}
             {publicado && (
               <a href={`/artigo/${dados.slug}`} target="_blank" rel="noopener noreferrer" className="pn-botao pn-botao-fantasma">Ver no site</a>
             )}
             <Botao variante="neutro" carregando={salvando} onClick={() => void salvar()}>
-              Salvar
+              {novo ? 'Salvar rascunho' : 'Salvar'}
             </Botao>
-            {!publicado && podePublicar ? (
-              <Botao variante="primario" carregando={salvando} onClick={() => void salvar('PUBLISHED')}>
-                Publicar
-              </Botao>
-            ) : !publicado ? (
-              <Botao variante="primario" carregando={salvando} onClick={() => void salvar('REVIEW')}>
-                Enviar para revisão
-              </Botao>
-            ) : (
-              <Botao variante="neutro" carregando={salvando} onClick={() => void salvar('DRAFT')}>
-                Despublicar
-              </Botao>
-            )}
           </>
         }
       />
 
+      {/* ---------- Os três passos ---------- */}
+      <nav className="pn-passos" aria-label="Passos da matéria">
+        {PASSOS_DA_MATERIA.map((p, i) => (
+          <button key={p.titulo} type="button" data-estado={i < passo ? 'feito' : i === passo ? 'atual' : 'depois'} aria-current={i === passo ? 'step' : undefined} onClick={() => irPara(i)}>
+            <span className="pn-passo-bola">{i + 1}</span>
+            <span className="pn-passo-texto">
+              <strong>{p.titulo}</strong>
+              <small>{p.ajuda}</small>
+            </span>
+          </button>
+        ))}
+      </nav>
+
       <Aviso tipo="erro">{erro}</Aviso>
       {erroReferencias && <div className="pn-erro-lista"><Aviso tipo="erro">{erroReferencias} O texto em edição foi preservado.</Aviso><Botao variante="neutro" onClick={() => void tentarReferencias()}>Tentar novamente</Botao></div>}
 
-      <div className="pn-editor-grade">
-        {/* ---------- coluna principal ---------- */}
-        <div>
-          <div className="pn-bloco">
-            <Campo rotulo="Título" obrigatorio erro={campos.title}>
-              <Entrada
-                value={dados.title}
-                onChange={(e) => atualizar('title', e.target.value)}
-                placeholder="Copom mantém a Selic e sinaliza cautela"
-                maxLength={255}
-                autoFocus={!id}
-              />
-            </Campo>
-
-            <Campo
-              rotulo="Endereço (slug)"
-              erro={campos.slug}
-              dica={`makucho.com.br/artigo/${dados.slug || '…'}`}
-            >
-              <Entrada
-                value={dados.slug}
-                onChange={(e) => {
-                  setSlugTocado(true);
-                  atualizar('slug', e.target.value);
-                }}
-                placeholder="gerado a partir do título"
-              />
-            </Campo>
-
-            <Campo rotulo="Subtítulo" erro={campos.subtitle}>
-              <Entrada
-                value={dados.subtitle}
-                onChange={(e) => atualizar('subtitle', e.target.value)}
-                maxLength={320}
-              />
-            </Campo>
-
-            <Campo
-              rotulo="Resumo"
-              erro={campos.excerpt}
-              dica="Aparece nos cards e nas buscas. Até 600 caracteres."
-            >
-              <AreaTexto
-                value={dados.excerpt}
-                onChange={(e) => atualizar('excerpt', e.target.value)}
-                maxLength={600}
-              />
-            </Campo>
-          </div>
-
-          <div className="pn-bloco">
-            <h2 className="pn-bloco-h2">Conteúdo</h2>
-            <EditorConteudo
-              valor={dados.content}
-              aoMudar={(doc) => atualizar('content', doc)}
-            />
-          </div>
-
-          <details className="pn-bloco pn-detalhes">
-            <summary>SEO e compartilhamento</summary>
-
-            <Campo
-              rotulo="Título para buscadores"
-              dica="Deixe vazio para usar o título da publicação."
-              erro={campos.seoTitle}
-            >
-              <Entrada
-                value={dados.seoTitle}
-                onChange={(e) => atualizar('seoTitle', e.target.value)}
-                maxLength={200}
-              />
-            </Campo>
-
-            <Campo
-              rotulo="Descrição para buscadores"
-              dica="Deixe vazio para usar o resumo."
-              erro={campos.seoDescription}
-            >
-              <AreaTexto
-                value={dados.seoDescription}
-                onChange={(e) => atualizar('seoDescription', e.target.value)}
-                maxLength={320}
-              />
-            </Campo>
-
-            <CampoImagem
-              rotulo="Imagem de compartilhamento"
-              preset="SOCIAL"
-              midia={dados.ogImage}
-              aoMudar={(m) => atualizar('ogImage', m)}
-              dica="Usada no WhatsApp e nas redes. Sem ela, vale a capa."
-            />
-          </details>
-        </div>
-
-        {/* ---------- coluna lateral ---------- */}
-        <aside className="pn-editor-lado">
-          <div className="pn-bloco">
-            <h2 className="pn-bloco-h2">Publicação</h2>
-
-            <Campo rotulo="Categoria" obrigatorio erro={campos.categoryId}>
-              <Selecao
-                value={dados.categoryId}
-                onChange={(e) => atualizar('categoryId', e.target.value)}
-              >
-                <option value="">Escolha…</option>
-                {categorias.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Selecao>
-            </Campo>
-
-            <Campo rotulo="Autor" erro={campos.authorId}>
-              <Selecao
-                value={dados.authorId}
-                onChange={(e) => atualizar('authorId', e.target.value)}
-              >
-                <option value="">Sem autor</option>
-                {autores.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </Selecao>
-            </Campo>
-
-            {podePublicar && (
-              <Campo rotulo="Agendar para" erro={campos.scheduledFor}>
-                <Entrada
-                  type="datetime-local"
-                  value={dados.scheduledFor}
-                  onChange={(e) => atualizar('scheduledFor', e.target.value)}
-                />
+      {/* ---------- 1. Escrever ---------- */}
+      {passo === 0 && (
+        <div className="pn-editor-grade">
+          <div>
+            <div className="pn-bloco">
+              <Campo rotulo="Título" obrigatorio erro={campos.title}>
+                <Entrada value={dados.title} onChange={(e) => atualizar('title', e.target.value)} placeholder="Copom mantém a Selic e sinaliza cautela" maxLength={255} autoFocus={novo} />
               </Campo>
-            )}
-
-            {podePublicar && dados.scheduledFor && dados.status !== 'SCHEDULED' && (
-              <Botao
-                variante="neutro"
-                className="pn-largo"
-                carregando={salvando}
-                onClick={() => void salvar('SCHEDULED')}
-              >
-                Agendar publicação
-              </Botao>
-            )}
-          </div>
-
-          <div className="pn-bloco">
-            <CampoImagem
-              rotulo="Imagem de capa"
-              preset="HERO"
-              midia={dados.coverImage}
-              aoMudar={(m) => atualizar('coverImage', m)}
-            />
-          </div>
-
-          <div className="pn-bloco">
-            <h2 className="pn-bloco-h2">Tags</h2>
-            <div className="pn-tags">
-              {tags.length === 0 && <small className="pn-dica">Nenhuma tag cadastrada.</small>}
-              {tags.map((t) => {
-                const marcada = dados.tagIds.includes(t.id);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`pn-tag ${marcada ? 'pn-tag-on' : ''}`}
-                    aria-pressed={marcada}
-                    onClick={() =>
-                      atualizar(
-                        'tagIds',
-                        marcada
-                          ? dados.tagIds.filter((x) => x !== t.id)
-                          : // O backend recusa acima de 20.
-                            [...dados.tagIds, t.id].slice(0, 20),
-                      )
-                    }
-                  >
-                    {t.name}
-                  </button>
-                );
-              })}
+              <Campo rotulo="Linha fina (opcional)" erro={campos.subtitle} dica="A frase logo abaixo do título, na página da matéria.">
+                <Entrada value={dados.subtitle} onChange={(e) => atualizar('subtitle', e.target.value)} maxLength={320} />
+              </Campo>
+            </div>
+            <div className="pn-bloco">
+              <h2 className="pn-bloco-h2">Texto</h2>
+              <EditorConteudo valor={dados.content} aoMudar={(doc) => atualizar('content', doc)} />
             </div>
           </div>
-
-          <div className="pn-bloco">
-            <h2 className="pn-bloco-h2">Vídeo</h2>
-
-            <Campo rotulo="Plataforma" erro={campos.videoPlatform}>
-              <Selecao
-                value={dados.videoPlatform}
-                onChange={(e) => atualizar('videoPlatform', e.target.value)}
-              >
-                <option value="">Sem vídeo</option>
-                <option value="YOUTUBE">YouTube</option>
-                <option value="INSTAGRAM">Instagram</option>
-                <option value="TIKTOK">TikTok</option>
-              </Selecao>
-            </Campo>
-
-            {dados.videoPlatform && (
-              <Campo
-                rotulo="Endereço do vídeo"
-                erro={campos.videoUrl}
-                dica="Gera o botão “Assistir no…” no card."
-              >
+          <aside className="pn-editor-lado">
+            <div className="pn-bloco">
+              <CampoImagem rotulo="Foto de capa" preset="HERO" midia={dados.coverImage} aoMudar={(m) => atualizar('coverImage', m)} dica="Aparece no topo da matéria e nas listas do site." />
+            </div>
+            <div className="pn-bloco">
+              <h2 className="pn-bloco-h2">Vídeo (opcional)</h2>
+              <Campo rotulo="Link do vídeo" erro={campos.videoUrl ?? campos.videoPlatform} dica={dados.videoPlatform ? `Reconhecido: ${NOME_DA_PLATAFORMA[dados.videoPlatform] ?? dados.videoPlatform}. Gera o botão “Assistir” na matéria.` : 'Cole o link do YouTube, Instagram ou TikTok.'}>
                 <Entrada
                   value={dados.videoUrl}
-                  onChange={(e) => atualizar('videoUrl', e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=…"
+                  onChange={(e) => {
+                    const url = e.target.value;
+                    const plataforma = plataformaDoLink(url);
+                    setDados((d) => ({ ...d, videoUrl: url, videoPlatform: url.trim() ? plataforma ?? d.videoPlatform : '' }));
+                  }}
                 />
               </Campo>
-            )}
-          </div>
-
-          <div className="pn-bloco">
-            <h2 className="pn-bloco-h2">Destaques</h2>
-            <Alternador
-              marcado={dados.isHomepageTop}
-              aoMudar={(v) => atualizar('isHomepageTop', v)}
-              rotulo="Manchete principal"
-              descricao="Ocupa o destaque grande do topo da home."
-            />
-            <Alternador
-              marcado={dados.isFeatured}
-              aoMudar={(v) => atualizar('isFeatured', v)}
-              rotulo="Em destaque"
-            />
-            <Alternador
-              marcado={dados.isTrending}
-              aoMudar={(v) => atualizar('isTrending', v)}
-              rotulo="Em alta"
-            />
-            <Alternador
-              marcado={dados.isPinned}
-              aoMudar={(v) => atualizar('isPinned', v)}
-              rotulo="Fixar no topo das listas"
-            />
-          </div>
-
-          {id && (
-            <div className="pn-bloco">
-              <Botao variante="perigo" className="pn-largo" onClick={() => setExcluindo(true)}>
-                Excluir publicação
-              </Botao>
+              {dados.videoUrl.trim() && !plataformaDoLink(dados.videoUrl) && (
+                <Campo rotulo="De qual plataforma?">
+                  <Selecao value={dados.videoPlatform} onChange={(e) => atualizar('videoPlatform', e.target.value)}>
+                    <option value="">Escolha…</option>
+                    <option value="YOUTUBE">YouTube</option>
+                    <option value="INSTAGRAM">Instagram</option>
+                    <option value="TIKTOK">TikTok</option>
+                  </Selecao>
+                </Campo>
+              )}
             </div>
-          )}
-        </aside>
+          </aside>
+        </div>
+      )}
+
+      {/* ---------- 2. Onde aparece ---------- */}
+      {passo === 1 && (
+        <div className="pn-passo-corpo">
+          <section className="pn-bloco">
+            <h2 className="pn-bloco-h2">Em qual editoria?</h2>
+            <p className="pn-dica-bloco">A seção do site onde a matéria entra (é também o menu do site).</p>
+            {campos.categoryId && <Aviso tipo="erro">{campos.categoryId}</Aviso>}
+            <div className="pn-escolhas" role="radiogroup" aria-label="Editoria">
+              {categorias.map((c) => (
+                <button key={c.id} type="button" role="radio" aria-checked={dados.categoryId === c.id} onClick={() => atualizar('categoryId', c.id)} style={{ '--cor-escolha': c.color ?? 'var(--pn-azul)' } as React.CSSProperties}>
+                  <i aria-hidden="true" />
+                  {c.name}
+                </button>
+              ))}
+              {categorias.length === 0 && <small className="pn-dica">Nenhuma editoria cadastrada: crie em Organização → Editorias.</small>}
+            </div>
+          </section>
+
+          <section className="pn-bloco">
+            <h2 className="pn-bloco-h2">Na página inicial</h2>
+            <div className="pn-cartoes-escolha" role="radiogroup" aria-label="Destaque na página inicial">
+              {(
+                [
+                  ['normal', 'Normal', 'Entra nas listas da editoria e nas últimas matérias.'],
+                  ['destaque', 'Em destaque', 'Ganha espaço nos blocos de destaque da página inicial.'],
+                  ['manchete', 'Manchete principal', 'O bloco grande do topo da página inicial. Uma por vez.'],
+                ] as const
+              ).map(([valor, titulo, texto]) => (
+                <button
+                  key={valor}
+                  type="button"
+                  role="radio"
+                  aria-checked={destaque === valor}
+                  onClick={() =>
+                    setDados((d) =>
+                      valor === 'normal' ? { ...d, isFeatured: false, isHomepageTop: false } : valor === 'destaque' ? { ...d, isFeatured: true, isHomepageTop: false } : { ...d, isHomepageTop: true },
+                    )
+                  }
+                >
+                  <strong>{titulo}</strong>
+                  <small>{texto}</small>
+                </button>
+              ))}
+            </div>
+            <details className="pn-detalhes-simples">
+              <summary>Mais opções de destaque</summary>
+              <Alternador marcado={dados.isTrending} aoMudar={(v) => atualizar('isTrending', v)} rotulo="Em alta" descricao="Aparece no bloco “Em alta”." />
+              <Alternador marcado={dados.isPinned} aoMudar={(v) => atualizar('isPinned', v)} rotulo="Fixar no topo das listas" descricao="Fica em primeiro na editoria, mesmo com matérias mais novas." />
+            </details>
+          </section>
+
+          <div className="pn-passo-duas">
+            <section className="pn-bloco">
+              <h2 className="pn-bloco-h2">Assuntos</h2>
+              <p className="pn-dica-bloco">Palavras-chave que ligam esta matéria a outras do mesmo tema.</p>
+              <div className="pn-tags">
+                {tags.length === 0 && <small className="pn-dica">Nenhum assunto cadastrado: crie em Organização → Assuntos.</small>}
+                {tags.map((t) => {
+                  const marcada = dados.tagIds.includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`pn-tag ${marcada ? 'pn-tag-on' : ''}`}
+                      aria-pressed={marcada}
+                      onClick={() => atualizar('tagIds', marcada ? dados.tagIds.filter((x) => x !== t.id) : [...dados.tagIds, t.id].slice(0, 20))}
+                    >
+                      {t.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+            <section className="pn-bloco">
+              <h2 className="pn-bloco-h2">Quem assina</h2>
+              <Campo rotulo="Assinatura" erro={campos.authorId} dica="O nome e a foto que aparecem na matéria.">
+                <Selecao value={dados.authorId} onChange={(e) => atualizar('authorId', e.target.value)}>
+                  <option value="">Sem assinatura</option>
+                  {autores.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- 3. Publicar ---------- */}
+      {passo === 2 && (
+        <div className="pn-editor-grade">
+          <div>
+            <section className="pn-bloco">
+              <h2 className="pn-bloco-h2">Como aparece no site</h2>
+              <div className="pn-previa-cartao">
+                <span className="pn-previa-capa" style={dados.coverImage ? { backgroundImage: `url(${dados.coverImage.url})` } : undefined}>
+                  {!dados.coverImage && 'Sem foto de capa'}
+                </span>
+                <span className="pn-previa-corpo">
+                  {nomeDaEditoria && <small>{nomeDaEditoria}</small>}
+                  <strong>{dados.title || 'Título da matéria'}</strong>
+                  <span>{dados.excerpt || 'Escreva o resumo abaixo: é o texto que aparece aqui.'}</span>
+                </span>
+              </div>
+              <Campo rotulo="Resumo" erro={campos.excerpt} dica="Duas ou três linhas que convidam a ler. Aparece nas listas e nas buscas (até 600 caracteres).">
+                <AreaTexto value={dados.excerpt} onChange={(e) => atualizar('excerpt', e.target.value)} maxLength={600} />
+              </Campo>
+            </section>
+
+            <section className="pn-bloco">
+              <h2 className="pn-bloco-h2">Como aparece no Google</h2>
+              <div className="pn-previa-google">
+                <small>{urlDoSite}</small>
+                <strong>{dados.seoTitle || dados.title || 'Título da matéria'}</strong>
+                <span>{dados.seoDescription || dados.excerpt || 'O resumo aparece aqui.'}</span>
+              </div>
+              <details className="pn-detalhes-simples">
+                <summary>Ajustar (opcional)</summary>
+                <Campo rotulo="Endereço da matéria" erro={campos.slug} dica={urlDoSite}>
+                  <Entrada
+                    value={dados.slug}
+                    onChange={(e) => {
+                      setSlugTocado(true);
+                      atualizar('slug', e.target.value);
+                    }}
+                    placeholder="gerado a partir do título"
+                  />
+                </Campo>
+                <Campo rotulo="Título no Google" dica="Vazio = o título da matéria." erro={campos.seoTitle}>
+                  <Entrada value={dados.seoTitle} onChange={(e) => atualizar('seoTitle', e.target.value)} maxLength={200} />
+                </Campo>
+                <Campo rotulo="Descrição no Google" dica="Vazio = o resumo." erro={campos.seoDescription}>
+                  <AreaTexto value={dados.seoDescription} onChange={(e) => atualizar('seoDescription', e.target.value)} maxLength={320} />
+                </Campo>
+                <CampoImagem rotulo="Imagem ao compartilhar" preset="SOCIAL" midia={dados.ogImage} aoMudar={(m) => atualizar('ogImage', m)} dica="Usada no WhatsApp e nas redes. Sem ela, vale a capa." />
+              </details>
+            </section>
+          </div>
+
+          <aside className="pn-editor-lado">
+            <section className="pn-bloco">
+              <h2 className="pn-bloco-h2">{publicado ? 'Esta matéria está no ar' : 'Quando vai ao ar?'}</h2>
+              {publicado ? (
+                <p className="pn-dica-bloco">As alterações salvas aparecem no site na hora.</p>
+              ) : (
+                <div className="pn-cartoes-escolha pn-cartoes-escolha-coluna" role="radiogroup" aria-label="Quando publicar">
+                  {(podePublicar
+                    ? ([
+                        ['PUBLISHED', 'Agora', 'Entra no site assim que você confirmar.'],
+                        ['SCHEDULED', 'Agendar', 'Escolha o dia e a hora; entra sozinha.'],
+                        ['DRAFT', 'Ainda não', 'Fica como rascunho, só no painel.'],
+                      ] as const)
+                    : ([
+                        ['REVIEW', 'Enviar para revisão', 'Um editor confere e publica.'],
+                        ['DRAFT', 'Ainda não', 'Fica como rascunho, só no painel.'],
+                      ] as const)
+                  ).map(([valor, titulo, texto]) => (
+                    <button key={valor} type="button" role="radio" aria-checked={decisao === valor} onClick={() => setDecisao(valor)}>
+                      <strong>{titulo}</strong>
+                      <small>{texto}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!publicado && decisao === 'SCHEDULED' && (
+                <Campo rotulo="Dia e hora" erro={campos.scheduledFor}>
+                  <Entrada type="datetime-local" value={dados.scheduledFor} onChange={(e) => atualizar('scheduledFor', e.target.value)} />
+                </Campo>
+              )}
+              <Botao variante="primario" className="pn-largo" carregando={salvando} onClick={concluir}>
+                {rotuloFinal}
+              </Botao>
+              {publicado && podePublicar && (
+                <Botao variante="neutro" className="pn-largo" carregando={salvando} onClick={() => void salvar('DRAFT')}>
+                  Tirar do ar (voltar a rascunho)
+                </Botao>
+              )}
+            </section>
+            {id && (
+              <div className="pn-bloco">
+                <Botao variante="perigo" className="pn-largo" onClick={() => setExcluindo(true)}>
+                  Excluir matéria
+                </Botao>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {/* ---------- Navegação entre os passos ---------- */}
+      <div className="pn-passos-rodape">
+        {passo > 0 ? (
+          <Botao variante="fantasma" onClick={() => irPara(passo - 1)}>
+            ← Voltar
+          </Botao>
+        ) : (
+          <span />
+        )}
+        {passo < 2 && (
+          <Botao variante="primario" onClick={() => irPara(passo + 1)}>
+            Continuar →
+          </Botao>
+        )}
       </div>
 
       <Confirmacao
         aberto={excluindo}
-        titulo="Excluir publicação"
-        mensagem="A publicação será removida do site. Esta ação não pode ser desfeita."
+        titulo="Excluir matéria"
+        mensagem="A matéria sai do site. Esta ação não pode ser desfeita."
         aoConfirmar={excluir}
         aoCancelar={() => setExcluindo(false)}
       />
