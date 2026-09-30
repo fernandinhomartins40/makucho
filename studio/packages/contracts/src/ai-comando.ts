@@ -141,7 +141,18 @@ const ehMacro = (o: OperacaoDoComando): o is MacroDoComando => o.op === 'estilo_
 export const contextoDoComandoSchema = z
   .object({
     selecionado: z
-      .object({ tipo: z.string().max(20), id: z.string().max(64) })
+      .object({
+        tipo: z.string().max(20),
+        id: z.string().max(64),
+        /**
+         * O item descrito como a pessoa o vê (tipo, nome, texto, instante,
+         * layout, estilo): quando ela pede À IA a partir do item, o pedido
+         * é SOBRE ele -- a IA não precisa adivinhar do que se fala.
+         */
+        descricao: z.string().max(600).optional(),
+        /** O pedido partiu do item ("Pedir à IA" na etiqueta dele): mudar ESTE item. */
+        foco: z.boolean().optional(),
+      })
       .strict()
       .optional(),
     cursorMs: z.number().int().min(0).max(3_600_000).optional(),
@@ -437,7 +448,7 @@ export function resumoDoPlanoParaIa(
   const ctx = recursos.contexto;
   if (ctx?.selecionado || ctx?.cursorMs !== undefined) {
     linhas.push('');
-    if (ctx.selecionado) linhas.push(`Selecionado na timeline: ${ctx.selecionado.tipo} ${ctx.selecionado.id} ("isso", "esse", "este" = ele)`);
+    if (ctx.selecionado) linhas.push(textoDoSelecionado(ctx.selecionado));
     if (ctx.cursorMs !== undefined) linhas.push(`Cursor em ${seg(ctx.cursorMs)} ("aqui", "agora", "neste ponto" = este tempo)`);
   }
   if (ctx?.anterior) {
@@ -632,4 +643,16 @@ export function aplicarComando(plan: EditPlanV1, operacoes: readonly OperacaoDoC
   }
 
   return { plan: atual, aplicadas, ignoradas };
+}
+
+/**
+ * O item selecionado para a IA. Com `foco` (a pessoa pediu a partir do
+ * item), o pedido é sobre ELE: mudar este item, não criar outro nem
+ * mexer nos demais -- a menos que o pedido diga isso.
+ */
+export function textoDoSelecionado(s: NonNullable<ContextoDoComando['selecionado']>): string {
+  const quem = `${s.tipo} ${s.id}${s.descricao ? ` -- ${s.descricao}` : ''}`;
+  return s.foco
+    ? `FOCO DO PEDIDO: a pessoa selecionou na timeline ${quem} e pediu SOBRE ESTE ITEM. Altere este item (pelo id dele); não crie outro nem mexa nos demais, a não ser que o pedido diga isso. "isso", "esse", "ele" = este item.`
+    : `Selecionado na timeline: ${quem} ("isso", "esse", "este" = ele)`;
 }

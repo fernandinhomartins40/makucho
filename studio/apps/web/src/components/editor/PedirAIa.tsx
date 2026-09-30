@@ -12,8 +12,9 @@
 // para pedir. Cada um é uma frase que funciona.
 // ============================================================
 
-import { useState } from 'react';
-import { IconeIA } from '../icones';
+import { useEffect, useRef, useState } from 'react';
+import { IconeFechar, IconeIA } from '../icones';
+import type { FocoDaIa } from '../../lib/focoDaIa';
 
 // Três, e não mais: uma nuvem de sugestões compete com o campo e faz
 // o painel parecer um cardápio.
@@ -34,6 +35,8 @@ export function PedirAIa({
   titulo = 'Peça à IA',
   ajuda = 'Escreva do seu jeito o que quer mudar no vídeo. Ela ajusta a edição para você.',
   exemplos = EXEMPLOS,
+  foco = null,
+  onTirarFoco,
 }: {
   onEnviar: Envio;
   titulo?: string;
@@ -42,7 +45,16 @@ export function PedirAIa({
   extras?: Array<{ rotulo: string; onClick: () => void }>;
   /** O que a IA está fazendo agora (o agente com ferramentas). */
   passos?: string[];
+  /** O item da timeline que é o assunto do pedido (chip acima do campo). */
+  foco?: FocoDaIa | null;
+  onTirarFoco?: () => void;
 }) {
+  const campoRef = useRef<HTMLInputElement>(null);
+  // Chegou um item como assunto: o campo já fica pronto para escrever.
+  const chaveDoFoco = foco ? `${foco.tipo}:${foco.id}` : '';
+  useEffect(() => {
+    if (chaveDoFoco) campoRef.current?.focus();
+  }, [chaveDoFoco]);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resposta, setResposta] = useState<RespostaDaIa | null>(null);
@@ -76,6 +88,19 @@ export function PedirAIa({
         </label>
         <p className="ia-secao__ajuda">{ajuda}</p>
       </div>
+      {foco && (
+        <div className="pedir-ia__foco" role="status">
+          <span className="pedir-ia__foco-rotulo">Sobre</span>
+          <span className="pedir-ia__foco-nome" title={foco.descricao}>
+            {foco.rotulo}
+          </span>
+          {onTirarFoco && (
+            <button type="button" className="pedir-ia__foco-tirar" aria-label="Tirar o item do pedido" title="Tirar o item do pedido" onClick={onTirarFoco}>
+              <IconeFechar size={13} />
+            </button>
+          )}
+        </div>
+      )}
       <form
         className="pedir-ia__linha"
         onSubmit={(e) => {
@@ -84,11 +109,12 @@ export function PedirAIa({
         }}
       >
         <input
+          ref={campoRef}
           id="pedido-ia"
           className="campo__entrada"
           value={texto}
           maxLength={500}
-          placeholder={anterior ? 'Responda ou peça outra coisa…' : 'Ex.: deixa os textos mais chamativos'}
+          placeholder={anterior ? 'Responda ou peça outra coisa…' : foco ? 'O que mudar neste item?' : 'Ex.: deixa os textos mais chamativos'}
           onChange={(e) => setTexto(e.target.value)}
           disabled={enviando}
         />
@@ -110,7 +136,7 @@ export function PedirAIa({
 
       {!resposta && !enviando && (
         <div className="pedir-ia__exemplos">
-          {exemplos.map((e) => (
+          {(foco?.exemplos ?? exemplos).map((e) => (
             <button key={e} type="button" className="pedir-ia__exemplo" onClick={() => void enviar(e)}>
               {e}
             </button>

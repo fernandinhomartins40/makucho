@@ -29,6 +29,7 @@ import {
   IconeMudo,
   IconeCor,
   IconeCortar,
+  IconeIA,
 } from '../icones';
 
 /** O que foi copiado: a operação de "adicionar" pronta, sem posição. */
@@ -52,9 +53,11 @@ interface Props {
   /** Abre a cor do trecho. */
   onCor: () => void;
   onDesmarcar: () => void;
+  /** "Pedir à IA" sobre este item: abre o pedido com ele como foco. */
+  onPedirIa?: () => void;
 }
 
-type Acao = { id: string; rotulo: string; Icone: Icon; fazer?: () => void; menu?: Array<{ rotulo: string; ativo?: boolean; fazer: () => void }>; perigo?: boolean; desligada?: boolean };
+type Acao = { id: string; rotulo: string; Icone: Icon; fazer?: () => void; menu?: Array<{ rotulo: string; ativo?: boolean; fazer: () => void }>; perigo?: boolean; desligada?: boolean; ia?: boolean };
 
 /** Uma operação montada à mão passa pelo schema (tira campos que não são dela). */
 function op(bruta: Record<string, unknown>): TimelineOperation | null {
@@ -62,7 +65,7 @@ function op(bruta: Record<string, unknown>): TimelineOperation | null {
   return r.success ? r.data : null;
 }
 
-export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar }: Props) {
+export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar, onPedirIa }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [lugar, setLugar] = useState<{ x: number; y: number } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
@@ -92,6 +95,8 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
   if (!alvo) return null;
   const acoes = acoesDo(alvo, { plan, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar });
   if (!acoes.length) return null;
+  // Logo depois de "Editar": pedir à IA com este item como assunto.
+  if (onPedirIa) acoes.splice(1, 0, { id: 'ia', rotulo: 'Pedir à IA sobre este item', Icone: IconeIA, fazer: onPedirIa, ia: true });
 
   return (
     <div
@@ -109,6 +114,7 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
             type="button"
             className="etiqueta-do-item__botao"
             data-perigo={a.perigo || undefined}
+            data-ia={a.ia || undefined}
             disabled={a.desligada}
             aria-label={a.rotulo}
             title={a.rotulo}

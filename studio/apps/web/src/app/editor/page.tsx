@@ -45,7 +45,8 @@ import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import type { DestinoSimples } from '../../components/editor/EditorSimples';
-import { EtiquetaDoItem, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
+import { EtiquetaDoItem, type Alvo, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
+import { focoDoItem } from '../../lib/focoDaIa';
 import { BarraMovel, type AcaoMovel } from '../../components/editor/BarraMovel';
 import { GravadorDeNarracao } from '../../components/editor/GravadorDeNarracao';
 import { RailDeFerramentas, type AbaDoEditor, type CategoriaDaColuna } from '../../components/editor/RailDeFerramentas';
@@ -517,6 +518,11 @@ function Editor({ projectId }: { projectId: string }) {
 
   // Os passos do agente, ao vivo, enquanto ele trabalha no pedido.
   const [passosDaIa, setPassosDaIa] = useState<string[]>([]);
+  // O item que a pessoa escolheu como assunto do pedido ("Pedir à IA" na
+  // etiqueta dele). Fica preso até ela tirar o chip -- clicar em outra
+  // coisa na timeline não troca o assunto no meio da conversa.
+  const [alvoDaIa, setAlvoDaIa] = useState<Alvo | null>(null);
+  const focoDaIa = useMemo(() => (alvoDaIa && plano ? focoDoItem(plano, alvoDaIa) : null), [alvoDaIa, plano]);
   const pedirAIa = useCallback(
     async (texto: string, anterior?: { pedido: string; resposta: string }): Promise<RespostaDaIa | null> => {
       setErro(null);
@@ -524,11 +530,22 @@ function Editor({ projectId }: { projectId: string }) {
       try {
         // O que a pessoa está vendo: dá sentido a "isso", "aqui" e às
         // respostas curtas ("sim", "todos") da conversa.
-        const selecionadoAgora = itemSelecionado
-          ? { tipo: itemSelecionado.tipo, id: itemSelecionado.id }
-          : selecionado
-            ? { tipo: 'trecho', id: selecionado }
-            : null;
+        // O foco escolhido vale sobre a seleção; sem foco, a seleção vai
+        // descrita (a IA sabe do que se fala sem abrir o plano).
+        const daSelecao = plano
+          ? itemSelecionado
+            ? focoDoItem(plano, { tipo: 'item', item: itemSelecionado })
+            : selecionado
+              ? focoDoItem(plano, { tipo: 'clipe', id: selecionado })
+              : null
+          : null;
+        const selecionadoAgora = focoDaIa
+          ? { tipo: focoDaIa.tipo, id: focoDaIa.id, descricao: focoDaIa.descricao.slice(0, 600), foco: true }
+          : daSelecao
+            ? { tipo: daSelecao.tipo, id: daSelecao.id, descricao: daSelecao.descricao.slice(0, 600) }
+            : itemSelecionado
+              ? { tipo: itemSelecionado.tipo, id: itemSelecionado.id }
+              : null;
         const inicio = await apiPlanos.comandoEmFundo(projectId, texto, {
           ...(selecionadoAgora ? { selecionado: selecionadoAgora } : {}),
           cursorMs: Math.max(0, Math.round(posicaoMs)),
@@ -554,7 +571,7 @@ function Editor({ projectId }: { projectId: string }) {
         setPassosDaIa([]);
       }
     },
-    [projectId, receberPlano, itemSelecionado, selecionado, posicaoMs],
+    [projectId, receberPlano, itemSelecionado, selecionado, posicaoMs, plano, focoDaIa],
   );
 
   // Desfazer e refazer SALVAM a versão: antes só mudavam a tela, e a
@@ -1398,7 +1415,7 @@ function Editor({ projectId }: { projectId: string }) {
                   </div>
                 </div>
               )}
-              {!semIa && <PedirAIa onEnviar={pedirAIa} passos={passosDaIa} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
+              {!semIa && <PedirAIa onEnviar={pedirAIa} passos={passosDaIa} foco={focoDaIa} onTirarFoco={() => setAlvoDaIa(null)} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
               {midiasSeparadas?.momentos.length ? (
                 <div className="midias-separadas" role="status">
                   <div className="midias-separadas__topo">
@@ -1806,6 +1823,16 @@ function Editor({ projectId }: { projectId: string }) {
           }}
           onOperacao={executar}
           onOperacoes={executarVarias}
+          {...(!semIa
+            ? {
+                onPedirIa: () => {
+                  const alvo: Alvo | null = itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado ? { tipo: 'clipe', id: selecionado } : null;
+                  if (!alvo) return;
+                  setAlvoDaIa(alvo);
+                  abrirPainel('ia');
+                },
+              }
+            : {})}
           onEditar={(estilos) => {
             if (estilos && itemSelecionado?.tipo === 'elemento') setItemSelecionado({ tipo: 'elemento', id: itemSelecionado.id, aba: 'estilos' });
             if (noCelular() || simples) setFolha('inspector');

@@ -14231,3 +14231,22 @@ button.midia-cartao__previa:disabled {
 .detalhes-das-animacoes { flex-basis: 100%; display: grid; gap: 4px; font-size: 12px; opacity: 0.9; white-space: normal; }
 .detalhes-das-animacoes ul { margin: 0; padding-left: 16px; display: grid; gap: 2px; }
 .detalhes-das-animacoes li[data-ok] { color: var(--text-primary); }
+
+/* "Pedir à IA" sobre um item: o chip do assunto acima do campo, e o botão na etiqueta. */
+.pedir-ia__foco {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+  font-size: 12px;
+}
+.pedir-ia__foco-rotulo { color: var(--accent); font-weight: 600; flex-shrink: 0; }
+.pedir-ia__foco-nome { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.pedir-ia__foco-tirar { flex-shrink: 0; display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 999px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.pedir-ia__foco-tirar:hover { background: var(--surface-2); color: var(--text-primary); }
+.etiqueta-do-item__botao[data-ia] { color: var(--accent); }
+

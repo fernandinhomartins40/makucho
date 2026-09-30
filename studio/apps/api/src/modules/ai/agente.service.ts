@@ -59,6 +59,7 @@ import {
   tipoDeVideoPadrao,
   tirarPausas,
   traduzirBusca,
+  textoDoSelecionado,
 } from '@makucho/studio-contracts';
 import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
@@ -299,7 +300,7 @@ export class AgenteService {
       `Vídeo: ${c.plano.clips.length} trechos, ${Math.round(agenda.duracaoMs / 1000)} s, formato ${c.plano.canvas.aspectRatio}.`,
     ];
     const d = c.doEditor;
-    if (d?.selecionado) partes.push(`Selecionado no editor: ${d.selecionado.tipo} ${d.selecionado.id}.`);
+    if (d?.selecionado) partes.push(textoDoSelecionado(d.selecionado));
     if (d?.cursorMs !== undefined) partes.push(`Cursor: ${(d.cursorMs / 1000).toFixed(1)} s.`);
     if (d?.anterior) partes.push(`Conversa anterior -- pedido: "${d.anterior.pedido}" / sua resposta: "${d.anterior.resposta}"`);
     return partes.join('\n');
