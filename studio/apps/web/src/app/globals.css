@@ -14265,3 +14265,11 @@ button.midia-cartao__previa:disabled {
 .vidro-mini[data-noite] .vidro-mini__trilho > i:first-child { background: #3B8BFF; }
 .vidro-mini__gota { position: absolute; left: calc(72% - 9px); top: -4px; width: 18px; height: 14px; border-radius: 999px; background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.2)); -webkit-backdrop-filter: blur(2px) saturate(180%); backdrop-filter: blur(2px) saturate(180%); box-shadow: inset 0 1px 1px #fff, 0 3px 6px -2px rgba(20,28,48,.35); }
 
+/* Visual das animações no "Refazer a análise" (painel da IA): recolhido. */
+.ia-sobre__visual { border: 1px solid var(--border); border-radius: 10px; padding: 0 10px; }
+.ia-sobre__visual summary { padding: 10px 0; cursor: pointer; font-size: 13px; color: var(--text-secondary); }
+.ia-sobre__visual summary strong { color: var(--text-primary); }
+.ia-sobre__visual[open] { padding-bottom: 10px; }
+.ia-sobre__visual .escolha-do-estilo__grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.ia-sobre .ia-sobre__visual > summary { display: block; line-height: 1.4; }

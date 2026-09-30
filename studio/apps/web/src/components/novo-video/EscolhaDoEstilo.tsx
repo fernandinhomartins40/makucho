@@ -68,6 +68,9 @@ export function EscolhaDoEstilo({ valor, onValor, paleta, onPaleta }: Props) {
         ))}
       </div>
 
+      {/* As cores logo abaixo da escolha (no fim da lista, no celular, ninguém achava). */}
+      {atual && <CoresDoEstilo estilo={atual} paleta={paleta} onPaleta={onPaleta} />}
+
       <div className="escolha-do-estilo__grade" role="radiogroup" aria-label="Estilo das animações">
         {filtro === 'todos' && (
           <button
@@ -101,8 +104,6 @@ export function EscolhaDoEstilo({ valor, onValor, paleta, onPaleta }: Props) {
           />
         ))}
       </div>
-
-      {atual && <CoresDoEstilo estilo={atual} paleta={paleta} onPaleta={onPaleta} />}
     </div>
   );
 }

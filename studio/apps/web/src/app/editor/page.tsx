@@ -18,7 +18,8 @@
 //   editando        a proposta real, salva a cada ajuste.
 // ============================================================
 
-import { EstiloDasAnimacoes } from '../../components/editor/EstiloDasAnimacoes';
+import { EscolhaDoEstilo } from '../../components/novo-video/EscolhaDoEstilo';
+import { estiloDeAnimacao } from '@makucho/studio-contracts';
 import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -1944,7 +1945,13 @@ function SobreOVideo({
       <div className="ia-sobre__refazer">
         <p>Não ficou bom? Diga que vídeo é e o que tem nele: a IA monta de novo. A edição atual continua salva.</p>
         <TipoDoVideo tipo={tipo} onTipo={onTipo} resumo={resumo} onResumo={onResumo} id="resumo-no-editor" />
-        <EstiloDasAnimacoes valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} id="estilo-no-editor" />
+        {/* Os mesmos cartões do Novo vídeo, recolhidos: o painel é estreito. */}
+        <details className="ia-sobre__visual">
+          <summary>
+            Visual das animações: <strong>{estiloDeAnimacao(estilo)?.nome ?? 'Automático'}</strong> · Trocar
+          </summary>
+          <EscolhaDoEstilo valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
+        </details>
         <button type="button" className="botao botao--secundario botao--pequeno" disabled={analisando} onClick={onRefazer}>
           <IconeIA size={14} weight="fill" />
           {analisando ? 'Analisando…' : 'Refazer a análise'}
