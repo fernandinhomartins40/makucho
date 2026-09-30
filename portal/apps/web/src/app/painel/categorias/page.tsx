@@ -302,7 +302,9 @@ function Categorias() {
               />
             </Campo>
 
-            <Campo rotulo="Endereço (slug)" dica={`makucho.com.br/categoria/${form.slug || '…'}`}>
+            <details className="pn-detalhes-simples">
+              <summary>Ajustar o endereço no site</summary>
+              <Campo rotulo="Endereço no site" dica={`makucho.com.br/categoria/${form.slug || '…'}`}>
               <Entrada
                 value={form.slug}
                 onChange={(e) => {
@@ -311,6 +313,7 @@ function Categorias() {
                 }}
               />
             </Campo>
+            </details>
 
             <Campo rotulo="Descrição">
               <AreaTexto

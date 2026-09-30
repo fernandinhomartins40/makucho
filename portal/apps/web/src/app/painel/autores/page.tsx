@@ -291,7 +291,7 @@ function Autores() {
                 />
               </Campo>
 
-              <Campo rotulo="Endereço (slug)">
+              <Campo rotulo="Endereço no site" dica={`makucho.com.br/autor/${form.slug || '…'}`}>
                 <Entrada
                   value={form.slug}
                   onChange={(e) => {

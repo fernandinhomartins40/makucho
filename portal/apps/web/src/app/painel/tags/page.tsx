@@ -214,7 +214,9 @@ function Tags() {
               />
             </Campo>
 
-            <Campo rotulo="Endereço (slug)" dica={`makucho.com.br/tag/${form.slug || '…'}`}>
+            <details className="pn-detalhes-simples">
+              <summary>Ajustar o endereço no site</summary>
+              <Campo rotulo="Endereço no site" dica={`makucho.com.br/tag/${form.slug || '…'}`}>
               <Entrada
                 value={form.slug}
                 onChange={(e) => {
@@ -223,6 +225,7 @@ function Tags() {
                 }}
               />
             </Campo>
+            </details>
 
             <Campo rotulo="Descrição">
               <AreaTexto

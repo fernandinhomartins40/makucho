@@ -338,6 +338,19 @@ function Videos() {
           <>
             <Aviso tipo="erro">{erro}</Aviso>
 
+            <Campo rotulo="Link do vídeo" obrigatorio dica="Cole o link do YouTube, Instagram ou TikTok: a plataforma é reconhecida sozinha.">
+              <Entrada
+                value={form.url}
+                onChange={(e) => {
+                  const url = e.target.value.toLowerCase();
+                  const plataforma = /youtube\.com|youtu\.be/.test(url) ? 'YOUTUBE' : /instagram\.com/.test(url) ? 'INSTAGRAM' : /tiktok\.com/.test(url) ? 'TIKTOK' : form.platform;
+                  setForm({ ...form, url: e.target.value, platform: plataforma });
+                }}
+                placeholder="https://www.youtube.com/watch?v=…"
+                autoFocus
+              />
+            </Campo>
+
             <Campo rotulo="Título" obrigatorio>
               <Entrada
                 value={form.title}
@@ -345,7 +358,6 @@ function Videos() {
                   const title = e.target.value;
                   setForm({ ...form, title, slug: slugTocado ? form.slug : gerarSlug(title) });
                 }}
-                autoFocus
                 maxLength={255}
               />
             </Campo>
@@ -371,20 +383,12 @@ function Videos() {
               </Campo>
             </div>
 
-            <Campo rotulo="Endereço do vídeo" obrigatorio>
-              <Entrada
-                value={form.url}
-                onChange={(e) => setForm({ ...form, url: e.target.value })}
-                placeholder="https://www.youtube.com/watch?v=…"
-              />
-            </Campo>
-
-            <Campo rotulo="Categoria">
+            <Campo rotulo="Editoria">
               <Selecao
                 value={form.categoryId}
                 onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
               >
-                <option value="">Sem categoria</option>
+                <option value="">Sem editoria</option>
                 {categorias.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
