@@ -18,7 +18,7 @@ import { NOME_DO_EFEITO, NOME_DO_SOM, NOME_DA_TRANSICAO } from '../biblioteca/ca
 export type AbaDoElemento = 'estilos' | 'texto' | 'fundo' | 'animacao' | 'movimento';
 
 export type ItemDaTimeline =
-  | { tipo: 'legenda'; id: string; wordIds: string[]; manualId?: string; inicioMs: number; fimMs: number; texto: string }
+  | { tipo: 'legenda'; id: string; wordIds: string[]; manualId?: string; inicioMs: number; fimMs: number; texto: string; /** Início de cada palavra (dividir no cursor). */ inicios?: number[]; /** A primeira palavra do bloco seguinte (a divisão não reagrupa os próximos). */ proximaWordId?: string }
   | { tipo: 'corte'; id: string; clipId: string; ms: number }
   /** `aba`: a aba do painel que abre junto (clique duplo = Estilos). */
   | { tipo: 'elemento'; id: string; aba?: AbaDoElemento }
@@ -40,6 +40,8 @@ export interface BlocoNaFaixa {
   texto: string;
   wordIds: string[];
   manualId?: string;
+  /** Início de cada palavra do bloco (na timeline). */
+  inicios: number[];
 }
 
 export interface CorteNaFaixa {
@@ -88,6 +90,7 @@ export function blocosDeLegenda(plan: EditPlanV1, palavras: readonly PalavraDaTr
     fimMs: b.fimMs,
     texto: b.palavras.map((p) => p.texto).join(' '),
     wordIds: b.wordIds ?? [],
+    inicios: b.palavras.map((p) => p.inicioMs),
     ...(b.manualId ? { manualId: b.manualId } : {}),
   }));
 }

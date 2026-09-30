@@ -246,6 +246,35 @@ export const posicionarLegendaNoTrechoSchema = z.object({
   y: z.number().min(0.08).max(0.97).nullable(),
 });
 
+/**
+ * Divide um bloco de legenda: a palavra `wordId` passa a começar um bloco
+ * novo. `proximaWordId` (a primeira do bloco seguinte) também vira quebra,
+ * para a divisão não reagrupar as legendas que vêm depois.
+ */
+export const dividirLegendaSchema = z.object({
+  op: z.literal('dividir_legenda'),
+  wordId: idSchema,
+  proximaWordId: idSchema.optional(),
+});
+
+/** Junta de novo um bloco dividido ao anterior (tira a quebra na palavra). */
+export const juntarLegendaSchema = z.object({
+  op: z.literal('juntar_legenda'),
+  wordId: idSchema,
+});
+
+/**
+ * O tempo de um bloco de legenda (a pinça na timeline), em relação ao
+ * natural: `antesMs` < 0 entra mais cedo; `depoisMs` < 0 sai mais cedo.
+ * Os dois zero voltam ao natural.
+ */
+export const ajustarTempoDaLegendaSchema = z.object({
+  op: z.literal('ajustar_tempo_da_legenda'),
+  wordId: idSchema,
+  antesMs: z.number().int().min(-10_000).max(10_000),
+  depoisMs: z.number().int().min(-10_000).max(10_000),
+});
+
 /** Exclui legendas: as palavras continuam na fala, somem da tela. */
 export const ocultarLegendaSchema = z.object({
   op: z.literal('ocultar_legenda'),
@@ -589,6 +618,9 @@ export const timelineOperationSchema = z
     editarEfeitoSonoroSchema,
     configurarLegendaSchema,
     posicionarLegendaNoTrechoSchema,
+    dividirLegendaSchema,
+    juntarLegendaSchema,
+    ajustarTempoDaLegendaSchema,
     definirTransicaoSchema,
     transicaoEmTodosSchema,
     definirEfeitoSchema,
@@ -977,6 +1009,30 @@ export function aplicarOperacao(
         else captions[chave] = valor;
       }
       novo = { ...novo, captions: captions as EditPlanV1['captions'] };
+      break;
+    }
+
+    case 'dividir_legenda': {
+      const quebras = new Set(novo.captions.quebras ?? []);
+      quebras.add(operacao.wordId);
+      if (operacao.proximaWordId) quebras.add(operacao.proximaWordId);
+      if (quebras.size > 1000) return { ok: false, erro: 'o vídeo já tem o máximo de divisões de legenda' };
+      novo = { ...novo, captions: { ...novo.captions, quebras: [...quebras] } };
+      break;
+    }
+
+    case 'juntar_legenda': {
+      const quebras = (novo.captions.quebras ?? []).filter((w) => w !== operacao.wordId);
+      const tempos = (novo.captions.tempos ?? []).filter((t) => t.wordId !== operacao.wordId);
+      novo = { ...novo, captions: { ...novo.captions, quebras, tempos } };
+      break;
+    }
+
+    case 'ajustar_tempo_da_legenda': {
+      const tempos = (novo.captions.tempos ?? []).filter((t) => t.wordId !== operacao.wordId);
+      if (operacao.antesMs !== 0 || operacao.depoisMs !== 0) tempos.push({ wordId: operacao.wordId, antesMs: operacao.antesMs, depoisMs: operacao.depoisMs });
+      if (tempos.length > 500) return { ok: false, erro: 'o vídeo já tem o máximo de ajustes de tempo da legenda' };
+      novo = { ...novo, captions: { ...novo.captions, tempos } };
       break;
     }
 

@@ -235,6 +235,8 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
   // sem ninguem digitar tempo nenhum.
   const correcoes = new Map(plano.captions.corrections.map((c) => [c.wordId, c.text]));
   const ocultas = new Set(plano.captions.hiddenWordIds ?? []);
+  // Onde a pessoa dividiu: a palavra começa um bloco novo.
+  const quebras = new Set(plano.captions.quebras ?? []);
 
   const blocos: BlocoDeLegenda[] = [];
 
@@ -279,6 +281,7 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
 
       const cabe =
         atual !== null &&
+        !(palavra.id && quebras.has(palavra.id)) &&
         atual.palavras.length < porBloco &&
         caracteres + texto.length + 1 <= maxCaracteres &&
         inicio - atual.fimMs <= PAUSA_QUE_QUEBRA_MS;
@@ -311,6 +314,23 @@ export function montarBlocos(opcoes: OpcoesDoAss): BlocoDeLegenda[] {
 
     blocos.push(...doTrecho);
     inicioNaTimeline = fimDoClip;
+  }
+
+  // O tempo puxado pela pinça (preso à primeira palavra do bloco): entra
+  // e sai antes ou depois do natural, sem invadir o vizinho.
+  const tempos = new Map((plano.captions.tempos ?? []).map((t) => [t.wordId, t]));
+  if (tempos.size) {
+    blocos.forEach((b, i) => {
+      const t = b.wordIds?.[0] ? tempos.get(b.wordIds[0]) : undefined;
+      if (!t) return;
+      const anterior = blocos[i - 1];
+      const proximo = blocos[i + 1];
+      const inicio = Math.max(anterior ? anterior.fimMs : 0, b.inicioMs + t.antesMs);
+      const fim = Math.min(proximo ? proximo.inicioMs + (proximo.wordIds?.[0] ? tempos.get(proximo.wordIds[0])?.antesMs ?? 0 : 0) : inicioNaTimeline, b.fimMs + t.depoisMs);
+      if (fim - inicio < 200) return;
+      b.inicioMs = inicio;
+      b.fimMs = fim;
+    });
   }
 
   // Legendas escritas à mão: já estão no tempo da timeline. As

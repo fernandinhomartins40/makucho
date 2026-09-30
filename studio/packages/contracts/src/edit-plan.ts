@@ -261,6 +261,20 @@ export const captionTrackSchema = z
     /** Legendas incluídas ou reescritas à mão. */
     manual: z.array(legendaManualSchema).max(200).optional(),
     /**
+     * Onde a pessoa DIVIDIU a legenda: cada id é a palavra que começa um
+     * bloco novo (além do agrupamento automático por palavras e pausas).
+     */
+    quebras: z.array(idSchema).max(1000).optional(),
+    /**
+     * O tempo de um bloco puxado pela pinça na timeline, preso à PRIMEIRA
+     * palavra dele (sobrevive a cortes): quanto ele entra antes/depois
+     * (`antesMs`) e sai antes/depois (`depoisMs`) do tempo natural.
+     */
+    tempos: z
+      .array(z.object({ wordId: idSchema, antesMs: z.number().int().min(-10_000).max(10_000), depoisMs: z.number().int().min(-10_000).max(10_000) }).strict())
+      .max(500)
+      .optional(),
+    /**
      * Posição de um TRECHO da legenda (a base do bloco, 0-1), por cima da
      * posição geral: mover uma legenda sem mover todas.
      */

@@ -176,7 +176,8 @@ interface Props {
 }
 
 type Arraste = {
-  tipo: 'clipe' | 'elemento' | 'legenda' | 'som' | 'audio' | 'efeito' | 'midia' | 'narracao' | 'trilha';
+  /** `legendaAuto`: um bloco da legenda da fala (id = a primeira palavra dele), só pela pinça. */
+  tipo: 'clipe' | 'elemento' | 'legenda' | 'legendaAuto' | 'som' | 'audio' | 'efeito' | 'midia' | 'narracao' | 'trilha';
   id: string;
   /** Mover o item inteiro, ou puxar a borda do começo ou do fim. */
   modo: 'mover' | 'inicio' | 'fim';
@@ -306,6 +307,19 @@ export function Timeline({
         onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(100, duracao) });
       } else if (arraste.tipo === 'legenda') {
         onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: inicio, durationMs: duracao });
+      } else if (arraste.tipo === 'legendaAuto') {
+        // A pinça num bloco da fala: guarda quanto ele entra/sai antes ou
+        // depois do tempo natural (a conta parte do ajuste que já existia).
+        const atual = plan.captions.tempos?.find((t) => t.wordId === arraste.id);
+        const naturalInicio = arraste.startMsInicial - (atual?.antesMs ?? 0);
+        const naturalFim = arraste.startMsInicial + arraste.duracaoInicial - (atual?.depoisMs ?? 0);
+        const limitar = (v: number) => Math.max(-10_000, Math.min(10_000, Math.round(v)));
+        onOperacao({
+          op: 'ajustar_tempo_da_legenda',
+          wordId: arraste.id,
+          antesMs: limitar(arraste.modo === 'inicio' ? inicio - naturalInicio : atual?.antesMs ?? 0),
+          depoisMs: limitar(arraste.modo === 'fim' ? inicio + Math.max(200, alinharAoFrame(arraste.atualDuracao)) - naturalFim : atual?.depoisMs ?? 0),
+        });
       } else if (arraste.tipo === 'som') {
         onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: inicio, durationMs: Math.max(50, Math.min(30_000, duracao)) });
       } else if (arraste.tipo === 'trilha') {
@@ -315,6 +329,7 @@ export function Timeline({
     }
 
     const destino = Math.max(0, alinharAoFrame(arraste.atualMs));
+    if (arraste.tipo === 'legendaAuto') return;
     if (arraste.tipo === 'clipe') onOperacao({ op: 'mover_clipe', clipId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'elemento') onOperacao({ op: 'editar_overlay', overlayId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'som') onOperacao({ op: 'editar_efeito_sonoro', soundEffectId: arraste.id, timelineStartMs: destino });
@@ -322,7 +337,7 @@ export function Timeline({
     else if (arraste.tipo === 'efeito') onOperacao({ op: 'editar_efeito_de_tela', effectId: arraste.id, timelineStartMs: destino });
     else if (arraste.tipo === 'midia') onOperacao({ op: 'editar_midia', mediaId: arraste.id, timelineStartMs: destino });
     else onOperacao({ op: 'editar_legenda_manual', legendaId: arraste.id, timelineStartMs: destino });
-  }, [onOperacao]);
+  }, [onOperacao, plan]);
 
   const aoArrastar = useCallback(
     (e: React.PointerEvent) => {
@@ -330,7 +345,8 @@ export function Timeline({
       if (!arraste) return;
 
       const deslocamentoMs = pxParaMs(e.clientX - arraste.xInicial, zoom);
-      const elemento = rolagemRef.current?.querySelector<HTMLElement>(`[data-arrastavel="${arraste.tipo}-${arraste.id}"]`);
+      const chave = arraste.tipo === 'legendaAuto' ? `legenda-lg-${arraste.id}` : `${arraste.tipo}-${arraste.id}`;
+      const elemento = rolagemRef.current?.querySelector<HTMLElement>(`[data-arrastavel="${chave}"]`);
 
       if (arraste.tipo === 'audio') {
         // `atualDuracao` guarda o quanto o som passa da imagem.
@@ -411,6 +427,9 @@ export function Timeline({
       for (const x of plan.voiceovers ?? []) if (x.id !== id) outros.push([x.timelineStartMs, x.timelineStartMs + x.durationMs]);
     } else if (tipo === 'legenda') {
       for (const b of blocos) if (b.manualId && b.manualId !== id) outros.push([b.inicioMs, b.fimMs]);
+    } else if (tipo === 'legendaAuto') {
+      // Um bloco da fala não passa por cima do vizinho (nenhum dos dois).
+      for (const b of blocos) if (b.wordIds[0] !== id) outros.push([b.inicioMs, b.fimMs]);
     }
     const fim = inicio + dur;
     // Trechos de vídeo se reordenam (a agenda os põe em fila): sem teto.
@@ -1190,16 +1209,23 @@ export function Timeline({
                       arrastavel={Boolean(b.manualId) && onOperacao !== undefined}
                       onIniciarArraste={b.manualId ? iniciarArraste('legenda', b.manualId, b.inicioMs, b.fimMs - b.inicioMs) : undefined}
                       onRedimensionar={
-                        b.manualId && onOperacao !== undefined
-                          ? (borda) => iniciarArraste('legenda', b.manualId!, b.inicioMs, b.fimMs - b.inicioMs, borda)
-                          : undefined
+                        onOperacao === undefined
+                          ? undefined
+                          : b.manualId
+                            ? (borda) => iniciarArraste('legenda', b.manualId!, b.inicioMs, b.fimMs - b.inicioMs, borda)
+                            : b.wordIds[0]
+                              ? (borda) => iniciarArraste('legendaAuto', b.wordIds[0]!, b.inicioMs, b.fimMs - b.inicioMs, borda)
+                              : undefined
                       }
                       onSelecionar={() => {
                         onSelecionar?.(null);
+                        const proxima = blocos[blocos.indexOf(b) + 1]?.wordIds[0];
                         onSelecionarItem?.({
                           tipo: 'legenda',
                           id: b.id,
                           wordIds: b.wordIds,
+                          inicios: b.inicios,
+                          ...(proxima && !b.manualId ? { proximaWordId: proxima } : {}),
                           ...(b.manualId ? { manualId: b.manualId } : {}),
                           inicioMs: b.inicioMs,
                           fimMs: b.fimMs,

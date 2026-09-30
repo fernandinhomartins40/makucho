@@ -3,7 +3,7 @@
 // (e se move por trecho).
 // ============================================================
 
-import { ESTILOS_DE_ANIMACAO, contrasteDasCores, GRADE,NOMES_DOS_COMPONENTES, camadasDaLegendaHyperFrames, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
+import { montarBlocos, ESTILOS_DE_ANIMACAO, contrasteDasCores, GRADE,NOMES_DOS_COMPONENTES, camadasDaLegendaHyperFrames, aplicarOperacao, problemasDaComposicao, problemasDeLayout, temaDaAnimacao, baseDaLegendaNoInstante, documentoDaComposicao, gerarAss, gradeDaComposicao, janelaDaComposicao, resolverEstiloDaLegenda, textoDaGrade } from '../src';
 import type { EditPlanV1, PalavraDaTranscricao, Retangulo } from '../src';
 
 let ok = 0,
@@ -132,6 +132,28 @@ const ilegiveis = ESTILOS_DE_ANIMACAO.filter((e) => {
   return contrasteDasCores(tm.texto, tm.fundo) < 4.5;
 }).map((e) => e.chave);
 t(`tema: o texto de todo estilo é legível no fundo (4,5:1)${ilegiveis.length ? ' -- ' + ilegiveis.join(', ') : ''}`, ilegiveis.length === 0);
+
+// ---------- Dividir e a pinça (legenda automática) ----------
+{
+  const pl: EditPlanV1 = { ...plano, mediaLayers: [], captions: { ...plano.captions, wordsPerBlock: 3 } };
+  const ws = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((id, i) => w(id, 500 + i * 450, `palavra${i + 1}`));
+  const blocosDe = (pp: EditPlanV1) => montarBlocos({ plano: pp, estilo, palavras: ws });
+  const antes = blocosDe(pl);
+  t('sem divisão: blocos de 3 palavras', antes.length === 2 && antes[0]!.wordIds!.join() === 'a1,a2,a3');
+  const div = aplicarOperacao(pl, { op: 'dividir_legenda', wordId: 'a2', proximaWordId: 'a4' });
+  const depois = blocosDe(div.plan!);
+  t('dividir: o bloco parte na palavra e os seguintes não se reagrupam', div.ok && depois.map((b) => b.wordIds!.join()).join('|') === 'a1|a2,a3|a4,a5,a6');
+  const junta = aplicarOperacao(div.plan!, { op: 'juntar_legenda', wordId: 'a2' });
+  t('juntar: volta a um bloco só', blocosDe(junta.plan!)[0]!.wordIds!.join() === 'a1,a2,a3');
+  const natural = antes[1]!;
+  const pinca = aplicarOperacao(pl, { op: 'ajustar_tempo_da_legenda', wordId: 'a4', antesMs: 200, depoisMs: -300 });
+  const ajustado = blocosDe(pinca.plan!)[1]!;
+  t('pinça: o bloco entra depois e sai antes', pinca.ok && ajustado.inicioMs === natural.inicioMs + 200 && ajustado.fimMs === natural.fimMs - 300);
+  const invade = blocosDe(aplicarOperacao(pl, { op: 'ajustar_tempo_da_legenda', wordId: 'a4', antesMs: -5000, depoisMs: 0 }).plan!);
+  t('pinça: não invade o bloco anterior', invade[1]!.inicioMs >= invade[0]!.fimMs);
+  const zera = aplicarOperacao(pinca.plan!, { op: 'ajustar_tempo_da_legenda', wordId: 'a4', antesMs: 0, depoisMs: 0 });
+  t('pinça zerada volta ao natural', (zera.plan!.captions.tempos ?? []).length === 0);
+}
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

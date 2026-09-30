@@ -227,6 +227,10 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
 
   const lista: Acao[] = [editar];
   if (i.tipo === 'elemento') lista.push({ id: 'estilo', rotulo: 'Estilo', Icone: IconeTexto, fazer: () => c.onEditar(true) });
+  if (i.tipo === 'legenda') {
+    const dividir = dividirLegenda(i, c.posicaoMs);
+    lista.push({ id: 'dividir', rotulo: dividir ? 'Dividir no cursor' : 'Dividir: leve o cursor para entre duas palavras', Icone: IconeDividir, desligada: !dividir, fazer: () => dividir && c.onOperacoes(dividir) });
+  }
   if (criar) {
     lista.push({
       id: 'duplicar',
@@ -254,6 +258,12 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
     });
   }
   if (mover) mais.push({ rotulo: 'Trazer para o cursor', fazer: () => c.onOperacao(mover(Math.round(c.posicaoMs))) });
+  // Legenda da fala dividida antes: juntar de novo com a anterior; e a pinça volta ao tempo natural.
+  if (i.tipo === 'legenda' && !i.manualId && i.wordIds[0]) {
+    const primeira = i.wordIds[0];
+    if (c.plan.captions.quebras?.includes(primeira)) mais.push({ rotulo: 'Juntar com a legenda anterior', fazer: () => c.onOperacao({ op: 'juntar_legenda', wordId: primeira }) });
+    if (c.plan.captions.tempos?.some((t) => t.wordId === primeira)) mais.push({ rotulo: 'Voltar ao tempo da fala', fazer: () => c.onOperacao({ op: 'ajustar_tempo_da_legenda', wordId: primeira, antesMs: 0, depoisMs: 0 }) });
+  }
   if (mais.length) lista.push({ id: 'mais', rotulo: 'Mais opções', Icone: IconeMaisOpcoes, menu: mais });
   if (remover) {
     lista.push({
@@ -305,6 +315,29 @@ function copiaveis(plan: EditPlanV1, i: ItemDaTimeline): { rotulo: string; inici
     return { rotulo: 'Legenda', inicioMs: i.inicioMs, duracaoMs: d, criar: (ms) => op({ op: 'adicionar_legenda', text: i.texto, durationMs: Math.max(200, Math.min(20_000, Math.round(d))), timelineStartMs: ms }) };
   }
   return null;
+}
+
+/**
+ * Dividir uma legenda no cursor. Da fala: a primeira palavra depois do
+ * cursor começa um bloco novo (e o seguinte fica como estava). Escrita à
+ * mão: o texto se reparte na proporção do tempo e vira duas legendas.
+ */
+function dividirLegenda(i: Extract<ItemDaTimeline, { tipo: 'legenda' }>, cursorMs: number): TimelineOperation[] | null {
+  if (cursorMs <= i.inicioMs + 100 || cursorMs >= i.fimMs - 100) return null;
+  if (i.manualId) {
+    const palavras = i.texto.split(/\s+/).filter(Boolean);
+    if (palavras.length < 2 || cursorMs - i.inicioMs < 200 || i.fimMs - cursorMs < 200) return null;
+    const k = Math.min(palavras.length - 1, Math.max(1, Math.round((palavras.length * (cursorMs - i.inicioMs)) / (i.fimMs - i.inicioMs))));
+    const antes = op({ op: 'editar_legenda_manual', legendaId: i.manualId, text: palavras.slice(0, k).join(' '), durationMs: Math.round(cursorMs - i.inicioMs) });
+    const depois = op({ op: 'adicionar_legenda', text: palavras.slice(k).join(' '), timelineStartMs: Math.round(cursorMs), durationMs: Math.round(i.fimMs - cursorMs) });
+    return antes && depois ? [antes, depois] : null;
+  }
+  const inicios = i.inicios ?? [];
+  // A palavra onde o bloco novo começa: a primeira que começa no cursor ou depois (nunca a primeira do bloco).
+  const k = inicios.findIndex((ms, idx) => idx > 0 && ms >= cursorMs - 60);
+  const wordId = k > 0 ? i.wordIds[k] : undefined;
+  if (!wordId) return null;
+  return [{ op: 'dividir_legenda', wordId, ...(i.proximaWordId ? { proximaWordId: i.proximaWordId } : {}) }];
 }
 
 function removerItem(plan: EditPlanV1, i: ItemDaTimeline): TimelineOperation | null {
