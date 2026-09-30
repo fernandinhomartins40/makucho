@@ -170,9 +170,9 @@ function Configuracoes() {
   return (
     <>
       <TituloPagina
-        titulo="Configurações"
+        titulo="Site e redes"
         fixo
-        descricao="Nome do site, SEO e redes sociais."
+        descricao="O nome do site, como ele aparece no Google e os perfis nas redes."
         acoes={
           <Botao variante="primario" carregando={salvando} onClick={salvar}>
             Salvar alterações

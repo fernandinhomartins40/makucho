@@ -299,8 +299,8 @@ function Mercado() {
   return (
     <>
       <TituloPagina
-        titulo="Mercado"
-        descricao="Indicadores do Radar do mercado, exibido abaixo do cabeçalho do site."
+        titulo="Radar do mercado"
+        descricao="A faixa de cotações (Ibovespa, dólar, bitcoin) logo abaixo do topo do site."
         acoes={
           <>
             {pode(usuario, 'ADMIN') && (

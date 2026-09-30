@@ -152,8 +152,8 @@ function Usuarios() {
   return (
     <>
       <TituloPagina
-        titulo="Usuários"
-        descricao="Quem tem acesso ao painel e com qual permissão."
+        titulo="Equipe"
+        descricao="Quem entra no painel e o que cada um pode fazer."
         acoes={
           <Botao variante="primario" disabled={papeis.length === 0} onClick={() => abrir()}>
             + Novo usuário

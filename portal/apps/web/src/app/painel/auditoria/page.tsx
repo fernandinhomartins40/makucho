@@ -90,8 +90,8 @@ function Auditoria() {
   return (
     <>
       <TituloPagina
-        titulo="Auditoria"
-        descricao="Registro de quem fez o quê no painel."
+        titulo="Histórico de ações"
+        descricao="Quem fez o quê no painel, e quando."
       />
 
       <div className="pn-filtros">

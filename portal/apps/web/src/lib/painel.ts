@@ -287,8 +287,22 @@ export const painel = {
       '/newsletter/stats',
     ),
 
+  // ---------- desempenho do site (o que o Início mostra) ----------
+  resumoDoSite: (dias = 30) =>
+    chamar<{ days: number; views: number; previousViews: number; variationPercent: number | null; uniqueVisitors: number; publishedPosts: number; newsletterSubscribers: number; searches: number }>(
+      `/analytics/summary?days=${dias}`,
+    ),
+  maisLidas: (dias = 30, limite = 5) =>
+    chamar<Array<{ id: string; title: string; slug: string; views: number; category: { name: string; slug: string; color: string | null } | null }>>(
+      `/analytics/top-posts?days=${dias}&limit=${limite}`,
+    ),
+  origensDoTrafego: (dias = 30) =>
+    chamar<{ devices: Array<{ device: string | null; views: number }>; referrers: Array<{ source: string; views: number }> }>(`/analytics/sources?days=${dias}`),
+  termosBuscados: (dias = 30) =>
+    chamar<Array<{ term: string; searches: number; averageResults: number }>>(`/search/popular-terms?days=${dias}`),
+
   // ---------- usuarios ----------
-  usuarios: (f: Pag & { role?: string; status?: string; search?: string } = {}) =>
+  usuarios:(f: Pag & { role?: string; status?: string; search?: string } = {}) =>
     chamar<PaginatedResponse<AuthUser & { createdAt: string; lastLoginAt: string | null }>>(
       `/users${query(f)}`,
     ),

@@ -200,7 +200,7 @@ function Videos() {
     <>
       <TituloPagina
         titulo="Vídeos"
-        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total` : 'Aguardando dados do painel'}
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total · aparecem na página de vídeos do site` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
             + Novo vídeo

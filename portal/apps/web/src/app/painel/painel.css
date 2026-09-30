@@ -3236,3 +3236,86 @@
 .pn .pn-prazo-ok { color: #0e7a55; }
 .pn .pn-prazo-alerta { color: #b45309; font-weight: 600; }
 .pn .pn-prazo-vencido { color: #c81e2e; font-weight: 600; }
+
+/* ── Abas da seção (Conteúdo, Organização, Configurações) ─────── */
+
+.pn-secao-abas {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 18px;
+  border: 1px solid var(--pn-borda);
+  border-radius: 12px;
+  background: #fff;
+  overflow-x: auto;
+  scrollbar-width: none;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.pn-secao-abas a {
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--pn-suave);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.pn-secao-abas a:hover {
+  color: var(--pn-texto);
+  background: var(--pn-canvas, #f5f8fd);
+}
+
+.pn-secao-abas a.pn-secao-aba-ativa {
+  color: #fff;
+  background: var(--pn-azul);
+}
+
+.pn-secao-abas a:focus-visible {
+  outline: 2px solid var(--pn-azul);
+  outline-offset: 2px;
+}
+
+/* ── Início: pendências, desempenho, ranking ─────────────────── */
+
+.pn-inicio-emdia { margin: 0; padding: 14px 16px; border-radius: 10px; background: #ecfdf3; color: #166534; font-weight: 600; }
+.pn-pendencias { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pn-pendencias li { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--pn-borda); border-radius: 12px; background: #fff; }
+.pn-pendencias li[data-tom='atencao'] { border-color: #fcd34d; background: #fffbeb; }
+.pn-pendencia-marca { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--pn-azul); }
+.pn-pendencias li[data-tom='atencao'] .pn-pendencia-marca { background: #f59e0b; }
+.pn-pendencia-texto { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.pn-pendencia-texto small { color: var(--pn-suave); font-size: 0.82rem; }
+.pn-periodo { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--pn-borda); border-radius: 10px; background: #fff; }
+.pn-periodo button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--pn-suave); cursor: pointer; }
+.pn-periodo button[aria-pressed='true'] { background: var(--pn-azul); color: #fff; }
+.pn-cartao-numero { cursor: default; }
+.pn-cartao-numero small { font-size: 0.76rem; color: var(--pn-perigo); }
+.pn-cartao-numero small[data-sobe] { color: var(--pn-ok); }
+.pn-inicio-colunas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 22px; margin-top: 18px; }
+.pn-inicio-colunas h3 { margin: 0 0 10px; font-size: 0.95rem; }
+.pn-ranking { margin: 0; padding: 0 0 0 20px; display: grid; gap: 8px; }
+.pn-ranking li { font-size: 0.88rem; }
+.pn-ranking li { display: list-item; }
+.pn-ranking li > :first-child { display: inline; }
+.pn-ranking li > :last-child { float: right; color: var(--pn-suave); font-variant-numeric: tabular-nums; margin-left: 10px; }
+.pn-ranking a { color: var(--pn-texto); text-decoration: none; }
+.pn-ranking a:hover { color: var(--pn-azul); text-decoration: underline; }
+.pn-ranking-curto { margin-top: 12px; }
+.pn-barras { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pn-barras li { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 8px; font-size: 0.84rem; }
+.pn-barras i { display: block; height: 8px; border-radius: 999px; background: var(--pn-azul); min-width: 4px; }
+.pn-barras small { color: var(--pn-suave); text-align: right; }
+.pn-termos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pn-termos li { padding: 5px 10px; border: 1px solid var(--pn-borda); border-radius: 999px; font-size: 0.84rem; background: #fff; }
+.pn-termos li small { color: var(--pn-suave); margin-left: 4px; }
+.pn-termos li[data-sem-resultado] { border-color: #fcd34d; background: #fffbeb; }
+.pn-dica-pauta { margin: 10px 0 0; font-size: 0.8rem; color: #92400e; }
+.pn-suave { color: var(--pn-suave); margin: 0; font-size: 0.88rem; }
+@media (max-width: 640px) {
+  .pn-pendencias li { flex-wrap: wrap; }
+  .pn-pendencias li .pn-botao { width: 100%; justify-content: center; }
+}
+

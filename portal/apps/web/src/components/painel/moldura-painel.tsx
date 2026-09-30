@@ -9,23 +9,26 @@ import { pode } from '@/lib/painel';
 import { useSessao } from '@/components/painel/sessao';
 import { Carregando } from '@/components/painel/ui';
 
-interface ItemMenu {
+/**
+ * O painel organizado por TAREFA, não por tabela do banco: seis seções.
+ * Cada seção junta as telas de um mesmo assunto em abas (Conteúdo =
+ * matérias, vídeos e imagens; Configurações = site, radar, newsletter,
+ * equipe e histórico). Os endereços antigos continuam os mesmos -- só o
+ * caminho até eles ficou curto.
+ */
+interface Aba {
   href: string;
   rotulo: string;
-  icone: React.ReactNode;
-  /** Papel minimo; o backend valida de novo em cada rota. */
+  /** Papel mínimo; o backend valida de novo em cada rota. */
   minimo: UserRole;
-  /** Grupo da navegacao lateral: menos itens soltos para escanear. */
-  grupo: 'inicio' | 'conteudo' | 'organizacao' | 'site' | 'admin';
 }
 
-const GRUPOS: Array<{ id: ItemMenu['grupo']; rotulo: string | null }> = [
-  { id: 'inicio', rotulo: null },
-  { id: 'conteudo', rotulo: 'Conteúdo' },
-  { id: 'organizacao', rotulo: 'Organização' },
-  { id: 'site', rotulo: 'Site' },
-  { id: 'admin', rotulo: 'Administração' },
-];
+interface Secao {
+  id: string;
+  rotulo: string;
+  icone: React.ReactNode;
+  abas: Aba[];
+}
 
 const I = ({ d }: { d: string }) => (
   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -33,22 +36,55 @@ const I = ({ d }: { d: string }) => (
   </svg>
 );
 
-const MENU: ItemMenu[] = [
-  { href: '/painel', grupo: 'inicio', rotulo: 'Visão geral', minimo: 'AUTHOR', icone: <I d="M3 12h7V3H3zM14 21h7v-9h-7zM14 9h7V3h-7zM3 21h7v-6H3z" /> },
-  { href: '/painel/publicacoes', grupo: 'conteudo', rotulo: 'Publicações', minimo: 'AUTHOR', icone: <I d="M4 4h11l5 5v11H4zM15 4v5h5M8 13h8M8 17h5" /> },
-  { href: '/painel/midia', grupo: 'conteudo', rotulo: 'Mídia', minimo: 'AUTHOR', icone: <I d="M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6" /> },
-  { href: '/painel/videos', grupo: 'conteudo', rotulo: 'Vídeos', minimo: 'AUTHOR', icone: <I d="M3 5h13v14H3zM16 10l5-3v10l-5-3z" /> },
-  { href: '/painel/categorias', grupo: 'organizacao', rotulo: 'Categorias', minimo: 'EDITOR', icone: <I d="M3 6h18M3 12h18M3 18h12" /> },
-  { href: '/painel/tags', grupo: 'organizacao', rotulo: 'Tags', minimo: 'AUTHOR', icone: <I d="M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01" /> },
-  { href: '/painel/autores', grupo: 'organizacao', rotulo: 'Autores', minimo: 'EDITOR', icone: <I d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21a8 8 0 0116 0" /> },
-  { href: '/painel/home', grupo: 'site', rotulo: 'Home', minimo: 'EDITOR', icone: <I d="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" /> },
-  { href: '/painel/mercado', grupo: 'site', rotulo: 'Mercado', minimo: 'EDITOR', icone: <I d="M3 17l6-6 4 4 8-8M15 7h6v6" /> },
-  { href: '/painel/anuncios', grupo: 'site', rotulo: 'Anúncios', minimo: 'ADMIN', icone: <I d="M3 8h18v9H3zM7 21h10M12 17v4" /> },
-  { href: '/painel/newsletter', grupo: 'site', rotulo: 'Newsletter', minimo: 'EDITOR', icone: <I d="M3 5h18v14H3zM3 6l9 7 9-7" /> },
-  { href: '/painel/usuarios', grupo: 'admin', rotulo: 'Usuários', minimo: 'ADMIN', icone: <I d="M9 11a4 4 0 100-8 4 4 0 000 8zM2 21a7 7 0 0114 0M17 11a4 4 0 100-8M22 21a7 7 0 00-5-6.7" /> },
-  { href: '/painel/configuracoes', grupo: 'admin', rotulo: 'Configurações', minimo: 'ADMIN', icone: <I d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 004 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0011 4a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0020 11a2 2 0 110 4z" /> },
-  { href: '/painel/auditoria', grupo: 'admin', rotulo: 'Auditoria', minimo: 'ADMIN', icone: <I d="M12 8v5l3 2M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5" /> },
+export const SECOES: Secao[] = [
+  { id: 'inicio', rotulo: 'Início', icone: <I d="M3 12h7V3H3zM14 21h7v-9h-7zM14 9h7V3h-7zM3 21h7v-6H3z" />, abas: [{ href: '/painel', rotulo: 'Início', minimo: 'AUTHOR' }] },
+  {
+    id: 'conteudo',
+    rotulo: 'Conteúdo',
+    icone: <I d="M4 4h11l5 5v11H4zM15 4v5h5M8 13h8M8 17h5" />,
+    abas: [
+      { href: '/painel/publicacoes', rotulo: 'Matérias', minimo: 'AUTHOR' },
+      { href: '/painel/videos', rotulo: 'Vídeos', minimo: 'AUTHOR' },
+      { href: '/painel/midia', rotulo: 'Imagens', minimo: 'AUTHOR' },
+    ],
+  },
+  { id: 'home', rotulo: 'Página inicial', icone: <I d="M3 10l9-7 9 7v10H3zM9 20v-7h6v7" />, abas: [{ href: '/painel/home', rotulo: 'Página inicial', minimo: 'EDITOR' }] },
+  {
+    id: 'organizacao',
+    rotulo: 'Organização',
+    icone: <I d="M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01" />,
+    abas: [
+      { href: '/painel/categorias', rotulo: 'Editorias', minimo: 'EDITOR' },
+      { href: '/painel/tags', rotulo: 'Assuntos', minimo: 'AUTHOR' },
+      { href: '/painel/autores', rotulo: 'Assinaturas', minimo: 'EDITOR' },
+    ],
+  },
+  { id: 'anuncios', rotulo: 'Anúncios', icone: <I d="M3 8h18v9H3zM7 21h10M12 17v4" />, abas: [{ href: '/painel/anuncios', rotulo: 'Anúncios', minimo: 'ADMIN' }] },
+  {
+    id: 'configuracoes',
+    rotulo: 'Configurações',
+    icone: <I d="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 004 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0011 4a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0020 11a2 2 0 110 4z" />,
+    abas: [
+      { href: '/painel/configuracoes', rotulo: 'Site e redes', minimo: 'ADMIN' },
+      { href: '/painel/mercado', rotulo: 'Radar do mercado', minimo: 'EDITOR' },
+      { href: '/painel/newsletter', rotulo: 'Newsletter', minimo: 'EDITOR' },
+      { href: '/painel/usuarios', rotulo: 'Equipe', minimo: 'ADMIN' },
+      { href: '/painel/auditoria', rotulo: 'Histórico', minimo: 'ADMIN' },
+    ],
+  },
 ];
+
+/** A aba de um caminho (a mais específica). */
+function abaDoCaminho(caminho: string): { secao: Secao; aba: Aba } | null {
+  let achada: { secao: Secao; aba: Aba } | null = null;
+  for (const secao of SECOES) {
+    for (const aba of secao.abas) {
+      const bate = aba.href === '/painel' ? caminho === '/painel' : caminho === aba.href || caminho.startsWith(`${aba.href}/`);
+      if (bate && (!achada || aba.href.length > achada.aba.href.length)) achada = { secao, aba };
+    }
+  }
+  return achada;
+}
 
 export function MolduraPainel({ children }: { children: React.ReactNode }) {
   const { usuario, carregando, sair } = useSessao();
@@ -95,11 +131,10 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  const itens = MENU.filter((i) => pode(usuario, i.minimo));
-  const atual = [...MENU]
-    .sort((a, b) => b.href.length - a.href.length)
-    .find((i) => (i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href)))
-    ?? (caminho === '/painel/senha' ? { href: '/painel/senha', rotulo: 'Minha conta' } : undefined);
+  // Só as seções (e abas) que o papel da pessoa alcança.
+  const secoes = SECOES.map((sc) => ({ ...sc, abas: sc.abas.filter((a) => pode(usuario, a.minimo)) })).filter((sc) => sc.abas.length > 0);
+  const aqui = abaDoCaminho(caminho);
+  const secaoAtual = aqui ? secoes.find((sc) => sc.id === aqui.secao.id) : undefined;
 
   return (
     <div className={`pn ${menuAberto ? 'pn-menu-aberto' : ''}`}>
@@ -116,24 +151,17 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
         </Link>
 
         <nav className="pn-nav" aria-label="Navegação do painel">
-          {GRUPOS.map((g) => {
-            const doGrupo = itens.filter((i) => i.grupo === g.id);
-            if (!doGrupo.length) return null;
-            return (
-              <div key={g.id} className="pn-nav-grupo">
-                {g.rotulo && <span className="pn-nav-rotulo">{g.rotulo}</span>}
-                {doGrupo.map((i) => {
-                  const ativo = i.href === '/painel' ? caminho === '/painel' : caminho.startsWith(i.href);
-                  return (
-                    <Link key={i.href} href={i.href} className={ativo ? 'pn-nav-ativo' : ''} aria-current={ativo ? 'page' : undefined}>
-                      {i.icone}
-                      {i.rotulo}
-                    </Link>
-                  );
-                })}
-              </div>
-            );
-          })}
+          <div className="pn-nav-grupo">
+            {secoes.map((sc) => {
+              const ativo = secaoAtual?.id === sc.id;
+              return (
+                <Link key={sc.id} href={sc.abas[0]!.href} className={ativo ? 'pn-nav-ativo' : ''} aria-current={ativo ? 'page' : undefined}>
+                  {sc.icone}
+                  {sc.rotulo}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="pn-lateral-pe">
@@ -167,10 +195,24 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
 
           <nav className="pn-trilha" aria-label="Você está em">
             <Link href="/painel">Painel</Link>
-            {atual && atual.href !== '/painel' && (
+            {secaoAtual && secaoAtual.id !== 'inicio' && (
               <>
                 <span aria-hidden="true">/</span>
-                <span aria-current="page">{atual.rotulo}</span>
+                {secaoAtual.abas.length > 1 && aqui ? (
+                  <>
+                    <Link href={secaoAtual.abas[0]!.href}>{secaoAtual.rotulo}</Link>
+                    <span aria-hidden="true">/</span>
+                    <span aria-current="page">{aqui.aba.rotulo}</span>
+                  </>
+                ) : (
+                  <span aria-current="page">{secaoAtual.rotulo}</span>
+                )}
+              </>
+            )}
+            {caminho === '/painel/senha' && (
+              <>
+                <span aria-hidden="true">/</span>
+                <span aria-current="page">Minha conta</span>
               </>
             )}
           </nav>
@@ -183,7 +225,22 @@ export function MolduraPainel({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="pn-principal">{children}</main>
+        <main className="pn-principal">
+          {/* As telas de uma mesma seção, em abas: uma seção, um assunto. */}
+          {secaoAtual && secaoAtual.abas.length > 1 && (
+            <nav className="pn-secao-abas" aria-label={secaoAtual.rotulo}>
+              {secaoAtual.abas.map((a) => {
+                const ativa = aqui?.aba.href === a.href;
+                return (
+                  <Link key={a.href} href={a.href} className={ativa ? 'pn-secao-aba-ativa' : ''} aria-current={ativa ? 'page' : undefined}>
+                    {a.rotulo}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
+          {children}
+        </main>
       </div>
 
       <button

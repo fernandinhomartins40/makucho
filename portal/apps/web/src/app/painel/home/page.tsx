@@ -207,8 +207,8 @@ function Home() {
   return (
     <>
       <TituloPagina
-        titulo="Montagem da home"
-        descricao="A ordem destas seções é a ordem da página inicial do site."
+        titulo="Página inicial"
+        descricao="Os blocos da capa do site, de cima para baixo. Mude a ordem, ligue ou desligue cada um."
         acoes={
           <>
             <a href="/" target="_blank" rel="noopener noreferrer">

@@ -109,7 +109,7 @@ function Midia() {
   return (
     <>
       <TituloPagina
-        titulo="Biblioteca de mídia"
+        titulo="Imagens"
         descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} imagem${meta.total === 1 ? '' : 's'}` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => setEnviando(true)}>

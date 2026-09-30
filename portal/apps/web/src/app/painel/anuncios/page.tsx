@@ -321,6 +321,13 @@ function Anuncios() {
 
   useEffect(() => { void carregar(); }, [carregar]);
   useEffect(() => { void carregarResumo(); }, [carregarResumo]);
+  // "Novo anúncio" do Início chega com ?novo=1: o formulário já abre.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('novo') === '1') {
+      setForm(novoFormulario());
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
 
   async function buscar(id: string) {
     return itens.find((a) => a.id === id) ?? (await painel.anuncio(id));

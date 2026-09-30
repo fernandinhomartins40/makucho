@@ -109,11 +109,11 @@ function Tags() {
   return (
     <>
       <TituloPagina
-        titulo="Tags"
-        descricao={dadosCarregados ? `${itens.length} cadastrada${itens.length === 1 ? '' : 's'}` : 'Aguardando dados do painel'}
+        titulo="Assuntos"
+        descricao={dadosCarregados ? `${itens.length} cadastrado${itens.length === 1 ? '' : 's'} · palavras-chave que ligam matérias do mesmo tema (uma matéria pode ter vários)` : 'Aguardando dados do painel'}
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
-            + Nova tag
+            + Novo assunto
           </Botao>
         }
       />
@@ -121,8 +121,8 @@ function Tags() {
       <div className="pn-filtros">
         <Entrada
           className="pn-busca"
-          aria-label="Filtrar tags"
-          placeholder="Filtrar tags…"
+          aria-label="Filtrar assuntos"
+          placeholder="Filtrar assuntos…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
@@ -131,7 +131,7 @@ function Tags() {
       <div className="pn-bloco">
         {erroLista && (
           <div className="pn-erro-lista">
-            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma tag foi carregada.'}</Aviso>
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhum assunto foi carregado.'}</Aviso>
             <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
           </div>
         )}
@@ -139,7 +139,7 @@ function Tags() {
           <Carregando />
         ) : erroLista && !dadosCarregados ? null : visiveis.length === 0 ? (
           <Vazio
-            titulo={busca ? 'Nenhuma tag encontrada' : 'Nenhuma tag'}
+            titulo={busca ? 'Nenhum assunto encontrado' : 'Nenhum assunto'}
             descricao={busca ? 'Tente outro termo.' : 'As tags ajudam a agrupar assuntos.'}
             acao={busca ? <Botao variante="neutro" onClick={() => setBusca('')}>Limpar filtro</Botao> : undefined}
           />
@@ -183,7 +183,7 @@ function Tags() {
       </div>
 
       <Modal
-        titulo={form?.id ? 'Editar tag' : 'Nova tag'}
+        titulo={form?.id ? 'Editar assunto' : 'Novo assunto'}
         aberto={form !== null}
         aoFechar={() => { if (!salvando) setForm(null); }}
         largura={460}
@@ -237,7 +237,7 @@ function Tags() {
 
       <Confirmacao
         aberto={excluir !== null}
-        titulo="Excluir tag"
+        titulo="Excluir assunto"
         mensagem={`"${excluir?.name}" será removida dos artigos que a usam.`}
         aoConfirmar={async () => {
           if (!excluir) return;

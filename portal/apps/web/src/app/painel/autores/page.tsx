@@ -161,11 +161,11 @@ function Autores() {
   return (
     <>
       <TituloPagina
-        titulo="Autores"
-        descricao="Quem assina as publicações do portal."
+        titulo="Assinaturas"
+        descricao="O nome, a foto e a biografia que aparecem no fim de cada matéria."
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
-            + Novo autor
+            + Nova assinatura
           </Botao>
         }
       />
@@ -173,7 +173,7 @@ function Autores() {
       <div className="pn-bloco">
         {erroLista && (
           <div className="pn-erro-lista">
-            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhum autor foi carregado.'}</Aviso>
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma assinatura foi carregada.'}</Aviso>
             <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
           </div>
         )}
@@ -181,11 +181,11 @@ function Autores() {
           <Carregando />
         ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
-            titulo="Nenhum autor"
+            titulo="Nenhuma assinatura"
             descricao="Cadastre quem assina as matérias."
             acao={
               <Botao variante="primario" onClick={() => abrir()}>
-                + Novo autor
+                + Nova assinatura
               </Botao>
             }
           />
@@ -244,7 +244,7 @@ function Autores() {
       </div>
 
       <Modal
-        titulo={form?.id ? 'Editar autor' : 'Novo autor'}
+        titulo={form?.id ? 'Editar assinatura' : 'Nova assinatura'}
         aberto={form !== null}
         aoFechar={() => { if (!salvando) setForm(null); }}
         rodape={
@@ -330,7 +330,7 @@ function Autores() {
 
       <Confirmacao
         aberto={excluir !== null}
-        titulo="Excluir autor"
+        titulo="Excluir assinatura"
         mensagem={`"${excluir?.name}" será removido. Autores com artigos publicados não podem ser excluídos.`}
         aoConfirmar={async () => {
           if (!excluir) return;

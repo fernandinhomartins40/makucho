@@ -159,11 +159,11 @@ function Categorias() {
   return (
     <>
       <TituloPagina
-        titulo="Categorias"
-        descricao="As editorias do portal. A ordem aqui é a ordem do menu e do rodapé."
+        titulo="Editorias"
+        descricao="As grandes seções do portal (Economia, Política...). Toda matéria fica em uma. A ordem aqui é a ordem do menu do site."
         acoes={
           <Botao variante="primario" onClick={() => abrir()}>
-            + Nova categoria
+            + Nova editoria
           </Botao>
         }
       />
@@ -171,7 +171,7 @@ function Categorias() {
       <div className="pn-bloco">
         {erroLista && (
           <div className="pn-erro-lista">
-            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma categoria foi carregada.'}</Aviso>
+            <Aviso tipo="erro">{erroLista} {dadosCarregados ? 'A lista anterior permanece abaixo.' : 'Nenhuma editoria foi carregada.'}</Aviso>
             <Botao variante="neutro" onClick={() => void carregar()}>Tentar novamente</Botao>
           </div>
         )}
@@ -179,11 +179,11 @@ function Categorias() {
           <Carregando />
         ) : erroLista && !dadosCarregados ? null : itens.length === 0 ? (
           <Vazio
-            titulo="Nenhuma categoria"
+            titulo="Nenhuma editoria"
             descricao="Crie a primeira editoria do portal."
             acao={
               <Botao variante="primario" onClick={() => abrir()}>
-                + Nova categoria
+                + Nova editoria
               </Botao>
             }
           />
@@ -268,7 +268,7 @@ function Categorias() {
       </div>
 
       <Modal
-        titulo={form?.id ? 'Editar categoria' : 'Nova categoria'}
+        titulo={form?.id ? 'Editar editoria' : 'Nova editoria'}
         aberto={form !== null}
         aoFechar={() => { if (!salvando) setForm(null); }}
         rodape={
@@ -338,7 +338,7 @@ function Categorias() {
             </Campo>
 
             <CampoImagem
-              rotulo="Capa da categoria"
+              rotulo="Capa da editoria"
               preset="CATEGORY"
               midia={form.coverImage}
               aoMudar={(m) => setForm({ ...form, coverImage: m })}
@@ -360,7 +360,7 @@ function Categorias() {
 
       <Confirmacao
         aberto={excluir !== null}
-        titulo="Excluir categoria"
+        titulo="Excluir editoria"
         mensagem={`"${excluir?.name}" será removida. Categorias com artigos não podem ser excluídas.`}
         aoConfirmar={async () => {
           if (!excluir) return;

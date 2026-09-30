@@ -154,23 +154,23 @@ function Lista() {
   return (
     <>
       <TituloPagina
-        titulo="Publicações"
-        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total` : 'Aguardando dados do painel'}
+        titulo="Matérias"
+        descricao={dadosCarregados ? `${meta.total.toLocaleString('pt-BR')} no total · análises, notícias e artigos do site` : 'Aguardando dados do painel'}
         acoes={
-          <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Nova publicação</Link>
+          <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Escrever matéria</Link>
         }
       />
 
       <div className="pn-filtros">
         <Entrada
           className="pn-busca"
-          aria-label="Buscar publicações por título"
+          aria-label="Buscar matérias pelo título"
           placeholder="Buscar por título…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
         <Selecao
-          aria-label="Filtrar publicações por status"
+          aria-label="Filtrar matérias pela situação"
           value={status}
           onChange={(e) => alterarStatus(e.target.value)}
         >
@@ -181,14 +181,14 @@ function Lista() {
           ))}
         </Selecao>
         <Selecao
-          aria-label="Filtrar publicações por categoria"
+          aria-label="Filtrar matérias pela editoria"
           value={categoria}
           onChange={(e) => {
             setPagina(1);
             setCategoria(e.target.value);
           }}
         >
-          <option value="">Todas as categorias</option>
+          <option value="">Todas as editorias</option>
           {categorias.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -199,8 +199,8 @@ function Lista() {
 
       {erroCategorias && (
         <div className="pn-erro-lista">
-          <Aviso tipo="erro">As categorias não foram carregadas. O filtro por categoria pode estar incompleto.</Aviso>
-          <Botao variante="neutro" onClick={() => void carregarCategorias()}>Recarregar categorias</Botao>
+          <Aviso tipo="erro">As editorias não foram carregadas. O filtro por editoria pode estar incompleto.</Aviso>
+          <Botao variante="neutro" onClick={() => void carregarCategorias()}>Recarregar editorias</Botao>
         </div>
       )}
 
@@ -215,12 +215,12 @@ function Lista() {
           <Carregando />
         ) : erroLista && !dadosCarregados ? null : posts.length === 0 ? (
           <Vazio
-            titulo="Nenhuma publicação encontrada"
-            descricao="Ajuste os filtros ou crie uma nova publicação."
+            titulo="Nenhuma matéria encontrada"
+            descricao="Ajuste os filtros ou escreva uma matéria nova."
             acao={
               <div className="pn-acoes">
                 {(status || categoria || busca) && <Botao variante="neutro" onClick={limparFiltros}>Limpar filtros</Botao>}
-                <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Nova publicação</Link>
+                <Link href="/painel/publicacoes/nova" className="pn-botao pn-botao-primario">+ Escrever matéria</Link>
               </div>
             }
           />
@@ -230,7 +230,7 @@ function Lista() {
               <thead>
                 <tr>
                   <th>Título</th>
-                  <th>Categoria</th>
+                  <th>Editoria</th>
                   <th>Status</th>
                   <th>Data</th>
                   <th style={{ textAlign: 'right' }}>Ações</th>
@@ -292,7 +292,7 @@ function Lista() {
 
       <Confirmacao
         aberto={excluir !== null}
-        titulo="Excluir publicação"
+        titulo="Excluir matéria"
         mensagem={`"${excluir?.title}" será removida. Esta ação não pode ser desfeita.`}
         aoConfirmar={confirmarExclusao}
         aoCancelar={() => setExcluir(null)}
