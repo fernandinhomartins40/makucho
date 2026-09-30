@@ -51,6 +51,7 @@ import {
   gerarAss,
   planoPrecisaDeAss,
   resolverEstiloDaLegenda,
+  baseDaLegendaNoInstante,
 } from '@makucho/studio-contracts';
 import type { Transcricao } from '../../lib/api';
 import { CamadaDeLegendas } from './CamadaDeLegendas';
@@ -116,6 +117,11 @@ interface Props {
   onAbrirEstilos?: (overlayId: string) => void;
   /** Soltou a legenda num ponto ou num tamanho novo. */
   onAjustarLegenda?: (mudanca: { y?: number; sizeScale?: number }) => void;
+  /**
+   * Arrastar a legenda no vídeo muda SÓ o bloco que está na tela (a
+   * posição daquele trecho); Shift+arrastar muda a posição de todas.
+   */
+  onPosicionarBloco?: (inicioMs: number, fimMs: number, y: number) => void;
   /** Gravando narração: toca SEM SOM a partir daqui (null para). */
   gravandoDe?: number | null;
 }
@@ -142,6 +148,7 @@ export function Palco({
   onAjustarMidia,
   onAbrirEstilos,
   onAjustarLegenda,
+  onPosicionarBloco,
   gravandoDe = null,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
@@ -831,7 +838,7 @@ export function Palco({
   // mostra o texto de verdade andando e crescendo -- e ao soltar vira
   // uma operação no plano, a mesma que o render lê.
   const [arrasteDoTexto, setArrasteDoTexto] = useState<{ id: string; x?: number; y?: number; sizeScale?: number } | null>(null);
-  const [arrasteDaLegenda, setArrasteDaLegenda] = useState<{ y?: number; sizeScale?: number } | null>(null);
+  const [arrasteDaLegenda, setArrasteDaLegenda] = useState<{ y?: number; sizeScale?: number; bloco?: { inicioMs: number; fimMs: number } } | null>(null);
   const [legendaSelecionada, setLegendaSelecionada] = useState(false);
   const planoDaPrevia = useMemo(() => {
     let p = plan;
@@ -845,7 +852,14 @@ export function Palco({
         }),
       };
     }
-    if (arrasteDaLegenda) p = { ...p, captions: { ...p.captions, ...arrasteDaLegenda } };
+    if (arrasteDaLegenda) {
+      const { bloco, ...mudanca } = arrasteDaLegenda;
+      // Arrastando um bloco só: a prévia move só ele (a posição do trecho).
+      if (bloco && mudanca.y !== undefined) {
+        const outras = (p.captions.posicoes ?? []).filter((x) => x.fimMs <= bloco.inicioMs || x.inicioMs >= bloco.fimMs);
+        p = { ...p, captions: { ...p.captions, posicoes: [...outras, { ...bloco, y: mudanca.y }] } };
+      } else p = { ...p, captions: { ...p.captions, ...mudanca } };
+    }
     return p;
   }, [plan, arrasteDoTexto, arrasteDaLegenda]);
   // Legenda do HyperFrames: camadas de animação por cima das outras.
@@ -1056,9 +1070,13 @@ export function Palco({
     const largura = larguraDoTexto(estilo.caixaAlta ? texto.toUpperCase() : texto, fonte, estilo.tamanhoPx) + 2 * estilo.contorno.largura;
     const linhas = Math.max(1, Math.ceil(largura / util));
     const altura = linhas * estilo.tamanhoPx * 1.1 + 2 * estilo.contorno.largura;
-    // A base do bloco: arrastada, ou a da posição escolhida.
+    // A base do bloco: a dele (ajuste do trecho ou a faixa da animação), a
+    // arrastada para todas, ou a da posição escolhida -- a mesma conta da legenda.
+    const doBloco = baseDaLegendaNoInstante(planoDaPrevia, bloco.inicioMs);
     const base =
-      c.y !== undefined
+      doBloco !== undefined
+        ? doBloco * height
+        : c.y !== undefined
         ? c.y * height
         : c.position === 'top'
           ? height * 0.14 + altura
@@ -1072,6 +1090,7 @@ export function Palco({
       altura: (altura + 16) / height,
       escala: c.sizeScale ?? 1,
       baseY: base / height,
+      bloco: { inicioMs: bloco.inicioMs, fimMs: bloco.fimMs },
     };
   }, [planoDaPrevia, marcaDoVideo, palavras, desligados, posicaoMs]);
 
@@ -1082,6 +1101,9 @@ export function Palco({
     setLegendaSelecionada(true);
     const inicio = ponto(e);
     const base0 = caixaDaLegenda.baseY;
+    // Só este bloco (o que está na tela); com Shift, todas.
+    const soEste = !!onPosicionarBloco && !e.shiftKey;
+    const bloco = caixaDaLegenda.bloco;
     let ultimo = base0;
     let moveu = false;
     acompanhar(
@@ -1089,10 +1111,13 @@ export function Palco({
         const p = ponto(ev);
         ultimo = Math.min(0.97, Math.max(0.08, base0 + p.y - inicio.y));
         moveu = moveu || Math.abs(p.y - inicio.y) > 0.004;
-        if (moveu) setArrasteDaLegenda({ y: ultimo });
+        if (moveu) setArrasteDaLegenda(soEste ? { y: ultimo, bloco } : { y: ultimo });
       },
       () => {
-        if (moveu) onAjustarLegenda({ y: Math.round(ultimo * 1000) / 1000 });
+        if (!moveu) return;
+        const y = Math.round(ultimo * 1000) / 1000;
+        if (soEste) onPosicionarBloco!(bloco.inicioMs, bloco.fimMs, y);
+        else onAjustarLegenda({ y });
       },
       () => setArrasteDaLegenda(null),
     );
@@ -1392,7 +1417,7 @@ export function Palco({
               height: `${caixaDaLegenda.altura * 100}%`,
             }}
             aria-label="Mover a legenda"
-            title="Legenda: arraste para subir ou descer · canto para o tamanho"
+            title={onPosicionarBloco ? 'Legenda: arraste para mover só esta (Shift: todas) · canto para o tamanho' : 'Legenda: arraste para subir ou descer · canto para o tamanho'}
             onPointerDown={arrastarLegenda}
             onBlur={() => setLegendaSelecionada(false)}
           >

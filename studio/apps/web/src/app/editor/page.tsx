@@ -1649,6 +1649,10 @@ function Editor({ projectId }: { projectId: string }) {
               } else executar({ op: 'editar_overlay', overlayId: id, style: { sizeScale } });
             }}
             onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
+            onPosicionarBloco={(inicioMs, fimMs, y) => {
+              executar({ op: 'posicionar_legenda_no_trecho', inicioMs: Math.round(inicioMs), fimMs: Math.round(fimMs), y });
+              setAviso('Só esta legenda mudou de lugar. Para mover todas, segure Shift ao arrastar ou use Legendas → Posição.');
+            }}
             midiaSelecionada={itemSelecionado?.tipo === 'midia' ? itemSelecionado.id : null}
             onSelecionarMidia={(id) => setItemSelecionado({ tipo: 'midia', id })}
             onAjustarMidia={(id, mudanca) => {
