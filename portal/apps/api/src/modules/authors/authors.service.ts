@@ -25,7 +25,8 @@ export class AuthorsService {
       include: this.incluir,
       orderBy: { name: 'asc' },
     });
-    return autores.map((a) => this.paraDto(a));
+    // A lista do painel (inativos inclusos) leva o vinculo com a conta; a do site, nao.
+    return autores.map((a) => this.paraDto(a, !apenasAtivos));
   }
 
   async buscarPorSlug(slug: string): Promise<AuthorDto> {
@@ -47,7 +48,7 @@ export class AuthorsService {
     if (!autor) {
       throw new NotFoundException({ code: 'AUTHOR_NOT_FOUND', message: 'Autor não encontrado' });
     }
-    return this.paraDto(autor);
+    return this.paraDto(autor, true);
   }
 
   async criar(
@@ -57,6 +58,7 @@ export class AuthorsService {
   ): Promise<AuthorDto> {
     const nome = dados.name as string;
     const slug = await this.slugDisponivel((dados.slug as string) || gerarSlug(nome));
+    await this.soltarConta(dados.userId);
 
     const autor = await this.prisma.author.create({
       data: { ...(dados as Record<string, unknown>), name: nome, slug },
@@ -72,7 +74,7 @@ export class AuthorsService {
       request,
     });
 
-    return this.paraDto(autor);
+    return this.paraDto(autor, true);
   }
 
   async atualizar(
@@ -84,6 +86,7 @@ export class AuthorsService {
     await this.buscarPorId(id);
 
     const atualizacao = { ...dados };
+    await this.soltarConta(dados.userId, id);
     if (typeof dados.slug === 'string' && dados.slug) {
       atualizacao.slug = await this.slugDisponivel(dados.slug, id);
     }
@@ -103,7 +106,7 @@ export class AuthorsService {
       request,
     });
 
-    return this.paraDto(autor);
+    return this.paraDto(autor, true);
   }
 
   async excluir(id: string, userId: string, request: Request): Promise<void> {
@@ -137,6 +140,18 @@ export class AuthorsService {
     });
   }
 
+  /**
+   * Uma pessoa assina com um nome so (userId e unico): ligar a conta a esta
+   * assinatura solta a ligacao anterior, em vez de falhar na restricao.
+   */
+  private async soltarConta(userId: unknown, manterId?: string): Promise<void> {
+    if (typeof userId !== 'string' || !userId) return;
+    await this.prisma.author.updateMany({
+      where: { userId, ...(manterId ? { id: { not: manterId } } : {}) },
+      data: { userId: null },
+    });
+  }
+
   private async slugDisponivel(base: string, ignorarId?: string): Promise<string> {
     const slug = gerarSlug(base);
     const ocupados = await this.prisma.author.findMany({
@@ -152,6 +167,7 @@ export class AuthorsService {
 
   private paraDto(autor: {
     id: string;
+    userId?: string | null;
     name: string;
     slug: string;
     bio: string | null;
@@ -163,7 +179,7 @@ export class AuthorsService {
     linkedin: string | null;
     website: string | null;
     avatarMedia?: Parameters<MediaService['paraDto']>[0] | null;
-  }): AuthorDto {
+  }, interno = false): AuthorDto {
     return {
       id: autor.id,
       name: autor.name,
@@ -177,6 +193,7 @@ export class AuthorsService {
       twitter: autor.twitter,
       linkedin: autor.linkedin,
       website: autor.website,
+      ...(interno ? { userId: autor.userId ?? null } : {}),
     };
   }
 }

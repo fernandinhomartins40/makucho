@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import NextImage from 'next/image';
 import type { AuthorDto, MediaDto } from '@makucho/types';
 import { gerarSlug } from '@makucho/validation';
-import { ErroApi, painel } from '@/lib/painel';
+import { ErroApi, painel, pode } from '@/lib/painel';
+import { useSessao } from '@/components/painel/sessao';
 import { MolduraPainel, TituloPagina } from '@/components/painel/moldura-painel';
 import { CampoImagem, miniatura } from '@/components/painel/seletor-midia';
 import {
@@ -15,6 +16,7 @@ import {
   Confirmacao,
   Entrada,
   Modal,
+  Selecao,
   AreaTexto,
   Vazio,
   useRecado,
@@ -33,6 +35,8 @@ interface Formulario {
   twitter: string;
   linkedin: string;
   website: string;
+  /** A conta da equipe que assina com este nome ('' = ninguém). */
+  userId: string;
 }
 
 const NOVO: Formulario = {
@@ -47,6 +51,7 @@ const NOVO: Formulario = {
   twitter: '',
   linkedin: '',
   website: '',
+  userId: '',
 };
 
 const REDES = [
@@ -70,6 +75,16 @@ function Autores() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [slugTocado, setSlugTocado] = useState(false);
+  const { usuario } = useSessao();
+  const admin = pode(usuario, 'ADMIN');
+  const [equipe, setEquipe] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  useEffect(() => {
+    if (!admin) return;
+    painel
+      .usuarios({ perPage: 100 })
+      .then((r) => setEquipe(r.data.map((u) => ({ id: u.id, name: u.name, email: u.email }))))
+      .catch(() => undefined);
+  }, [admin]);
 
   async function carregar() {
     const requisicao = ++requisicaoAtual.current;
@@ -111,6 +126,7 @@ function Autores() {
             twitter: a.twitter ?? '',
             linkedin: a.linkedin ?? '',
             website: a.website ?? '',
+            userId: a.userId ?? '',
           }
         : { ...NOVO },
     );
@@ -143,6 +159,8 @@ function Autores() {
         twitter: limpo(form.twitter),
         linkedin: limpo(form.linkedin),
         website: limpo(form.website),
+        // Só quem vê a equipe (administração) muda a ligação com a conta.
+        ...(admin ? { userId: form.userId || null } : {}),
       };
 
       if (form.id) await painel.atualizarAutor(form.id, corpo);
@@ -301,6 +319,19 @@ function Autores() {
                 />
               </Campo>
             </div>
+
+            {admin && (
+              <Campo rotulo="Quem da equipe assina com este nome" dica="Ao escrever uma matéria, essa pessoa já começa com esta assinatura.">
+                <Selecao value={form.userId} onChange={(e) => setForm({ ...form, userId: e.target.value })}>
+                  <option value="">Ninguém da equipe (assinatura só no site)</option>
+                  {equipe.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.email})
+                    </option>
+                  ))}
+                </Selecao>
+              </Campo>
+            )}
 
             <Campo rotulo="Biografia">
               <AreaTexto

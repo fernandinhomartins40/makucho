@@ -193,7 +193,7 @@ export function FormularioPost({ id }: { id?: string }) {
       } else {
         // Categoria padrao evita um erro bobo de validacao no primeiro save.
         // A assinatura padrao e a da propria pessoa, quando existe uma com o nome dela.
-        const minha = auts.find((a) => normalizarNome(a.name) === normalizarNome(usuario?.name ?? ''));
+        const minha = auts.find((a) => a.userId && a.userId === usuario?.id) ?? auts.find((a) => normalizarNome(a.name) === normalizarNome(usuario?.name ?? ''));
         setDados((d) => ({ ...d, categoryId: cats[0]?.id ?? '', authorId: d.authorId || minha?.id || '' }));
       }
 
@@ -203,7 +203,7 @@ export function FormularioPost({ id }: { id?: string }) {
     return () => {
       vivo = false;
     };
-  }, [id, tentativaPost, usuario?.name]);
+  }, [id, tentativaPost, usuario?.name, usuario?.id]);
 
   useEffect(() => {
     if (carregando) return;

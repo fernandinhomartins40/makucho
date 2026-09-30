@@ -342,6 +342,8 @@ export interface AuthorDto {
   twitter: string | null;
   linkedin: string | null;
   website: string | null;
+  /** Painel apenas: a conta da equipe que assina com este nome (nunca vai ao site). */
+  userId?: string | null;
 }
 
 /** Versao enxuta usada em listagens e cards. */
