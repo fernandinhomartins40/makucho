@@ -37,6 +37,7 @@ export interface FiltroPosts {
   tagSlug?: string;
   isFeatured?: boolean;
   isTrending?: boolean;
+  isHomepageTop?: boolean;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
@@ -303,6 +304,11 @@ export class PostsService {
       campos.publishedAt = new Date();
     }
 
+    // A manchete principal e uma so: a nova tira a anterior.
+    if (campos.isHomepageTop === true) {
+      await this.prisma.post.updateMany({ where: { isHomepageTop: true }, data: { isHomepageTop: false } });
+    }
+
     const post = await this.prisma.post.create({
       // Os campos ja foram validados por criarPostSchema; o Prisma nao
       // consegue inferir isso a partir de um Record<string, unknown>.
@@ -352,7 +358,7 @@ export class PostsService {
   ): Promise<PostDto> {
     const atual = await this.prisma.post.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, createdById: true, status: true, title: true, publishedAt: true },
+      select: { id: true, createdById: true, status: true, title: true, publishedAt: true, isHomepageTop: true },
     });
 
     if (!atual) {
@@ -408,6 +414,11 @@ export class PostsService {
     }
 
     const post = await this.prisma.$transaction(async (tx) => {
+      // A manchete principal e uma so: marcar esta tira a anterior.
+      if (atualizacao.isHomepageTop === true && !atual.isHomepageTop) {
+        await tx.post.updateMany({ where: { isHomepageTop: true, id: { not: id } }, data: { isHomepageTop: false } });
+      }
+
       if (tagIds) {
         await tx.postTag.deleteMany({ where: { postId: id } });
         if (tagIds.length > 0) {
@@ -766,6 +777,7 @@ export class PostsService {
     if (filtro.tagSlug) where.tags = { some: { tag: { slug: filtro.tagSlug } } };
     if (filtro.isFeatured !== undefined) where.isFeatured = filtro.isFeatured;
     if (filtro.isTrending !== undefined) where.isTrending = filtro.isTrending;
+    if (filtro.isHomepageTop !== undefined) where.isHomepageTop = filtro.isHomepageTop;
 
     if (filtro.status === 'PUBLISHED') {
       // Nao mostra o que tem data futura, mesmo marcado como publicado.

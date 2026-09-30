@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import type { HomepageSectionAdminDto, HomepageSectionType, PostSummaryDto, VideoDto } from '@makucho/types';
 import { AD_PLACEMENTS } from '@makucho/types';
 import { ErroApi, painel } from '@/lib/painel';
@@ -22,14 +23,14 @@ import {
 /** Cada tipo explica o que renderiza, para a escolha não ser adivinhação. */
 const TIPOS: Record<HomepageSectionType, { rotulo: string; descricao: string }> = {
   HERO: { rotulo: 'Destaque principal', descricao: 'O bloco grande do topo, com a manchete.' },
-  LATEST_POSTS: { rotulo: 'Últimas publicações', descricao: 'Os artigos mais recentes.' },
-  TRENDING: { rotulo: 'Em alta', descricao: 'Artigos marcados como “em alta”.' },
+  LATEST_POSTS: { rotulo: 'Últimas matérias', descricao: 'As matérias mais recentes.' },
+  TRENDING: { rotulo: 'Em alta', descricao: 'Matérias marcadas como “em alta”.' },
   VIDEOS: { rotulo: 'Vídeos', descricao: 'Grade com os vídeos publicados.' },
-  CATEGORIES: { rotulo: 'Editorias', descricao: 'Atalhos para as categorias.' },
+  CATEGORIES: { rotulo: 'Editorias', descricao: 'Atalhos para as editorias do site.' },
   MOST_READ: { rotulo: 'Mais lidas', descricao: 'Ranking por número de leituras.' },
   NEWSLETTER: { rotulo: 'Newsletter', descricao: 'Formulário de inscrição.' },
   AD_SLOT: { rotulo: 'Espaço de anúncio', descricao: 'Faixa publicitária.' },
-  CUSTOM_POSTS: { rotulo: 'Seleção manual', descricao: 'Artigos escolhidos a dedo.' },
+  CUSTOM_POSTS: { rotulo: 'Seleção manual', descricao: 'Matérias escolhidas a dedo.' },
 };
 
 interface Formulario {
@@ -54,9 +55,19 @@ function Home() {
   const [busca, setBusca] = useState('');
   const [opcoes, setOpcoes] = useState<Array<{ id: string; title: string }>>([]);
   const [buscando, setBuscando] = useState(false);
+  // O que está no topo agora: a manchete e os destaques marcados nas matérias.
+  const [manchete, setManchete] = useState<PostSummaryDto | null>(null);
+  const [destaques, setDestaques] = useState<PostSummaryDto[]>([]);
 
   async function carregar() {
     setCarregando(true);
+    void Promise.allSettled([
+      painel.posts({ status: 'PUBLISHED', isHomepageTop: true, perPage: 1 }),
+      painel.posts({ status: 'PUBLISHED', isFeatured: true, perPage: 6 }),
+    ]).then(([m, d]) => {
+      setManchete(m.status === 'fulfilled' ? m.value.data[0] ?? null : null);
+      setDestaques(d.status === 'fulfilled' ? d.value.data : []);
+    });
     try {
       const s = await painel.secoesHome();
       setSecoes([...s].sort((a, b) => a.position - b.position));
@@ -215,22 +226,58 @@ function Home() {
               <Botao variante="fantasma">Ver a home</Botao>
             </a>
             <Botao variante="primario" onClick={() => abrir()}>
-              + Nova seção
+              + Novo bloco
             </Botao>
           </>
         }
       />
 
+      {/* O topo da página inicial vem das matérias: aqui a pessoa vê o que está lá e onde mudar. */}
+      <section className="pn-bloco pn-home-topo" aria-labelledby="home-topo">
+        <header className="pn-bloco-topo">
+          <h2 id="home-topo">No topo agora</h2>
+          <small className="pn-suave">Escolhido em cada matéria, no passo “Onde aparece”.</small>
+        </header>
+        <div className="pn-home-topo-grade">
+          <div>
+            <span className="pn-rotulo">Manchete principal</span>
+            {manchete ? (
+              <Link href={`/painel/publicacoes/${manchete.id}`} className="pn-home-manchete">
+                <strong>{manchete.title}</strong>
+                <small>{manchete.category.name} · trocar na matéria</small>
+              </Link>
+            ) : (
+              <p className="pn-suave">Nenhuma matéria marcada como manchete: o topo mostra a seleção do bloco “Destaque principal” ou as matérias em destaque.</p>
+            )}
+          </div>
+          <div>
+            <span className="pn-rotulo">Em destaque ({destaques.length})</span>
+            {destaques.length ? (
+              <ul className="pn-home-destaques">
+                {destaques.map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/painel/publicacoes/${p.id}`}>{p.title}</Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="pn-suave">Nenhuma matéria em destaque.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div className="pn-home-grade">
       <div className="pn-bloco">
         {carregando ? (
           <Carregando />
         ) : secoes.length === 0 ? (
           <Vazio
-            titulo="Nenhuma seção"
+            titulo="Nenhum bloco"
             descricao="Monte a home adicionando as seções na ordem que quiser."
             acao={
               <Botao variante="primario" onClick={() => abrir()}>
-                + Nova seção
+                + Novo bloco
               </Botao>
             }
           />
@@ -288,8 +335,24 @@ function Home() {
         )}
       </div>
 
+      <aside className="pn-bloco pn-home-esboco" aria-label="Como a página inicial fica">
+        <h2 className="pn-bloco-h2">Como fica</h2>
+        <p className="pn-dica-bloco">De cima para baixo, só os blocos visíveis. Toque num bloco para editar.</p>
+        <div className="pn-esboco-tela">
+          <div className="pn-esboco-cabecalho" aria-hidden="true" />
+          {secoes.filter((s) => s.isVisible).map((s) => (
+            <button key={s.id} type="button" className="pn-esboco-bloco" data-tipo={s.type} onClick={() => abrir(s)} title={`Editar: ${s.title || TIPOS[s.type].rotulo}`}>
+              <span className="pn-esboco-nome">{s.title || TIPOS[s.type].rotulo}</span>
+              <EsbocoDoTipo tipo={s.type} />
+            </button>
+          ))}
+          {secoes.every((s) => !s.isVisible) && <p className="pn-suave">Nenhum bloco visível: a página inicial fica vazia.</p>}
+        </div>
+      </aside>
+      </div>
+
       <Modal
-        titulo={form?.id ? 'Editar seção' : 'Nova seção'}
+        titulo={form?.id ? 'Editar bloco' : 'Novo bloco da página inicial'}
         aberto={form !== null}
         aoFechar={() => setForm(null)}
         rodape={
@@ -307,6 +370,20 @@ function Home() {
           <>
             <Aviso tipo="erro">{erro}</Aviso>
 
+            {!form.id && (
+              <div className="pn-campo">
+                <span className="pn-rotulo">Que bloco?</span>
+                <div className="pn-cartoes-escolha" role="radiogroup" aria-label="Tipo do bloco">
+                  {(Object.keys(TIPOS) as HomepageSectionType[]).map((t) => (
+                    <button key={t} type="button" role="radio" aria-checked={form.type === t} onClick={() => setForm({ ...form, type: t })}>
+                      <strong>{TIPOS[t].rotulo}</strong>
+                      <small>{TIPOS[t].descricao}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {form.id && (
             <Campo rotulo="Tipo" obrigatorio dica={TIPOS[form.type].descricao}>
               <Selecao
                 value={form.type}
@@ -324,6 +401,7 @@ function Home() {
                 ))}
               </Selecao>
             </Campo>
+            )}
 
             <Campo
               rotulo="Título exibido"
@@ -371,7 +449,7 @@ function Home() {
             {['HERO', 'CUSTOM_POSTS', 'VIDEOS'].includes(form.type) && (
               <div className="pn-escolha-home">
                 <label htmlFor="busca-conteudo-home" className="pn-rotulo">
-                  {form.type === 'VIDEOS' ? 'Escolher vídeos' : 'Escolher publicações'}
+                  {form.type === 'VIDEOS' ? 'Escolher vídeos' : 'Escolher matérias'}
                 </label>
                 <Entrada
                   id="busca-conteudo-home"
@@ -410,8 +488,8 @@ function Home() {
 
       <Confirmacao
         aberto={excluir !== null}
-        titulo="Excluir seção"
-        mensagem="A seção sai da home. Os artigos e vídeos continuam publicados."
+        titulo="Excluir bloco"
+        mensagem="O bloco sai da página inicial. As matérias e os vídeos continuam publicados."
         aoConfirmar={async () => {
           if (!excluir) return;
           try {
@@ -429,6 +507,31 @@ function Home() {
       {recado.elemento}
     </>
   );
+}
+
+/** Um esboço de cada tipo de bloco (não é a página: é o formato, para achar o bloco). */
+function EsbocoDoTipo({ tipo }: { tipo: HomepageSectionType }) {
+  const n = (q: number) => Array.from({ length: q }, (_, i) => <i key={i} />);
+  switch (tipo) {
+    case 'HERO':
+      return <span className="pn-esboco-hero" aria-hidden="true"><i /><b /><b /></span>;
+    case 'LATEST_POSTS':
+    case 'CUSTOM_POSTS':
+    case 'TRENDING':
+      return <span className="pn-esboco-cartoes" aria-hidden="true">{n(3)}</span>;
+    case 'VIDEOS':
+      return <span className="pn-esboco-cartoes pn-esboco-videos" aria-hidden="true">{n(3)}</span>;
+    case 'MOST_READ':
+      return <span className="pn-esboco-lista" aria-hidden="true">{n(4)}</span>;
+    case 'CATEGORIES':
+      return <span className="pn-esboco-chips" aria-hidden="true">{n(5)}</span>;
+    case 'NEWSLETTER':
+      return <span className="pn-esboco-news" aria-hidden="true"><i /><b /></span>;
+    case 'AD_SLOT':
+      return <span className="pn-esboco-anuncio" aria-hidden="true">anúncio</span>;
+    default:
+      return null;
+  }
 }
 
 export default function PaginaHome() {

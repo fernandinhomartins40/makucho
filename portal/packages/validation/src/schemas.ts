@@ -289,6 +289,7 @@ export const filtroPostsSchema = paginacaoSchema.extend({
   tagSlug: z.string().max(100).optional(),
   isFeatured: z.coerce.boolean().optional(),
   isTrending: z.coerce.boolean().optional(),
+  isHomepageTop: z.coerce.boolean().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 });

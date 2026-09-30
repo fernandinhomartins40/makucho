@@ -127,6 +127,14 @@ export class HomepageService {
         const ids = secao.items.map((i) => i.postId).filter(Boolean) as string[];
         artigos = ids.length > 0 ? await this.posts.listarPorIds(ids) : [];
 
+        // A manchete principal (marcada na materia) abre o destaque do topo:
+        // antes ela era gravada e nunca lida, e a escolha nao mudava a home.
+        if (secao.type === 'HERO') {
+          const manchete = await this.posts.listarPublicados({ page: 1, perPage: 1, isHomepageTop: true, sortOrder: 'desc' });
+          const primeira = manchete.data[0];
+          if (primeira) artigos = [primeira, ...artigos.filter((a) => a.id !== primeira.id)];
+        }
+
         if (artigos.length < limite) {
           const complemento = await this.posts.listarPublicados({
             page: 1,
