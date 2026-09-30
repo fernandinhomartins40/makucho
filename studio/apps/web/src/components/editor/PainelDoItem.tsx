@@ -856,6 +856,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
   const [pedido, setPedido] = useState('');
   const mudar = (m: Partial<ComposicaoHtml>) => editar({ ...composicao, ...m });
   const grupos: Array<[string, EstiloDeAnimacao[]]> = [
+    ['Exclusivos', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'exclusivo')],
     ['Cartões', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'cartao')],
     ['Identidades visuais', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'identidade' || e.familia === 'referencia')],
     ['Presets de quadro', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'preset')],

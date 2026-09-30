@@ -70,3 +70,4 @@ export * from './montagem-visual';
 export * from './busca-sem-ia';
 export * from './direcao-visual';
 export * from './ancoragem';
+export * from './liquid-glass';

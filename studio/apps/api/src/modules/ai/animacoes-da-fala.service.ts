@@ -53,6 +53,8 @@ import {
   tetoDeCartoes,
   textoVisivelDoHtml,
   zoomsEscondidos,
+  ehLiquidGlass,
+  REGRAS_DO_LIQUID_GLASS,
   type AnaliseDaIa,
   type CartaoDescartado,
   type JanelaReservada,
@@ -65,6 +67,7 @@ import { AnimacoesService } from '../animacoes/animacoes.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AiService } from './ai.service';
 import { referenciaDoEstilo } from './hyperframes/estilos';
+import { EXEMPLO_LIQUID_GLASS } from './hyperframes/liquid-glass-exemplo';
 
 // v4: a DIREÇÃO no lugar da cota -- cada cartão com gatilho na fala,
 // fidelidade conferida, espaço reservado e respiro (direcao-visual.ts).
@@ -177,6 +180,7 @@ export function listaDeEstilos(): string {
     grupo('identidade', 'Identidades visuais (com o caráter do movimento)'),
     grupo('preset', 'Presets de quadro (sistemas de design completos)'),
     grupo('referencia', 'Referência do Studio'),
+    grupo('exclusivo', 'Exclusivos do Studio (Liquid Glass: o vidro da Apple -- o visual mais moderno do catálogo)'),
   ].join('\n');
 }
 
@@ -238,6 +242,9 @@ const DOUTRINA_DE_MOVIMENTO = `MOVIMENTO (doutrina do HyperFrames -- é o que se
 
 /** A referência do estilo, no formato que ele tem (cartão, identidade ou exemplo pronto). */
 function referenciaParaEscrita(estilo: EstiloDeAnimacao): string {
+  if (estilo.familia === 'exclusivo' && ehLiquidGlass(estilo.chave)) {
+    return `${REGRAS_DO_LIQUID_GLASS}\nExemplo completo neste estilo (já no formato da resposta; painel meio_a_meio -- use as classes do kit do mesmo jeito):\n${EXEMPLO_LIQUID_GLASS}`;
+  }
   if (estilo.familia === 'referencia') {
     return `Exemplo completo neste estilo (já no formato da resposta; painel meio_a_meio 1080x960):\n${EXEMPLO_TECNOLOGIA}`;
   }

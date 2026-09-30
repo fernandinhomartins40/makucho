@@ -8,7 +8,8 @@
 //                 (cores, tipografia E o caráter do movimento);
 //   preset     -- os 13 frame-presets da hyperframes-creative (sistemas
 //                 de design completos: tokens, componentes, regras);
-//   referencia -- o "tecnologia" dos vídeos de referência do Studio.
+//   referencia -- o "tecnologia" dos vídeos de referência do Studio;
+//   exclusivo  -- os do Studio (Liquid Glass, o vidro da Apple; ver liquid-glass.ts).
 // As referências completas (o cartão, os tokens) vivem na API; aqui fica
 // o que a tela e o plano precisam: nome, caráter, quando usar e cores.
 // ============================================================
@@ -16,7 +17,7 @@
 export interface EstiloDeAnimacao {
   chave: string;
   nome: string;
-  familia: 'cartao' | 'identidade' | 'preset' | 'referencia';
+  familia: 'cartao' | 'identidade' | 'preset' | 'referencia' | 'exclusivo';
   /** O visual, em poucas palavras. */
   carater: string;
   /** Quando usar (o tom da fala). */
@@ -579,6 +580,45 @@ export const ESTILOS_DE_ANIMACAO: readonly EstiloDeAnimacao[] = [
       "#0B0E13",
       "#F1F3F4",
       "#4285F4"
+    ]
+  },
+  // ---------- Exclusivos do Studio (escritos à mão; liquid-glass.ts) ----------
+  {
+    "chave": "liquid-glass",
+    "nome": "Liquid Glass",
+    "familia": "exclusivo",
+    "carater": "o vidro da Apple: peças de vidro com borda de luz sobre um fundo vivo de cor, movimento de gota",
+    "quando": "tecnologia, produto, lançamento premium, tutorial de app, tudo que pede um visual moderno e limpo",
+    "escuro": false,
+    "fontes": [
+      "'Inter ExtraBold'",
+      "'Inter SemiBold'"
+    ],
+    "cores": [
+      "#D9DCE3",
+      "#1D1D1F",
+      "#2F7BE3",
+      "#FF2D6F",
+      "#4CBB55"
+    ]
+  },
+  {
+    "chave": "liquid-glass-noite",
+    "nome": "Liquid Glass Noite",
+    "familia": "exclusivo",
+    "carater": "o vidro da Apple no escuro: vidro fumê com borda de luz sobre cores que brilham, movimento de gota",
+    "quando": "noite, cinema, premium, finanças, lançamento dramático, conteúdo sofisticado",
+    "escuro": true,
+    "fontes": [
+      "'Inter ExtraBold'",
+      "'Inter SemiBold'"
+    ],
+    "cores": [
+      "#15161A",
+      "#F5F5F7",
+      "#3B8BFF",
+      "#FF4D84",
+      "#34D15B"
     ]
   }
 ];

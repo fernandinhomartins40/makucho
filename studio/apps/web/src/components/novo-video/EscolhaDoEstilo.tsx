@@ -16,6 +16,7 @@ import {
   FAMILIAS_DA_ANIMACAO,
   PALETAS_DE_ANIMACAO,
   coresDaPaleta,
+  ehLiquidGlass,
   estiloDeAnimacao,
   temaDaAnimacao,
   type EstiloDeAnimacao,
@@ -24,6 +25,7 @@ import { IconeCheck, IconeIA } from '../icones';
 
 const FILTROS: Array<{ id: 'todos' | EstiloDeAnimacao['familia']; nome: string }> = [
   { id: 'todos', nome: 'Todos' },
+  { id: 'exclusivo', nome: 'Exclusivos' },
   { id: 'cartao', nome: 'Cartões' },
   { id: 'identidade', nome: 'Identidades' },
   { id: 'preset', nome: 'Pôsteres' },
@@ -44,8 +46,12 @@ interface Props {
 
 export function EscolhaDoEstilo({ valor, onValor, paleta, onPaleta }: Props) {
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]['id']>('todos');
+  // Os exclusivos (Liquid Glass) vêm primeiro: são o diferencial do Studio.
   const lista = useMemo(
-    () => ESTILOS_DE_ANIMACAO.filter((e) => filtro === 'todos' || e.familia === filtro),
+    () =>
+      ESTILOS_DE_ANIMACAO.filter((e) => filtro === 'todos' || e.familia === filtro).sort(
+        (a, b) => Number(b.familia === 'exclusivo') - Number(a.familia === 'exclusivo'),
+      ),
     [filtro],
   );
   const atual = estiloDeAnimacao(valor);
@@ -122,13 +128,37 @@ function CartaoDoEstilo({
 }) {
   const t = temaDaAnimacao(estilo.chave, paleta);
   if (!t) return null;
+  const vidro = ehLiquidGlass(estilo.chave);
   return (
-    <button type="button" role="radio" aria-checked={ativo} className="cartao-de-estilo" onClick={onEscolher} title={`Bom para: ${estilo.quando}`}>
-      <Miniatura tema={t} />
+    <button type="button" role="radio" aria-checked={ativo} className={`cartao-de-estilo${vidro ? ' cartao-de-estilo--exclusivo' : ''}`} onClick={onEscolher} title={`Bom para: ${estilo.quando}`}>
+      {vidro ? <MiniaturaDeVidro noite={estilo.chave === 'liquid-glass-noite'} /> : <Miniatura tema={t} />}
+      {vidro && <span className="cartao-de-estilo__selo">Exclusivo</span>}
       <span className="cartao-de-estilo__nome">{estilo.nome}</span>
       <span className="cartao-de-estilo__carater">{estilo.carater}</span>
       <Marca ativo={ativo} />
     </button>
+  );
+}
+
+/**
+ * O Liquid Glass de verdade, em miniatura: bolhas de cor desfocadas e um
+ * cartão de vidro (borda de luz, reflexo, desfoque) por cima -- o mesmo
+ * material que a animação usa.
+ */
+function MiniaturaDeVidro({ noite }: { noite: boolean }) {
+  return (
+    <span className="cartao-de-estilo__amostra vidro-mini" data-noite={noite || undefined} aria-hidden>
+      <i className="vidro-mini__bolha" style={{ left: '-12%', top: '-20%', background: noite ? '#3B8BFF' : '#2F7BE3' }} />
+      <i className="vidro-mini__bolha" style={{ right: '-14%', top: '10%', background: noite ? '#FF4D84' : '#FF2D6F' }} />
+      <i className="vidro-mini__bolha" style={{ left: '30%', bottom: '-40%', background: noite ? '#FF9A3C' : '#FF8A1F' }} />
+      <span className="vidro-mini__cartao">
+        <b>87%</b>
+        <i className="vidro-mini__trilho">
+          <i />
+          <i className="vidro-mini__gota" />
+        </i>
+      </span>
+    </span>
   );
 }
 

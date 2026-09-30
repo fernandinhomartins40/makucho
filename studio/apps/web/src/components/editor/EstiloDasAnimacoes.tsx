@@ -9,6 +9,7 @@
 import { ESTILOS_DE_ANIMACAO, PALETAS_DE_ANIMACAO, coresDaPaleta, estiloDeAnimacao, temaDaAnimacao, type EstiloDeAnimacao } from '@makucho/studio-contracts';
 
 const GRUPOS: Array<[EstiloDeAnimacao['familia'], string]> = [
+  ['exclusivo', 'Exclusivos do Studio'],
   ['cartao', 'Cartões'],
   ['identidade', 'Identidades visuais'],
   ['preset', 'Presets de quadro'],

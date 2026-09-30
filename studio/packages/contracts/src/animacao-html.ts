@@ -19,6 +19,7 @@
 // eval, acesso à página de fora).
 // ============================================================
 
+import { cssDoLiquidGlass } from './liquid-glass';
 import { z } from 'zod';
 import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-animadas';
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
@@ -350,6 +351,7 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>${cssBase(o, area, comFundo, c.css, cssDaGrade(c, area), cssDoTema(c))}
+${cssDoLiquidGlass(c.estilo, c.paleta)}
 ${ESC(c.css)}
 ${furo}</style>
 <script src="${o.gsap}"></script>
