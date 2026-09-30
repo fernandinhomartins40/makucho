@@ -61,7 +61,14 @@ export class MidiasService {
     private readonly visao: VisaoService,
   ) {}
 
-  async sugerir(tenant: TenantContext, projectId: string, desligados: readonly string[] = [], planoDaConversa?: EditPlanV1) {
+  async sugerir(
+    tenant: TenantContext,
+    projectId: string,
+    desligados: readonly string[] = [],
+    planoDaConversa?: EditPlanV1,
+    /** Instantes já tomados por animações (a direção decidiu antes): a mídia não vai para lá. */
+    ocupados: ReadonlyArray<{ inicioMs: number; fimMs: number }> = [],
+  ) {
     // O agente passa o plano que está editando (ainda não salvo).
     const plano = planoDaConversa ?? (await this.planos.atual(tenant, projectId)).document;
     const [palavras, projeto] = await Promise.all([
@@ -97,6 +104,11 @@ export class MidiasService {
       throw new BadRequestException('a IA não conseguiu sugerir mídias agora; tente de novo');
     }
 
+    // Um instante, um recurso: momento sob uma animação sai (e nem é buscado).
+    const livres = lido.momentos.filter((m) => !ocupados.some((o) => m.inicioMs < o.fimMs + 500 && m.fimMs > o.inicioMs - 500));
+    if (livres.length < lido.momentos.length) this.log.log(`projeto ${projectId}: ${lido.momentos.length - livres.length} momento(s) de mídia sob animações, fora`);
+    lido.momentos = livres;
+
     // Busca os momentos de 3 em 3: as fontes têm limite por minuto.
     const avisos = new Set<string>();
     const momentos: MomentoComOpcoes[] = [];
@@ -119,7 +131,7 @@ export class MidiasService {
    * desmarcar). Desligável no Kit de marca (`midiasDaIa: false`). Nunca
    * derruba a montagem: falha vira zero sugestões e um aviso no log.
    */
-  async separarNaMontagem(workspaceId: string, projectId: string): Promise<number> {
+  async separarNaMontagem(workspaceId: string, projectId: string, ocupados: ReadonlyArray<{ inicioMs: number; fimMs: number }> = []): Promise<number> {
     const perfil = await this.prisma.brandProfile.findFirst({
       where: { workspaceId, isActive: true },
       orderBy: { version: 'desc' },
@@ -133,7 +145,7 @@ export class MidiasService {
     // fonte trouxe opção): o registro fica, com `momentos` vazio e o motivo.
     let registro: { momentos: MomentoComOpcoes[]; avisos: string[]; semOpcoes: string[]; geradoEm: string; erro?: string };
     try {
-      const r = await this.sugerir(tenant, projectId);
+      const r = await this.sugerir(tenant, projectId, [], undefined, ocupados);
       registro = { momentos: r.momentos, avisos: r.avisos, semOpcoes: r.semOpcoes, geradoEm };
       if (!r.momentos.length) {
         registro.erro = r.semOpcoes.length

@@ -44,7 +44,21 @@ import {
   type EditPlanV1,
   type EstiloDeAnimacao,
   type TimelineOperation,
+  analiseDaIaSchema,
+  conferirCartoes,
+  janelasReservadasDoPlano,
+  lerDirecao,
+  numerosInventados,
+  papeisNoTempo,
+  tetoDeCartoes,
+  textoVisivelDoHtml,
+  zoomsEscondidos,
+  type AnaliseDaIa,
+  type CartaoDescartado,
+  type JanelaReservada,
+  type RelatorioDasAnimacoes,
 } from '@makucho/studio-contracts';
+import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { AnimacoesService } from '../animacoes/animacoes.service';
@@ -52,13 +66,15 @@ import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AiService } from './ai.service';
 import { referenciaDoEstilo } from './hyperframes/estilos';
 
-// v3: catálogo com as identidades visuais do HyperFrames, estilo e
-// briefing guardados em cada animação, refazer/trocar estilo.
-const VERSAO = 'animar-fala-v3';
+// v4: a DIREÇÃO no lugar da cota -- cada cartão com gatilho na fala,
+// fidelidade conferida, espaço reservado e respiro (direcao-visual.ts).
+const VERSAO = 'animar-fala-v4';
 /** Uma animação é uma resposta longa: mais tempo que as outras chamadas. */
 const TEMPO_PARA_ESCREVER_MS = 240_000;
-/** Teto de cartões por montagem (cada um é uma chamada à IA, em paralelo). */
-const MAX_ANIMACOES = 8;
+/** Quantas animações a IA escreve ao mesmo tempo (o provedor limita as simultâneas). */
+const ESCRITAS_SIMULTANEAS = 3;
+/** Teto da resposta da direção: com 8 cartões e o conteúdo de cada um, 3 mil cortava o JSON. */
+const MAX_TOKENS_DA_DIRECAO = 8000;
 /** A nota enquanto a IA trabalha (termina em "…": a tela acompanha até mudar). */
 export const NOTA_REFAZENDO = 'Refazendo as animações…';
 
@@ -169,24 +185,43 @@ export function listaDePaletas(): string {
   return PALETAS_DE_ANIMACAO.map((p) => `- ${p.chave} (${p.nome}): ${p.clima}. Conjuntos 0-${p.conjuntos.length - 1}, ex.: ${p.conjuntos[0]!.join(' ')}`).join('\n');
 }
 
-/** Quantos cartões, pela duração e a densidade (a regra da skill talking-head-recut). */
-function faixaDeCartoes(duracaoS: number): { min: number; max: number; passo: number } {
-  const passo = duracaoS < 60 ? 7 : duracaoS < 180 ? 10 : duracaoS < 600 ? 16 : 28;
-  const min = Math.max(2, Math.min(MAX_ANIMACOES, Math.round(duracaoS / (passo * 1.5))));
-  const max = Math.max(min, Math.min(MAX_ANIMACOES, Math.round(duracaoS / (passo * 0.7))));
-  return { min, max, passo };
-}
+/**
+ * A direção visual: decide ONDE um cartão ajuda -- e onde não entra nada.
+ * Não há cota: cada cartão precisa de um gatilho na fala, e zero vale.
+ */
+function sistemaDaDirecao(duracaoS: number): string {
+  return `Você é o DIRETOR VISUAL de um vídeo vertical 9:16 de alguém falando (método HyperFrames / talking-head-recut). Decide ONDE um cartão gráfico animado ajuda quem assiste a entender -- e onde NÃO entra nada.
+PRINCÍPIO: o rosto e a fala contam a história. O cartão só entra quando MOSTRA algo que a fala sozinha não mostra bem. Cartão para "enfeitar" ou para "ter algo na tela" é um erro. ZERO cartões é uma resposta válida (desabafo, história pessoal, vídeo curto sem dado nenhum).
 
-function sistemaDoPlano(duracaoS: number): string {
-  const f = faixaDeCartoes(duracaoS);
-  return `Você é diretor de motion design (método HyperFrames / talking-head-recut): empacota um vídeo vertical 9:16 de alguém falando com CARTÕES GRÁFICOS animados, sincronizados com a fala, que EXPLICAM o que é dito. O vídeo em si não muda; os cartões entram por cima ou dividem a tela com ele.
-1. Leia a fala inteira e decida o TOM ("o que quem assiste deve SENTIR?"). Escolha UM estilo visual para o vídeo todo, pelo tom (não pelo assunto):
+1. Leia a fala inteira e o que a IA já entendeu do vídeo (assunto, promessa, papel de cada trecho). Decida o TOM ("o que quem assiste deve SENTIR?") e escolha UM estilo para o vídeo todo, pelo tom (não pelo assunto):
 ${listaDeEstilos()}
-2. Escolha de ${f.min} a ${f.max} cartões (cerca de 1 a cada ${f.passo} s; mais se a fala é densa -- números, listas, afirmações em sequência; menos se é uma história só). Cada cartão cobre um trecho de 3 a 10 s que ganha com explicação visual, sem sobrepor outro e com respiro de 1 s ou mais entre eles.
-3. VARIE o tipo de cartão (não repita o mesmo tipo em seguida): ${TIPOS_DE_CARTAO.join('; ')}.
-4. Layout de cada cartão: meio_a_meio (o cartão ocupa metade da tela e o rosto a outra; lado "cima" = cartão em cima, rosto embaixo; "baixo" = rosto em cima, cartão embaixo -- o melhor para explicar dados e listas), cartao (cartão menor por cima do vídeo, fora do rosto -- para um termo, um número rápido, uma citação curta) tela_cheia (só para o ponto alto: no máximo um) ou pip (o cartão ocupa a tela e o rosto vai para uma janela num canto -- "canto": sup-esq|sup-dir|inf-esq|inf-dir; para conteúdo denso: gráfico, lista longa, passo a passo, comparação). Alterne layouts para dar ritmo.
-5. Conteúdo: textos curtos e fiéis à fala, em português (kicker de 1-3 palavras, título de até 6 palavras, detalhe de até 12, os números exatos ditos, os itens da lista).
-Responda SÓ com JSON: {"estilo":"chave","tom":"uma frase","cartoes":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"tipo":"numero","intencao":"o que o cartão explica","conteudo":{"kicker":"...","titulo":"...","detalhe":"...","dado":"...","itens":["..."]},"acento":0}]}. Instantes em segundos do vídeo final, iguais aos da fala.`;
+
+2. GATILHOS -- só estes pedem cartão (o tipo entre parênteses):
+- um número, porcentagem, valor ou prazo DITO (numero): conta até o valor dito;
+- dois ou mais números relacionados ditos (grafico);
+- três ou mais itens enumerados ("primeiro... segundo...", "são três coisas") (lista);
+- uma sequência de ações ("abre, clica, confirma") (passos);
+- dois lados ditos: antes x depois, errado x certo, A x B (comparacao);
+- um nome técnico ou conceito que quem assiste pode não conhecer (termo);
+- a frase-tese do vídeo, na conclusão (citacao) -- no máximo uma;
+- uma pergunta retórica dita que o vídeo responde (pergunta);
+- a palavra-chave da virada (destaque) -- no máximo uma.
+Sem um desses gatilhos, não há cartão.
+
+3. REGRAS (o servidor confere e DESCARTA o cartão que não cumpre):
+- "gatilho": copie LITERALMENTE as palavras da fala que pedem o cartão. Gatilho que não está na fala do trecho = cartão descartado.
+- Conteúdo 100% fiel: só números, nomes e itens DITOS. Número que não foi dito = cartão descartado. Não arredonde, não complete, não invente estatística.
+- Nunca entre nos ESPAÇOS RESERVADOS da entrada (título da abertura, chamada do fim, mídias já no vídeo).
+- Respiro: no máximo METADE do vídeo com cartão; 1 s ou mais entre dois cartões; nunca dois do mesmo tipo seguidos; no máximo ${tetoDeCartoes(duracaoS)} cartões -- é um TETO, não uma meta.
+- Prefira os trechos de prova, solução, insight e conclusão; o gancho já tem o título da abertura.
+- "prioridade": 1 = sem o cartão o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
+- Cada cartão começa na palavra do gatilho (até 0,3 s antes) e dura o raciocínio que mostra (3 a 10 s).
+
+4. Layout de cada cartão: meio_a_meio (o cartão ocupa metade da tela e o rosto a outra; lado "cima" = cartão em cima, rosto embaixo; "baixo" = rosto em cima, cartão embaixo -- o melhor para dados e listas), cartao (cartão menor por cima do vídeo, fora do rosto -- um termo, um número rápido, uma citação curta), tela_cheia (só o ponto alto: no máximo um) ou pip (o cartão ocupa a tela e o rosto vai para uma janela num canto -- "canto": sup-esq|sup-dir|inf-esq|inf-dir; para conteúdo denso: gráfico, lista longa, passo a passo). Alterne para dar ritmo.
+
+5. Conteúdo: textos curtos em português (kicker de 1-3 palavras, título de até 6 palavras, detalhe de até 12, os números EXATOS ditos, os itens da lista como foram ditos).
+
+Responda SÓ com JSON, sem texto fora dele: {"estilo":"chave","tom":"uma frase","cartoes":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"tipo":"numero","gatilho":"palavras exatas da fala","intencao":"o que o cartão explica","conteudo":{"kicker":"...","titulo":"...","detalhe":"...","dado":"...","itens":["..."]},"prioridade":1,"acento":0}]}. Instantes em segundos do vídeo final, iguais aos da fala. Sem cartão: "cartoes": [].`;
 }
 
 /** A doutrina de movimento do HyperFrames (motion-doctrine + "Motion that reads premium"), resumida. */
@@ -306,55 +341,78 @@ export class AnimacoesDaFalaService {
     return saida.sort((a, b) => a.s - b.s);
   }
 
-  /** O storyboard: o estilo do vídeo e os cartões (instante, layout, tipo, conteúdo). */
-  private async planejar(
+  /** O que a IA entendeu do vídeo na última seleção (assunto, promessa, estrutura). */
+  private async entendimento(projectId: string): Promise<AnaliseDaIa | null> {
+    // Sem o entendimento, a direção lê só a fala (não é motivo para falhar).
+    const ultima = await Promise.resolve()
+      .then(() => this.prisma.aiAnalysis.findFirst({ where: { projectId, parsedOk: true, promptVersion: { startsWith: 'selecao' } }, orderBy: { createdAt: 'desc' }, select: { rawOutput: true } }))
+      .catch(() => null);
+    const texto = (ultima?.rawOutput as { texto?: string } | null)?.texto;
+    if (!texto) return null;
+    try {
+      const lido = analiseDaIaSchema.safeParse(JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1))?.analysis);
+      return lido.success ? lido.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A direção visual: o estilo do vídeo e os cartões que a fala PEDE --
+   * lidos mesmo de uma resposta cortada e conferidos (gatilho, fidelidade,
+   * espaço reservado, respiro). Devolve também o que saiu e por quê.
+   */
+  private async dirigir(
     workspaceId: string,
     projectId: string,
+    plano: EditPlanV1,
     palavras: Array<{ s: number; texto: string }>,
     duracaoS: number,
     /** O estilo que a pessoa escolheu para o projeto (a IA não escolhe outro). */
     fixo?: EstiloDeAnimacao,
-  ): Promise<{ estilo: EstiloDeAnimacao; momentos: Momento[] }> {
+  ): Promise<{ estilo: EstiloDeAnimacao; momentos: Momento[]; tom?: string; cortada: boolean; pedidos: number; descartados: CartaoDescartado[]; reservadas: JanelaReservada[] }> {
+    const reservadas = janelasReservadasDoPlano(plano);
+    const entendimento = await this.entendimento(projectId);
+    const papeis = papeisNoTempo(plano);
     const fala = palavras.slice(0, 1500).map((p) => `${p.s.toFixed(2)} ${p.texto}`).join('\n');
+    const usuario = [
+      `Duração do vídeo: ${duracaoS.toFixed(1)} s.`,
+      entendimento
+        ? `O que a IA entendeu: assunto "${entendimento.topic}"; para ${entendimento.audience}; promessa "${entendimento.promise}"; estrutura ${entendimento.structure}; gancho do tipo ${entendimento.hookType}.`
+        : '',
+      `Trechos do vídeo (papel de cada um): ${papeis.map((p) => `${p.inicioS.toFixed(1)}-${p.fimS.toFixed(1)}s ${p.papel || '?'}`).join('; ')}.`,
+      `ESPAÇOS RESERVADOS (não entre): ${reservadas.length ? reservadas.map((r) => `${r.inicioS.toFixed(1)}-${r.fimS.toFixed(1)}s ${r.motivo}`).join('; ') : 'nenhum'}.`,
+      `Fala (instante em s, palavra):\n${fala}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
     const r = await this.ai.chamar({
       workspaceId,
       projectId,
       chamada: 'animar_fala',
-      sistema: sistemaDoPlano(duracaoS) + (fixo ? `\nESTILO JÁ ESCOLHIDO PELA PESSOA: ${fixo.chave} (${fixo.nome}). Use este em "estilo"; escolha o resto (cartões, tipos, layouts) como sempre.` : ''),
-      usuario: `Duração do vídeo: ${duracaoS.toFixed(1)} s.\nFala (instante em s, palavra):\n${fala}`,
-      maxTokens: 3000,
+      sistema: sistemaDaDirecao(duracaoS) + (fixo ? `\nESTILO JÁ ESCOLHIDO PELA PESSOA: ${fixo.chave} (${fixo.nome}). Use este em "estilo"; decida o resto como sempre.` : ''),
+      usuario,
+      maxTokens: MAX_TOKENS_DA_DIRECAO,
       promptVersion: VERSAO,
       semCache: true,
       tempoMaximoMs: 150_000,
     });
-    const bruto = lerJson(r.texto) as { estilo?: unknown; cartoes?: unknown[]; momentos?: unknown[] };
-    const estilo = fixo ?? estiloDeAnimacao(typeof bruto.estilo === 'string' ? bruto.estilo : undefined) ?? TECNOLOGIA;
-    const momentos: Momento[] = [];
-    for (const m of bruto.cartoes ?? bruto.momentos ?? []) {
-      const x = m as Record<string, unknown>;
-      const inicio = Number(x.inicioS);
-      const fim = Number(x.fimS);
-      if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim - inicio < 2) continue;
-      const layout: LayoutDaAnimacao = LAYOUTS.includes(x.layout as LayoutDaAnimacao) ? (x.layout as LayoutDaAnimacao) : 'meio_a_meio';
-      const inicioOk = Math.max(0, Math.min(inicio, duracaoS - 2));
-      const fimOk = Math.min(duracaoS, Math.max(inicioOk + 3, Math.min(fim, inicioOk + 12)));
-      if (momentos.some((o) => inicioOk < o.fimS && fimOk > o.inicioS)) continue;
-      const conteudo = typeof x.conteudo === 'string' ? x.conteudo : x.conteudo ? JSON.stringify(x.conteudo) : '';
-      momentos.push({
-        inicioS: inicioOk,
-        fimS: fimOk,
-        layout: layout === 'tela_cheia' && momentos.some((o) => o.layout === 'tela_cheia') ? 'meio_a_meio' : layout,
-        ...(layout === 'meio_a_meio' ? { lado: x.lado === 'baixo' ? ('baixo' as const) : ('cima' as const) } : {}),
-        ...(layout === 'pip' ? { canto: CANTOS_DO_PIP.includes(x.canto as CantoDoPip) ? (x.canto as CantoDoPip) : ('inf-dir' as const) } : {}),
-        tipo: String(x.tipo ?? '').slice(0, 40),
-        ideia: String(x.intencao ?? x.ideia ?? '').slice(0, 300),
-        conteudo: conteudo.slice(0, 800),
-        acento: Math.max(0, Math.min(4, Math.round(Number(x.acento) || 0))),
-        palavras: palavras.filter((p) => p.s >= inicioOk && p.s < fimOk),
-      });
-      if (momentos.length >= MAX_ANIMACOES) break;
-    }
-    return { estilo, momentos };
+    const lida = lerDirecao(r.texto);
+    const estilo = fixo ?? estiloDeAnimacao(lida.estilo) ?? TECNOLOGIA;
+    const { aceitos, descartados } = conferirCartoes(lida.cartoes, { duracaoS, palavras, reservadas });
+    const momentos: Momento[] = aceitos.map((c) => ({
+      inicioS: c.inicioS,
+      fimS: c.fimS,
+      layout: c.layout,
+      ...(c.lado ? { lado: c.lado } : {}),
+      ...(c.canto ? { canto: c.canto } : {}),
+      tipo: c.tipo,
+      ideia: c.intencao,
+      conteudo: c.conteudo,
+      acento: c.acento,
+      palavras: palavras.filter((p) => p.s >= c.inicioS && p.s < c.fimS),
+    }));
+    return { estilo, momentos, ...(lida.tom ? { tom: lida.tom } : {}), cortada: lida.cortada, pedidos: lida.cartoes.length, descartados, reservadas };
   }
 
   /**
@@ -433,6 +491,10 @@ ${fala}${
         briefing: briefingDe(m),
       });
       if (!c.success) return { erro: c.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`), resposta: r.texto };
+      // Fidelidade: o cartão não mostra número que não foi dito.
+      const falaDoTrecho = `${m.palavras.map((p) => p.texto).join(' ')} ${m.conteudo}`;
+      const inventados = numerosInventados(textoVisivelDoHtml(c.data.html), falaDoTrecho);
+      if (inventados.length) return { erro: [`o cartão mostra ${inventados.slice(0, 3).join(', ')}, que não foi dito na fala: use só os números ditos`], resposta: r.texto };
       const locais = problemasDaComposicao(c.data);
       const problemas = locais.length ? locais : await this.animacoes.problemas(c.data, duracaoMs);
       if (problemas.length) return { erro: problemas, resposta: r.texto };
@@ -618,10 +680,13 @@ ${fala}${
     projectId: string,
     /** Avisa a tela de preparo onde está (0 a 100). */
     aoAvancar: (pct: number) => void = () => undefined,
+    /** Chamado com as janelas das animações assim que a direção decide (as mídias evitam esses instantes). */
+    aoDirigir: (ocupados: Array<{ inicioMs: number; fimMs: number }>) => void = () => undefined,
   ): Promise<{ criadas: number; nota: string }> {
+    const relatorio: RelatorioDasAnimacoes = { em: new Date().toISOString(), pedidos: 0, aceitos: [], descartados: [], escrita: [] };
     const registrar = async (nota: string) => {
       await this.prisma.project
-        .update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500) } })
+        .update({ where: { id: projectId }, data: { animationNote: nota.slice(0, 500), animationReport: relatorio as unknown as Prisma.InputJsonValue } })
         .catch((e: unknown) => this.log.error(`nota das animações não gravada no projeto ${projectId}: ${e instanceof Error ? e.message : e}`));
       this.log.log(`animações do projeto ${projectId}: ${nota}`);
       return nota;
@@ -632,33 +697,76 @@ ${fala}${
       const atual = await this.planos.atual(sistema, projectId);
       const plano = atual.document;
       const palavras = await this.palavrasNoVideo(projectId, plano);
-      if (palavras.length < 8) return { criadas: 0, nota: await registrar('Sem animações: o vídeo não tem fala suficiente para a IA explicar.') };
+      if (palavras.length < 8) {
+        aoDirigir([]);
+        relatorio.erro = 'fala insuficiente';
+        return { criadas: 0, nota: await registrar('Sem animações: o vídeo não tem fala suficiente para a IA explicar.') };
+      }
       const duracaoS = agendaDoPlano(plano).duracaoMs / 1000;
       aoAvancar(5);
       const projeto = await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationStyle: true, animationPalette: true } }).catch(() => null);
       const paletaFixa = coresDaPaleta(projeto?.animationPalette) ? projeto!.animationPalette! : undefined;
       const fixo = estiloDeAnimacao(projeto?.animationStyle);
-      const { estilo, momentos } = await this.planejar(sistema.workspaceId, projectId, palavras, duracaoS, fixo);
-      aoAvancar(20);
-      if (!momentos.length) return { criadas: 0, nota: await registrar('Sem animações: a IA não achou momentos que pedissem explicação visual.') };
 
+      let direcao: Awaited<ReturnType<AnimacoesDaFalaService['dirigir']>>;
+      try {
+        direcao = await this.dirigir(sistema.workspaceId, projectId, plano, palavras, duracaoS, fixo);
+      } catch (e) {
+        aoDirigir([]);
+        throw e;
+      }
+      const { estilo, momentos } = direcao;
+      Object.assign(relatorio, {
+        estilo: estilo.nome,
+        ...(direcao.tom ? { tom: direcao.tom } : {}),
+        ...(direcao.cortada ? { cortada: true } : {}),
+        pedidos: direcao.pedidos,
+        aceitos: momentos.map((m) => ({ inicioS: m.inicioS, fimS: m.fimS, tipo: m.tipo, layout: m.layout, gatilho: m.palavras.map((p) => p.texto).join(' ').slice(0, 80) })),
+        descartados: direcao.descartados,
+      });
+      aoDirigir(momentos.map((m) => ({ inicioMs: Math.round(m.inicioS * 1000), fimMs: Math.round(m.fimS * 1000) })));
+      aoAvancar(20);
+      if (!momentos.length) {
+        const nota = direcao.pedidos
+          ? `Sem animações: a IA sugeriu ${direcao.pedidos}, mas nenhuma passou na conferência (toque para ver os motivos).`
+          : 'Sem animações: a fala não tem números, listas, comparações ou passos que peçam um cartão.';
+        return { criadas: 0, nota: await registrar(nota) };
+      }
+
+      // Escreve no máximo 3 ao mesmo tempo (o provedor limita as simultâneas);
+      // a que falhar por tempo ou rede ganha uma segunda chance no fim.
       let prontas = 0;
-      const feitas = await Promise.allSettled(
-        momentos.map((m) =>
-          this.escrever(sistema.workspaceId, projectId, m, estilo, momentos, paletaFixa ? { paleta: paletaFixa } : {}).finally(() => {
-            prontas += 1;
-            aoAvancar(20 + (75 * prontas) / momentos.length);
-          }),
-        ),
+      const escrever = (m: Momento) => this.escrever(sistema.workspaceId, projectId, m, estilo, momentos, paletaFixa ? { paleta: paletaFixa } : {});
+      const feitas = await emLotes(momentos, ESCRITAS_SIMULTANEAS, (m) =>
+        escrever(m).finally(() => {
+          prontas += 1;
+          aoAvancar(20 + (70 * prontas) / momentos.length);
+        }),
       );
+      const passageira = (e: unknown) => /tempo|timeout|abort|429|50\d|rede|network|ECONN|socket/i.test(e instanceof Error ? e.message : String(e));
+      const segundas = feitas.map((f, i) => (f.status === 'rejected' && passageira(f.reason) ? i : -1)).filter((i) => i >= 0);
+      if (segundas.length) {
+        this.log.warn(`animações do projeto ${projectId}: segunda chance para ${segundas.length}`);
+        const refeitas = await emLotes(segundas, 2, (i) => escrever(momentos[i]!));
+        segundas.forEach((i, k) => {
+          feitas[i] = refeitas[k]!;
+        });
+      }
+      aoAvancar(92);
+
       const ops: TimelineOperation[] = [];
       const falhas: string[] = [];
+      const escritos: Momento[] = [];
       feitas.forEach((f, i) => {
         const m = momentos[i]!;
         if (f.status === 'rejected') {
-          falhas.push(`${m.inicioS.toFixed(0)}s: ${f.reason instanceof Error ? f.reason.message : f.reason}`);
+          const motivo = f.reason instanceof Error ? f.reason.message : String(f.reason);
+          falhas.push(`${m.inicioS.toFixed(0)}s: ${motivo}`);
+          relatorio.escrita.push({ inicioS: m.inicioS, tipo: m.tipo, ok: false, detalhe: motivo.slice(0, 200) });
           return;
         }
+        relatorio.escrita.push({ inicioS: m.inicioS, tipo: m.tipo, ok: true });
+        escritos.push(m);
         ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao: f.value.composicao, timelineStartMs: Math.round(m.inicioS * 1000), durationMs: f.value.duracaoMs });
       });
       if (!ops.length) return { criadas: 0, nota: await registrar(`Sem animações: nenhuma passou na conferência (${falhas.join(' | ').slice(0, 380)}).`) };
@@ -666,10 +774,14 @@ ${fala}${
       // O plano pode ter mudado enquanto a IA escrevia (a montagem salva
       // antes): aplica sobre o atual.
       const agora = (await this.planos.atual(sistema, projectId)).document;
+      // O zoom de um trecho coberto pela animação (tela cheia, pip) não
+      // aparece -- ou sai recortado na janela: tira.
+      const semZoom = zoomsEscondidos(agora, escritos).map((clipId): TimelineOperation => ({ op: 'definir_efeito', clipId, effect: 'nenhum' }));
+      relatorio.zoomsTirados = semZoom.length;
       // A legenda acompanha o tema: a palavra falada na cor de destaque dele
       // (só se a pessoa não escolheu uma cor).
       const tema = temaDaAnimacao(estilo.chave, paletaFixa);
-      const res = aplicarComando(agora, ops, {});
+      const res = aplicarComando(agora, [...ops, ...semZoom], {});
       if (!res.aplicadas) return { criadas: 0, nota: await registrar(`Sem animações: ${res.ignoradas.join('; ').slice(0, 380)}`) };
       if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
         const comLegenda = aplicarComando(res.plan, [{ op: 'configurar_legenda', highlightColor: tema.destaque }], {});
@@ -681,12 +793,33 @@ ${fala}${
         if (o.op !== 'adicionar_midia' || !o.composicao) continue;
         void this.animacoes.preparar(sistema, projectId, o.composicao, o.durationMs).catch((e) => this.log.warn(`vídeo da animação não pedido: ${e instanceof Error ? e.message : e}`));
       }
+      const criadas = ops.length;
       const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');
-      const nota = `A IA criou ${res.aplicadas} ${res.aplicadas === 1 ? 'animação' : 'animações'} no estilo ${estilo.nome} (em ${quando})${falhas.length ? `; ${falhas.length} ficou de fora` : ''}.`;
-      return { criadas: res.aplicadas, nota: await registrar(nota) };
+      const saiu = direcao.descartados.length + falhas.length;
+      const nota = `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} no estilo ${estilo.nome} (em ${quando})${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
+      return { criadas, nota: await registrar(nota) };
     } catch (e) {
       const motivo = e && typeof e === 'object' && 'publico' in e ? String((e as { publico: unknown }).publico) : e instanceof Error ? e.message : String(e);
+      relatorio.erro = motivo.slice(0, 400);
       return { criadas: 0, nota: await registrar(`Sem animações: ${motivo.slice(0, 400)}`) };
     }
   }
+}
+
+/** Roda `fazer` em cada item, no máximo `n` ao mesmo tempo, na ordem dos resultados. */
+async function emLotes<T, R>(itens: readonly T[], n: number, fazer: (x: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
+  const saida: PromiseSettledResult<R>[] = new Array(itens.length);
+  let proximo = 0;
+  const trabalhador = async () => {
+    while (proximo < itens.length) {
+      const i = proximo++;
+      try {
+        saida[i] = { status: 'fulfilled', value: await fazer(itens[i]!) };
+      } catch (reason) {
+        saida[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(n, itens.length) }, trabalhador));
+  return saida;
 }

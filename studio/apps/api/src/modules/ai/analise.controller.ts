@@ -57,10 +57,12 @@ export class AnaliseController {
     const projeto = await this.prisma.project.findUnique({ where: { id } });
     assertOwnership(tenant, projeto, 'projeto');
     if (!projeto) throw new BadRequestException('projeto não encontrado');
-    if (this.animando.has(id)) return { ok: true, nota: NOTA_CRIANDO };
+    if (this.animando.has(id) || (await this.proposta.animacoesNaFila(id))) return { ok: true, nota: NOTA_CRIANDO };
 
-    this.animando.add(id);
     await this.prisma.project.update({ where: { id }, data: { animationNote: NOTA_CRIANDO } });
+    // Pela fila das animações: um reinício da API no meio não perde o pedido.
+    if (await this.proposta.enfileirarAnimacoes({ projectId: id, workspaceId: tenant.workspaceId, ativarAoFim: false, comMidias: false })) return { ok: true, nota: NOTA_CRIANDO };
+    this.animando.add(id);
     void this.animacoesDaFala
       .criarNaMontagem(tenant, id)
       .catch(() => undefined)

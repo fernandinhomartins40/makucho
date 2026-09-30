@@ -466,6 +466,8 @@ model Project {
   contentBrief String?
   /// O que a montagem fez nas animações (ou por que não fez), para o editor mostrar.
   animationNote String?
+  /// O diagnóstico da última criação de animações (RelatorioDasAnimacoes): o que a direção pediu, o que entrou, o que saiu e por quê.
+  animationReport Json?
   /// O estilo das animações escolhido pela pessoa (chave de ESTILOS_DE_ANIMACAO); nulo = a IA escolhe pelo tom.
   animationStyle String?
   /// A paleta das animações ("clima:indice", PALETAS_DE_ANIMACAO); nula = as cores do estilo.

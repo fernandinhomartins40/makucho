@@ -272,7 +272,7 @@ function Editor({ projectId }: { projectId: string }) {
     const nota = projeto?.animationNote;
     if (criandoAnimacoes) return nota?.startsWith('Refazendo') ? 'Refazendo animações… (1-2 min)' : 'Criando animações… (alguns minutos)';
     const feitas = nota?.match(/(criou|refez) (\d+) anima\S+(?: no estilo ([^(]+?))? \(/);
-    if (feitas) return `${feitas[2]} ${feitas[1] === 'refez' ? 'refeitas' : 'animações'}${feitas[3] ? ` · estilo ${feitas[3]}` : ''}`;
+    if (feitas) return `${feitas[2]} ${feitas[1] === 'refez' ? (feitas[2] === '1' ? 'refeita' : 'refeitas') : feitas[2] === '1' ? 'animação' : 'animações'}${feitas[3] ? ` · estilo ${feitas[3]}` : ''}`;
     if (nota?.startsWith('Não deu para refazer')) return 'Não deu para refazer (veja o motivo)';
     if (temAnimacoes) return 'Animações no vídeo';
     return nota?.startsWith('Sem animações') ? 'Sem animações nesta montagem' : 'Sem animações';
@@ -1341,6 +1341,7 @@ function Editor({ projectId }: { projectId: string }) {
                   {verNotaDasAnimacoes && projeto?.animationNote && (
                     <span style={{ flexBasis: '100%', fontSize: 12, opacity: 0.85, whiteSpace: 'normal' }}>{projeto.animationNote}</span>
                   )}
+                  {verNotaDasAnimacoes && !criandoAnimacoes && projeto?.animationReport && <DetalhesDasAnimacoes relatorio={projeto.animationReport} />}
                 </div>
               )}
               {semIa && (
@@ -2261,5 +2262,54 @@ function EscolherProjeto() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * O diagnóstico das animações: o que a direção pediu, o que entrou e o
+ * que ficou de fora -- cada um com o motivo. É o que responde "por que
+ * esta montagem não teve animação" sem abrir o servidor.
+ */
+function DetalhesDasAnimacoes({ relatorio }: { relatorio: import('@makucho/studio-contracts').RelatorioDasAnimacoes }) {
+  const s = (x: number) => `${Math.round(x)}s`;
+  const falhas = relatorio.escrita.filter((e) => !e.ok);
+  const layout: Record<string, string> = { meio_a_meio: 'meio a meio', cartao: 'cartão', tela_cheia: 'tela cheia', pip: 'vídeo no canto' };
+  const TIPO: Record<string, string> = { numero: 'número', lista: 'lista', comparacao: 'comparação', citacao: 'citação', passos: 'passos', grafico: 'gráfico', termo: 'termo', pergunta: 'pergunta', destaque: 'destaque' };
+  const tipo = (t: string) => TIPO[t] ?? (t || 'cartão');
+  return (
+    <div className="detalhes-das-animacoes">
+      <span>
+        {relatorio.pedidos === 0
+          ? 'A IA não viu na fala nada que pedisse um cartão (número, lista, comparação, passos).'
+          : `A IA sugeriu ${relatorio.pedidos}; ${relatorio.aceitos.length} ${relatorio.aceitos.length === 1 ? 'passou' : 'passaram'} na conferência${falhas.length ? ` e ${falhas.length} não ${falhas.length === 1 ? 'saiu' : 'saíram'} na escrita` : ''}.`}
+        {relatorio.cortada ? ' A resposta dela veio cortada: valeram só os cartões completos.' : ''}
+        {relatorio.zoomsTirados ? ` O zoom de ${relatorio.zoomsTirados} ${relatorio.zoomsTirados === 1 ? 'trecho saiu (ficaria escondido' : 'trechos saiu (ficariam escondidos'} sob a animação).` : ''}
+      </span>
+      {relatorio.aceitos.length > 0 && (
+        <ul>
+          {relatorio.aceitos.map((a) => {
+            const falhou = falhas.find((f) => Math.abs(f.inicioS - a.inicioS) < 0.01);
+            return (
+              <li key={`a${a.inicioS}`} data-ok={!falhou || undefined}>
+                {s(a.inicioS)} · {tipo(a.tipo)} ({layout[a.layout] ?? a.layout}){falhou ? ` — não saiu: ${falhou.detalhe ?? 'erro'}` : ''}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {relatorio.descartados.length > 0 && (
+        <>
+          <span>Ficaram de fora:</span>
+          <ul>
+            {relatorio.descartados.map((d, i) => (
+              <li key={`d${i}`}>
+                {s(d.inicioS)} · {tipo(d.tipo)} — {d.motivo}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {relatorio.erro && <span>Erro: {relatorio.erro}</span>}
+    </div>
   );
 }

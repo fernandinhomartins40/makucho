@@ -31,6 +31,8 @@ export const FILA_ANIMACAO = 'studio-animation';
 
 /** A conferência de sobreposição das animações (conferencia-de-layout.ts). */
 export const FILA_CONFERENCIA_DE_LAYOUT = 'studio-animation-check';
+/** As animações da montagem (direção + escrita), consumida pela API: sobrevive a um reinício. */
+export const FILA_ANIMACOES_DA_MONTAGEM = 'studio-animation-montage';
 
 export const FILAS = [FILA_MIDIA, FILA_TRANSCRICAO, FILA_ANALISE, FILA_RENDER, FILA_ANIMACAO, FILA_CONFERENCIA_DE_LAYOUT] as const;
 export type NomeDeFila = (typeof FILAS)[number];

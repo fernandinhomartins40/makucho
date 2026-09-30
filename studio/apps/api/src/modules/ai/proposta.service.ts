@@ -19,8 +19,9 @@
 import { Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { FILA_ANALISE, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
+import { FILA_ANALISE, FILA_ANIMACOES_DA_MONTAGEM, PREFIXO_DAS_FILAS } from '@makucho/studio-contracts';
 import type { EditPlanV1, SemanticIssue } from '@makucho/studio-contracts';
+import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
@@ -51,12 +52,24 @@ const VARREDURA_MS = 60_000;
 /** Projeto em "analisando" há mais que isso sem job é projeto órfão. */
 const ORFAO_APOS_MS = 3 * 60_000;
 
+/** O job das animações da montagem (fila própria: sobrevive a um reinício da API). */
+interface JobDasAnimacoes {
+  projectId: string;
+  workspaceId: string;
+  /** Montagem automática: o projeto só sai de "analisando" quando as animações terminam. */
+  ativarAoFim: boolean;
+  /** Separar também as mídias (depois da direção, fora dos instantes das animações). */
+  comMidias: boolean;
+}
+
 @Injectable()
 export class PropostaService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger(PropostaService.name);
   private conexao: IORedis | null = null;
   private fila: Queue | null = null;
   private worker: Worker | null = null;
+  private filaDeAnimacoes: Queue<JobDasAnimacoes> | null = null;
+  private workerDeAnimacoes: Worker<JobDasAnimacoes> | null = null;
   private varredura: NodeJS.Timeout | null = null;
 
   constructor(
@@ -96,6 +109,26 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       this.log.error(`análise automática do projeto ${job?.data.projectId} falhou: ${erro.message}`);
     });
 
+    // As animações da montagem levam minutos. Na fila (e não soltas numa
+    // promessa), um reinício da API no meio não as perde: o job "travado"
+    // volta para a fila e roda de novo quando a API sobe.
+    this.filaDeAnimacoes = new Queue<JobDasAnimacoes>(FILA_ANIMACOES_DA_MONTAGEM, {
+      connection: this.conexao,
+      prefix: PREFIXO_DAS_FILAS,
+      defaultJobOptions: { attempts: 1, removeOnComplete: true, removeOnFail: true },
+    });
+    this.workerDeAnimacoes = new Worker<JobDasAnimacoes>(
+      FILA_ANIMACOES_DA_MONTAGEM,
+      async (job) => {
+        await this.rodarAnimacoes(job.data, job.timestamp);
+      },
+      // Um vídeo por vez: cada um já escreve 3 animações em paralelo.
+      { connection: this.conexao, prefix: PREFIXO_DAS_FILAS, concurrency: 1, lockDuration: 120_000, maxStalledCount: 2 },
+    );
+    this.workerDeAnimacoes.on('failed', (job, erro) => {
+      this.log.error(`animações do projeto ${job?.data.projectId} falharam: ${erro.message}`);
+    });
+
     // A varredura cobre o que a fila não cobre: projeto que já estava
     // parado antes desta versão existir, ou transcrição que terminou
     // com o Redis fora do ar.
@@ -106,6 +139,8 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     if (this.varredura) clearInterval(this.varredura);
+    await this.workerDeAnimacoes?.close();
+    await this.filaDeAnimacoes?.close();
     await this.worker?.close();
     await this.fila?.close();
     await this.conexao?.quit().catch(() => undefined);
@@ -130,6 +165,8 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       take: 20,
     });
     for (const p of parados) {
+      // Esperando as animações (que levam minutos) não é órfão.
+      if (await this.animacoesNaFila(p.id)) continue;
       await this.enfileirar(p.id);
     }
   }
@@ -196,34 +233,32 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     const sistema: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
     await this.planos.salvar(sistema, projectId, plano, 'ai');
 
-    // A montagem já separa as mídias que ilustram a fala (ícones 3D,
-    // logos, fotos, vídeos) -- para APROVAR no editor, não aplicadas.
     // Sem fala (montagem pelas cenas), não há fala a ilustrar.
     const pelasCenas = (plano as EditPlanV1).clips.every((c) => c.origin === 'cena');
     if (pelasCenas) {
       await this.prisma.project
-        .update({ where: { id: projectId }, data: { animationNote: 'Sem animações: o vídeo foi montado pelas cenas (sem fala para explicar).' } })
+        .update({ where: { id: projectId }, data: { animationNote: 'Sem animações: o vídeo foi montado pelas cenas (sem fala para explicar).', animationReport: Prisma.DbNull } })
         .catch(() => undefined);
-    }
-    if (!pelasCenas) {
-      await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
-      const n = await this.midias.separarNaMontagem(workspaceId, projectId).catch((e: unknown) => {
-        this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
-        return 0;
-      });
-      if (n > 0) resposta.avisos = [...resposta.avisos, `A IA separou ${n} ${n === 1 ? 'mídia' : 'mídias'} para ilustrar a fala: aprove no painel da IA.`];
-
-      // Animações (HyperFrames) nos momentos-chave, ANTES de entregar o
-      // projeto: o vídeo já chega animado, e a IA não grava por cima de
-      // uma edição que a pessoa tenha começado. Falhar aqui não derruba a
-      // montagem -- o vídeo sai sem animação.
-      if (opcoes.animacoesEmSegundoPlano) {
-        await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: 'Criando as animações…' } }).catch(() => undefined);
-        void this.animarNaMontagem(sistema, projectId).catch(() => undefined);
-        resposta.avisos = [...resposta.avisos, 'A IA está criando as animações: elas entram sozinhas em alguns minutos.'];
-      } else {
-        const criadas = await this.animarNaMontagem(sistema, projectId);
+    } else {
+      // A direção visual decide as animações; as mídias vêm DEPOIS dela,
+      // fora dos instantes das animações (um instante, um recurso). Tudo
+      // num job da fila: a montagem automática espera por ele (o vídeo já
+      // chega animado); o "Refazer a análise" entrega o plano já e as
+      // animações entram quando saem.
+      const job: JobDasAnimacoes = { projectId, workspaceId, ativarAoFim: !opcoes.animacoesEmSegundoPlano, comMidias: true };
+      await this.prisma.project.update({ where: { id: projectId }, data: { animationNote: 'Criando as animações…' } }).catch(() => undefined);
+      const naFila = await this.enfileirarAnimacoes(job);
+      if (!naFila) {
+        // Sem Redis: do jeito antigo, aqui mesmo.
+        await this.filas.publicarProgresso(projectId, 'montando', 80).catch(() => undefined);
+        const criadas = await this.rodarAnimacoes({ ...job, ativarAoFim: false }, Date.now());
         if (criadas > 0) resposta.avisos = [...resposta.avisos, `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} para explicar a fala (faixa Mídia).`];
+      } else if (job.ativarAoFim) {
+        // O projeto sai de "analisando" quando o job terminar.
+        await this.prisma.project.update({ where: { id: projectId }, data: { aiFallbackReason: null } }).catch(() => undefined);
+        return resposta;
+      } else {
+        resposta.avisos = [...resposta.avisos, 'A IA está criando as animações: elas entram sozinhas em alguns minutos.'];
       }
     }
     await this.ativar(projectId);
@@ -231,12 +266,68 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     return resposta;
   }
 
+  /** Enfileira as animações de um projeto. Devolve false sem Redis (quem chama roda aqui mesmo). */
+  async enfileirarAnimacoes(job: JobDasAnimacoes): Promise<boolean> {
+    if (!this.filaDeAnimacoes) return false;
+    try {
+      // O id é o projeto: pedir de novo enquanto um roda não duplica.
+      await this.filaDeAnimacoes.add('animar', job, { jobId: `animacoes-${job.projectId}` });
+      return true;
+    } catch (e) {
+      this.log.error(`falha ao enfileirar as animações do projeto ${job.projectId}`, e as Error);
+      return false;
+    }
+  }
+
+  /** Há um job de animações esperando ou rodando para o projeto? */
+  async animacoesNaFila(projectId: string): Promise<boolean> {
+    const job = await this.filaDeAnimacoes?.getJob(`animacoes-${projectId}`).catch(() => undefined);
+    if (!job) return false;
+    const estado = await job.getState().catch(() => 'unknown');
+    return ['waiting', 'active', 'delayed', 'prioritized', 'waiting-children'].includes(estado);
+  }
+
   /**
-   * As animações da montagem (HyperFrames): chamadas próprias, com mais
-   * tempo e em paralelo (animacoes-da-fala.service). Devolve quantas
-   * entraram; o motivo de não ter nenhuma fica no projeto.
+   * O job das animações: a direção, as mídias fora dos instantes dela, a
+   * escrita e -- na montagem automática -- a entrega do projeto. Devolve
+   * quantas animações entraram; o motivo de não ter nenhuma fica no projeto.
    */
-  private async animarNaMontagem(sistema: TenantContext, projectId: string): Promise<number> {
+  private async rodarAnimacoes(job: JobDasAnimacoes, criadoEm: number): Promise<number> {
+    const { projectId, workspaceId } = job;
+    const sistema: TenantContext = { userId: 'sistema', workspaceId, role: 'OWNER' };
+    let midias: Promise<unknown> | null = null;
+    const separarMidias = (ocupados: Array<{ inicioMs: number; fimMs: number }>) => {
+      if (!job.comMidias || midias) return;
+      midias = this.midias.separarNaMontagem(workspaceId, projectId, ocupados).catch((e: unknown) => {
+        this.log.warn(`mídias da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.message : e}`);
+        return 0;
+      });
+    };
+    let criadas = 0;
+    try {
+      // Job que voltou depois de um reinício, mas que já tinha terminado a
+      // escrita: não cria tudo de novo (duplicaria as animações).
+      const feito = await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationNote: true, animationReport: true } });
+      const relatorio = feito?.animationReport as { em?: string; erro?: string } | null;
+      const jaFeito = !!relatorio?.em && Date.parse(relatorio.em) >= criadoEm && !feito?.animationNote?.endsWith('…');
+      if (!jaFeito) criadas = await this.animarNaMontagem(sistema, projectId, separarMidias);
+    } finally {
+      separarMidias([]);
+      if (midias) await midias;
+      if (job.ativarAoFim) {
+        await this.filas.publicarProgresso(projectId, 'montando', 100).catch(() => undefined);
+        await this.ativar(projectId);
+      }
+    }
+    return criadas;
+  }
+
+  /**
+   * As animações da montagem (HyperFrames), pela direção visual
+   * (animacoes-da-fala.service). Devolve quantas entraram; o motivo de
+   * não ter nenhuma fica no projeto.
+   */
+  private async animarNaMontagem(sistema: TenantContext, projectId: string, aoDirigir: (ocupados: Array<{ inicioMs: number; fimMs: number }>) => void): Promise<number> {
     // Toda saída deixa um motivo no projeto: "sem animação e sem nota" não
     // diz nada a ninguém (e foi assim que uma falha passou despercebida).
     const anotar = (nota: string) =>
@@ -255,7 +346,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     const avisar = (pct: number) => void this.filas.publicarProgresso(projectId, 'animando', pct).catch(() => undefined);
     avisar(1);
     try {
-      const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId, avisar);
+      const r = await this.animacoesDaFala.criarNaMontagem(sistema, projectId, avisar, aoDirigir);
       return r.criadas;
     } catch (e) {
       this.log.error(`animações da montagem falharam no projeto ${projectId}: ${e instanceof Error ? e.stack : e}`);

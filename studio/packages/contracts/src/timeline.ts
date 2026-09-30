@@ -37,6 +37,7 @@ import { ENTRADAS_DE_MIDIA, LOOPS_DE_MIDIA, SAIDAS_DE_MIDIA, keyframeDaMidiaSche
 import { presetDaLegenda } from './estilos-de-legenda';
 import { TRANSICOES_DO_CATALOGO } from './transicoes';
 import { clipRoleSchema, semanticRiskSchema } from './vocabulary';
+import { seguirAFala } from './ancoragem';
 
 // ---------- Tracks ----------
 //
@@ -636,6 +637,9 @@ export const timelineOperationSchema = z
 export type TimelineOperation = z.infer<typeof timelineOperationSchema>;
 
 // ---------- Aplicacao ----------
+
+/** As operações que mudam onde a fala está na timeline. */
+const OPERACOES_NOS_TRECHOS = new Set<string>(['mover_clipe', 'ajustar_corte', 'alternar_clipe', 'dividir_clipe', 'duplicar_clipe', 'inserir', 'reordenar', 'definir_velocidade']);
 
 export interface ResultadoDaOperacao {
   ok: boolean;
@@ -1375,6 +1379,10 @@ export function aplicarOperacao(
       };
       break;
   }
+
+  // Mexeu nos trechos (cortar, apagar, reordenar, acelerar): o que está
+  // por cima do vídeo acompanha a fala (ancoragem.ts).
+  if (OPERACOES_NOS_TRECHOS.has(operacao.op)) novo = seguirAFala(plan, novo);
 
   // As transicoes voltam a indice, agora sobre a ordem nova. Uma que
   // apontava para um trecho que saiu da timeline sai junto; uma que

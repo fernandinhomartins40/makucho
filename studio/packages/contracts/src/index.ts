@@ -68,3 +68,5 @@ export * from './ai-roteiro-livre';
 export * from './adaptativo';
 export * from './montagem-visual';
 export * from './busca-sem-ia';
+export * from './direcao-visual';
+export * from './ancoragem';

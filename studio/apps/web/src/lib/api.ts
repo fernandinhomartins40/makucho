@@ -245,6 +245,8 @@ export interface ProjetoDetalhado {
   aiFallbackReason?: string | null;
   /** O que a montagem fez nas animações (ou por que não fez). */
   animationNote?: string | null;
+  /** O diagnóstico da última criação: o que a direção pediu, o que entrou e o que saiu (com o motivo). */
+  animationReport?: import('@makucho/studio-contracts').RelatorioDasAnimacoes | null;
   /** O estilo das animações escolhido pela pessoa (nulo = a IA escolhe). */
   animationStyle?: string | null;
   animationPalette?: string | null;

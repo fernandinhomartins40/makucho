@@ -56,7 +56,7 @@ function montar(respostas: (usuario: string, sistema: string) => string) {
   };
   const ai = {
     chamar: async (p: { usuario: string; sistema: string; tempoMaximoMs?: number }) => {
-      chamadas.push(p.sistema.includes('diretor') ? `planejar:${p.tempoMaximoMs}` : `escrever:${p.tempoMaximoMs}`);
+      chamadas.push(p.sistema.includes('DIRETOR VISUAL') ? `planejar:${p.tempoMaximoMs}` : `escrever:${p.tempoMaximoMs}`);
       return { texto: respostas(p.usuario, p.sistema) };
     },
   };
@@ -78,16 +78,17 @@ function montar(respostas: (usuario: string, sistema: string) => string) {
 
 async function main() {
   const sistema = { userId: 'sistema', workspaceId: 'w', role: 'OWNER' } as const;
-  const plan = JSON.stringify({ momentos: [
-    { inicioS: 1, fimS: 7, layout: 'meio_a_meio', ideia: 'o nome do modelo', palavras: [] },
-    { inicioS: 9, fimS: 14, layout: 'cartao', ideia: 'voz natural', palavras: [] },
-    { inicioS: 10, fimS: 12, layout: 'cartao', ideia: 'sobrepõe a anterior: fica de fora', palavras: [] },
+  // Cada cartão com o GATILHO literal da fala (a direção confere).
+  const plan = JSON.stringify({ cartoes: [
+    { inicioS: 1, fimS: 7, layout: 'meio_a_meio', tipo: 'termo', intencao: 'o nome do modelo', gatilho: 'o google acabou de lançar o gemini', prioridade: 1 },
+    { inicioS: 9, fimS: 14, layout: 'cartao', tipo: 'destaque', intencao: 'voz natural', gatilho: 'uma voz muito mais natural', prioridade: 1 },
+    { inicioS: 10, fimS: 12, layout: 'cartao', tipo: 'citacao', intencao: 'sobrepõe a anterior: fica de fora', gatilho: 'voz muito mais natural', prioridade: 2 },
   ] });
 
   // 1. Caminho feliz, com uma animação corrigida na segunda tentativa.
   let tentativasDaSegunda = 0;
   const a = montar((usuario, sistema2) => {
-    if (sistema2.includes('diretor')) return plan;
+    if (sistema2.includes('DIRETOR VISUAL')) return plan;
     if (usuario.includes('voz natural')) return (tentativasDaSegunda += 1) === 1 ? ruim : boa('Voz natural');
     return '```json\n' + boa('Gemini') + '\n```';
   });
@@ -95,6 +96,7 @@ async function main() {
   const camadas = a.atual().mediaLayers ?? [];
   t('planeja uma vez e escreve uma animação por momento, com mais tempo que as outras chamadas', a.chamadas[0] === 'planejar:150000' && a.chamadas.filter((c) => c === 'escrever:240000').length === 3);
   t('momento que sobrepõe outro fica de fora', r.criadas === 2 && camadas.length === 2);
+  t('a nota diz que um ficou de fora (e o motivo fica no relatório)', a.notas.some((n) => n.includes('1 ficou de fora')));
   t('a que veio com problema foi corrigida (uma volta a mais)', tentativasDaSegunda === 2 && camadas.some((m) => m.composicao?.titulo === 'Voz natural'));
   t('entram como camada html no instante e no layout planejados', camadas[0]?.kind === 'html' && camadas[0].timelineStartMs === 1000 && camadas[0].composicao?.layout === 'meio_a_meio' && camadas[1]?.composicao?.layout === 'cartao');
   t('o vídeo de cada uma já é pedido e a nota fica no projeto', a.pedidos.length === 2 && a.notas.some((n) => n.startsWith('A IA criou 2 animações')));
@@ -102,7 +104,7 @@ async function main() {
   // 1b. O estilo que a IA escolhe vai para a escrita (o cartão de referência dele) e para a nota.
   const sistemas: string[] = [];
   const e = montar((usuario, sis) => {
-    if (sis.includes('diretor')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'meio_a_meio', lado: 'baixo', tipo: 'citacao', intencao: 'a frase forte', conteudo: { titulo: 'Gemini' } }] });
+    if (sis.includes('DIRETOR VISUAL')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'meio_a_meio', lado: 'baixo', tipo: 'citacao', intencao: 'a frase forte', gatilho: 'o google acabou de lançar', conteudo: { titulo: 'Gemini' } }] });
     sistemas.push(sis);
     return boa('Gemini');
   });
@@ -135,9 +137,9 @@ async function main() {
   const sis2: string[] = [];
   const us2: string[] = [];
   const g = montar((usuario, sis) => {
-    if (sis.includes('diretor')) {
+    if (sis.includes('DIRETOR VISUAL')) {
       sis2.push(sis);
-      return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'pip', canto: 'sup-esq', tipo: 'lista', intencao: 'os passos', conteudo: 'um, dois, três' }] });
+      return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 16, fimS: 22, layout: 'pip', canto: 'sup-esq', tipo: 'lista', intencao: 'os passos', gatilho: 'rir suspirar e sussurrar', conteudo: 'rir, suspirar, sussurrar' }] });
     }
     sis2.push(sis);
     us2.push(usuario);
@@ -156,16 +158,50 @@ async function main() {
   const us3: string[] = [];
   let respostas = 0;
   const h = montar((usuario, sis) => {
-    if (sis.includes('diretor')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'numero', intencao: 'o ano', conteudo: '2023' }] });
+    if (sis.includes('DIRETOR VISUAL')) return JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'termo', intencao: 'o modelo', gatilho: 'lançar o gemini', conteudo: 'Gemini' }] });
     us3.push(usuario);
     respostas += 1;
     return boa(respostas === 1 ? 'Sobreposta' : 'Arrumada');
   });
   const rh = await h.servico.criarNaMontagem(sistema as never, 'p1');
   t('conferência: o problema de layout volta para a IA corrigir', rh.criadas === 1 && us3[1]!.includes('invade a área reservada (legenda do vídeo)') && h.atual().mediaLayers![0]!.composicao!.titulo === 'Arrumada');
-  const k = montar((_u, sis) => (sis.includes('diretor') ? JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'numero', intencao: 'o ano' }] }) : boa('Sobreposta')));
+  const k = montar((_u, sis) => (sis.includes('DIRETOR VISUAL') ? JSON.stringify({ estilo: 'editorial', cartoes: [{ inicioS: 1, fimS: 7, layout: 'tela_cheia', tipo: 'termo', intencao: 'o modelo', gatilho: 'lançar o gemini' }] }) : boa('Sobreposta')));
   const rk = await k.servico.criarNaMontagem(sistema as never, 'p1');
   t('conferência: se só sobrar problema de layout, a animação entra mesmo assim', rk.criadas === 1 && k.layoutRuim.vezes === 2);
+
+  // 1f. A direção pede um cartão sem gatilho na fala e um número que não foi dito: nenhum entra, com os motivos.
+  const relatorios: unknown[] = [];
+  const d = montar((_u, sis) =>
+    sis.includes('DIRETOR VISUAL')
+      ? JSON.stringify({ estilo: 'editorial', cartoes: [
+          { inicioS: 1, fimS: 7, layout: 'cartao', tipo: 'destaque', gatilho: 'crescimento exponencial', intencao: 'x' },
+          { inicioS: 9, fimS: 14, layout: 'cartao', tipo: 'numero', gatilho: 'uma voz muito mais natural', intencao: 'x', conteudo: { dado: '95%' } },
+        ] })
+      : boa('x'),
+  );
+  (d.prisma.project as unknown as { update: (a: { data: { animationNote?: string; animationReport?: unknown } }) => Promise<void> }).update = async (a) => {
+    if (a.data.animationNote) d.notas.push(a.data.animationNote);
+    if (a.data.animationReport) relatorios.push(a.data.animationReport);
+  };
+  const rd = await d.servico.criarNaMontagem(sistema as never, 'p1');
+  const rel = relatorios.at(-1) as { pedidos: number; descartados: Array<{ motivo: string }> };
+  t('sem gatilho ou com número inventado: nenhum cartão, e a nota explica', rd.criadas === 0 && d.notas.some((n) => n.includes('sugeriu 2, mas nenhuma passou')) && d.chamadas.length === 1);
+  t('o relatório guarda o motivo de cada descarte', rel.pedidos === 2 && rel.descartados.some((x) => x.motivo.includes('crescimento exponencial')) && rel.descartados.some((x) => x.motivo.includes('95')));
+
+  // 1g. Resposta da direção cortada no meio: os cartões completos valem.
+  const c = montar((_u, sis) => (sis.includes('DIRETOR VISUAL') ? plan.slice(0, plan.indexOf('{"inicioS":9')) + '{"inicioS":9,"fimS":1' : boa('Gemini')));
+  const rc = await c.servico.criarNaMontagem(sistema as never, 'p1');
+  t('direção cortada: o cartão completo entra', rc.criadas === 1);
+
+  // 1h. A escrita mostra um número que não foi dito: volta para corrigir.
+  let versoes = 0;
+  const n = montar((usuario, sis) => {
+    if (sis.includes('DIRETOR VISUAL')) return JSON.stringify({ cartoes: [{ inicioS: 1, fimS: 7, layout: 'cartao', tipo: 'termo', gatilho: 'lançar o gemini', intencao: 'x' }] });
+    versoes += 1;
+    return versoes === 1 ? JSON.stringify({ titulo: 'x', html: '<div id="a">Gemini: 97% mais natural</div>', css: '', script: "tl.to('#a', { opacity: 1 }, 0);" }) : boa('Gemini');
+  });
+  const rn = await n.servico.criarNaMontagem(sistema as never, 'p1');
+  t('número inventado na animação volta para a IA corrigir', rn.criadas === 1 && versoes === 2);
 
   // 2. IA fora do ar: sem animação, mas com o motivo gravado.
   const b = montar(() => {

@@ -238,7 +238,10 @@ const dialogos = (ass: string) => ass.split('\n').filter((l) => l.startsWith('Di
   // Encurtar o vídeo corta o que ficou além do fim.
   const longo = aplicarOperacao(plano, { op: 'adicionar_overlay', component: 'CTA', text: 'Siga', timelineStartMs: 10_000, durationMs: 2000 }).plan!;
   const curto = aplicarOperacao(longo, { op: 'alternar_clipe', clipId: 'c3', enabled: false });
-  t('texto além do novo fim sai', curto.ok && curto.plan!.overlays.length === 0);
+  // A chamada do fim acompanha o fim do vídeo (ancoragem.ts): não some.
+  const fimNovo = curto.plan!.clips.filter((c) => c.enabled !== false).reduce((s, c) => s + (c.sourceEndMs - c.sourceStartMs), 0);
+  const cta = curto.plan!.overlays.find((o) => o.component === 'CTA');
+  t('a chamada do fim continua no novo fim', curto.ok && !!cta && Math.abs(cta.timelineStartMs + cta.durationMs - fimNovo) <= 100);
 }
 
 // ============================================================
