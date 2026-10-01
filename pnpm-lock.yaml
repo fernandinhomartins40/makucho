@@ -260,13 +260,13 @@ importers:
 
   portal/packages/validation:
     dependencies:
+      '@makucho/types':
+        specifier: workspace:*
+        version: link:../types
       zod:
         specifier: ^3.23.8
         version: 3.25.76
     devDependencies:
-      '@makucho/types':
-        specifier: workspace:*
-        version: link:../types
       '@makucho/typescript-config':
         specifier: workspace:*
         version: link:../../../shared/typescript-config
