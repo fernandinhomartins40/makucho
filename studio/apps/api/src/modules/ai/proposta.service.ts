@@ -336,6 +336,8 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
    */
   private async dirigirNaMontagem(sistema: TenantContext, projectId: string): Promise<void> {
     if (!this.agente || process.env.STUDIO_DIRIGIR_NA_MONTAGEM === 'off') return;
+    // Etapa própria na tela de preparo: são minutos, e "animando a 99%" parecia travado.
+    await this.filas.publicarProgresso(projectId, 'dirigindo', 0).catch(() => undefined);
     try {
       const r = await this.agente.dirigir(sistema, projectId);
       this.log.log(`direção do projeto ${projectId}: ${r.aplicadas} mudança(s), US$ ${(r.custoCentavos / 100).toFixed(3)} -- ${r.resposta.slice(0, 200)}`);

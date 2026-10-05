@@ -12,7 +12,9 @@
 
 // 'animando': o fim da montagem, quando a IA escreve as animações em HTML
 // (HyperFrames) -- uma etapa própria na tela, com porcentagem real.
-export const ETAPAS_DO_PREPARO = ['preparando', 'transcrevendo', 'montando', 'animando'] as const;
+// 'dirigindo': a direção do vídeo inteiro, depois das animações (minutos,
+// sem porcentagem real: a tela anda pelo tempo).
+export const ETAPAS_DO_PREPARO = ['preparando', 'transcrevendo', 'montando', 'animando', 'dirigindo'] as const;
 export type EtapaDoPreparo = (typeof ETAPAS_DO_PREPARO)[number];
 
 export interface ProgressoDoPreparo {

@@ -62,7 +62,7 @@ const direcao = (cenas: unknown[]) =>
   });
 
 const CENAS = [
-  { inicioS: 1, fimS: 7, layout: 'meio_a_meio', lado: 'baixo', nome: 'o nome', ancora: 'o google acabou de lançar o gemini', intencao: 'o nome do modelo', conceito: 'A onda desenha o nome letra a letra.', conteudo: { textos: ['Gemini'] }, prioridade: 1 },
+  { inicioS: 1, fimS: 7, layout: 'meio_a_meio', lado: 'baixo', nome: 'o nome', tecnica: 'manchete', papel: 'gancho', ancora: 'o google acabou de lançar o gemini', intencao: 'o nome do modelo', conceito: 'A onda desenha o nome letra a letra.', batidas: [{ palavra: '', acao: 'a tarja ENTRA' }, { palavra: 'gemini', acao: 'o nome SOBE por máscara' }], conteudo: { textos: ['Gemini'] }, prioridade: 1 },
   { inicioS: 9, fimS: 14, layout: 'tela_cheia', nome: 'a voz', ancora: 'uma voz muito mais natural', intencao: 'voz natural', conceito: 'A linha reta vira onda viva.', prioridade: 1 },
   { inicioS: 16, fimS: 21, layout: 'tela_cheia', nome: 'os verbos', ancora: 'rir suspirar e sussurrar', intencao: 'três emoções', conceito: 'Três palavras, uma por batida.', prioridade: 2 },
 ];
@@ -122,7 +122,11 @@ async function main() {
   t('o design da direção chega ao desenho (conceito, cores, linguagem, movimento)', desenhos.every((p) => p.sistema.includes('A voz vira onda') && p.sistema.includes('#ff5a3c') && p.sistema.includes('onda sonora') && p.sistema.includes('expo.out')));
   t('o desenho não recebe cartão de referência para copiar', desenhos.every((p) => !p.sistema.includes('Cartão de REFERÊNCIA') && !p.sistema.includes('ESTILO DO VÍDEO')));
   t('o desenho carrega a skill de motion graphics (batidas, curvas, receitas, conferência)', desenhos.every((p) => ['SKILL: MOTION GRAPHICS', 'Pense em batidas', 'pathLength="1"', 'O que denuncia o amador', 'Antes de responder, confira'].every((x) => p.sistema.includes(x))));
-  t('as receitas da skill passam nas regras técnicas do Studio', problemasDaComposicao({ html: '<p>x</p>', css: '', script: skill('motion-graphics').texto, layout: 'tela_cheia' }).length === 0 && skill('motion-graphics').versao === 'motion-graphics-v1');
+  t('as receitas da skill passam nas regras técnicas do Studio', problemasDaComposicao({ html: '<p>x</p>', css: '', script: skill('motion-graphics').texto, layout: 'tela_cheia' }).length === 0 && skill('motion-graphics').versao === 'motion-graphics-v2');
+  const doNome = desenhos.find((p) => p.usuario.includes('A onda desenha o nome'))!;
+  t('o desenho recebe o módulo da técnica e as batidas no segundo medido da fala', doNome.usuario.includes('TÉCNICA DESTA CENA: Manchete') && /\d\.\d\d s {2}"gemini" {2}-> {2}o nome SOBE/.test(doNome.usuario));
+  t('a direção recebe a análise do vídeo e o repertório de técnicas', dir.usuario.includes('ANÁLISE DO VÍDEO ENVIADO') && dir.sistema.includes('dado_em_destaque') && dir.sistema.includes('batidas'));
+  t('o relatório traz a análise em uma linha para a pessoa', typeof a.relatorios.at(-1)?.analise === 'string' && !a.relatorios.at(-1)!.analise!.includes('\n'));
   t('a encenação de cada cena vai no pedido dela', desenhos.some((p) => p.usuario.includes('A onda desenha o nome letra a letra')) && desenhos.some((p) => p.usuario.includes('A linha reta vira onda viva')));
   t('o mesmo sistema em todas as cenas do vídeo (prefixo igual: cache de contexto)', new Set(desenhos.map((p) => p.sistema)).size === 1);
   const c0 = camadas[0]?.composicao;

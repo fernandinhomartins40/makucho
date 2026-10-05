@@ -60,6 +60,9 @@ import {
   tirarPausas,
   traduzirBusca,
   textoDoSelecionado,
+  CHAVES_DAS_TECNICAS,
+  TECNICAS_DE_CENA,
+  textoDoPerfil,
 } from '@makucho/studio-contracts';
 import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
@@ -215,7 +218,16 @@ export class AgenteService {
    * tela do "Peça à IA" mostra a resposta dele quando o editor abre).
    */
   async dirigir(tenant: TenantContext, projectId: string) {
-    return this.executar(tenant, projectId, PEDIDO_DE_DIRECAO, undefined, undefined, { maxPassos: MAX_PASSOS_DA_DIRECAO, sem: FORA_DA_DIRECAO, prazoMs: prazoDaDirecaoMs() });
+    // A mesma análise do vídeo enviado que a direção das animações usou: o
+    // diretor parte da evidência (ritmo, formato, o que a fala tem e quando).
+    const analise = await Promise.resolve()
+      .then(async () => {
+        if (!this.animacoesDaFala) return '';
+        const plano = (await this.planos.atual(tenant, projectId)).document;
+        return textoDoPerfil(await this.animacoesDaFala.perfilDoProjeto(tenant.workspaceId, projectId, plano));
+      })
+      .catch(() => '');
+    return this.executar(tenant, projectId, analise ? `${PEDIDO_DE_DIRECAO}\n\n${analise}` : PEDIDO_DE_DIRECAO, undefined, undefined,{ maxPassos: MAX_PASSOS_DA_DIRECAO, sem: FORA_DA_DIRECAO, prazoMs: prazoDaDirecaoMs() });
   }
 
   async executar(tenant: TenantContext, projectId: string, pedido: string, doEditor?: ContextoDoComando, registro?: Andamento, opcoes: OpcoesDoAgente = {}) {
@@ -869,6 +881,7 @@ export class AgenteService {
             canto: { type: 'string', enum: ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'] },
             paleta: { type: 'string', description: 'clima:indice de estilos_e_animacoes (ex.: dark-premium:2); "" volta às cores do estilo' },
             tipo: { type: 'string', description: 'um rótulo curto seu para a cena (livre)' },
+            tecnica: { type: 'string', enum: [...CHAVES_DAS_TECNICAS], description: `a técnica da cena, pela evidência na fala: ${TECNICAS_DE_CENA.map((t) => `${t.chave} (${t.quando})`).join('; ')}` },
             ideia: { type: 'string', description: 'o que quem assiste entende ou sente, em uma frase' },
             encenacao: { type: 'string', description: 'a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)' },
             conteudo: { type: 'string', description: 'os textos exatos da cena (só o que foi dito)' },
@@ -887,6 +900,7 @@ export class AgenteService {
             ...(typeof a.tipo === 'string' ? { tipo: a.tipo } : {}),
             ideia: String(a.ideia ?? ''),
             ...(typeof a.encenacao === 'string' && a.encenacao.trim() ? { conceito: a.encenacao.trim().slice(0, 700) } : {}),
+            ...(typeof a.tecnica === 'string' ? { tecnica: a.tecnica } : {}),
             ...(typeof a.conteudo === 'string' ? { conteudo: a.conteudo } : {}),
             ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
             ...(typeof a.paleta === 'string' && a.paleta ? { paleta: a.paleta } : {}),

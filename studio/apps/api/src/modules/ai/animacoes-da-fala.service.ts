@@ -21,7 +21,8 @@
 // projeto (`animationNote`), para o editor mostrar.
 // ============================================================
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import sharp from 'sharp';
 import {
   ESTILOS_DE_ANIMACAO,
   REGRAS_DA_ANIMACAO_HTML,
@@ -64,6 +65,17 @@ import {
   NOTA_MINIMA_DA_CENA,
   type CartaoDirigido,
   REGRAS_LIVRES,
+  VERBOS_DE_MOVIMENTO,
+  indiceDasTecnicas,
+  lerOlhar,
+  moduloDaTecnica,
+  perfilDoVideo,
+  resumoDoPerfil,
+  tecnicaDeCena,
+  textoDoPerfil,
+  textoDoPlano,
+  type OlharDoVideo,
+  type PerfilDoVideo,
   designDoVideo,
   lerCritica,
   listaDeFontes,
@@ -76,6 +88,7 @@ import {
 } from '@makucho/studio-contracts';
 import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
+import { StorageService } from '../../common/storage.service';
 import type { TenantContext } from '../../common/tenant';
 import { AnimacoesService } from '../animacoes/animacoes.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
@@ -119,6 +132,8 @@ interface Momento {
   acento: number;
   /** Direção livre: a encenação da cena (o que aparece, em que ordem, o que se move). */
   conceito?: string;
+  /** Direção livre: a técnica da cena (chave de TECNICAS_DE_CENA). */
+  tecnica?: string;
   palavras: Array<{ s: number; texto: string }>;
 }
 
@@ -145,6 +160,8 @@ export interface PedidoDeTrecho {
   ideia: string;
   /** A encenação da cena (o que aparece, em que ordem, o que se move). */
   conceito?: string;
+  /** A técnica (chave de TECNICAS_DE_CENA). */
+  tecnica?: string;
   conteudo?: string;
   estilo?: string;
   paleta?: string;
@@ -361,22 +378,59 @@ interface Direcao {
 /** O que dá o visual a uma cena: um estilo do catálogo ou o design que a IA escreveu. */
 type Visual = { estilo: EstiloDeAnimacao; design?: undefined } | { design: DesignDoVideo; estilo?: undefined };
 
+/** Os estilos do catálogo que o perfil apontou, como referência de nível (não para copiar). */
+function estilosDeReferencia(perfil: PerfilDoVideo): string {
+  return perfil.receita.estilos
+    .map((chave) => estiloDeAnimacao(chave))
+    .filter((e): e is EstiloDeAnimacao => !!e)
+    .map((e) => `- ${e.nome}: ${e.carater}. Cores ${e.cores.join(' ')}; fontes ${e.fontes.join(', ')}.`)
+    .join('\n');
+}
+
+/**
+ * A direção, no formato das skills que a comunidade usa (motion-graphics e
+ * hyperframes-creative do HyperFrames): um plano em CAMPOS, com repertório
+ * nomeado e números, em vez de prosa. A análise do vídeo e os estilos de
+ * referência vão no pedido (mudam a cada vídeo); isto é o prefixo fixo.
+ */
 function sistemaDaDirecaoLivre(duracaoS: number): string {
   const r = REGRAS_LIVRES;
-  return `Você é o DIRETOR DE CRIAÇÃO de um vídeo vertical 9:16 de alguém falando para a câmera. Sua entrega é a direção de motion graphics do vídeo inteiro: o DESIGN (a identidade visual criada por você para ESTE conteúdo) e as CENAS (onde o gráfico entra e o que ele encena). Depois, um motion designer escreve cada cena em HTML/CSS/GSAP seguindo o que você escrever, e um crítico olha os quadros renderizados.
+  return `Você é o DIRETOR DE CRIAÇÃO de um vídeo vertical 9:16 de alguém falando para a câmera. Você entrega um PLANO DE DIREÇÃO em JSON: o design deste vídeo e, para cada cena de motion graphics, a técnica e as batidas presas às palavras da fala. Um motion designer executa cada cena a partir do seu plano, e um revisor olha os quadros renderizados. Plano vago vira cena genérica: cada campo abaixo existe para você ser específico.
 
-O padrão é o de uma produtora atual -- lançamento de produto, documentário curto, canal editorial -- e não o de um template. Tudo o que não está nas REGRAS DURAS é decisão sua: quantas cenas, de que jeito, o ritmo, a identidade. Não existe lista de tipos de cena: invente a encenação que cada trecho pede.
+Você recebe a ANÁLISE DO VÍDEO ENVIADO (medida pelo Studio: ritmo da fala, o que ela tem de mostrável e em que segundo, o que a imagem mostra) e uma RECEITA de partida. Use-as como evidência: a técnica de cada cena sai do que a fala TEM naquele instante.
 
-1. LEIA a fala inteira. Qual é a ideia do vídeo e o que quem assiste deve SENTIR? Daí sai o CONCEITO: uma ideia visual que amarra o vídeo (uma metáfora, um material, um sistema gráfico), específica deste conteúdo. "Moderno e limpo" não é conceito.
+## Passo 1 -- A ideia
+Leia a fala inteira. O que quem assiste deve SENTIR? Escreva:
+- "conceito": a ideia visual que amarra o vídeo, específica deste conteúdo (uma metáfora, um material, um sistema gráfico). Teste: se servir para qualquer vídeo ("moderno e limpo", "dinâmico e profissional"), está vago -- refaça.
+- "referencia": de onde vem o visual, com nome ("cartaz suíço dos anos 60, grade rígida e um vermelho só"; "caderno de engenheiro, papel milimetrado e caneta azul"; "abertura de documentário, preto, serifa e grão"). Referência cultural, não adjetivos.
+- "motivo": UM elemento gráfico que aparece em TODA cena, transformado (a linha que vira onda, depois gráfico, depois sublinhado; o círculo que vira anel de progresso, depois ponto de lista). É o que faz as cenas serem do mesmo vídeo.
 
-2. DESIGN (vale para todas as cenas):
-- paleta: fundo, texto, apagado e até três destaques, em hex de 6 dígitos, com contraste alto entre texto e fundo. Uma paleta com opinião, tirada do assunto e do tom -- não o azul padrão de tecnologia, a não ser que o conteúdo peça.
-- fonteTitulo e fonteTexto: escolha pelo caráter, SÓ entre estas (nome exato):
+## Passo 2 -- O design (fichas)
+- "paleta": fundo, texto, apagado, destaque (+ destaque2 e destaque3 só se o conteúdo pedir), em hex de 6 dígitos. UMA cor de destaque manda no vídeo inteiro. Neutros tingidos na direção do destaque (nada de preto #000000 ou branco #ffffff puros). Fundo claro ou escuro conforme a análise da imagem.
+- "fonteTitulo" e "fonteTexto": pelo caráter da referência, SÓ entre estas (nome exato):
   ${listaDeFontes()}
-- linguagem: as formas, as texturas, os motivos que se repetem, como a composição se organiza e o que dá o acabamento (filetes, rótulos, grades, marcas de registro, numeração, moldura...). De 4 a 8 frases concretas, que um designer consiga seguir sem perguntar nada.
-- movimento: a assinatura do movimento -- energia, eases e durações típicas, como as coisas entram e saem, o que liga uma cena à seguinte. De 3 a 6 frases.
+- "fundo": de 2 a 5 peças da camada de fundo, iguais em toda cena e em movimento lento (brilho radial, a palavra-chave gigante a 3-8% de opacidade, grade, grão, filetes, formas do motivo). É o que impede a cena de parecer vazia enquanto o conteúdo entra.
+- "movimento": {"energia": "baixa|media|alta", "entrada": a curva das entradas (ex.: "expo.out"), "saida": a das saídas (ex.: "power2.in"), "duracaoBase": segundos de uma entrada típica (0.3 a 0.7), "stagger": segundos entre itens (0.04 a 0.15), "assinatura": o gesto que se repete e identifica o vídeo, em uma frase}.
+- "ritmo": o padrão das cenas, do começo ao fim, em palavras ("rápida, rápida, LENTA, rápida, IMPACTO, respiro") -- onde está o pico e onde o vídeo respira.
+- "linguagem": de 2 a 4 frases com o que falta (como a composição se organiza, o acabamento: filetes, rótulos, numeração, marcas de registro).
+Sinais de design feito por IA, proibidos a não ser que o conteúdo peça: texto em degradê; ciano sobre fundo escuro ou degradê roxo-azul neon; faixa colorida na borda esquerda de cartões; grade de cartões idênticos; tudo centralizado com o mesmo peso.
 
-3. CENAS. Cada uma MOSTRA o que a fala sozinha não mostra: um dado ganhando forma, uma ideia virando diagrama, uma palavra que pesa, um processo, uma comparação, uma metáfora. Encenações possíveis (exemplos, não uma lista fechada): tipografia cinética no ritmo da fala; número que conta enquanto o gráfico cresce; diagrama que se desenha; interface de aplicativo simulada; linha do tempo; mapa de conceitos; antes e depois com cortina; manchete; selo que carimba; pictograma em SVG que se monta peça a peça. Varie a encenação e a escala de uma cena para a outra: o vídeo precisa de ritmo, com momentos densos e momentos só do rosto. Trecho de emoção, história pessoal ou olho no olho fica com o rosto.
+## Passo 3 -- As cenas
+Cada cena MOSTRA o que a fala sozinha não mostra. Para cada uma:
+- "tecnica": uma do REPERTÓRIO abaixo, escolhida pela evidência na fala. Varie: duas cenas seguidas não usam a mesma técnica.
+- "papel": gancho | construcao | impacto | resolucao (o lugar da cena no arco do vídeo).
+- "foco": o elemento que domina o quadro (um só).
+- "enfase": 1 ou 2 palavras da fala que carregam o sentido.
+- "batidas": de 3 a 8 acontecimentos, EM ORDEM. Cada um: {"palavra": UMA palavra copiada da fala do trecho, na qual o acontecimento dispara ("" só na primeira batida, a abertura do palco), "acao": ELEMENTO + VERBO + como}. O servidor mede o segundo exato de cada palavra na transcrição e entrega ao designer: você não estima tempos, você escolhe as palavras certas. Todo elemento tem um verbo de movimento:
+  ${VERBOS_DE_MOVIMENTO}
+  Exemplo de batida boa: {"palavra":"oitenta","acao":"O NÚMERO CONTA de 0 a 87% em 1,2 s e TRAVA com um pulso; o anel ENCHE junto"}. Ruim: {"palavra":"","acao":"o número aparece"}.
+- "saida": como a cena sai (verbo + direção).
+- "conteudo": os textos EXATOS que aparecem (curtos, em português, só o que foi dito).
+- "conceito": 1 ou 2 frases com a composição: o que fica onde, o que é grande e o que é pequeno.
+Regras de ritmo: a primeira cena do vídeo arma o quadro em até 0,5 s; dentro de uma cena, algo novo acontece a cada 2,5 a 4 s (se não há batida para isso, a cena está longa demais); o quadro cheio fica legível por 0,8 s ou mais antes de sair. Trecho de emoção, história pessoal ou olho no olho fica com o rosto: vídeo de fala corrida pode ter uma ou duas cenas de tipografia, ou nenhuma.
+
+REPERTÓRIO DE TÉCNICAS (o que cada uma pede de você):
+${indiceDasTecnicas()}
 
 Onde a cena passa ("layout": os quatro enquadramentos que o compositor sabe fazer):
 - meio_a_meio: a cena ocupa metade da tela e o rosto a outra ("lado": "cima" = cena em cima, rosto embaixo; "baixo" = o contrário). Bom para explicar sem perder o rosto.
@@ -392,7 +446,9 @@ REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
 - "conteudo": os textos EXATOS que aparecem na cena, curtos, em português.
 - "prioridade": 1 = sem a cena o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
 
-Responda SÓ com JSON, nesta ordem, sem texto fora dele: {"conceito":"a ideia visual em uma frase","tom":"o que quem assiste deve sentir","design":{"paleta":{"fundo":"#000000","texto":"#000000","apagado":"#000000","destaque":"#000000","destaque2":"#000000","destaque3":"#000000"},"fonteTitulo":"nome exato","fonteTexto":"nome exato","linguagem":"...","movimento":"..."},"cenas":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"nome":"rótulo curto seu","ancora":"palavras exatas da fala","intencao":"o que quem assiste entende ou sente","conceito":"a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)","conteudo":{"textos":["..."]},"prioridade":1}]}. Instantes em segundos do vídeo final, iguais aos da fala. Sem cena: "cenas": [].`;
+Responda SÓ com JSON, nesta ordem de chaves, sem texto fora dele:
+{"conceito":"...","tom":"o que quem assiste deve sentir","design":{"referencia":"...","motivo":"...","paleta":{"fundo":"#RRGGBB","texto":"#RRGGBB","apagado":"#RRGGBB","destaque":"#RRGGBB"},"fonteTitulo":"nome exato","fonteTexto":"nome exato","fundo":["...","..."],"movimento":{"energia":"media","entrada":"expo.out","saida":"power2.in","duracaoBase":0.45,"stagger":0.08,"assinatura":"..."},"ritmo":"...","linguagem":"..."},"cenas":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"nome":"rótulo curto seu","tecnica":"dado_em_destaque","papel":"impacto","ancora":"palavras exatas da fala em que a cena começa","intencao":"o que quem assiste entende ou sente","foco":"...","enfase":["..."],"batidas":[{"palavra":"","acao":"..."},{"palavra":"...","acao":"..."}],"saida":"...","conteudo":{"textos":["..."]},"conceito":"...","prioridade":1}]}
+Instantes em segundos do vídeo final, iguais aos da fala. Sem cena: "cenas": [].`;
 }
 
 /**
@@ -444,18 +500,24 @@ function lerJson(texto: string): unknown {
   return JSON.parse(limpo.slice(i, f + 1));
 }
 
-function briefingDe(m: Pick<Momento, 'tipo' | 'ideia' | 'conteudo' | 'conceito'>): string {
+function briefingDe(m: Pick<Momento, 'tipo' | 'ideia' | 'conteudo' | 'conceito' | 'tecnica'>): string {
   // O briefing cabe em 2000 caracteres e tem de continuar JSON: o que
   // encolhe é a encenação, nunca o texto final cortado no meio.
-  const base = { tipo: m.tipo, ideia: m.ideia, conteudo: m.conteudo.slice(0, 700) };
+  const base = { tipo: m.tipo, ideia: m.ideia, conteudo: m.conteudo.slice(0, 500), ...(m.tecnica ? { tecnica: m.tecnica } : {}) };
   const sobra = 1900 - JSON.stringify(base).length;
   return JSON.stringify({ ...base, ...(m.conceito && sobra > 40 ? { conceito: m.conceito.slice(0, sobra - 20) } : {}) });
 }
 
-function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo: string; conceito?: string } {
+function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo: string; conceito?: string; tecnica?: string } {
   try {
     const b = JSON.parse(c.briefing ?? '') as Record<string, unknown>;
-    return { tipo: String(b.tipo ?? ''), ideia: String(b.ideia ?? c.titulo ?? ''), conteudo: String(b.conteudo ?? ''), ...(typeof b.conceito === 'string' ? { conceito: b.conceito } : {}) };
+    return {
+      tipo: String(b.tipo ?? ''),
+      ideia: String(b.ideia ?? c.titulo ?? ''),
+      conteudo: String(b.conteudo ?? ''),
+      ...(typeof b.conceito === 'string' ? { conceito: b.conceito } : {}),
+      ...(typeof b.tecnica === 'string' ? { tecnica: b.tecnica } : {}),
+    };
   } catch {
     return { tipo: '', ideia: c.titulo ?? '', conteudo: '' };
   }
@@ -491,7 +553,75 @@ export class AnimacoesDaFalaService {
     private readonly ai: AiService,
     private readonly planos: EditPlansService,
     private readonly animacoes: AnimacoesService,
+    @Optional() private readonly storage?: StorageService,
   ) {}
+
+  /** O que a IA viu nos quadros de cada projeto (a olhada custa uma chamada: vale por seis horas). */
+  private readonly olhares = new Map<string, { em: number; olhar: OlharDoVideo | null }>();
+
+  /**
+   * A IA com visão olha até três quadros do vídeo ENVIADO (os que o preparo
+   * já guardou, um por cena) e diz onde está o rosto, como é a luz, que
+   * cores dominam e que ambiente é. `null` quando não deu (sem quadros,
+   * sem visão): o perfil sai só da fala.
+   */
+  private async olharOVideo(workspaceId: string, projectId: string): Promise<OlharDoVideo | null> {
+    const guardado = this.olhares.get(projectId);
+    if (guardado && Date.now() - guardado.em < 6 * 60 * 60_000) return guardado.olhar;
+    let olhar: OlharDoVideo | null = null;
+    try {
+      if (!this.storage || process.env.STUDIO_OLHAR_O_VIDEO === 'off') return null;
+      const transcricao = await this.prisma.transcription.findUnique({ where: { projectId }, include: { regions: { where: { kind: 'scene' }, orderBy: { startMs: 'asc' } } } });
+      const quadros = (transcricao?.regions ?? []).map((r) => (r.metadata as { quadro?: string } | null)?.quadro).filter((q): q is string => !!q);
+      if (!quadros.length) return null;
+      const escolhidos = [...new Set([quadros[0]!, quadros[Math.floor(quadros.length / 2)]!, quadros[quadros.length - 1]!])];
+      const imagens: string[] = [];
+      for (const q of escolhidos) {
+        const arquivo = await this.storage.ler(q).catch(() => null);
+        if (!arquivo) continue;
+        imagens.push((await sharp(arquivo).resize({ width: 432, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer()).toString('base64'));
+      }
+      if (!imagens.length) return null;
+      const r = await this.ai.chamar({
+        workspaceId,
+        projectId,
+        chamada: 'olhar_video',
+        sistema:
+          'Você analisa quadros de um vídeo gravado para redes sociais, para um diretor de arte decidir o design dos gráficos que vão por cima. Olhe todos os quadros e responda o que vale para o vídeo. Responda SÓ com JSON: {"rosto": "em_cima" | "no_centro" | "embaixo" | "sem_rosto" (em que terço da ALTURA do quadro está o rosto de quem fala), "luz": "clara" | "media" | "escura" (a imagem como um todo), "cores": ["#RRGGBB", ...] (até 3 cores que dominam a imagem, da que ocupa mais área para a que ocupa menos), "ambiente": "onde a pessoa está, em até 6 palavras"}.',
+        usuario: `${imagens.length} ${imagens.length === 1 ? 'quadro' : 'quadros'} do vídeo, do começo ao fim.`,
+        imagens,
+        maxTokens: 200,
+        promptVersion: VERSAO_LIVRE,
+        semCache: true,
+        tempoMaximoMs: 60_000,
+      });
+      olhar = lerOlhar(r.texto);
+      return olhar;
+    } catch (e) {
+      this.log.warn(`olhada no vídeo do projeto ${projectId} indisponível: ${e instanceof Error ? e.message : e}`);
+      return null;
+    } finally {
+      this.olhares.set(projectId, { em: Date.now(), olhar });
+      if (this.olhares.size > 200) this.olhares.delete(this.olhares.keys().next().value!);
+    }
+  }
+
+  /**
+   * O perfil do vídeo enviado: a fala medida (ritmo, sinais com o instante)
+   * e a imagem olhada. É a mesma análise para a direção das animações, para
+   * o diretor do vídeo e para o relatório no editor.
+   */
+  async perfilDoProjeto(workspaceId: string, projectId: string, plano: EditPlanV1, palavrasJaLidas?: Array<{ s: number; texto: string }>): Promise<PerfilDoVideo> {
+    const palavras = palavrasJaLidas ?? (await this.palavrasNoVideo(projectId, plano));
+    const [entendimento, projeto, olhar] = await Promise.all([
+      this.entendimento(projectId),
+      Promise.resolve()
+        .then(() => this.prisma.project.findUnique({ where: { id: projectId }, select: { videoKind: true } }))
+        .catch(() => null),
+      this.olharOVideo(workspaceId, projectId),
+    ]);
+    return perfilDoVideo({ palavras, duracaoS: agendaDoPlano(plano).duracaoMs / 1000, estrutura: entendimento?.structure ?? null, tipoDeVideo: projeto?.videoKind ?? null, olhar });
+  }
 
   /** As palavras no tempo do vídeo final (o plano corta, reordena e acelera). */
   private async palavrasNoVideo(projectId: string, plano: EditPlanV1): Promise<Array<{ s: number; texto: string }>> {
@@ -559,8 +689,14 @@ export class AnimacoesDaFalaService {
     palavras: Array<{ s: number; texto: string }>,
     duracaoS: number,
     opcoes: OpcoesDasAnimacoes,
+    perfil: PerfilDoVideo,
   ): Promise<Direcao & { design: DesignDoVideo }> {
-    const { usuario, reservadas } = await this.entradaDaDirecao(projectId, plano, palavras, duracaoS);
+    const entrada = await this.entradaDaDirecao(projectId, plano, palavras, duracaoS);
+    const { reservadas } = entrada;
+    const referencias = estilosDeReferencia(perfil);
+    // A análise e as referências mudam a cada vídeo: vão no pedido, depois
+    // do sistema fixo (que entra no cache de contexto).
+    const usuario = `${textoDoPerfil(perfil)}${referencias ? `\nESTILOS DE REFERÊNCIA para este tom (o NÍVEL de especificidade esperado; parta de um deles ou crie o seu, mas não copie):\n${referencias}` : ''}\n\n${entrada.usuario}`;
     // A cor da marca entra como informação, não como ordem (a padrão do
     // Studio não é a marca de ninguém: não vai).
     const cor = await Promise.resolve()
@@ -597,7 +733,10 @@ export class AnimacoesDaFalaService {
       ideia: c.intencao,
       conteudo: c.conteudo,
       acento: c.acento,
-      ...(c.conceito ? { conceito: c.conceito } : {}),
+      // O plano (técnica + batidas com o instante medido) segue com a
+      // encenação: é o que fica guardado para refazer a cena depois.
+      ...(c.conceito || c.plano ? { conceito: [c.conceito, c.plano ? textoDoPlano(c.plano) : ''].filter(Boolean).join('\n') } : {}),
+      ...(c.plano ? { tecnica: c.plano.tecnica } : {}),
       palavras: palavras.filter((p) => p.s >= c.inicioS && p.s < c.fimS),
     }));
   }
@@ -673,7 +812,9 @@ export class AnimacoesDaFalaService {
 ${grade}
 Duração: ${(duracaoMs / 1000).toFixed(1)} s.
 O que quem assiste entende ou sente: ${m.ideia}
-Encenação (da direção): ${m.conceito || 'a que melhor mostrar a ideia, dentro do design do vídeo'}
+${moduloDaTecnica(m.tecnica)}
+PLANO DA DIREÇÃO para esta cena (execute; a composição fina e os detalhes são seus):
+${m.conceito || 'a encenação que melhor mostrar a ideia, dentro do design do vídeo'}
 Textos exatos da cena: ${m.conteudo || '(tire da fala, sem inventar)'}
 As outras cenas do vídeo (mesma família visual; varie a encenação e a composição): ${outros || 'nenhuma'}.`
       : `Cartão ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
@@ -808,7 +949,7 @@ ${fala}${
         projectId,
         chamada: 'criticar_animacao',
         sistema: SISTEMA_DA_CRITICA,
-        usuario: `${textoDoDesign(design)}\n\nA CENA (${m.layout}, ${(duracaoMs / 1000).toFixed(1)} s): ${m.ideia}\nEncenação pedida: ${m.conceito || '(livre)'}\nTextos da cena: ${m.conteudo || '(da fala)'}\nImagens, na ordem: ${instantes.join('; ')}.`,
+        usuario: `${textoDoDesign(design)}\n\nA CENA (${m.layout}, ${(duracaoMs / 1000).toFixed(1)} s${m.tecnica ? `, técnica: ${tecnicaDeCena(m.tecnica)?.nome ?? m.tecnica}` : ''}): ${m.ideia}\nPlano da direção (confira se os quadros o cumprem):\n${m.conceito || '(livre)'}\nTextos da cena: ${m.conteudo || '(da fala)'}\nImagens, na ordem: ${instantes.join('; ')}.`,
         imagens: fotos,
         maxTokens: 900,
         promptVersion: VERSAO_LIVRE,
@@ -844,6 +985,8 @@ ${fala}${
           conteudo: b.conteudo,
           acento: 0,
           ...(b.conceito ? { conceito: b.conceito } : {}),
+          // A técnica da cena fica no tipo (o rótulo é da direção) ou no plano guardado.
+          ...(tecnicaDeCena(b.tecnica) ? { tecnica: tecnicaDeCena(b.tecnica)!.chave } : {}),
           palavras: palavras.filter((p) => p.s >= inicioS && p.s < fimS),
         };
         return { camada, momento };
@@ -892,6 +1035,7 @@ ${fala}${
       conteudo: (p.conteudo ?? '').slice(0, 800),
       acento: 0,
       ...(p.conceito ? { conceito: p.conceito.slice(0, 700) } : {}),
+      ...(tecnicaDeCena(p.tecnica) ? { tecnica: tecnicaDeCena(p.tecnica)!.chave } : {}),
       palavras: palavras.filter((x) => x.s >= inicioS && x.s < fimS),
     };
     const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
@@ -1043,10 +1187,14 @@ ${fala}${
       // Direção livre por padrão. O estilo que a pessoa escolheu para o
       // projeto vale sobre ela: aí é o estilo do catálogo, por cartões.
       const livre = (opcoes.modo ?? modoDasAnimacoes()) === 'livre' && !fixo;
+      // A análise do vídeo enviado: a fala medida e a imagem olhada. É a
+      // evidência de que a direção parte (e o que a pessoa lê no relatório).
+      const perfil = livre ? await this.perfilDoProjeto(sistema.workspaceId, projectId, plano, palavras) : null;
+      if (perfil) relatorio.analise = resumoDoPerfil(perfil);
       let direcao: Direcao & { estilo?: EstiloDeAnimacao; design?: DesignDoVideo };
       try {
-        direcao = livre
-          ? await this.dirigirLivre(sistema.workspaceId, projectId, plano, palavras, duracaoS, opcoes).catch(async (e: unknown) => {
+        direcao = perfil
+          ? await this.dirigirLivre(sistema.workspaceId, projectId, plano, palavras, duracaoS, opcoes, perfil).catch(async (e: unknown) => {
               // A direção livre não respondeu (modelo fora, resposta ilegível):
               // o vídeo não fica sem animação por isso.
               this.log.warn(`direção livre falhou no projeto ${projectId}; seguindo pelos cartões: ${e instanceof Error ? e.message : e}`);

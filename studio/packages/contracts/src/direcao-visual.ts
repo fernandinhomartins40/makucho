@@ -25,6 +25,7 @@
 
 import type { EditPlanV1 } from './edit-plan';
 import { agendaDoPlano } from './agenda';
+import { tecnicaDeCena } from './tecnicas-de-cena';
 import { temaLivre, type TemaDaAnimacao } from './tema-da-animacao';
 
 export interface PalavraNoTempo {
@@ -58,6 +59,8 @@ export interface CartaoDirigido {
   acento: number;
   /** Direção livre: COMO a cena mostra a ideia (a encenação visual, em texto livre). */
   conceito?: string;
+  /** Direção livre: a técnica e as batidas, com os instantes conferidos na fala. */
+  plano?: PlanoDaCena;
 }
 
 export interface CartaoDescartado {
@@ -97,13 +100,116 @@ export interface DesignDoVideo {
 export function designDoVideo(lida: Pick<LeituraDaDirecao, 'conceito' | 'tom' | 'design'>): DesignDoVideo {
   const d = lida.design ?? {};
   const texto = (v: unknown, teto: number) => (typeof v === 'string' ? v : v ? JSON.stringify(v) : '').slice(0, teto);
+  // O design vem em campos (referência, motivo, fundo, fichas de movimento,
+  // ritmo): cada um obriga a direção a ser específica. Aqui viram os dois
+  // textos que a cena recebe.
+  const fundo = Array.isArray(d.fundo) ? d.fundo.filter((x): x is string => typeof x === 'string' && !!x.trim()).slice(0, 5) : [];
+  const linguagem = [
+    typeof d.referencia === 'string' && d.referencia.trim() ? `Referência: ${d.referencia.trim()}` : '',
+    typeof d.motivo === 'string' && d.motivo.trim() ? `Motivo que atravessa o vídeo (aparece em TODA cena, transformado): ${d.motivo.trim()}` : '',
+    fundo.length ? `Camada de fundo (as mesmas peças em toda cena, em movimento lento): ${fundo.join('; ')}` : '',
+    texto(d.linguagem, 1200),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const m = d.movimento && typeof d.movimento === 'object' ? (d.movimento as Record<string, unknown>) : null;
+  const num = (v: unknown, min: number, max: number) => (Number.isFinite(Number(v)) && Number(v) >= min && Number(v) <= max ? Number(v) : null);
+  const fichas = m
+    ? [
+        typeof m.energia === 'string' ? `energia ${m.energia}` : '',
+        typeof m.entrada === 'string' ? `entradas com ${m.entrada}` : '',
+        typeof m.saida === 'string' ? `saídas com ${m.saida}` : '',
+        num(m.duracaoBase, 0.1, 2) !== null ? `duração base ${num(m.duracaoBase, 0.1, 2)} s` : '',
+        num(m.stagger, 0.01, 0.5) !== null ? `stagger ${num(m.stagger, 0.01, 0.5)} s` : '',
+      ]
+        .filter(Boolean)
+        .join('; ')
+    : '';
+  const movimento = [
+    fichas ? `Fichas: ${fichas}.` : '',
+    m && typeof m.assinatura === 'string' ? `Assinatura: ${m.assinatura.trim()}` : '',
+    !m ? texto(d.movimento, 1000) : '',
+    typeof d.ritmo === 'string' && d.ritmo.trim() ? `Ritmo do vídeo: ${d.ritmo.trim()}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
   return {
     conceito: texto(lida.conceito ?? d.conceito, 400),
     ...(lida.tom ? { tom: lida.tom.slice(0, 300) } : {}),
-    linguagem: texto(d.linguagem, 1800),
-    movimento: texto(d.movimento, 1200),
+    linguagem: linguagem.slice(0, 1800),
+    movimento: movimento.slice(0, 1200),
     tema: temaLivre(d),
   };
+}
+
+// ---------- O plano da cena (batidas ancoradas na fala) ----------
+
+/** Um acontecimento da cena, preso a uma palavra da fala. */
+export interface BatidaDaCena {
+  /** Segundo DENTRO da cena em que a palavra é dita (null: a palavra não está na fala do trecho). */
+  t: number | null;
+  /** A palavra da fala que dispara a batida ("" = o começo da cena). */
+  palavra: string;
+  /** O que acontece: ELEMENTO + VERBO de movimento. */
+  acao: string;
+}
+
+/** O plano de uma cena, como a direção o escreveu e o servidor conferiu. */
+export interface PlanoDaCena {
+  /** Chave de TECNICAS_DE_CENA ("livre" quando não é nenhuma). */
+  tecnica: string;
+  /** O papel no arco do vídeo: gancho, construcao, impacto, resolucao. */
+  papel?: string;
+  /** O elemento que domina o quadro. */
+  foco?: string;
+  /** As palavras que carregam o sentido (1 ou 2). */
+  enfase: string[];
+  batidas: BatidaDaCena[];
+  /** Como a cena sai. */
+  saida?: string;
+}
+
+/**
+ * Prende cada batida ao instante REAL da palavra na fala. A direção diz
+ * "quando ele fala 'oitenta', o número conta"; quem sabe o segundo exato é
+ * a transcrição, não o modelo -- sincronia medida, não estimada.
+ */
+export function ancorarBatidas(brutas: unknown, palavras: readonly PalavraNoTempo[], inicioS: number, fimS: number): BatidaDaCena[] {
+  if (!Array.isArray(brutas)) return [];
+  const doTrecho = palavras.filter((p) => p.s >= inicioS - 0.4 && p.s < fimS);
+  let cursor = 0;
+  const saida: BatidaDaCena[] = [];
+  for (const b of brutas.slice(0, 10)) {
+    if (!b || typeof b !== 'object') continue;
+    const x = b as Record<string, unknown>;
+    const acao = String(x.acao ?? x.o_que ?? '').trim().slice(0, 180);
+    if (!acao) continue;
+    const palavra = String(x.palavra ?? x.na_palavra ?? '').trim().slice(0, 40);
+    const alvo = semAcento(palavra).split(/[^a-z0-9]+/).filter(Boolean)[0];
+    if (!alvo) {
+      saida.push({ t: saida.length ? null : 0, palavra: '', acao });
+      continue;
+    }
+    const achada = doTrecho.findIndex((p, i) => i >= cursor && semAcento(p.texto).replace(/[^a-z0-9]+/g, '') === alvo);
+    if (achada < 0) {
+      saida.push({ t: null, palavra, acao });
+      continue;
+    }
+    cursor = achada + 1;
+    saida.push({ t: Math.max(0, Math.round((doTrecho[achada]!.s - inicioS) * 100) / 100), palavra, acao });
+  }
+  return saida;
+}
+
+/** O plano em texto, para quem desenha a cena (e para quem a critica). */
+export function textoDoPlano(p: PlanoDaCena): string {
+  const linhas = [`Papel no vídeo: ${p.papel || 'construção'}.${p.foco ? ` Foco do quadro: ${p.foco}.` : ''}${p.enfase.length ? ` Palavras de ênfase: ${p.enfase.join(', ')}.` : ''}`];
+  if (p.batidas.length) {
+    linhas.push('BATIDAS (segundo DENTRO da cena, medido na fala pelo servidor -- use estes instantes na `tl`):');
+    for (const b of p.batidas) linhas.push(`  ${b.t === null ? 'sem palavra na fala: encaixe entre as vizinhas' : `${b.t.toFixed(2)} s`}${b.palavra ? `  "${b.palavra}"` : '  (abertura)'}  ->  ${b.acao}`);
+  }
+  if (p.saida) linhas.push(`Saída: ${p.saida}`);
+  return linhas.join('\n');
 }
 
 /** O design em texto, para o pedido de cada cena (e para a crítica). */
@@ -439,6 +545,18 @@ export function conferirCartoes(
       prioridade: Math.max(1, Math.min(3, Math.round(Number(x.prioridade) || 2))),
       acento: Math.max(0, Math.min(4, Math.round(Number(x.acento) || 0))),
       ...(typeof x.conceito === 'string' && x.conceito.trim() ? { conceito: x.conceito.trim().slice(0, 700) } : {}),
+      ...(x.tecnica || Array.isArray(x.batidas)
+        ? {
+            plano: {
+              tecnica: tecnicaDeCena(String(x.tecnica ?? ''))?.chave ?? 'livre',
+              ...(typeof x.papel === 'string' && x.papel.trim() ? { papel: x.papel.trim().slice(0, 30) } : {}),
+              ...(typeof x.foco === 'string' && x.foco.trim() ? { foco: x.foco.trim().slice(0, 140) } : {}),
+              enfase: (Array.isArray(x.enfase) ? x.enfase : []).filter((e): e is string => typeof e === 'string' && !!e.trim()).map((e) => e.trim().slice(0, 30)).slice(0, 3),
+              batidas: ancorarBatidas(x.batidas, ctx.palavras, Math.round(inicio * 100) / 100, Math.round(fim * 100) / 100),
+              ...(typeof x.saida === 'string' && x.saida.trim() ? { saida: x.saida.trim().slice(0, 140) } : {}),
+            },
+          }
+        : {}),
     });
   }
 
@@ -542,6 +660,8 @@ export interface RelatorioDasAnimacoes {
   escrita: Array<{ inicioS: number; tipo: string; ok: boolean; detalhe?: string; critica?: CriticaDaCena }>;
   /** Direção livre: o design que a IA escreveu para o vídeo (as cenas refeitas depois seguem o mesmo). */
   design?: DesignDoVideo;
+  /** A análise do vídeo enviado, em uma linha (resumoDoPerfil). */
+  analise?: string;
   zoomsTirados?: number;
   erro?: string;
 }

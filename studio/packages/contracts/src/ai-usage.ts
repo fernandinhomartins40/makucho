@@ -48,6 +48,9 @@ export const CHAMADAS_DE_IA = [
   'dirigir_animacoes',
   'desenhar_animacao',
   'criticar_animacao',
+  // #17: a olhada nos quadros do vídeo enviado (onde está o rosto, luz,
+  // cores, ambiente), para o perfil do vídeo (perfil-do-video.ts).
+  'olhar_video',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -71,6 +74,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   dirigir_animacoes: 'Direção das animações',
   desenhar_animacao: 'Desenho das animações',
   criticar_animacao: 'Crítica das animações',
+  olhar_video: 'Análise da imagem do vídeo',
 };
 
 // ---------- Modelos ----------
@@ -140,6 +144,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   desenhar_animacao: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
   // Recebe imagens: sempre o modelo com visão (MODELO_COM_VISAO).
   criticar_animacao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  olhar_video: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /**

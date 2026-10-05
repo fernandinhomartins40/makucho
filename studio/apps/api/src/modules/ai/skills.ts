@@ -22,7 +22,9 @@ export const VERSAO_DA_SKILL = {
   // Motion graphics: batidas, tempo e curvas, vocabulário de movimento,
   // receitas de GSAP/SVG e arquétipos de cena (adaptado das skills
   // motion-graphics e hyperframes-animation do HyperFrames, Apache 2.0).
-  'motion-graphics': 'motion-graphics-v1',
+  // v2: executar o plano da direção (batidas com o segundo medido), os
+  // números da casa e os sinais de design feito por IA.
+  'motion-graphics': 'motion-graphics-v2',
 } as const;
 
 export type NomeDeSkill = keyof typeof VERSAO_DA_SKILL;

@@ -170,3 +170,30 @@ os cortes, o acabamento e o "Peça à IA" continuavam seguindo receita. Mudou:
 
 Continua sem medição com chave real: custo, tempo da montagem (a direção soma minutos) e o
 comportamento do raciocínio com ferramentas na DeepSeek.
+
+## 10. Análise do vídeo, repertório de técnicas e plano por batidas (05/10/2026)
+
+Retorno: os prompts ainda eram vagos. A comunidade (skills motion-graphics, hyperframes-creative
+e talking-head-recut do HyperFrames) escreve a direção em CAMPOS com repertório nomeado e números,
+não em prosa. Mudou:
+
+- **Perfil do vídeo** (`contracts/src/perfil-do-video.ts`): sem token, mede a fala (palavras por
+  minuto, densidade) e acha os sinais mostráveis com o segundo exato (número dito, enumeração,
+  passo a passo, comparação, pergunta, termo, frase de peso); deduz o formato (dica, tutorial,
+  história, opinião, oferta...) e a energia; uma chamada `olhar_video` (Flash com visão, 3 quadros
+  do preparo) diz onde está o rosto, a luz, as cores e o ambiente. Sai a RECEITA: ritmo de cenas
+  (fórmula da talking-head-recut), técnicas com evidência e instantes, estilos de referência, fundo
+  claro ou escuro e o lado da cena no meio a meio. A mesma análise vai à direção das animações, ao
+  diretor do vídeo e ao relatório no editor.
+- **Repertório de técnicas** (`tecnicas-de-cena.ts`): 14 módulos (tipografia cinética, dado em
+  destaque, gráfico, lista viva, passo a passo, comparação, definição, pergunta, citação, manchete,
+  interface simulada, rótulo, selo, livre), cada um com quando usar, o que a direção decide, como
+  se constrói (com números) e o que evitar. A direção escolhe; o desenho recebe só o módulo da cena.
+- **Plano por batidas**: cada cena traz técnica, papel no arco, foco, ênfase e 3 a 8 batidas
+  "palavra -> ELEMENTO + VERBO". O servidor mede o segundo de cada palavra na transcrição
+  (`ancorarBatidas`): a sincronia é medida, não estimada pelo modelo.
+- **Design em fichas**: referência cultural, motivo que atravessa o vídeo, camada de fundo,
+  movimento (energia, curvas, duração, stagger, assinatura) e ritmo; lista de sinais de design
+  feito por IA proibidos. Skill `motion-graphics-v2` com a execução do plano e os números da casa.
+- **Fluxo**: etapa "Dirigindo o vídeo" na tela de preparo (antes parecia travado a 99%), textos
+  do preparo sem a promessa de fórmula, e "O que a IA viu no vídeo" no relatório do editor.

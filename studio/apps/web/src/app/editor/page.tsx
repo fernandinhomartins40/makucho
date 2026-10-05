@@ -2319,6 +2319,7 @@ function DetalhesDasAnimacoes({ relatorio }: { relatorio: import('@makucho/studi
   const nota = (inicioS: number) => relatorio.escrita.find((e) => e.ok && Math.abs(e.inicioS - inicioS) < 0.01)?.critica;
   return (
     <div className="detalhes-das-animacoes">
+      {relatorio.analise && <span>O que a IA viu no vídeo: {relatorio.analise}.</span>}
       {design?.conceito && <span>Direção da IA para este vídeo: {design.conceito}</span>}
       <span>
         {relatorio.pedidos === 0

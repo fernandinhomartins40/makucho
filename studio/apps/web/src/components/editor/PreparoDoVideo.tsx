@@ -50,34 +50,43 @@ const FAIXAS: Record<string, { de: number; ate: number; etapa: ProgressoDoPrepar
   ANALYZING: { de: 80, ate: 90, etapa: 'montando' },
   // Sub-etapa do fim da montagem: o projeto segue em ANALYZING, e é o
   // progresso publicado ('animando') que a revela.
-  ANIMANDO: { de: 90, ate: 99, etapa: 'animando' },
+  ANIMANDO: { de: 88, ate: 95, etapa: 'animando' },
+  // A direção do vídeo inteiro, depois das animações: anda pelo tempo.
+  DIRIGINDO: { de: 95, ate: 99, etapa: 'dirigindo' },
 };
 
 const ETAPAS = [
   { chave: 'recebido', titulo: 'Vídeo recebido', texto: 'O arquivo chegou inteiro ao servidor.' },
   { chave: 'INGESTING', titulo: 'Preparando o vídeo', texto: 'Prévia leve, áudio separado e pausas detectadas.' },
   { chave: 'TRANSCRIBING', titulo: 'Ouvindo a sua fala', texto: 'Cada palavra com o tempo exato em que foi dita.' },
-  { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'Gancho, cortes, legenda, zoom, transições e imagens para você aprovar.' },
-  { chave: 'ANIMANDO', titulo: 'Criando as animações', texto: 'A IA desenha animações que explicam a sua fala, no ritmo das palavras.' },
+  { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'A IA entende o conteúdo e escolhe os cortes que este vídeo pede.' },
+  { chave: 'ANIMANDO', titulo: 'Criando as animações', texto: 'A IA analisa o vídeo, cria um design para ele e desenha as cenas no ritmo das palavras.' },
+  { chave: 'DIRIGINDO', titulo: 'Dirigindo o vídeo', texto: 'Legenda, textos, imagens, cor e som decididos para este conteúdo.' },
 ];
 
 const MENSAGENS: Record<string, string[]> = {
   INGESTING: ['Gerando a prévia leve do vídeo…', 'Separando o áudio da imagem…', 'Encontrando as pausas da fala…'],
   ANALYZING: [
     'Entendendo o assunto do vídeo…',
-    'Procurando a frase mais forte para o gancho…',
+    'Decidindo a estrutura que este conteúdo pede…',
     'Cortando pausas e repetições…',
-    'Colocando os trechos na ordem que prende…',
+    'Escolhendo a abertura mais forte que a gravação tem…',
     'Escolhendo a legenda que combina com o tom…',
     'Marcando os momentos fortes para o zoom…',
-    'Escrevendo o título de abertura…',
     'Buscando imagens e ícones que ilustram a fala…',
   ],
   ANIMANDO: [
-    'Escolhendo os momentos que pedem uma explicação visual…',
-    'Desenhando as animações no ritmo das palavras…',
-    'Decidindo onde cada animação entra: meio a meio ou cartão…',
-    'Conferindo cada animação antes de colocar no vídeo…',
+    'Medindo o ritmo da fala e o que ela tem para mostrar…',
+    'Olhando a imagem: onde está o rosto, a luz e as cores…',
+    'Criando o design deste vídeo: cores, fontes e movimento…',
+    'Desenhando cada cena no instante da palavra…',
+    'Revisando os quadros de cada cena antes de colocar no vídeo…',
+  ],
+  DIRIGINDO: [
+    'Revendo o vídeo inteiro como um diretor…',
+    'Ajustando a legenda ao tom do vídeo…',
+    'Tirando o que está sobrando…',
+    'Conferindo o resultado antes de entregar…',
   ],
 };
 
@@ -86,14 +95,14 @@ const GANHOS = [
   { a: 25, Icone: IconeLegenda, texto: 'Legendas animadas' },
   { a: 55, Icone: IconeCortar, texto: 'Cortes no ritmo certo' },
   { a: 82, Icone: IconeAjustarZoom, texto: 'Zoom e transições' },
-  { a: 95, Icone: IconeTexto, texto: 'Título e chamada' },
+  { a: 97, Icone: IconeTexto, texto: 'Direção do vídeo inteiro' },
   { a: 89, Icone: IconeMidia, texto: 'Imagens para aprovar' },
-  { a: 97, Icone: IconeAnimacao, texto: 'Animações que explicam a fala' },
+  { a: 92, Icone: IconeAnimacao, texto: 'Animações que explicam a fala' },
 ];
 
 export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUrl, duracaoDaGravacaoMs, comemorando }: Props) {
   // O fim da montagem (as animações) aparece como etapa própria.
-  const estado = estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'animando' ? 'ANIMANDO' : estadoDoProjeto;
+  const estado = estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'animando' ? 'ANIMANDO' : estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'dirigindo' ? 'DIRIGINDO' : estadoDoProjeto;
   const faixa = FAIXAS[estado];
 
   // ---------- Progresso geral ----------
@@ -104,6 +113,10 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
   useEffect(() => {
     if (estado === 'ANALYZING' && inicioDaMontagem === null) setInicioDaMontagem(Date.now());
   }, [estado, inicioDaMontagem]);
+  const [inicioDaDirecao, setInicioDaDirecao] = useState<number | null>(null);
+  useEffect(() => {
+    if (estado === 'DIRIGINDO' && inicioDaDirecao === null) setInicioDaDirecao(Date.now());
+  }, [estado, inicioDaDirecao]);
   useEffect(() => {
     const id = setInterval(() => setAgora(Date.now()), 500);
     return () => clearInterval(id);
@@ -115,7 +128,9 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
     const pctDaEtapa =
       estado === 'ANALYZING'
         ? Math.min(92, ((agora - (inicioDaMontagem ?? agora)) / 1000) * 5)
-        : progresso?.etapa === faixa.etapa
+        : estado === 'DIRIGINDO'
+          ? Math.min(95, ((agora - (inicioDaDirecao ?? agora)) / 1000) * 0.35)
+          : progresso?.etapa === faixa.etapa
           ? progresso.pct
           : 0;
     geral = faixa.de + ((faixa.ate - faixa.de) * pctDaEtapa) / 100;
@@ -157,7 +172,7 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
     };
   }, [geral, comemorando]);
 
-  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'ANIMANDO'];
+  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'ANIMANDO', 'DIRIGINDO'];
   const atual = comemorando ? ordem.length : Math.max(1, ordem.indexOf(estado));
 
   const titulo = comemorando
@@ -168,7 +183,9 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
         ? 'A IA está montando seu vídeo'
         : estado === 'ANIMANDO'
           ? 'A IA está animando seu vídeo'
-        : 'Recebemos seu vídeo';
+          : estado === 'DIRIGINDO'
+            ? 'A IA está dirigindo seu vídeo'
+            : 'Recebemos seu vídeo';
 
   const subtitulo = comemorando
     ? 'Abrindo a edição…'
