@@ -59,6 +59,20 @@ import {
   type CartaoDescartado,
   type JanelaReservada,
   type RelatorioDasAnimacoes,
+  CORES_PADRAO_DA_MARCA,
+  INSTANTES_DAS_FOTOS,
+  NOTA_MINIMA_DA_CENA,
+  type CartaoDirigido,
+  REGRAS_LIVRES,
+  designDoVideo,
+  lerCritica,
+  listaDeFontes,
+  temaLivreSchema,
+  textoDoDesign,
+  type CriticaDaCena,
+  type DesignDoVideo,
+  type ModeloDeIa,
+  type Raciocinio,
 } from '@makucho/studio-contracts';
 import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
@@ -68,10 +82,12 @@ import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AiService } from './ai.service';
 import { referenciaDoEstilo } from './hyperframes/estilos';
 import { EXEMPLO_LIQUID_GLASS } from './hyperframes/liquid-glass-exemplo';
+import { skill } from './skills';
 
 // v4: a DIREÇÃO no lugar da cota -- cada cartão com gatilho na fala,
 // fidelidade conferida, espaço reservado e respiro (direcao-visual.ts).
-const VERSAO = 'animar-fala-v4';
+// v5: a escrita carrega a skill de motion graphics (skills.ts).
+const VERSAO = 'animar-fala-v5';
 /** Uma animação é uma resposta longa: mais tempo que as outras chamadas. */
 const TEMPO_PARA_ESCREVER_MS = 240_000;
 /** Quantas animações a IA escreve ao mesmo tempo (o provedor limita as simultâneas). */
@@ -101,6 +117,8 @@ interface Momento {
   conteudo: string;
   /** Qual das cores de destaque do estilo (0 a 4). */
   acento: number;
+  /** Direção livre: a encenação da cena (o que aparece, em que ordem, o que se move). */
+  conceito?: string;
   palavras: Array<{ s: number; texto: string }>;
 }
 
@@ -271,11 +289,149 @@ Pinte o fundo do estilo em #area inteira no meio_a_meio e na tela_cheia (o paine
 ${textoDoTema({ estilo: estilo.chave, ...(paleta ? { paleta } : {}) })}
 ${REGRAS_DE_DESIGN}
 ${textoDosComponentes()}
+${skill('motion-graphics').texto}
 ${DOUTRINA_DE_MOVIMENTO}
 ${REGRAS_DA_ANIMACAO_HTML}
 Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.
 ${referenciaParaEscrita(estilo)}`;
 }
+
+// ============================================================
+// A DIREÇÃO LIVRE (animar-livre-v1).
+//
+// O método das skills que a comunidade usa com agentes (video-use,
+// HyperFrames): poucas regras duras, um design escrito para o vídeo e um
+// ciclo de olhar e corrigir. No lugar de escolher um estilo do catálogo e
+// preencher um de nove tipos de cartão, a IA:
+//   1. dirige  -- escreve o DESIGN deste vídeo (conceito, paleta, fontes,
+//      linguagem visual, movimento) e as cenas, com a encenação de cada uma
+//      em texto livre;
+//   2. desenha -- uma chamada por cena, todas com o mesmo design no começo
+//      do pedido (é o que as faz parecer do mesmo vídeo, e o prefixo igual
+//      entra no cache de contexto);
+//   3. critica -- o worker fotografa a cena no Chrome e o modelo com visão
+//      olha os quadros; cena fraca volta para ser refeita com o parecer.
+// O que NÃO muda: nada de fala, número ou oferta inventados, as zonas
+// seguras do quadro, animação determinística e sem rede.
+// ============================================================
+
+const VERSAO_LIVRE = 'animar-livre-v1';
+/** Com raciocínio, o pensamento conta no teto: a resposta precisa de folga. */
+const MAX_TOKENS_DA_DIRECAO_LIVRE = 20_000;
+const MAX_TOKENS_DO_DESENHO = 24_000;
+const TEMPO_DA_DIRECAO_LIVRE_MS = 300_000;
+const TEMPO_DO_DESENHO_MS = 300_000;
+/** Quantas cenas a IA desenha ao mesmo tempo no modo livre. */
+const DESENHOS_SIMULTANEOS = 4;
+
+/** Quantas vezes uma cena pode ser refeita pela crítica (0 desliga; no máximo 3). */
+function rodadasDeCritica(): number {
+  const n = Number(process.env.STUDIO_RODADAS_DE_CRITICA ?? 2);
+  return Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 2;
+}
+
+/** `livre` (o padrão) ou `classico` (estilo do catálogo e cartões por gatilho). */
+export type ModoDasAnimacoes = 'livre' | 'classico';
+export function modoDasAnimacoes(): ModoDasAnimacoes {
+  return process.env.STUDIO_ANIMACOES_MODO === 'classico' ? 'classico' : 'livre';
+}
+
+/** Como criar as animações (a bancada de comparação roda o mesmo vídeo em várias). */
+export interface OpcoesDasAnimacoes {
+  modo?: ModoDasAnimacoes;
+  /** Rodadas de crítica por cena (padrão: STUDIO_RODADAS_DE_CRITICA, 2). */
+  rodadas?: number;
+  /** Troca o modelo e o raciocínio da direção e do desenho (só no modo livre). */
+  direcao?: { modelo?: ModeloDeIa; raciocinio?: Raciocinio };
+  desenho?: { modelo?: ModeloDeIa; raciocinio?: Raciocinio };
+}
+
+/** O que a direção decidiu (nos dois modos): as cenas que entram e as que saíram, com o motivo. */
+interface Direcao {
+  momentos: Momento[];
+  tom?: string;
+  cortada: boolean;
+  pedidos: number;
+  descartados: CartaoDescartado[];
+  reservadas: JanelaReservada[];
+}
+
+/** O que dá o visual a uma cena: um estilo do catálogo ou o design que a IA escreveu. */
+type Visual = { estilo: EstiloDeAnimacao; design?: undefined } | { design: DesignDoVideo; estilo?: undefined };
+
+function sistemaDaDirecaoLivre(duracaoS: number): string {
+  const r = REGRAS_LIVRES;
+  return `Você é o DIRETOR DE CRIAÇÃO de um vídeo vertical 9:16 de alguém falando para a câmera. Sua entrega é a direção de motion graphics do vídeo inteiro: o DESIGN (a identidade visual criada por você para ESTE conteúdo) e as CENAS (onde o gráfico entra e o que ele encena). Depois, um motion designer escreve cada cena em HTML/CSS/GSAP seguindo o que você escrever, e um crítico olha os quadros renderizados.
+
+O padrão é o de uma produtora atual -- lançamento de produto, documentário curto, canal editorial -- e não o de um template. Tudo o que não está nas REGRAS DURAS é decisão sua: quantas cenas, de que jeito, o ritmo, a identidade. Não existe lista de tipos de cena: invente a encenação que cada trecho pede.
+
+1. LEIA a fala inteira. Qual é a ideia do vídeo e o que quem assiste deve SENTIR? Daí sai o CONCEITO: uma ideia visual que amarra o vídeo (uma metáfora, um material, um sistema gráfico), específica deste conteúdo. "Moderno e limpo" não é conceito.
+
+2. DESIGN (vale para todas as cenas):
+- paleta: fundo, texto, apagado e até três destaques, em hex de 6 dígitos, com contraste alto entre texto e fundo. Uma paleta com opinião, tirada do assunto e do tom -- não o azul padrão de tecnologia, a não ser que o conteúdo peça.
+- fonteTitulo e fonteTexto: escolha pelo caráter, SÓ entre estas (nome exato):
+  ${listaDeFontes()}
+- linguagem: as formas, as texturas, os motivos que se repetem, como a composição se organiza e o que dá o acabamento (filetes, rótulos, grades, marcas de registro, numeração, moldura...). De 4 a 8 frases concretas, que um designer consiga seguir sem perguntar nada.
+- movimento: a assinatura do movimento -- energia, eases e durações típicas, como as coisas entram e saem, o que liga uma cena à seguinte. De 3 a 6 frases.
+
+3. CENAS. Cada uma MOSTRA o que a fala sozinha não mostra: um dado ganhando forma, uma ideia virando diagrama, uma palavra que pesa, um processo, uma comparação, uma metáfora. Encenações possíveis (exemplos, não uma lista fechada): tipografia cinética no ritmo da fala; número que conta enquanto o gráfico cresce; diagrama que se desenha; interface de aplicativo simulada; linha do tempo; mapa de conceitos; antes e depois com cortina; manchete; selo que carimba; pictograma em SVG que se monta peça a peça. Varie a encenação e a escala de uma cena para a outra: o vídeo precisa de ritmo, com momentos densos e momentos só do rosto. Trecho de emoção, história pessoal ou olho no olho fica com o rosto.
+
+Onde a cena passa ("layout": os quatro enquadramentos que o compositor sabe fazer):
+- meio_a_meio: a cena ocupa metade da tela e o rosto a outra ("lado": "cima" = cena em cima, rosto embaixo; "baixo" = o contrário). Bom para explicar sem perder o rosto.
+- cartao: uma peça menor por cima do vídeo, fora do rosto. Bom para um detalhe rápido.
+- pip: a cena ocupa a tela e o rosto vai para uma janela num canto ("canto": sup-esq|sup-dir|inf-esq|inf-dir). Bom para conteúdo denso.
+- tela_cheia: a cena toma o quadro. Para os momentos de impacto.
+
+REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
+- "ancora": copie LITERALMENTE as palavras da fala em que a cena começa. Âncora que não está na fala do trecho = cena descartada.
+- Fidelidade: só números, nomes, preços e itens DITOS. Número que não foi dito = cena descartada. Não arredonde nem complete.
+- Não entre nos ESPAÇOS RESERVADOS da entrada (título da abertura, chamada do fim, mídias já no vídeo).
+- 1 s livre entre duas cenas; no máximo ${Math.round(r.fracaoComGrafico * 100)}% do vídeo com gráfico; no máximo ${r.teto(duracaoS)} cenas (é teto, não meta); cada cena dura de 2,5 a ${r.duracaoMaximaS} s e começa na palavra da âncora (até 0,3 s antes).
+- "conteudo": os textos EXATOS que aparecem na cena, curtos, em português.
+- "prioridade": 1 = sem a cena o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
+
+Responda SÓ com JSON, nesta ordem, sem texto fora dele: {"conceito":"a ideia visual em uma frase","tom":"o que quem assiste deve sentir","design":{"paleta":{"fundo":"#000000","texto":"#000000","apagado":"#000000","destaque":"#000000","destaque2":"#000000","destaque3":"#000000"},"fonteTitulo":"nome exato","fonteTexto":"nome exato","linguagem":"...","movimento":"..."},"cenas":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"nome":"rótulo curto seu","ancora":"palavras exatas da fala","intencao":"o que quem assiste entende ou sente","conceito":"a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)","conteudo":{"textos":["..."]},"prioridade":1}]}. Instantes em segundos do vídeo final, iguais aos da fala. Sem cena: "cenas": [].`;
+}
+
+/**
+ * O pedido de desenho. A parte igual em todo vídeo vem primeiro e o design
+ * por último: o prefixo comum entra no cache de contexto entre vídeos, e o
+ * sistema inteiro entre as cenas do mesmo vídeo.
+ */
+function sistemaDoDesenho(design: DesignDoVideo, paleta?: string): string {
+  const p = coresDaPaleta(paleta);
+  return `Você é motion designer sênior. Escreve UMA cena de motion graphics (HTML/CSS/GSAP) de um vídeo vertical 9:16 de alguém falando. A direção já escreveu o DESIGN do vídeo (no fim deste texto) e a encenação desta cena: siga o design à risca e execute a encenação com o seu melhor ofício -- a composição, os detalhes e a coreografia são SEUS. Um crítico vai olhar os quadros renderizados: cena com cara de slide, de template ou de página da web volta para ser refeita.
+
+O QUE SEPARA O PROFISSIONAL DO AMADOR:
+- Uma ideia por cena, com UM foco dominante; o resto apoia.
+- Composição com tensão: escala contrastada (algo muito grande contra algo pequeno), alinhamento a uma grade, conteúdo ancorado nas bordas da área útil, assimetria quando ajuda. Título e texto empilhados no centro é slide.
+- Três camadas: fundo com profundidade (brilho radial, textura, grade, um número ou palavra gigante apagados), o conteúdo, e os acentos de acabamento que a linguagem do design pede.
+- Tudo desenhado em código: SVG para ícones, pictogramas, diagramas, gráficos e formas (traço que se desenha com strokeDashoffset, máscaras, clipPath). Nada de emoji nem de imagem de fora.
+- A cena EVOLUI do primeiro ao último segundo, no ritmo das palavras: pause em qualquer instante e algo está acontecendo.
+- Você é livre para qualquer técnica que as regras técnicas abaixo permitam. Se a encenação pedir algo que não está em exemplo nenhum, faça.
+${skill('motion-graphics').texto}
+${REGRAS_DE_DESIGN}
+${DOUTRINA_DE_MOVIMENTO}
+${REGRAS_DA_ANIMACAO_HTML}
+Pinte o fundo do design em #area inteira no meio_a_meio, no pip e na tela_cheia (o painel é da cena); no cartao, só a peça tem fundo (o resto transparente: o vídeo aparece).
+Os componentes abaixo são OPCIONAIS: use um só quando a encenação pedir exatamente aquilo; o desenho próprio vem primeiro.
+${textoDosComponentes()}
+Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.
+
+${textoDoDesign(design)}${p ? `\nPALETA ESCOLHIDA PELA PESSOA (${p.paleta.nome}): ${p.cores.join(' ')} -- as variáveis de cor já estão com ela; use as variáveis, não os hex do design.` : ''}`;
+}
+
+const SISTEMA_DA_CRITICA = `Você é diretor de arte e revisa UMA cena de motion graphics de um vídeo vertical 9:16, antes de ela ir ao ar. Você recebe três quadros renderizados da cena (começo, meio e fim), o design do vídeo e o que a cena devia mostrar. O cinza liso é onde aparece o vídeo da pessoa falando: não é defeito, e a cena não deve cobrir o que não é dela.
+Julgue como quem reprova trabalho amador. Não elogie.
+1. Hierarquia: o olho sabe para onde ir? Há um foco dominante ou tudo tem o mesmo peso?
+2. Leitura no celular: tamanho e contraste dos textos.
+3. Composição: alinhamento, respiro e ancoragem. Algo cortado, sobreposto, vazando da área, colado na borda? Grandes vazios mortos?
+4. Acabamento: parece produzido (camadas, detalhes, textura) ou um slide, um template genérico, uma página da web?
+5. Fidelidade ao design do vídeo: cores, fontes e linguagem visual.
+6. Progressão: os três quadros mostram a cena evoluindo? Quadro vazio, ou os três iguais, é defeito. (O primeiro quadro pega a entrada em curso: estar incompleto é normal; estar vazio não.)
+Nota de 0 a 10: 9-10 nível de produtora; 7-8 bom, vai ao ar; 5-6 amador; abaixo de 5, quebrado.
+Problemas: cada um concreto e acionável -- o que está errado, em qual quadro, e como corrigir. No máximo 5, do mais grave para o menos. Sem problema real, lista vazia.
+Responda SÓ com JSON: {"nota": 0, "problemas": ["..."]}.`;
 
 /** O primeiro objeto JSON de uma resposta (a IA às vezes cerca com ```). */
 function lerJson(texto: string): unknown {
@@ -286,14 +442,18 @@ function lerJson(texto: string): unknown {
   return JSON.parse(limpo.slice(i, f + 1));
 }
 
-function briefingDe(m: Pick<Momento, 'tipo' | 'ideia' | 'conteudo'>): string {
-  return JSON.stringify({ tipo: m.tipo, ideia: m.ideia, conteudo: m.conteudo }).slice(0, 2000);
+function briefingDe(m: Pick<Momento, 'tipo' | 'ideia' | 'conteudo' | 'conceito'>): string {
+  // O briefing cabe em 2000 caracteres e tem de continuar JSON: o que
+  // encolhe é a encenação, nunca o texto final cortado no meio.
+  const base = { tipo: m.tipo, ideia: m.ideia, conteudo: m.conteudo.slice(0, 700) };
+  const sobra = 1900 - JSON.stringify(base).length;
+  return JSON.stringify({ ...base, ...(m.conceito && sobra > 40 ? { conceito: m.conceito.slice(0, sobra - 20) } : {}) });
 }
 
-function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo: string } {
+function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo: string; conceito?: string } {
   try {
     const b = JSON.parse(c.briefing ?? '') as Record<string, unknown>;
-    return { tipo: String(b.tipo ?? ''), ideia: String(b.ideia ?? c.titulo ?? ''), conteudo: String(b.conteudo ?? '') };
+    return { tipo: String(b.tipo ?? ''), ideia: String(b.ideia ?? c.titulo ?? ''), conteudo: String(b.conteudo ?? ''), ...(typeof b.conceito === 'string' ? { conceito: b.conceito } : {}) };
   } catch {
     return { tipo: '', ideia: c.titulo ?? '', conteudo: '' };
   }
@@ -364,20 +524,8 @@ export class AnimacoesDaFalaService {
     }
   }
 
-  /**
-   * A direção visual: o estilo do vídeo e os cartões que a fala PEDE --
-   * lidos mesmo de uma resposta cortada e conferidos (gatilho, fidelidade,
-   * espaço reservado, respiro). Devolve também o que saiu e por quê.
-   */
-  private async dirigir(
-    workspaceId: string,
-    projectId: string,
-    plano: EditPlanV1,
-    palavras: Array<{ s: number; texto: string }>,
-    duracaoS: number,
-    /** O estilo que a pessoa escolheu para o projeto (a IA não escolhe outro). */
-    fixo?: EstiloDeAnimacao,
-  ): Promise<{ estilo: EstiloDeAnimacao; momentos: Momento[]; tom?: string; cortada: boolean; pedidos: number; descartados: CartaoDescartado[]; reservadas: JanelaReservada[] }> {
+  /** O que a direção lê: a fala no tempo, o que a seleção entendeu, os papéis e os espaços reservados. */
+  private async entradaDaDirecao(projectId: string, plano: EditPlanV1, palavras: Array<{ s: number; texto: string }>, duracaoS: number): Promise<{ usuario: string; reservadas: JanelaReservada[] }> {
     const reservadas = janelasReservadasDoPlano(plano);
     const entendimento = await this.entendimento(projectId);
     const papeis = papeisNoTempo(plano);
@@ -393,6 +541,80 @@ export class AnimacoesDaFalaService {
     ]
       .filter(Boolean)
       .join('\n');
+    return { usuario, reservadas };
+  }
+
+  /**
+   * A direção LIVRE: a IA escreve o design deste vídeo e as cenas, com a
+   * encenação de cada uma. A conferência é a mesma da direção por cartões
+   * (âncora na fala, fidelidade, espaço reservado), com os limites de
+   * ritmo da direção livre.
+   */
+  private async dirigirLivre(
+    workspaceId: string,
+    projectId: string,
+    plano: EditPlanV1,
+    palavras: Array<{ s: number; texto: string }>,
+    duracaoS: number,
+    opcoes: OpcoesDasAnimacoes,
+  ): Promise<Direcao & { design: DesignDoVideo }> {
+    const { usuario, reservadas } = await this.entradaDaDirecao(projectId, plano, palavras, duracaoS);
+    // A cor da marca entra como informação, não como ordem (a padrão do
+    // Studio não é a marca de ninguém: não vai).
+    const cor = await Promise.resolve()
+      .then(() => this.animacoes.corDaMarca(workspaceId))
+      .catch(() => null);
+    const marca = cor && cor.toLowerCase() !== CORES_PADRAO_DA_MARCA.primary.toLowerCase() ? cor : null;
+    const r = await this.ai.chamar({
+      workspaceId,
+      projectId,
+      chamada: 'dirigir_animacoes',
+      sistema: sistemaDaDirecaoLivre(duracaoS),
+      usuario: marca ? `Cor principal da marca: ${marca} (pode ser um dos destaques, se combinar com o conceito).\n${usuario}` : usuario,
+      maxTokens: MAX_TOKENS_DA_DIRECAO_LIVRE,
+      promptVersion: VERSAO_LIVRE,
+      semCache: true,
+      tempoMaximoMs: TEMPO_DA_DIRECAO_LIVRE_MS,
+      ...(opcoes.direcao?.modelo ? { modelo: opcoes.direcao.modelo } : {}),
+      ...(opcoes.direcao?.raciocinio ? { raciocinio: opcoes.direcao.raciocinio } : {}),
+    });
+    const lida = lerDirecao(r.texto);
+    const design = designDoVideo(lida);
+    const { aceitos, descartados } = conferirCartoes(lida.cartoes, { duracaoS, palavras, reservadas, regras: REGRAS_LIVRES });
+    return { design, momentos: this.momentosDaDirecao(aceitos, palavras), ...(lida.tom ? { tom: lida.tom } : {}), cortada: lida.cortada, pedidos: lida.cartoes.length, descartados, reservadas };
+  }
+
+  private momentosDaDirecao(aceitos: readonly CartaoDirigido[], palavras: Array<{ s: number; texto: string }>): Momento[] {
+    return aceitos.map((c) => ({
+      inicioS: c.inicioS,
+      fimS: c.fimS,
+      layout: c.layout,
+      ...(c.lado ? { lado: c.lado } : {}),
+      ...(c.canto ? { canto: c.canto } : {}),
+      tipo: c.tipo,
+      ideia: c.intencao,
+      conteudo: c.conteudo,
+      acento: c.acento,
+      ...(c.conceito ? { conceito: c.conceito } : {}),
+      palavras: palavras.filter((p) => p.s >= c.inicioS && p.s < c.fimS),
+    }));
+  }
+
+  /**
+   * A direção visual: o estilo do vídeo e os cartões que a fala PEDE --
+   * lidos mesmo de uma resposta cortada e conferidos (gatilho, fidelidade,
+   * espaço reservado, respiro). Devolve também o que saiu e por quê.
+   */
+  private async dirigir(
+    workspaceId: string,
+    projectId: string,
+    plano: EditPlanV1,
+    palavras: Array<{ s: number; texto: string }>,
+    duracaoS: number,
+    /** O estilo que a pessoa escolheu para o projeto (a IA não escolhe outro). */
+    fixo?: EstiloDeAnimacao,
+  ): Promise<Direcao & { estilo: EstiloDeAnimacao }> {
+    const { usuario, reservadas } = await this.entradaDaDirecao(projectId, plano, palavras, duracaoS);
     const r = await this.ai.chamar({
       workspaceId,
       projectId,
@@ -407,18 +629,7 @@ export class AnimacoesDaFalaService {
     const lida = lerDirecao(r.texto);
     const estilo = fixo ?? estiloDeAnimacao(lida.estilo) ?? TECNOLOGIA;
     const { aceitos, descartados } = conferirCartoes(lida.cartoes, { duracaoS, palavras, reservadas });
-    const momentos: Momento[] = aceitos.map((c) => ({
-      inicioS: c.inicioS,
-      fimS: c.fimS,
-      layout: c.layout,
-      ...(c.lado ? { lado: c.lado } : {}),
-      ...(c.canto ? { canto: c.canto } : {}),
-      tipo: c.tipo,
-      ideia: c.intencao,
-      conteudo: c.conteudo,
-      acento: c.acento,
-      palavras: palavras.filter((p) => p.s >= c.inicioS && p.s < c.fimS),
-    }));
+    const momentos = this.momentosDaDirecao(aceitos, palavras);
     return { estilo, momentos, ...(lida.tom ? { tom: lida.tom } : {}), cortada: lida.cortada, pedidos: lida.cartoes.length, descartados, reservadas };
   }
 
@@ -430,10 +641,11 @@ export class AnimacoesDaFalaService {
     workspaceId: string,
     projectId: string,
     m: Momento,
-    estilo: EstiloDeAnimacao,
+    visual: Visual,
     serie: Momento[],
-    extra: { base?: ComposicaoHtml; pedido?: string; soOsTextos?: boolean; paleta?: string } = {},
-  ): Promise<{ composicao: ComposicaoHtml; duracaoMs: number }> {
+    extra: { base?: ComposicaoHtml; pedido?: string; soOsTextos?: boolean; paleta?: string; rodadas?: number; desenho?: OpcoesDasAnimacoes['desenho'] } = {},
+  ): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; critica?: CriticaDaCena }> {
+    const { estilo, design } = visual;
     const duracaoMs = Math.round((m.fimS - m.inicioS) * 1000);
     const area =
       m.layout === 'meio_a_meio'
@@ -454,12 +666,21 @@ export class AnimacoesDaFalaService {
       .map((o) => `${o.inicioS.toFixed(0)}s ${o.tipo || '?'} (${o.layout})`)
       .join('; ');
     const atual = extra.base ? JSON.stringify({ titulo: extra.base.titulo, html: extra.base.html, css: extra.base.css, script: extra.base.script }).slice(0, 14_000) : '';
-    const pedido = `Cartão ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
+    const cabecalho = design
+      ? `Cena ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}${m.tipo ? `: "${m.tipo}"` : ''}. Layout: ${m.layout} -- #area é ${area}.
+${grade}
+Duração: ${(duracaoMs / 1000).toFixed(1)} s.
+O que quem assiste entende ou sente: ${m.ideia}
+Encenação (da direção): ${m.conceito || 'a que melhor mostrar a ideia, dentro do design do vídeo'}
+Textos exatos da cena: ${m.conteudo || '(tire da fala, sem inventar)'}
+As outras cenas do vídeo (mesma família visual; varie a encenação e a composição): ${outros || 'nenhuma'}.`
+      : `Cartão ${Math.max(1, serie.indexOf(m) + 1)} de ${Math.max(1, serie.length)}. Tipo: ${m.tipo || 'o que melhor explicar'}. Layout: ${m.layout} -- #area é ${area}.
 ${grade}
 Duração: ${(duracaoMs / 1000).toFixed(1)} s. Cor de destaque: a ${m.acento + 1}ª do estilo.
 O que explica: ${m.ideia}
 Conteúdo: ${m.conteudo || '(tire da fala)'}
-Os outros cartões da série (não repita a estrutura deles): ${outros || 'nenhum'}.
+Os outros cartões da série (não repita a estrutura deles): ${outros || 'nenhum'}.`;
+    const pedido = `${cabecalho}
 Fala do trecho (segundo DENTRO da animação, palavra) -- cada elemento entra no segundo da palavra que ele representa:
 ${fala}${
       extra.pedido
@@ -469,17 +690,33 @@ ${fala}${
           : ''
     }`;
     const tentar = async (usuario: string) => {
-      const r = await this.ai.chamar({
-        workspaceId,
-        projectId,
-        chamada: 'animar_fala',
-        sistema: sistemaDaEscrita(estilo, extra.paleta),
-        usuario,
-        maxTokens: 8000,
-        promptVersion: VERSAO,
-        semCache: true,
-        tempoMaximoMs: TEMPO_PARA_ESCREVER_MS,
-      });
+      const r = await this.ai.chamar(
+        design
+          ? {
+              workspaceId,
+              projectId,
+              chamada: 'desenhar_animacao',
+              sistema: sistemaDoDesenho(design, extra.paleta),
+              usuario,
+              maxTokens: MAX_TOKENS_DO_DESENHO,
+              promptVersion: VERSAO_LIVRE,
+              semCache: true,
+              tempoMaximoMs: TEMPO_DO_DESENHO_MS,
+              ...(extra.desenho?.modelo ? { modelo: extra.desenho.modelo } : {}),
+              ...(extra.desenho?.raciocinio ? { raciocinio: extra.desenho.raciocinio } : {}),
+            }
+          : {
+              workspaceId,
+              projectId,
+              chamada: 'animar_fala',
+              sistema: sistemaDaEscrita(estilo!, extra.paleta),
+              usuario,
+              maxTokens: 8000,
+              promptVersion: VERSAO,
+              semCache: true,
+              tempoMaximoMs: TEMPO_PARA_ESCREVER_MS,
+            },
+      );
       const j = lerJson(r.texto) as Record<string, unknown>;
       const c = composicaoHtmlSchema.safeParse({
         html: j.html,
@@ -493,7 +730,8 @@ ${fala}${
         // O estilo pinta o próprio fundo (o painel escuro padrão é dos modelos prontos).
         semFundo: true,
         titulo: String(j.titulo ?? m.ideia).slice(0, 60),
-        estilo: estilo.chave,
+        // O estilo do catálogo ou, na direção livre, o tema deste vídeo.
+        ...(design ? { tema: design.tema } : { estilo: estilo!.chave }),
         ...(coresDaPaleta(extra.paleta) ? { paleta: extra.paleta } : {}),
         briefing: briefingDe(m),
       });
@@ -521,10 +759,65 @@ ${fala}${
     // Só sobraram problemas de layout: a animação entra (melhor que perdê-la).
     if ('erro' in r && 'soLayout' in r && r.composicao) {
       this.log.warn(`animação (${m.ideia.slice(0, 40)}) entrou com avisos de layout: ${r.erro!.join('; ').slice(0, 300)}`);
-      return { composicao: r.composicao, duracaoMs };
+    } else if ('erro' in r) throw new Error(r.erro!.slice(0, 3).join('; '));
+    const primeira = r.composicao!;
+    const rodadas = extra.rodadas ?? rodadasDeCritica();
+    if (!design || rodadas <= 0) return { composicao: primeira, duracaoMs };
+
+    // A crítica OLHA os quadros. Cena abaixo da nota volta para a IA com o
+    // parecer; fica a versão de melhor nota (refazer pode piorar).
+    let versaoAtual = primeira;
+    let melhor: { composicao: ComposicaoHtml; nota: number; problemas: string[] } | null = null;
+    let refeita = 0;
+    for (let rodada = 0; rodada <= rodadas; rodada += 1) {
+      const parecer = await this.criticar(workspaceId, projectId, versaoAtual, duracaoMs, m, design);
+      if (!parecer) break;
+      if (!melhor || parecer.nota > melhor.nota) melhor = { composicao: versaoAtual, ...parecer };
+      if (parecer.nota >= NOTA_MINIMA_DA_CENA || !parecer.problemas.length || rodada === rodadas) break;
+      const versao = JSON.stringify({ titulo: versaoAtual.titulo, html: versaoAtual.html, css: versaoAtual.css, script: versaoAtual.script }).slice(0, 16_000);
+      const nova = await tentar(
+        `${pedido}\n\nSua versão anterior:\n${versao}\n\nUM DIRETOR DE ARTE OLHOU OS QUADROS RENDERIZADOS dela e deu nota ${parecer.nota} de 10. Refaça a cena resolvendo cada ponto (pode mudar a composição inteira se for preciso; mantenha os textos e a sincronia com a fala) e responda o JSON inteiro de novo:\n- ${parecer.problemas.join('\n- ')}`,
+      ).catch((e: unknown) => {
+        this.log.warn(`animação (${m.ideia.slice(0, 40)}): refazer pela crítica falhou -- ${e instanceof Error ? e.message : e}`);
+        return null;
+      });
+      // A versão nova quebrou algo técnico: fica a melhor que já existe.
+      if (!nova || ('erro' in nova && !nova.composicao)) break;
+      versaoAtual = nova.composicao!;
+      refeita += 1;
     }
-    if ('erro' in r) throw new Error(r.erro!.slice(0, 3).join('; '));
-    return { composicao: r.composicao!, duracaoMs };
+    if (!melhor) return { composicao: primeira, duracaoMs };
+    this.log.log(`animação (${m.ideia.slice(0, 40)}): crítica ${melhor.nota}/10${refeita ? `, refeita ${refeita}x` : ''}`);
+    return { composicao: melhor.composicao, duracaoMs, critica: { nota: melhor.nota, problemas: melhor.problemas, refeita } };
+  }
+
+  /**
+   * A crítica de uma cena: o worker a fotografa no Chrome e o modelo com
+   * visão julga os quadros contra o design do vídeo. `null` quando não deu
+   * (worker fora, IA fora, parecer ilegível): a cena entra sem crítica.
+   */
+  private async criticar(workspaceId: string, projectId: string, c: ComposicaoHtml, duracaoMs: number, m: Momento, design: DesignDoVideo): Promise<{ nota: number; problemas: string[] } | null> {
+    try {
+      const fotos = await this.animacoes.fotografar(c, duracaoMs);
+      if (!fotos?.length) return null;
+      const instantes = INSTANTES_DAS_FOTOS.slice(0, fotos.length).map((f, i) => `quadro ${i + 1} aos ${((duracaoMs / 1000) * f).toFixed(1)} s`);
+      const r = await this.ai.chamar({
+        workspaceId,
+        projectId,
+        chamada: 'criticar_animacao',
+        sistema: SISTEMA_DA_CRITICA,
+        usuario: `${textoDoDesign(design)}\n\nA CENA (${m.layout}, ${(duracaoMs / 1000).toFixed(1)} s): ${m.ideia}\nEncenação pedida: ${m.conceito || '(livre)'}\nTextos da cena: ${m.conteudo || '(da fala)'}\nImagens, na ordem: ${instantes.join('; ')}.`,
+        imagens: fotos,
+        maxTokens: 900,
+        promptVersion: VERSAO_LIVRE,
+        semCache: true,
+        tempoMaximoMs: 90_000,
+      });
+      return lerCritica(r.texto);
+    } catch (e) {
+      this.log.warn(`crítica indisponível (${m.ideia.slice(0, 40)}): ${e instanceof Error ? e.message : e}`);
+      return null;
+    }
   }
 
   /** As animações do plano como momentos (para a série e para refazer). */
@@ -548,6 +841,7 @@ ${fala}${
           ideia: b.ideia,
           conteudo: b.conteudo,
           acento: 0,
+          ...(b.conceito ? { conceito: b.conceito } : {}),
           palavras: palavras.filter((p) => p.s >= inicioS && p.s < fimS),
         };
         return { camada, momento };
@@ -555,16 +849,36 @@ ${fala}${
   }
 
   /**
+   * O design que a direção livre escreveu para o projeto (fica no relatório
+   * das animações). Sem ele, o tema guardado numa animação livre do vídeo
+   * ainda dá as cores e as fontes -- o bastante para a cena nova combinar.
+   */
+  private async designDoProjeto(projectId: string, plano: EditPlanV1): Promise<DesignDoVideo | null> {
+    const projeto = await Promise.resolve()
+      .then(() => this.prisma.project.findUnique({ where: { id: projectId }, select: { animationReport: true } }))
+      .catch(() => null);
+    const guardado = (projeto?.animationReport as RelatorioDasAnimacoes | null | undefined)?.design;
+    const tema = temaLivreSchema.safeParse(guardado?.tema);
+    if (guardado && tema.success) return { conceito: String(guardado.conceito ?? ''), linguagem: String(guardado.linguagem ?? ''), movimento: String(guardado.movimento ?? ''), tema: tema.data };
+    const doPlano = (plano.mediaLayers ?? []).find((c) => c.kind === 'html' && c.composicao?.tema && !c.composicao.estilo)?.composicao?.tema;
+    return doPlano ? { conceito: '', linguagem: '', movimento: '', tema: doPlano } : null;
+  }
+
+  /**
    * Uma animação nova para um trecho, pelo método da montagem (o "Peça à
    * IA" usa isto em vez de escrever o HTML). Não salva: devolve a
    * composição para quem chamou pôr no plano.
    */
-  async animarTrecho(workspaceId: string, projectId: string, plano: EditPlanV1, p: PedidoDeTrecho): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo: EstiloDeAnimacao }> {
+  async animarTrecho(workspaceId: string, projectId: string, plano: EditPlanV1, p: PedidoDeTrecho): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo?: EstiloDeAnimacao }> {
     const palavras = await this.palavrasNoVideo(projectId, plano);
     const total = agendaDoPlano(plano).duracaoMs / 1000;
     const inicioS = Math.max(0, Math.min(p.inicioS, total - 1));
     const fimS = Math.min(total, Math.max(inicioS + 2, Math.min(p.fimS, inicioS + 15)));
-    const estilo = estiloDeAnimacao(p.estilo) ?? estiloDoPlano(plano) ?? TECNOLOGIA;
+    // Sem estilo pedido nem estilo do catálogo no vídeo, a cena nova segue
+    // o design que a direção livre escreveu para o projeto (se houver).
+    const doCatalogo = estiloDeAnimacao(p.estilo) ?? estiloDoPlano(plano);
+    const design = doCatalogo ? null : await this.designDoProjeto(projectId, plano);
+    const visual: Visual = design ? { design } : { estilo: doCatalogo ?? TECNOLOGIA };
     const m: Momento = {
       inicioS,
       fimS,
@@ -579,8 +893,9 @@ ${fala}${
     };
     const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
     const paleta = p.paleta ?? paletaDoPlano(plano);
-    const r = await this.escrever(workspaceId, projectId, m, estilo, serie, paleta ? { paleta } : {});
-    return { ...r, estilo };
+    // Quem pediu está esperando na tela: uma rodada de crítica, não duas.
+    const r = await this.escrever(workspaceId, projectId, m, visual, serie, { ...(paleta ? { paleta } : {}), rodadas: Math.min(1, rodadasDeCritica()) });
+    return { composicao: r.composicao, duracaoMs: r.duracaoMs, ...(visual.estilo ? { estilo: visual.estilo } : {}) };
   }
 
   /**
@@ -588,7 +903,7 @@ ${fala}${
    * lugar (layout/lado) ou um pedido da pessoa. Mantém o que ela explica
    * (o briefing) e o tempo. Não salva: devolve a composição nova.
    */
-  async redesenhar(workspaceId: string, projectId: string, plano: EditPlanV1, camadaId: string, o: OpcoesDeRefazer): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo: EstiloDeAnimacao }> {
+  async redesenhar(workspaceId: string, projectId: string, plano: EditPlanV1, camadaId: string, o: OpcoesDeRefazer): Promise<{ composicao: ComposicaoHtml; duracaoMs: number; estilo?: EstiloDeAnimacao }> {
     const palavras = await this.palavrasNoVideo(projectId, plano);
     const todos = this.momentosDoPlano(plano, palavras);
     const achado = todos.find((x) => x.camada.id === camadaId);
@@ -606,15 +921,19 @@ ${fala}${
     }
     if (o.canto && m.layout === 'pip') m.canto = o.canto;
     if (o.lado && m.layout === 'meio_a_meio') m.lado = o.lado;
-    const estilo = estiloDeAnimacao(o.estilo) ?? estiloDeAnimacao(atual.estilo) ?? estiloDoPlano(plano) ?? TECNOLOGIA;
+    // Uma animação da direção livre (tem tema, não tem estilo) continua no
+    // design do vídeo -- a não ser que a pessoa peça um estilo do catálogo.
+    const doCatalogo = estiloDeAnimacao(o.estilo) ?? estiloDeAnimacao(atual.estilo);
+    const design = !doCatalogo && atual.tema ? ((await this.designDoProjeto(projectId, plano)) ?? { conceito: '', linguagem: '', movimento: '', tema: atual.tema }) : null;
+    const visual: Visual = design ? { design } : { estilo: doCatalogo ?? estiloDoPlano(plano) ?? TECNOLOGIA };
     // Trocar o canto do pip muda onde há espaço livre: também é outro desenho.
-    const mudouODesenho = estilo.chave !== atual.estilo || m.layout !== atual.layout || (m.layout === 'pip' && (m.canto ?? 'inf-dir') !== (atual.canto ?? 'inf-dir'));
+    const mudouODesenho = (visual.estilo ? visual.estilo.chave !== atual.estilo : false) || m.layout !== atual.layout || (m.layout === 'pip' && (m.canto ?? 'inf-dir') !== (atual.canto ?? 'inf-dir'));
     const semBriefing = !atual.briefing;
     const serie = todos.map((x) => (x.camada.id === camadaId ? m : x.momento));
     // Paleta: "" tira; ausente mantém a da animação.
     const paleta = o.paleta === '' ? undefined : (o.paleta ?? atual.paleta);
     const soRecolorir = !mudouODesenho && !o.pedido && o.paleta !== undefined && o.paleta !== (atual.paleta ?? '');
-    const r = await this.escrever(workspaceId, projectId, m, estilo, serie, {
+    const r = await this.escrever(workspaceId, projectId, m, visual, serie, {
       ...(paleta ? { paleta } : {}),
       ...(soRecolorir ? { pedido: paleta ? 'Troque as cores pela PALETA ESCOLHIDA, mantendo o desenho, os textos e os movimentos.' : 'Volte às cores originais do estilo, mantendo o desenho, os textos e os movimentos.' } : {}),
       base: atual,
@@ -622,8 +941,10 @@ ${fala}${
       // Estilo ou lugar novo: o desenho é outro; os textos são os mesmos.
       soOsTextos: mudouODesenho || semBriefing,
       ...(o.pedido && mudouODesenho ? { pedido: `${o.pedido} (redesenhe no estilo e no lugar novos)` } : {}),
+      // Só recolorir não muda o desenho: não há o que criticar de novo.
+      rodadas: soRecolorir ? 0 : Math.min(1, rodadasDeCritica()),
     });
-    return { ...r, estilo };
+    return { composicao: r.composicao, duracaoMs: r.duracaoMs, ...(visual.estilo ? { estilo: visual.estilo } : {}) };
   }
 
   /**
@@ -689,6 +1010,7 @@ ${fala}${
     aoAvancar: (pct: number) => void = () => undefined,
     /** Chamado com as janelas das animações assim que a direção decide (as mídias evitam esses instantes). */
     aoDirigir: (ocupados: Array<{ inicioMs: number; fimMs: number }>) => void = () => undefined,
+    opcoes: OpcoesDasAnimacoes = {},
   ): Promise<{ criadas: number; nota: string }> {
     const relatorio: RelatorioDasAnimacoes = { em: new Date().toISOString(), pedidos: 0, aceitos: [], descartados: [], escrita: [] };
     const registrar = async (nota: string) => {
@@ -715,16 +1037,30 @@ ${fala}${
       const paletaFixa = coresDaPaleta(projeto?.animationPalette) ? projeto!.animationPalette! : undefined;
       const fixo = estiloDeAnimacao(projeto?.animationStyle);
 
-      let direcao: Awaited<ReturnType<AnimacoesDaFalaService['dirigir']>>;
+      // Direção livre por padrão. O estilo que a pessoa escolheu para o
+      // projeto vale sobre ela: aí é o estilo do catálogo, por cartões.
+      const livre = (opcoes.modo ?? modoDasAnimacoes()) === 'livre' && !fixo;
+      let direcao: Direcao & { estilo?: EstiloDeAnimacao; design?: DesignDoVideo };
       try {
-        direcao = await this.dirigir(sistema.workspaceId, projectId, plano, palavras, duracaoS, fixo);
+        direcao = livre
+          ? await this.dirigirLivre(sistema.workspaceId, projectId, plano, palavras, duracaoS, opcoes).catch(async (e: unknown) => {
+              // A direção livre não respondeu (modelo fora, resposta ilegível):
+              // o vídeo não fica sem animação por isso.
+              this.log.warn(`direção livre falhou no projeto ${projectId}; seguindo pelos cartões: ${e instanceof Error ? e.message : e}`);
+              return this.dirigir(sistema.workspaceId, projectId, plano, palavras, duracaoS, fixo);
+            })
+          : await this.dirigir(sistema.workspaceId, projectId, plano, palavras, duracaoS, fixo);
       } catch (e) {
         aoDirigir([]);
         throw e;
       }
-      const { estilo, momentos } = direcao;
+      const { momentos } = direcao;
+      const visual: Visual = direcao.design ? { design: direcao.design } : { estilo: direcao.estilo! };
+      const { estilo, design } = visual;
+      const nomeDoVisual = estilo ? `no estilo ${estilo.nome}` : 'com direção própria';
       Object.assign(relatorio, {
-        estilo: estilo.nome,
+        estilo: estilo?.nome ?? 'Direção livre',
+        ...(design ? { design } : {}),
         ...(direcao.tom ? { tom: direcao.tom } : {}),
         ...(direcao.cortada ? { cortada: true } : {}),
         pedidos: direcao.pedidos,
@@ -736,15 +1072,22 @@ ${fala}${
       if (!momentos.length) {
         const nota = direcao.pedidos
           ? `Sem animações: a IA sugeriu ${direcao.pedidos}, mas nenhuma passou na conferência (toque para ver os motivos).`
-          : 'Sem animações: a fala não tem números, listas, comparações ou passos que peçam um cartão.';
+          : design
+            ? 'Sem animações: a direção achou que este vídeo fica melhor só com o rosto e a fala.'
+            : 'Sem animações: a fala não tem números, listas, comparações ou passos que peçam um cartão.';
         return { criadas: 0, nota: await registrar(nota) };
       }
 
-      // Escreve no máximo 3 ao mesmo tempo (o provedor limita as simultâneas);
+      // Escreve poucas ao mesmo tempo (o provedor limita as simultâneas);
       // a que falhar por tempo ou rede ganha uma segunda chance no fim.
       let prontas = 0;
-      const escrever = (m: Momento) => this.escrever(sistema.workspaceId, projectId, m, estilo, momentos, paletaFixa ? { paleta: paletaFixa } : {});
-      const feitas = await emLotes(momentos, ESCRITAS_SIMULTANEAS, (m) =>
+      const escrever = (m: Momento) =>
+        this.escrever(sistema.workspaceId, projectId, m, visual, momentos, {
+          ...(paletaFixa ? { paleta: paletaFixa } : {}),
+          ...(opcoes.rodadas !== undefined ? { rodadas: opcoes.rodadas } : {}),
+          ...(opcoes.desenho ? { desenho: opcoes.desenho } : {}),
+        });
+      const feitas = await emLotes(momentos, design ? DESENHOS_SIMULTANEOS : ESCRITAS_SIMULTANEAS, (m) =>
         escrever(m).finally(() => {
           prontas += 1;
           aoAvancar(20 + (70 * prontas) / momentos.length);
@@ -772,7 +1115,7 @@ ${fala}${
           relatorio.escrita.push({ inicioS: m.inicioS, tipo: m.tipo, ok: false, detalhe: motivo.slice(0, 200) });
           return;
         }
-        relatorio.escrita.push({ inicioS: m.inicioS, tipo: m.tipo, ok: true });
+        relatorio.escrita.push({ inicioS: m.inicioS, tipo: m.tipo, ok: true, ...(f.value.critica ? { critica: f.value.critica } : {}) });
         escritos.push(m);
         ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao: f.value.composicao, timelineStartMs: Math.round(m.inicioS * 1000), durationMs: f.value.duracaoMs });
       });
@@ -787,7 +1130,7 @@ ${fala}${
       relatorio.zoomsTirados = semZoom.length;
       // A legenda acompanha o tema: a palavra falada na cor de destaque dele
       // (só se a pessoa não escolheu uma cor).
-      const tema = temaDaAnimacao(estilo.chave, paletaFixa);
+      const tema = temaDaAnimacao(estilo?.chave, paletaFixa, design?.tema);
       const res = aplicarComando(agora, [...ops, ...semZoom], {});
       if (!res.aplicadas) return { criadas: 0, nota: await registrar(`Sem animações: ${res.ignoradas.join('; ').slice(0, 380)}`) };
       if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
@@ -803,7 +1146,7 @@ ${fala}${
       const criadas = ops.length;
       const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');
       const saiu = direcao.descartados.length + falhas.length;
-      const nota = `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} no estilo ${estilo.nome} (em ${quando})${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
+      const nota = `A IA criou ${criadas} ${criadas === 1 ? 'animação' : 'animações'} ${nomeDoVisual} (em ${quando})${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
       return { criadas, nota: await registrar(nota) };
     } catch (e) {
       const motivo = e && typeof e === 'object' && 'publico' in e ? String((e as { publico: unknown }).publico) : e instanceof Error ? e.message : String(e);

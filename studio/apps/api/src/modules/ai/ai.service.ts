@@ -20,8 +20,8 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import IORedis from 'ioredis';
-import { CONFIG_POR_CHAMADA, MODELOS_DE_IA } from '@makucho/studio-contracts';
-import type { ChamadaDeIa, ModeloDeIa, Raciocinio } from '@makucho/studio-contracts';
+import { CONFIG_POR_CHAMADA, MODELO_COM_VISAO, MODELOS_DE_IA, lerConfigDaChamada } from '@makucho/studio-contracts';
+import type { ChamadaDeIa, ConfigDaChamada, ModeloDeIa, Raciocinio } from '@makucho/studio-contracts';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
@@ -81,6 +81,34 @@ export interface PedidoDeIa {
   raciocinio?: Raciocinio;
   /** Tempo máximo desta resposta (respostas longas, como uma animação). */
   tempoMaximoMs?: number;
+  /** Substitui o modelo da tabela (a bancada de comparação roda a mesma chamada em vários). */
+  modelo?: ModeloDeIa;
+  /** Imagens para a IA olhar (JPEG em base64): a chamada vai para o modelo com visão. */
+  imagens?: string[];
+}
+
+/**
+ * Tokens de entrada estimados por imagem, para a trava de custo. A
+ * DeepSeek não publica a conta; mil por imagem de 540x960 erra para cima.
+ */
+const TOKENS_POR_IMAGEM = 1000;
+
+/**
+ * Modelo e raciocínio de uma chamada. Da mais forte para a mais fraca: o
+ * pedido, `STUDIO_IA_<CHAMADA>` ("modelo:raciocinio", para trocar UMA
+ * chamada sem código), `DEEPSEEK_MODELO` (todas) e a tabela.
+ */
+export function configDaChamada(chamada: ChamadaDeIa, pedido: { modelo?: ModeloDeIa; raciocinio?: Raciocinio; imagens?: string[] } = {}): ConfigDaChamada {
+  const daChamada = lerConfigDaChamada(process.env[`STUDIO_IA_${chamada.toUpperCase()}`]);
+  const config: ConfigDaChamada = {
+    ...CONFIG_POR_CHAMADA[chamada],
+    ...(MODELO_DO_AMBIENTE ? { modelo: MODELO_DO_AMBIENTE } : {}),
+    ...(daChamada ?? {}),
+    ...(pedido.modelo ? { modelo: pedido.modelo } : {}),
+    ...(pedido.raciocinio ? { raciocinio: pedido.raciocinio } : {}),
+  };
+  // Imagem só entra no modelo que enxerga, seja qual for a configuração.
+  return pedido.imagens?.length ? { ...config, modelo: MODELO_COM_VISAO } : config;
 }
 
 export interface ResultadoDeIa {
@@ -162,18 +190,17 @@ export class AiService {
    * nova sem ganhar nada.
    */
   async chamar(pedido: PedidoDeIa): Promise<ResultadoDeIa> {
-    const config = {
-      ...CONFIG_POR_CHAMADA[pedido.chamada],
-      ...(pedido.raciocinio ? { raciocinio: pedido.raciocinio } : {}),
-    };
-    const modelo = MODELO_DO_AMBIENTE ?? config.modelo;
+    const config = configDaChamada(pedido.chamada, pedido);
+    const modelo = config.modelo;
 
     // Por workspace: a mesma pergunta de dois clientes não compartilha
     // resposta (nem a trava de custo de um paga pelo outro).
     const chave = createHash('sha256')
       .update([pedido.workspaceId, pedido.chamada, modelo, config.raciocinio, pedido.sistema, pedido.usuario].join('\u0000'))
       .digest('hex');
-    const guardado = pedido.semCache ? null : await this.lerDoCache(chave);
+    // Pedido com imagem não entra no cache: a chave não as cobre.
+    const semCache = pedido.semCache || !!pedido.imagens?.length;
+    const guardado = semCache ? null : await this.lerDoCache(chave);
     if (guardado) {
       this.log.log(`${pedido.chamada}: resposta do cache, sem custo`);
       await this.uso.registrarAcertoDoCache(pedido.workspaceId, pedido.chamada, guardado.custoCentavos);
@@ -185,13 +212,14 @@ export class AiService {
     // A estimativa usa o MÁXIMO que o pedido autoriza, não a média:
     // estimar pela média deixaria passar justamente a chamada grande,
     // que é a que estoura o teto.
-    const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4);
+    const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4) + (pedido.imagens?.length ?? 0) * TOKENS_POR_IMAGEM;
     await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
 
     const resposta = await provedor.conversar({
       chamada: pedido.chamada,
       sistema: pedido.sistema,
       usuario: pedido.usuario,
+      ...(pedido.imagens?.length ? { imagens: pedido.imagens } : {}),
       maxTokens: pedido.maxTokens,
       raciocinio: config.raciocinio,
       sinal: pedido.sinal,
@@ -229,7 +257,7 @@ export class AiService {
       modelo: resposta.consumo.modelo,
     };
 
-    await this.gravarNoCache(chave, resultado);
+    if (!pedido.imagens?.length) await this.gravarNoCache(chave, resultado);
     return resultado;
   }
 
@@ -246,7 +274,7 @@ export class AiService {
     maxTokens: number;
     sinal?: AbortSignal;
   }): Promise<{ texto: string; chamadas: ChamadaDeFerramenta[]; custoCentavos: number }> {
-    const modelo = MODELO_DO_AMBIENTE ?? CONFIG_POR_CHAMADA[pedido.chamada].modelo;
+    const modelo = configDaChamada(pedido.chamada).modelo;
     const provedor = await this.provedorDe(pedido.workspaceId, modelo);
     const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
     await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
@@ -364,7 +392,7 @@ export class AiService {
    * funciona" de "a IA ainda nao foi chamada".
    */
   async testarChave(workspaceId: string): Promise<{ ok: boolean; mensagem: string; modelo?: string; ms?: number }> {
-    const modelo = MODELO_DO_AMBIENTE ?? CONFIG_POR_CHAMADA.comandar_edicao.modelo;
+    const modelo = configDaChamada('comandar_edicao').modelo;
     const inicio = Date.now();
     try {
       const provedor = await this.provedorDe(workspaceId, modelo);

@@ -840,7 +840,7 @@ export class AgenteService {
           if (res.aplicadas) c.mudancas += 1;
           void this.animacoes?.preparar(c.tenant, c.projectId, r.composicao, r.duracaoMs).catch(() => undefined);
           const nova = (c.plano.mediaLayers ?? []).find((m) => !antes.has(m.id));
-          return { ok: res.aplicadas > 0, id: nova?.id, estilo: r.estilo.nome, titulo: r.composicao.titulo, ignoradas: res.ignoradas };
+          return { ok: res.aplicadas > 0, id: nova?.id, estilo: r.estilo?.nome ?? 'o design do vídeo', titulo: r.composicao.titulo, ignoradas: res.ignoradas };
         },
       },
 
@@ -876,7 +876,7 @@ export class AgenteService {
           c.plano = res.plan;
           if (res.aplicadas) c.mudancas += 1;
           void this.animacoes?.preparar(c.tenant, c.projectId, r.composicao, camada.durationMs).catch(() => undefined);
-          return { ok: res.aplicadas > 0, estilo: r.estilo.nome, titulo: r.composicao.titulo, ignoradas: res.ignoradas };
+          return { ok: res.aplicadas > 0, estilo: r.estilo?.nome ?? 'o design do vídeo', titulo: r.composicao.titulo, ignoradas: res.ignoradas };
         },
       },
 

@@ -10,6 +10,8 @@ import {
   fatorDoHorario,
   aproveitamentoDaSelecao,
   CHAMADAS_DE_IA,
+  MODELO_COM_VISAO,
+  lerConfigDaChamada,
   LIMITE_MENSAL_PADRAO_CENTAVOS,
 } from '../src/index';
 import type { SituacaoDeUso } from '../src/index';
@@ -140,9 +142,20 @@ t(
 );
 // Medido: sem raciocínio a seleção escolhe os mesmos trechos por 1/7
 // do custo; o raciocínio fica só na segunda tentativa (analise.service).
+// A exceção é a direção livre das animações (direção e desenho): é onde
+// a qualidade do vídeo se decide, e são poucas chamadas por vídeo.
+const COM_RACIOCINIO = ['dirigir_animacoes', 'desenhar_animacao'];
 t(
-  'nenhuma chamada paga raciocínio por padrão',
-  CHAMADAS_DE_IA.every((c) => CONFIG_POR_CHAMADA[c].raciocinio === 'desligado'),
+  'só a direção livre das animações paga raciocínio por padrão',
+  CHAMADAS_DE_IA.every((c) => (CONFIG_POR_CHAMADA[c].raciocinio === 'desligado') !== COM_RACIOCINIO.includes(c)),
+);
+t('a crítica usa o modelo que enxerga', CONFIG_POR_CHAMADA.criticar_animacao.modelo === MODELO_COM_VISAO);
+t(
+  'configuração por ambiente: modelo, raciocínio ou os dois; nome errado é ignorado',
+  JSON.stringify(lerConfigDaChamada('deepseek-flash:high')) === '{"modelo":"deepseek-flash","raciocinio":"high"}' &&
+    JSON.stringify(lerConfigDaChamada(':desligado')) === '{"raciocinio":"desligado"}' &&
+    lerConfigDaChamada('gpt-9') === null &&
+    lerConfigDaChamada(undefined) === null,
 );
 t(
   'as chamadas de escrita curta NÃO pagam raciocínio',

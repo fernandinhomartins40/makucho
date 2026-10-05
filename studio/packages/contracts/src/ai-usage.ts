@@ -42,6 +42,12 @@ export const CHAMADAS_DE_IA = [
   'agente_de_edicao',
   // #13: as animações em HTML (HyperFrames) que a montagem cria da fala.
   'animar_fala',
+  // #14 a #16: a direção livre das animações (animacoes-da-fala.service).
+  // A direção escreve o design do vídeo, o desenho escreve cada cena e a
+  // crítica OLHA os quadros renderizados e manda refazer o que ficou fraco.
+  'dirigir_animacoes',
+  'desenhar_animacao',
+  'criticar_animacao',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -62,6 +68,9 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   montar_por_cenas: 'Montagem pelas cenas',
   agente_de_edicao: 'Edição com ferramentas',
   animar_fala: 'Animações da fala',
+  dirigir_animacoes: 'Direção das animações',
+  desenhar_animacao: 'Desenho das animações',
+  criticar_animacao: 'Crítica das animações',
 };
 
 // ---------- Modelos ----------
@@ -74,6 +83,13 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
 // pensamento que ninguem le.
 export const MODELOS_DE_IA = ['deepseek-flash', 'deepseek-v4-pro'] as const;
 export type ModeloDeIa = (typeof MODELOS_DE_IA)[number];
+
+/**
+ * O único modelo que recebe imagem (tabela da DeepSeek, 2026-10): o Pro
+ * não enxerga. Toda chamada com imagem vai para ele, seja qual for a
+ * configuração -- mandar imagem ao Pro é erro 400.
+ */
+export const MODELO_COM_VISAO: ModeloDeIa = 'deepseek-flash';
 
 /** `desligado`, ou o esforco de raciocinio pedido ao modelo. */
 export type Raciocinio = 'desligado' | 'low' | 'high';
@@ -112,7 +128,28 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   montar_por_cenas: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   agente_de_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   animar_fala: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  // A direção livre é onde a qualidade do vídeo se decide: o modelo mais
+  // forte, pensando. São poucas chamadas por vídeo (uma direção, uma por
+  // cena), e o design do vídeo vai no prefixo de todas as cenas (cache).
+  // Trocável sem código: STUDIO_IA_DESENHAR_ANIMACAO=deepseek-flash:high.
+  dirigir_animacoes: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
+  desenhar_animacao: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
+  // Recebe imagens: sempre o modelo com visão (MODELO_COM_VISAO).
+  criticar_animacao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
+
+/**
+ * "modelo" ou "modelo:raciocinio" (ex.: "deepseek-flash:high"), como vem
+ * de uma variável de ambiente. Nome fora da lista é ignorado: um erro de
+ * digitação não pode derrubar a IA.
+ */
+export function lerConfigDaChamada(texto: string | undefined | null): Partial<ConfigDaChamada> | null {
+  const [m, r] = (texto ?? '').trim().split(':');
+  const modelo = (MODELOS_DE_IA as readonly string[]).includes(m ?? '') ? (m as ModeloDeIa) : undefined;
+  const raciocinio = r === 'desligado' || r === 'low' || r === 'high' ? r : undefined;
+  if (!modelo && !raciocinio) return null;
+  return { ...(modelo ? { modelo } : {}), ...(raciocinio ? { raciocinio } : {}) };
+}
 
 /** Compatibilidade: so o modelo de cada chamada. */
 export const MODELO_POR_CHAMADA: Record<ChamadaDeIa, ModeloDeIa> = Object.fromEntries(

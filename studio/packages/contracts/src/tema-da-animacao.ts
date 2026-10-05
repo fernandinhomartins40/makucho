@@ -12,8 +12,10 @@
 // solto: o vídeo inteiro fica coerente e a legenda pode seguir o tema.
 // ============================================================
 
+import { z } from 'zod';
 import { COMPONENTES_DO_CATALOGO } from './catalogo-de-componentes';
 import { coresDaPaleta, estiloDeAnimacao } from './estilos-de-animacao';
+import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 
 /** A escala de vídeo (px no quadro 1080x1920). */
 export const ESCALA_DA_ANIMACAO = {
@@ -81,10 +83,14 @@ export function misturarCores(a: string, b: string, t: number): string {
  * pela luz: no estilo escuro, o fundo é a mais escura e o texto a mais
  * clara (no claro, o contrário); os destaques são as mais saturadas.
  */
-export function temaDaAnimacao(estilo: string | undefined | null, paleta?: string | null): TemaDaAnimacao | null {
-  const e = estiloDeAnimacao(estilo);
-  if (!e) return null;
+export function temaDaAnimacao(estilo: string | undefined | null, paleta?: string | null, livre?: TemaDaAnimacao | null): TemaDaAnimacao | null {
+  const doCatalogo = estiloDeAnimacao(estilo);
   const p = coresDaPaleta(paleta);
+  // Direção livre: o tema que a IA criou para o vídeo. O estilo do catálogo
+  // (quando a pessoa escolhe um depois) vale sobre ele; a paleta o recolore.
+  if (!doCatalogo && livre && !p) return livre;
+  const e = doCatalogo ?? (livre ? { escuro: luz(livre.fundo) < 128, fontes: [livre.fonteTitulo, livre.fonteTexto], cores: [livre.fundo, livre.texto, livre.destaque] } : null);
+  if (!e) return null;
   let fundo: string;
   let texto: string;
   let destaques: string[];
@@ -118,8 +124,65 @@ export function temaDaAnimacao(estilo: string | undefined | null, paleta?: strin
   };
 }
 
+// ---------- O tema da direção livre ----------
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+/** As famílias que existem no servidor, como vão no CSS ("'Inter ExtraBold'"). */
+const FAMILIAS_DO_TEMA = new Map(Object.values(FONTES_DE_VIDEO).map((f) => [f.nomeAss.toLowerCase(), `'${f.nomeAss}'`]));
+
+/**
+ * O tema que a direção livre criou, como fica guardado na animação. As
+ * cores e as fontes entram direto no CSS do documento: só hex de seis
+ * dígitos e famílias que existem no servidor.
+ */
+export const temaLivreSchema = z
+  .object({
+    fundo: z.string().regex(HEX),
+    texto: z.string().regex(HEX),
+    apagado: z.string().regex(HEX),
+    destaque: z.string().regex(HEX),
+    destaque2: z.string().regex(HEX),
+    destaque3: z.string().regex(HEX),
+    fonteTitulo: z.string().refine((f) => [...FAMILIAS_DO_TEMA.values()].includes(f), 'fonte fora do catálogo'),
+    fonteTexto: z.string().refine((f) => [...FAMILIAS_DO_TEMA.values()].includes(f), 'fonte fora do catálogo'),
+  })
+  .strict();
+
+/**
+ * Monta o tema a partir do que a IA mandou no design (paleta e fontes),
+ * consertando o que faltar: cor que não é hex cai no padrão, texto sem
+ * contraste com o fundo vira preto ou branco, fonte que não existe no
+ * servidor vira Inter. Nunca recusa -- um design com um hex torto não
+ * pode custar o vídeo.
+ */
+export function temaLivre(bruto: unknown): TemaDaAnimacao {
+  const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
+  const p = (b.paleta && typeof b.paleta === 'object' ? b.paleta : b) as Record<string, unknown>;
+  const hex = (v: unknown) => (typeof v === 'string' && HEX.test(v.trim()) ? v.trim() : undefined);
+  const fonte = (v: unknown, padrao: string) => FAMILIAS_DO_TEMA.get(String(v ?? '').replace(/['"]/g, '').trim().toLowerCase()) ?? padrao;
+  const fundo = hex(p.fundo) ?? '#0b0e13';
+  const pedido = hex(p.texto);
+  const texto = pedido && contrasteDasCores(pedido, fundo) >= 4.5 ? pedido : contrasteDasCores('#111111', fundo) >= contrasteDasCores('#f1f3f4', fundo) ? '#111111' : '#f1f3f4';
+  // Destaque que some no fundo não destaca nada.
+  const destaques = [p.destaque, p.destaque2, p.destaque3].map(hex).filter((c): c is string => !!c && contrasteDasCores(c, fundo) >= 2);
+  const destaque = destaques[0] ?? texto;
+  const apagado = hex(p.apagado);
+  return {
+    fundo,
+    texto,
+    apagado: apagado && contrasteDasCores(apagado, fundo) >= 2.5 ? apagado : misturarCores(texto, fundo, 0.42),
+    destaque,
+    destaque2: destaques[1] ?? misturarCores(destaque, texto, 0.35),
+    destaque3: destaques[2] ?? misturarCores(destaque, fundo, 0.35),
+    fonteTitulo: fonte(b.fonteTitulo, "'Inter ExtraBold'"),
+    fonteTexto: fonte(b.fonteTexto, "'Inter SemiBold'"),
+  };
+}
+
+type ComTema = { estilo?: string | undefined; paleta?: string | undefined; tema?: TemaDaAnimacao | undefined };
+
 /** As variáveis de CSS da escala e do tema (vão em #cena). */
-export function cssDoTema(c: { estilo?: string | undefined; paleta?: string | undefined }): string {
+export function cssDoTema(c: ComTema): string {
   const s = ESCALA_DA_ANIMACAO;
   const escala = `--t-display: ${s.display}px; --t-titulo: ${s.titulo}px; --t-subtitulo: ${s.subtitulo}px; --t-texto: ${s.texto}px; --t-rotulo: ${s.rotulo}px; --t-numero: ${s.numero}px; --espaco: ${s.espaco}px; --espaco-p: ${s.espacoPequeno}px; --raio: ${s.raio}px; --borda: ${s.borda}px;`;
   // Os tokens que os componentes do catálogo do HyperFrames leem (--fg,
@@ -127,7 +190,7 @@ export function cssDoTema(c: { estilo?: string | undefined; paleta?: string | un
   // fontes do estilo escolhido.
   const tokensHf =
     '--fg: var(--cor-texto, #F1F3F4); --bg: var(--cor-fundo, #0B0E13); --muted: var(--cor-apagado, #9AA0A6); --brand: var(--cor-destaque, #4285F4); --accent: var(--cor-destaque-2, #34A853); --accent-2: var(--cor-destaque-3, #FBBC04); --surface: color-mix(in srgb, var(--fg) 7%, var(--bg)); --border: color-mix(in srgb, var(--fg) 18%, transparent); --font-display: var(--fonte-titulo, \'Inter ExtraBold\'); --font-body: var(--fonte-texto, \'Inter SemiBold\'); --font-mono: \'Space Grotesk Bold\', monospace; --radius: var(--raio);';
-  const t = temaDaAnimacao(c.estilo, c.paleta);
+  const t = temaDaAnimacao(c.estilo, c.paleta, c.tema);
   if (!t) return `${escala} ${tokensHf}`;
   return `${escala} --cor-fundo: ${t.fundo}; --cor-texto: ${t.texto}; --cor-apagado: ${t.apagado}; --cor-destaque: ${t.destaque}; --cor-destaque-2: ${t.destaque2}; --cor-destaque-3: ${t.destaque3}; --fonte-titulo: ${t.fonteTitulo}, sans-serif; --fonte-texto: ${t.fonteTexto}, sans-serif; ${tokensHf}`;
 }
@@ -142,8 +205,8 @@ export const REGRAS_DE_DESIGN = `DESIGN PARA VÍDEO (HyperFrames: video-composit
 - Títulos grandes com letter-spacing de -0.02em a -0.04em; no máximo duas famílias de fonte.`;
 
 /** O tema em texto, para a IA. */
-export function textoDoTema(c: { estilo?: string | undefined; paleta?: string | undefined }): string {
-  const t = temaDaAnimacao(c.estilo, c.paleta);
+export function textoDoTema(c: ComTema): string {
+  const t = temaDaAnimacao(c.estilo, c.paleta, c.tema);
   if (!t) return '';
   return `TEMA (já nas variáveis): fundo ${t.fundo}, texto ${t.texto}, apagado ${t.apagado}, destaques ${t.destaque} ${t.destaque2} ${t.destaque3}; fonte do título ${t.fonteTitulo}, do texto ${t.fonteTexto}.`;
 }

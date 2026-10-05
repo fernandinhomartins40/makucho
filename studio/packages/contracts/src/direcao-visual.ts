@@ -25,6 +25,7 @@
 
 import type { EditPlanV1 } from './edit-plan';
 import { agendaDoPlano } from './agenda';
+import { temaLivre, type TemaDaAnimacao } from './tema-da-animacao';
 
 export interface PalavraNoTempo {
   /** Segundo no vídeo final. */
@@ -55,6 +56,8 @@ export interface CartaoDirigido {
   /** 1 = essencial, 2 = ajuda, 3 = enfeite (sai primeiro). */
   prioridade: number;
   acento: number;
+  /** Direção livre: COMO a cena mostra a ideia (a encenação visual, em texto livre). */
+  conceito?: string;
 }
 
 export interface CartaoDescartado {
@@ -69,6 +72,54 @@ export interface LeituraDaDirecao {
   cartoes: Array<Record<string, unknown>>;
   /** A resposta veio cortada: só os cartões completos foram lidos. */
   cortada: boolean;
+  /** Direção livre: a ideia visual do vídeo e o design que a IA escreveu. */
+  conceito?: string;
+  design?: Record<string, unknown>;
+}
+
+/**
+ * O design que a direção livre escreve para UM vídeo (o "frame.md" do
+ * HyperFrames): vai no começo do pedido de toda cena, e é o que faz dez
+ * cenas escritas em paralelo parecerem do mesmo vídeo.
+ */
+export interface DesignDoVideo {
+  /** A ideia visual do vídeo, em uma frase. */
+  conceito: string;
+  tom?: string;
+  /** Formas, texturas, motivos que se repetem, composição -- texto livre da IA. */
+  linguagem: string;
+  /** Energia, eases, durações, a assinatura do movimento -- texto livre da IA. */
+  movimento: string;
+  tema: TemaDaAnimacao;
+}
+
+/** O design do vídeo a partir da leitura da direção (sempre devolve um: o que faltar cai no padrão). */
+export function designDoVideo(lida: Pick<LeituraDaDirecao, 'conceito' | 'tom' | 'design'>): DesignDoVideo {
+  const d = lida.design ?? {};
+  const texto = (v: unknown, teto: number) => (typeof v === 'string' ? v : v ? JSON.stringify(v) : '').slice(0, teto);
+  return {
+    conceito: texto(lida.conceito ?? d.conceito, 400),
+    ...(lida.tom ? { tom: lida.tom.slice(0, 300) } : {}),
+    linguagem: texto(d.linguagem, 1800),
+    movimento: texto(d.movimento, 1200),
+    tema: temaLivre(d),
+  };
+}
+
+/** O design em texto, para o pedido de cada cena (e para a crítica). */
+export function textoDoDesign(d: DesignDoVideo): string {
+  const t = d.tema;
+  return [
+    `DESIGN DESTE VÍDEO (escrito pela direção; todas as cenas seguem):`,
+    d.conceito ? `Conceito: ${d.conceito}` : '',
+    d.tom ? `Tom: ${d.tom}` : '',
+    `Cores (já nas variáveis de CSS): fundo ${t.fundo} var(--cor-fundo), texto ${t.texto} var(--cor-texto), apagado ${t.apagado} var(--cor-apagado), destaques ${t.destaque} var(--cor-destaque), ${t.destaque2} var(--cor-destaque-2), ${t.destaque3} var(--cor-destaque-3).`,
+    `Fontes: título ${t.fonteTitulo} var(--fonte-titulo), texto ${t.fonteTexto} var(--fonte-texto).`,
+    d.linguagem ? `Linguagem visual: ${d.linguagem}` : '',
+    d.movimento ? `Movimento: ${d.movimento}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 // ---------- Leitura tolerante ----------
@@ -118,10 +169,12 @@ export function lerDirecao(texto: string): LeituraDaDirecao {
   if (i >= 0 && f > i) {
     try {
       const j = JSON.parse(limpo.slice(i, f + 1)) as Record<string, unknown>;
-      const lista = (Array.isArray(j.cartoes) ? j.cartoes : Array.isArray(j.momentos) ? j.momentos : []) as Array<Record<string, unknown>>;
+      const lista = (Array.isArray(j.cartoes) ? j.cartoes : Array.isArray(j.cenas) ? j.cenas : Array.isArray(j.momentos) ? j.momentos : []) as Array<Record<string, unknown>>;
       return {
         ...(typeof j.estilo === 'string' ? { estilo: j.estilo } : {}),
         ...(typeof j.tom === 'string' ? { tom: j.tom } : {}),
+        ...(typeof j.conceito === 'string' ? { conceito: j.conceito } : {}),
+        ...(j.design && typeof j.design === 'object' ? { design: j.design as Record<string, unknown> } : {}),
         cartoes: lista.filter((x) => x && typeof x === 'object'),
         cortada: false,
       };
@@ -131,11 +184,17 @@ export function lerDirecao(texto: string): LeituraDaDirecao {
   }
   const estilo = /"estilo"\s*:\s*"([^"]+)"/.exec(limpo)?.[1];
   const tom = /"tom"\s*:\s*"([^"]*)"/.exec(limpo)?.[1];
-  const m = /"(?:cartoes|momentos)"\s*:\s*\[/.exec(limpo);
+  const conceito = /"conceito"\s*:\s*"([^"]*)"/.exec(limpo)?.[1];
+  const m = /"(?:cartoes|cenas|momentos)"\s*:\s*\[/.exec(limpo);
   if (!m) throw new Error('a resposta não trouxe o roteiro visual');
+  // O design vem antes das cenas: mesmo cortada, a resposta o traz inteiro.
+  const d = /"design"\s*:\s*\{/.exec(limpo);
+  const design = d && d.index < m.index ? objetosCompletos(limpo, d.index + d[0].length - 1)[0] : undefined;
   return {
     ...(estilo ? { estilo } : {}),
     ...(tom ? { tom } : {}),
+    ...(conceito ? { conceito } : {}),
+    ...(design ? { design } : {}),
     cartoes: objetosCompletos(limpo, m.index + m[0].length),
     cortada: true,
   };
@@ -266,6 +325,27 @@ export function tetoDeCartoes(duracaoS: number): number {
 
 /** Fração máxima do vídeo com gráfico por cima (o rosto também conta a história). */
 export const FRACAO_MAXIMA_COM_GRAFICO = 0.5;
+
+/** Os limites de ritmo que a conferência aplica (o que NÃO muda: âncora na fala, fidelidade, espaço reservado). */
+export interface RegrasDaDirecao {
+  teto: (duracaoS: number) => number;
+  /** Fração máxima do vídeo com gráfico por cima. */
+  fracaoComGrafico: number;
+  /** No máximo uma cena em tela cheia. */
+  umaTelaCheia: boolean;
+  /** Duração máxima de uma cena (s). */
+  duracaoMaximaS: number;
+}
+
+/** A direção por cartões (o estilo do catálogo): rosto em primeiro lugar. */
+export const REGRAS_CLASSICAS: RegrasDaDirecao = { teto: tetoDeCartoes, fracaoComGrafico: FRACAO_MAXIMA_COM_GRAFICO, umaTelaCheia: true, duracaoMaximaS: 12 };
+
+/**
+ * A direção livre: a IA decide o ritmo. Ficam só os limites que protegem
+ * o vídeo de virar uma apresentação de slides -- um quarto do tempo é do
+ * rosto, e há um teto de cenas pelo custo de escrevê-las.
+ */
+export const REGRAS_LIVRES: RegrasDaDirecao = { teto: (s) => Math.max(2, Math.min(14, Math.floor(s / 5))), fracaoComGrafico: 0.75, umaTelaCheia: false, duracaoMaximaS: 16 };
 /** Respiro mínimo entre dois cartões (s). */
 const RESPIRO_S = 1;
 
@@ -282,13 +362,15 @@ function falaEntre(palavras: readonly PalavraNoTempo[], de: number, ate: number)
  */
 export function conferirCartoes(
   brutos: ReadonlyArray<Record<string, unknown>>,
-  ctx: { duracaoS: number; palavras: readonly PalavraNoTempo[]; reservadas: readonly JanelaReservada[] },
+  ctx: { duracaoS: number; palavras: readonly PalavraNoTempo[]; reservadas: readonly JanelaReservada[]; regras?: RegrasDaDirecao },
 ): { aceitos: CartaoDirigido[]; descartados: CartaoDescartado[] } {
+  const regras = ctx.regras ?? REGRAS_CLASSICAS;
   const descartados: CartaoDescartado[] = [];
   const candidatos: CartaoDirigido[] = [];
 
   for (const x of brutos) {
-    const tipo = String(x.tipo ?? '').slice(0, 40);
+    // Na direção livre o "tipo" é o nome que a IA deu à cena.
+    const tipo = String(x.tipo ?? x.nome ?? '').slice(0, 40);
     let inicio = Number(x.inicioS);
     let fim = Number(x.fimS);
     if (!Number.isFinite(inicio) || !Number.isFinite(fim)) {
@@ -301,7 +383,7 @@ export function conferirCartoes(
       fim /= 1000;
     }
     inicio = Math.max(0, inicio);
-    fim = Math.min(ctx.duracaoS, Math.min(fim, inicio + 12));
+    fim = Math.min(ctx.duracaoS, Math.min(fim, inicio + regras.duracaoMaximaS));
     if (fim - inicio < 2) {
       descartados.push({ inicioS: inicio, tipo, motivo: 'curto demais (menos de 2 s)' });
       continue;
@@ -324,7 +406,7 @@ export function conferirCartoes(
     }
 
     const conteudo = typeof x.conteudo === 'string' ? x.conteudo : x.conteudo ? JSON.stringify(x.conteudo) : '';
-    const gatilho = String(x.gatilho ?? '').slice(0, 200);
+    const gatilho = String(x.gatilho ?? x.ancora ?? '').slice(0, 200);
     const fala = falaEntre(ctx.palavras, inicio - 1.5, fim + 0.5);
 
     // Gatilho: as palavras que pedem o cartão estão MESMO na fala do trecho?
@@ -356,12 +438,13 @@ export function conferirCartoes(
       gatilho,
       prioridade: Math.max(1, Math.min(3, Math.round(Number(x.prioridade) || 2))),
       acento: Math.max(0, Math.min(4, Math.round(Number(x.acento) || 0))),
+      ...(typeof x.conceito === 'string' && x.conceito.trim() ? { conceito: x.conceito.trim().slice(0, 700) } : {}),
     });
   }
 
   // Escolha: o essencial primeiro, respeitando o respiro e o teto.
-  const teto = tetoDeCartoes(ctx.duracaoS);
-  const limiteComGrafico = ctx.duracaoS * FRACAO_MAXIMA_COM_GRAFICO;
+  const teto = regras.teto(ctx.duracaoS);
+  const limiteComGrafico = ctx.duracaoS * regras.fracaoComGrafico;
   const aceitos: CartaoDirigido[] = [];
   let comGrafico = 0;
   const ordem = [...candidatos].sort((a, b) => a.prioridade - b.prioridade || a.inicioS - b.inicioS);
@@ -372,8 +455,10 @@ export function conferirCartoes(
         : aceitos.some((a) => c.inicioS < a.fimS + RESPIRO_S && c.fimS > a.inicioS - RESPIRO_S)
           ? 'colado em outro cartão (sem respiro)'
           : comGrafico + (c.fimS - c.inicioS) > limiteComGrafico
-            ? 'o vídeo ficaria mais de metade do tempo coberto'
-            : c.layout === 'tela_cheia' && aceitos.some((a) => a.layout === 'tela_cheia')
+            ? regras.fracaoComGrafico === FRACAO_MAXIMA_COM_GRAFICO
+              ? 'o vídeo ficaria mais de metade do tempo coberto'
+              : `o vídeo ficaria mais de ${Math.round(regras.fracaoComGrafico * 100)}% do tempo coberto`
+            : regras.umaTelaCheia && c.layout === 'tela_cheia' && aceitos.some((a) => a.layout === 'tela_cheia')
               ? 'já há uma tela cheia'
               : '';
     if (motivo) {
@@ -404,6 +489,45 @@ export function zoomsEscondidos(plano: EditPlanV1, cartoes: readonly Pick<Cartao
     .map((t) => t.clip.id);
 }
 
+// ---------- A crítica (quem OLHA os quadros) ----------
+
+/** Nota mínima para a cena entrar sem ser refeita. */
+export const NOTA_MINIMA_DA_CENA = 7;
+
+/** O que a crítica viu numa cena (a nota final e por quantas versões ela passou). */
+export interface CriticaDaCena {
+  /** 0 a 10. */
+  nota: number;
+  /** O que estava errado na versão que entrou (vazio = nada a apontar). */
+  problemas: string[];
+  /** Quantas vezes a cena foi refeita por causa da crítica. */
+  refeita: number;
+}
+
+/**
+ * Lê o parecer da crítica: {"nota": 0-10, "problemas": ["..."]}. Parecer
+ * ilegível vale como "sem crítica" (null) -- nunca derruba a cena.
+ */
+export function lerCritica(texto: string): { nota: number; problemas: string[] } | null {
+  const limpo = texto.replace(/```(?:json)?/g, '');
+  const i = limpo.indexOf('{');
+  const f = limpo.lastIndexOf('}');
+  if (i < 0 || f <= i) return null;
+  try {
+    const j = JSON.parse(limpo.slice(i, f + 1)) as Record<string, unknown>;
+    const nota = Number(j.nota);
+    if (!Number.isFinite(nota)) return null;
+    const problemas = (Array.isArray(j.problemas) ? j.problemas : [])
+      .map((p) => (typeof p === 'string' ? p : p && typeof p === 'object' ? String((p as Record<string, unknown>).problema ?? JSON.stringify(p)) : ''))
+      .map((p) => p.trim().slice(0, 300))
+      .filter(Boolean)
+      .slice(0, 6);
+    return { nota: Math.max(0, Math.min(10, Math.round(nota * 10) / 10)), problemas };
+  } catch {
+    return null;
+  }
+}
+
 /** O diagnóstico das animações (fica no projeto, o editor mostra). */
 export interface RelatorioDasAnimacoes {
   em: string;
@@ -415,7 +539,9 @@ export interface RelatorioDasAnimacoes {
   aceitos: Array<{ inicioS: number; fimS: number; tipo: string; layout: string; gatilho: string }>;
   descartados: CartaoDescartado[];
   /** O resultado de cada cartão aceito, na escrita. */
-  escrita: Array<{ inicioS: number; tipo: string; ok: boolean; detalhe?: string }>;
+  escrita: Array<{ inicioS: number; tipo: string; ok: boolean; detalhe?: string; critica?: CriticaDaCena }>;
+  /** Direção livre: o design que a IA escreveu para o vídeo (as cenas refeitas depois seguem o mesmo). */
+  design?: DesignDoVideo;
   zoomsTirados?: number;
   erro?: string;
 }

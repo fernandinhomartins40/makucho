@@ -56,7 +56,17 @@ export class DeepseekProvedor implements ProvedorDeIa {
           model: this.modelo,
           messages: [
             { role: 'system', content: pedido.sistema },
-            { role: 'user', content: pedido.usuario },
+            // Com imagens, o conteúdo vira partes (formato OpenAI): o texto e
+            // cada imagem como data URL.
+            pedido.imagens?.length
+              ? {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: pedido.usuario },
+                    ...pedido.imagens.map((b64) => ({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } })),
+                  ],
+                }
+              : { role: 'user', content: pedido.usuario },
           ],
           max_tokens: pedido.maxTokens,
           stream: false,

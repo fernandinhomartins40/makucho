@@ -24,7 +24,7 @@ import { z } from 'zod';
 import { LAYOUTS_DA_CENA, NOME_DO_LAYOUT_DA_CENA, divisaoDaCena } from './cenas-animadas';
 import { FONTES_DE_VIDEO } from './estilos-de-legenda';
 import { QUADRO_DA_GRADE, cssDaGrade, janelaDoPip } from './grade-dos-layouts';
-import { cssDoTema } from './tema-da-animacao';
+import { cssDoTema, temaLivreSchema } from './tema-da-animacao';
 import { NOMES_DOS_COMPONENTES } from './catalogo-de-componentes';
 import { legendaHyperFrames } from './legendas-hyperframes-catalogo';
 
@@ -73,6 +73,8 @@ export const composicaoHtmlSchema = z
     estilo: z.string().max(40).optional(),
     /** Paleta que recolore o estilo ("clima:indice", PALETAS_DE_ANIMACAO). */
     paleta: z.string().max(40).optional(),
+    /** Direção livre: o tema que a IA criou para ESTE vídeo (no lugar de um estilo do catálogo). */
+    tema: temaLivreSchema.optional(),
     /** O que a animação explica (tipo, ideia, conteúdo): a IA a redesenha a partir disto. */
     briefing: z.string().max(2000).optional(),
   })
@@ -284,7 +286,7 @@ export function fontesDaComposicao(css: string): Array<{ familia: string; arquiv
 }
 
 /** As fontes que o documento carrega: as do CSS da IA e as do tema (var(--fonte-*)). */
-export function fontesDoDocumento(c: Pick<ComposicaoHtml, 'css' | 'estilo' | 'paleta'>): Array<{ familia: string; arquivo: string }> {
+export function fontesDoDocumento(c: Pick<ComposicaoHtml, 'css' | 'estilo' | 'paleta' | 'tema'>): Array<{ familia: string; arquivo: string }> {
   return fontesDaComposicao(`${c.css}\n${cssDoTema(c)}`);
 }
 
@@ -407,7 +409,7 @@ const VERSAO_DO_VIDEO = 'v6';
  */
 export function chaveDaAnimacao(c: ComposicaoHtml, duracaoMs: number, corDaMarca = ''): string {
   const quadros = Math.max(1, Math.round((duracaoMs * 30) / 1000));
-  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca, c.canto ?? null, c.tamanhoPip ?? null, c.estilo ?? null, c.paleta ?? null]);
+  const texto = JSON.stringify([VERSAO_DO_VIDEO, c.html, c.css, c.script, c.layout, c.divisao ?? null, c.lado ?? null, c.foco ?? null, c.semFundo ?? false, quadros, corDaMarca, c.canto ?? null, c.tamanhoPip ?? null, c.estilo ?? null, c.paleta ?? null, ...(c.tema ? [c.tema] : [])]);
   return `${cyrb53(texto)}${cyrb53(texto, 7)}`.slice(0, 24);
 }
 
@@ -435,7 +437,7 @@ export function chaveDoArquivoDaAnimacao(workspaceId: string, chave: string): st
 // ---------- Para a IA ----------
 
 /** As fontes, agrupadas, para a IA escolher pelo nome exato. */
-function listaDeFontes(): string {
+export function listaDeFontes(): string {
   const grupos: Record<string, string[]> = {};
   for (const f of FAMILIAS_DA_ANIMACAO) (grupos[f.categoria] ??= []).push(`'${f.familia}'`);
   return Object.entries(grupos)

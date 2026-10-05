@@ -18,6 +18,7 @@ import {
   FILA_ANALISE,
   FILA_ANIMACAO,
   FILA_CONFERENCIA_DE_LAYOUT,
+  JOB_DE_FOTOS,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -253,6 +254,23 @@ export class FilaService implements OnModuleDestroy {
    * segue sem a conferência, nunca trava a montagem por ela.
    */
   async conferir(dados: JobDeConferencia, tempoMs = 30_000): Promise<string[] | null> {
+    return this.pedirAoChrome('conferir', dados, tempoMs);
+  }
+
+  /**
+   * As fotos da animação para a crítica (JPEG em base64, um por instante),
+   * tiradas pelo mesmo Chrome. `null` quando não deu -- a cena entra sem
+   * crítica, nunca espera por ela.
+   */
+  async fotografar(dados: JobDeConferencia, tempoMs = 40_000): Promise<string[] | null> {
+    const fotos = await this.pedirAoChrome(JOB_DE_FOTOS, dados, tempoMs);
+    // Um worker antigo trata o job como conferência e devolve frases: só
+    // vale o que é mesmo um JPEG.
+    const jpegs = (fotos ?? []).filter((f) => f.startsWith('/9j/'));
+    return jpegs.length ? jpegs : null;
+  }
+
+  private async pedirAoChrome(nome: string, dados: JobDeConferencia, tempoMs: number): Promise<string[] | null> {
     try {
       // Sem worker ouvindo a fila (worker antigo, reiniciando, sem memória),
       // nem enfileira: a conferência é um extra e não pode segurar a montagem.
@@ -268,7 +286,7 @@ export class FilaService implements OnModuleDestroy {
         });
         await this.eventosDaConferencia.waitUntilReady();
       }
-      const job = await fila.add('conferir', dados, { attempts: 1, removeOnComplete: true, removeOnFail: true });
+      const job = await fila.add(nome, dados, { attempts: 1, removeOnComplete: true, removeOnFail: true });
       const r: unknown = await job.waitUntilFinished(this.eventosDaConferencia, tempoMs);
       return Array.isArray(r) ? r.map(String) : [];
     } catch (e) {

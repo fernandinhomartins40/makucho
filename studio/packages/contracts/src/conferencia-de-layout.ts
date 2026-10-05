@@ -33,6 +33,19 @@ export interface MedidasDaAnimacao {
 /** Os instantes medidos, em fração da duração (entrada feita, meio, antes da saída). */
 export const INSTANTES_DA_CONFERENCIA = [0.35, 0.6, 0.85] as const;
 
+/**
+ * As fotos para a crítica: o mesmo job, na mesma fila, com este nome. O
+ * worker devolve um JPEG (base64) por instante, em 540x960 -- o bastante
+ * para julgar composição, hierarquia e contraste, e leve para ir à IA.
+ * Onde o vídeo da pessoa aparece (fora do cartão, a outra metade, a janela
+ * do pip) sai um cinza neutro.
+ */
+export const JOB_DE_FOTOS = 'fotografar';
+/** Começo (a entrada em curso), meio e o quadro cheio antes da saída. */
+export const INSTANTES_DAS_FOTOS = [0.22, 0.55, 0.86] as const;
+/** O cinza que faz as vezes do vídeo nas fotos. */
+export const COR_DO_VIDEO_NAS_FOTOS = '#6b6f76';
+
 const area = (r: Retangulo) => Math.max(0, r.w) * Math.max(0, r.h);
 function intersecao(a: Retangulo, b: Retangulo): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);

@@ -16,7 +16,9 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import {
+  COR_DO_VIDEO_NAS_FOTOS,
   INSTANTES_DA_CONFERENCIA,
+  INSTANTES_DAS_FOTOS,
   documentoDaComposicao,
   fontesDoDocumento,
   problemasDeLayout,
@@ -25,7 +27,8 @@ import {
 } from '@makucho/studio-contracts';
 
 interface Pagina {
-  setViewport(v: { width: number; height: number }): Promise<void>;
+  setViewport(v: { width: number; height: number; deviceScaleFactor?: number }): Promise<void>;
+  screenshot(o: { type: 'jpeg'; quality: number; encoding: 'base64' }): Promise<string>;
   setRequestInterception(v: boolean): Promise<void>;
   on(evento: 'request', f: (r: { url(): string; respond(r: { status: number; contentType: string; body: string | Buffer }): Promise<void>; abort(): Promise<void> }) => void): void;
   goto(url: string, o: { waitUntil: string; timeout: number }): Promise<unknown>;
@@ -119,6 +122,36 @@ const MEDIR = `function (t) {
 
 /** Mede e julga uma animação. Devolve os problemas de layout (vazio = ok). */
 export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeFontes: string }): Promise<string[]> {
+  return comAPagina(job, opcoes, 1, async (pagina, duracaoS) => {
+    const medidas: MedidasDaAnimacao[] = [];
+    for (const f of INSTANTES_DA_CONFERENCIA) {
+      const t = Math.round(duracaoS * f * 100) / 100;
+      const textos = (await pagina.evaluate(`(${MEDIR})(${t})`)) as MedidasDaAnimacao['textos'];
+      medidas.push({ t, textos });
+    }
+    return problemasDeLayout(job.composicao, medidas);
+  });
+}
+
+/**
+ * Fotografa a animação para a crítica: um JPEG (base64) por instante, em
+ * 540x960. O fundo da página fica cinza: é onde o vídeo da pessoa aparece.
+ */
+export async function fotografarAnimacao(job: JobDeConferencia, opcoes: { pastaDeFontes: string }): Promise<string[]> {
+  return comAPagina(job, opcoes, 0.5, async (pagina, duracaoS) => {
+    await pagina.evaluate(`document.documentElement.style.background = '${COR_DO_VIDEO_NAS_FOTOS}'`);
+    const fotos: string[] = [];
+    for (const f of INSTANTES_DAS_FOTOS) {
+      const t = Math.round(duracaoS * f * 100) / 100;
+      await pagina.evaluate(`(function (t) { var tl = window.__timelines && window.__timelines.cena; if (tl) tl.seek(t, false); })(${t})`);
+      fotos.push(await pagina.screenshot({ type: 'jpeg', quality: 72, encoding: 'base64' }));
+    }
+    return fotos;
+  });
+}
+
+/** Abre a animação no Chrome (o mesmo documento do render) e roda `fazer` com a página pronta. */
+async function comAPagina<T>(job: JobDeConferencia, opcoes: { pastaDeFontes: string }, escala: number, fazer: (pagina: Pagina, duracaoS: number) => Promise<T>): Promise<T> {
   const doc = documentoDaComposicao(job.composicao, { duracaoMs: job.duracaoMs, gsap: 'gsap.min.js', fontes: '', origens: "'self'", componentes: FONTES_DOS_COMPONENTES });
   const gsap = await readFile(require.resolve('gsap/dist/gsap.min.js'));
   const fontes = new Map<string, Buffer>();
@@ -134,7 +167,7 @@ export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeF
   }
   const pagina = await b.newPage();
   try {
-    await pagina.setViewport({ width: 1080, height: 1920 });
+    await pagina.setViewport({ width: 1080, height: 1920, deviceScaleFactor: escala });
     await pagina.setRequestInterception(true);
     pagina.on('request', (r) => {
       const url = r.url();
@@ -149,14 +182,7 @@ export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeF
     await pagina.goto(`${ORIGEM}index.html`, { waitUntil: 'load', timeout: 20_000 });
     await pagina.evaluate('document.fonts.ready.then(() => true)');
 
-    const duracaoS = Math.max(0.5, job.duracaoMs / 1000);
-    const medidas: MedidasDaAnimacao[] = [];
-    for (const f of INSTANTES_DA_CONFERENCIA) {
-      const t = Math.round(duracaoS * f * 100) / 100;
-      const textos = (await pagina.evaluate(`(${MEDIR})(${t})`)) as MedidasDaAnimacao['textos'];
-      medidas.push({ t, textos });
-    }
-    return problemasDeLayout(job.composicao, medidas);
+    return await fazer(pagina, Math.max(0.5, job.duracaoMs / 1000));
   } finally {
     await pagina.close().catch(() => undefined);
     fecharDepois();

@@ -76,6 +76,12 @@ async function main() {
   t('com raciocínio: sem temperature (não suportado)', !('temperature' in comRaciocinio));
   t('com raciocínio: sem response_format (não suportado)', !('response_format' in comRaciocinio));
 
+  // Imagens (a crítica das animações): o conteúdo vira partes, texto + data URL.
+  await provedor.conversar({ chamada: 'criticar_animacao', sistema: 'sistema', usuario: 'olhe', imagens: ['/9j/AAA', '/9j/BBB'], maxTokens: 100, raciocinio: 'desligado' });
+  const partes = (corpos[2]!.messages as Array<{ role: string; content: unknown }>)[1]!.content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  t('com imagens: o texto e cada imagem como data URL', Array.isArray(partes) && partes[0]!.type === 'text' && partes[0]!.text === 'olhe' && partes.length === 3 && partes[1]!.image_url?.url === 'data:image/jpeg;base64,/9j/AAA');
+  t('sem imagens: o conteúdo continua texto simples', typeof (corpos[0]!.messages as Array<{ content: unknown }>)[1]!.content === 'string');
+
   // Erro de configuração: a mensagem da DeepSeek aparece, a chave não.
   const errado = new DeepseekProvedor('sk-teste', 'modelo-inexistente' as never);
   let publico = '';

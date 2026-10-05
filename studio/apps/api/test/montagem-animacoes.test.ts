@@ -5,6 +5,10 @@
 // Se a IA falhar, o vídeo sai sem animação -- com o motivo registrado.
 // ============================================================
 
+// Este arquivo cobre o caminho por estilo do catálogo e cartões; a direção
+// livre (o padrão) tem o seu em animacoes-livres.test.ts.
+process.env.STUDIO_ANIMACOES_MODO = 'classico';
+
 import { documentoDaComposicao, type EditPlanV1 } from '@makucho/studio-contracts';
 import { AnimacoesDaFalaService } from '../src/modules/ai/animacoes-da-fala.service';
 import { PropostaService } from '../src/modules/ai/proposta.service';

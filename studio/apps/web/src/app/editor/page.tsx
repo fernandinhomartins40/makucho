@@ -2314,11 +2314,17 @@ function DetalhesDasAnimacoes({ relatorio }: { relatorio: import('@makucho/studi
   const layout: Record<string, string> = { meio_a_meio: 'meio a meio', cartao: 'cartão', tela_cheia: 'tela cheia', pip: 'vídeo no canto' };
   const TIPO: Record<string, string> = { numero: 'número', lista: 'lista', comparacao: 'comparação', citacao: 'citação', passos: 'passos', grafico: 'gráfico', termo: 'termo', pergunta: 'pergunta', destaque: 'destaque' };
   const tipo = (t: string) => TIPO[t] ?? (t || 'cartão');
+  // Direção livre: a IA escreveu o design deste vídeo e um crítico olhou os quadros.
+  const design = relatorio.design;
+  const nota = (inicioS: number) => relatorio.escrita.find((e) => e.ok && Math.abs(e.inicioS - inicioS) < 0.01)?.critica;
   return (
     <div className="detalhes-das-animacoes">
+      {design?.conceito && <span>Direção da IA para este vídeo: {design.conceito}</span>}
       <span>
         {relatorio.pedidos === 0
-          ? 'A IA não viu na fala nada que pedisse um cartão (número, lista, comparação, passos).'
+          ? design
+            ? 'A direção achou que este vídeo fica melhor só com o rosto e a fala.'
+            : 'A IA não viu na fala nada que pedisse um cartão (número, lista, comparação, passos).'
           : `A IA sugeriu ${relatorio.pedidos}; ${relatorio.aceitos.length} ${relatorio.aceitos.length === 1 ? 'passou' : 'passaram'} na conferência${falhas.length ? ` e ${falhas.length} não ${falhas.length === 1 ? 'saiu' : 'saíram'} na escrita` : ''}.`}
         {relatorio.cortada ? ' A resposta dela veio cortada: valeram só os cartões completos.' : ''}
         {relatorio.zoomsTirados ? ` O zoom de ${relatorio.zoomsTirados} ${relatorio.zoomsTirados === 1 ? 'trecho saiu (ficaria escondido' : 'trechos saiu (ficariam escondidos'} sob a animação).` : ''}
@@ -2327,9 +2333,11 @@ function DetalhesDasAnimacoes({ relatorio }: { relatorio: import('@makucho/studi
         <ul>
           {relatorio.aceitos.map((a) => {
             const falhou = falhas.find((f) => Math.abs(f.inicioS - a.inicioS) < 0.01);
+            const critica = nota(a.inicioS);
             return (
               <li key={`a${a.inicioS}`} data-ok={!falhou || undefined}>
                 {s(a.inicioS)} · {tipo(a.tipo)} ({layout[a.layout] ?? a.layout}){falhou ? ` — não saiu: ${falhou.detalhe ?? 'erro'}` : ''}
+                {critica ? ` — nota ${critica.nota.toLocaleString('pt-BR')} da revisão${critica.refeita ? `, refeita ${critica.refeita}x` : ''}` : ''}
               </li>
             );
           })}

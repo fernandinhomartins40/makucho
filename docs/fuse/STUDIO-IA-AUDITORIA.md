@@ -111,3 +111,39 @@ Conclusões aplicadas:
   ~US$ 0,009 antes — dez vezes menos, e a proposta chega em segundos.
 - Diagnóstico: o motivo de uma proposta montada sem IA fica no projeto e aparece no editor, e
   Configurações tem "Testar a chave" (uma chamada de ~50 tokens com o resultado exato da DeepSeek).
+
+## 8. Direção livre das animações (05/10/2026)
+
+As animações da fala deixaram de ser "um estilo do catálogo + um de nove tipos de cartão".
+O padrão agora é a direção livre (`animacoes-da-fala.service.ts`), no método das skills que a
+comunidade usa com agentes (video-use, HyperFrames): poucas regras duras, um design escrito
+para o vídeo e um ciclo de olhar e corrigir.
+
+| # | Chamada | Modelo / raciocínio | O que faz |
+|---|---|---|---|
+| 14 | `dirigir_animacoes` | Pro / alto | Escreve o design do vídeo (conceito, paleta, fontes, linguagem, movimento) e as cenas, com a encenação de cada uma em texto livre |
+| 15 | `desenhar_animacao` | Pro / alto | Uma por cena, com o design e a skill de motion graphics no começo do pedido (prefixo igual: cache de contexto) |
+| 16 | `criticar_animacao` | Flash (o único com visão) / desligado | Olha três quadros da cena, fotografados no Chrome do worker; nota abaixo de 7 manda refazer com o parecer (até 2 vezes; fica a versão de melhor nota) |
+
+O que não mudou: âncora literal na fala, número só se foi dito, espaços reservados, zonas
+seguras, animação determinística e sem rede. O estilo que a pessoa escolhe no projeto continua
+valendo (aí é o catálogo, por cartões), e se a direção livre falhar o vídeo sai pelos cartões.
+
+**Skill de motion graphics** (`modules/ai/skills/motion-graphics-v1.md`, carregada por
+`skills.ts`): o ofício que o desenho carrega sempre -- batidas da cena, tempo e curvas,
+vocabulário de movimento, 12 receitas de GSAP/SVG dentro das regras do Studio, arquétipos de
+cena, erros de amador e a conferência antes de responder. Mudar a skill é criar a `-v2.md`.
+
+**Chaves de ambiente:** `STUDIO_ANIMACOES_MODO=classico` volta ao catálogo;
+`STUDIO_RODADAS_DE_CRITICA` (0 a 3, padrão 2); `STUDIO_CRITICAR_ANIMACOES=off`;
+`STUDIO_IA_<CHAMADA>=modelo:raciocinio` troca uma chamada sem código (ex.:
+`STUDIO_IA_DESENHAR_ANIMACAO=deepseek-flash:high`).
+
+**Custo: ainda NÃO medido com chave real.** Estimativa de US$ 0,20 a 0,40 por vídeo (contra
+~US$ 0,01), o que faz o teto padrão de US$ 20 cobrir dezenas de vídeos, não mil. A bancada
+(`apps/api/test/bancada-de-animacoes.manual.ts <projectId>`) roda o mesmo vídeo em "hoje",
+"livre com Flash pensando" e "livre com Pro pensando", sem salvar nada no projeto, e gera uma
+página lado a lado com custo, tempo e nota de cada uma. É ela que confirma (ou troca) o modelo.
+Também falta confirmar com a chave real o formato de imagem aceito pela DeepSeek (`image_url`
+com data URL, padrão OpenAI): se for recusado, a crítica se desliga sozinha e as cenas entram
+sem nota.

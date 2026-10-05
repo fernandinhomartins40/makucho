@@ -44,6 +44,11 @@ export interface PedidoAoProvedor {
   sistema: string;
   usuario: string;
   /**
+   * Imagens que vão junto do pedido (JPEG em base64, sem o prefixo
+   * `data:`). Só o modelo com visão as aceita -- quem chama garante.
+   */
+  imagens?: string[];
+  /**
    * Teto de tokens da resposta.
    *
    * Não é só custo: é o que impede uma resposta que cresce sem fim de

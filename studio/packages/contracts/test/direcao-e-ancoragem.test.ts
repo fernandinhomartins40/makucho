@@ -3,7 +3,25 @@
 // reservado, leitura de resposta cortada) e a ancoragem na fala.
 // ============================================================
 
-import { aplicarOperacao, conferirCartoes, janelasReservadasDoPlano, lerDirecao, numerosDoTexto, numerosInventados, textoVisivelDoHtml, zoomsEscondidos } from '../src';
+import {
+  REGRAS_LIVRES,
+  aplicarOperacao,
+  chaveDaAnimacao,
+  conferirCartoes,
+  contrasteDasCores,
+  designDoVideo,
+  documentoDaComposicao,
+  janelasReservadasDoPlano,
+  lerCritica,
+  lerDirecao,
+  numerosDoTexto,
+  numerosInventados,
+  temaDaAnimacao,
+  temaLivreSchema,
+  textoDoDesign,
+  textoVisivelDoHtml,
+  zoomsEscondidos,
+} from '../src';
 import type { EditPlanV1, PalavraNoTempo } from '../src';
 
 let ok = 0,
@@ -73,6 +91,47 @@ const falaDensa = Array.from({ length: 200 }, (_, i) => ({ s: i * 0.3, texto: 'i
 const rr = conferirCartoes(muitos, { duracaoS: 60, palavras: falaDensa, reservadas: [] });
 const coberto = rr.aceitos.reduce((s, c) => s + c.fimS - c.inicioS, 0);
 t('no máximo metade do vídeo coberto', coberto <= 30 && rr.aceitos.length < 8);
+
+// ---------- Direção livre: mesmas regras duras, outro ritmo ----------
+const livre = conferirCartoes(muitos, { duracaoS: 60, palavras: falaDensa, reservadas: [], regras: REGRAS_LIVRES });
+const cobertoLivre = livre.aceitos.reduce((s, c) => s + c.fimS - c.inicioS, 0);
+t('direção livre: até 75% do vídeo com gráfico (mais que os cartões, menos que tudo)', livre.aceitos.length > rr.aceitos.length && cobertoLivre <= 45);
+const cenas = conferirCartoes(
+  [
+    { inicioS: 10, fimS: 15, nome: 'o dado', layout: 'tela_cheia', ancora: 'oitenta e sete por cento das lojas', conceito: 'O número cresce até 87.', conteudo: { textos: ['87%'] }, prioridade: 1 },
+    { inicioS: 22, fimS: 28, nome: 'os três', layout: 'tela_cheia', ancora: 'primeiro responda rápido', conceito: 'Três linhas que se riscam.', prioridade: 1 },
+    { inicioS: 40, fimS: 44, nome: 'inventada', layout: 'cartao', ancora: 'isso muda tudo', conteudo: '300% de retorno', prioridade: 1 },
+    { inicioS: 30, fimS: 35, nome: 'sem âncora', layout: 'cartao', ancora: 'crescimento exponencial', prioridade: 1 },
+  ],
+  { duracaoS: 60, palavras, reservadas, regras: REGRAS_LIVRES },
+);
+t('direção livre: a cena usa "ancora" e "nome", guarda a encenação e pode repetir tela cheia', cenas.aceitos.map((c) => c.tipo).join() === 'o dado,os três' && cenas.aceitos[0]!.conceito === 'O número cresce até 87.' && cenas.aceitos.every((c) => c.layout === 'tela_cheia'));
+const motivosLivres = cenas.descartados.map((d) => d.motivo).join(' | ');
+t('direção livre: número não dito e âncora fora da fala continuam saindo', motivosLivres.includes('300') && motivosLivres.includes('crescimento exponencial'));
+t('os cartões seguem com uma tela cheia só', conferirCartoes([{ inicioS: 10, fimS: 15, tipo: 'numero', layout: 'tela_cheia', gatilho: 'oitenta e sete por cento', prioridade: 1 }, { inicioS: 22, fimS: 28, tipo: 'lista', layout: 'tela_cheia', gatilho: 'primeiro responda rápido', prioridade: 1 }], { duracaoS: 60, palavras, reservadas }).aceitos.length === 1);
+
+// ---------- O design do vídeo ----------
+const comDesign = lerDirecao('{"conceito":"papel e tinta","tom":"calma","design":{"paleta":{"fundo":"#f4efe6","texto":"#f0ebe2","destaque":"#c2410c","destaque2":"azul"},"fonteTitulo":"\'lora bold\'","fonteTexto":"Comic Sans","linguagem":"filetes finos","movimento":"lento"},"cenas":[{"inicioS":5,"fimS":9}]}');
+const dv = designDoVideo(comDesign);
+t('lê o design e as cenas', comDesign.cartoes.length === 1 && dv.conceito === 'papel e tinta' && dv.linguagem === 'filetes finos' && dv.movimento === 'lento');
+t('texto sem contraste com o fundo vira preto ou branco', dv.tema.texto === '#111111' && contrasteDasCores(dv.tema.texto, dv.tema.fundo) >= 4.5);
+t('hex inválido cai num derivado; fonte do catálogo vale pelo nome, a de fora vira Inter', /^#[0-9a-f]{6}$/i.test(dv.tema.destaque2) && dv.tema.fonteTitulo === "'Lora Bold'" && dv.tema.fonteTexto === "'Inter SemiBold'");
+t('o tema montado passa no schema que vai para a animação', temaLivreSchema.safeParse(dv.tema).success && !temaLivreSchema.safeParse({ ...dv.tema, fundo: 'red; } body { display:none' }).success && !temaLivreSchema.safeParse({ ...dv.tema, fonteTitulo: "'x'; } * { color: red" }).success);
+const designCortado = lerDirecao('{"conceito":"onda","design":{"paleta":{"fundo":"#101418"},"linguagem":"linhas {curvas}"},"cenas":[{"inicioS":5,"fimS":9},{"inicioS":20,"fi');
+t('resposta cortada: o design (que vem antes) e a cena completa valem', designCortado.cortada && designCortado.cartoes.length === 1 && designDoVideo(designCortado).tema.fundo === '#101418' && designDoVideo(designCortado).linguagem === 'linhas {curvas}');
+t('sem design nenhum, ainda há um tema legível', contrasteDasCores(designDoVideo({}).tema.texto, designDoVideo({}).tema.fundo) >= 4.5);
+t('o design em texto traz as cores com as variáveis de CSS', textoDoDesign(dv).includes('var(--cor-destaque)') && textoDoDesign(dv).includes('#c2410c') && textoDoDesign(dv).includes('filetes finos'));
+
+// ---------- O tema livre no documento ----------
+const livreNoDoc = documentoDaComposicao({ html: '<p>x</p>', css: '', script: 'tl.to("p", { opacity: 1 }, 0);', layout: 'tela_cheia', tema: dv.tema }, { duracaoMs: 3000, gsap: 'g.js', fontes: '/fonts/', origens: "'self'" });
+t('o documento leva as cores e a fonte do tema livre', livreNoDoc.includes('--cor-fundo: #f4efe6') && livreNoDoc.includes('--cor-destaque: #c2410c') && livreNoDoc.includes("--fonte-titulo: 'Lora Bold'") && livreNoDoc.includes('Lora-Bold'));
+t('a paleta escolhida recolore o tema livre; o estilo do catálogo vale sobre ele', temaDaAnimacao(undefined, 'neon-electric:0', dv.tema)!.fundo !== dv.tema.fundo && temaDaAnimacao('editorial', undefined, dv.tema)!.fundo === '#f1e8d5');
+const semTema = { html: '<p>x</p>', css: '', script: 'tl.to("p", { opacity: 1 }, 0);', layout: 'tela_cheia' as const };
+t('a chave do vídeo pronto muda com o tema e não muda para as animações antigas', chaveDaAnimacao({ ...semTema, tema: dv.tema }, 3000) !== chaveDaAnimacao(semTema, 3000) && chaveDaAnimacao(semTema, 3000) === chaveDaAnimacao({ ...semTema }, 3000));
+
+// ---------- A crítica ----------
+t('lê o parecer (nota e problemas), mesmo cercado', JSON.stringify(lerCritica('```json\n{"nota": 6.44, "problemas": ["título pequeno", {"problema": "vazio no quadro 3"}, ""]}\n```')) === '{"nota":6.4,"problemas":["título pequeno","vazio no quadro 3"]}');
+t('parecer ilegível ou sem nota vale como sem crítica', lerCritica('ficou ótimo') === null && lerCritica('{"problemas": []}') === null && lerCritica('{"nota": 14}')!.nota === 10);
 
 // Resposta em milissegundos por engano
 const ms = conferirCartoes([{ inicioS: 10000, fimS: 15000, tipo: 'numero', gatilho: 'oitenta e sete', conteudo: '87' }], { duracaoS: 60, palavras, reservadas: [] });

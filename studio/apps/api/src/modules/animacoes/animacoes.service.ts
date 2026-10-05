@@ -68,6 +68,15 @@ export class AnimacoesService {
     return this.filas.conferir({ composicao: c, duracaoMs });
   }
 
+  /**
+   * As fotos da animação (JPEG em base64) para a crítica olhar, tiradas no
+   * Chrome do worker. `null` = não deu para fotografar.
+   */
+  async fotografar(c: ComposicaoHtml, duracaoMs: number): Promise<string[] | null> {
+    if (process.env.STUDIO_CRITICAR_ANIMACOES === 'off') return null;
+    return this.filas.fotografar({ composicao: c, duracaoMs });
+  }
+
   async problemas(c: ComposicaoHtml, duracaoMs: number): Promise<string[]> {
     const nossos = problemasDaComposicao(c);
     if (nossos.length) return nossos;
