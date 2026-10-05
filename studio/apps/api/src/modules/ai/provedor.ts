@@ -103,7 +103,9 @@ export interface ChamadaDeFerramenta {
 
 export type MensagemDoAgente =
   | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content: string | null; tool_calls?: ChamadaDeFerramenta[] }
+  // `reasoning_content`: com raciocínio ligado, a DeepSeek pede o pensamento
+  // de volta nas voltas seguintes do mesmo pedido (quando há ferramentas).
+  | { role: 'assistant'; content: string | null; tool_calls?: ChamadaDeFerramenta[]; reasoning_content?: string }
   | { role: 'tool'; tool_call_id: string; content: string };
 
 export interface PedidoComFerramentas {
@@ -111,12 +113,16 @@ export interface PedidoComFerramentas {
   mensagens: MensagemDoAgente[];
   ferramentas: DefinicaoDeFerramenta[];
   maxTokens: number;
+  /** Raciocínio do modelo nesta volta (padrão: desligado). */
+  raciocinio?: Raciocinio;
   sinal?: AbortSignal;
 }
 
 export interface RespostaComFerramentas {
   /** O texto da IA (a resposta final, quando não há chamadas). */
   texto: string;
+  /** O pensamento desta volta, para devolver nas seguintes (só com raciocínio). */
+  raciocinio?: string;
   /** As ferramentas que a IA quer rodar agora (vazio = terminou). */
   chamadas: ChamadaDeFerramenta[];
   consumo: ConsumoDaChamada;

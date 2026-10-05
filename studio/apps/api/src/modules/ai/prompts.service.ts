@@ -32,7 +32,10 @@ export const VERSAO_DO_PROMPT = {
   // recompensa, CTA), `analysis` antes dos cortes e acabamento obrigatório.
   // v5: corte com intenção (frase, reação e demonstração inteiras),
   // corte seco como padrão e conferência de começo, meio e conclusão.
-  selecionar_trechos: 'selecao-v5',
+  // v6: julgamento no lugar do protocolo -- a estrutura sai do conteúdo
+  // (história, tutorial, opinião, oferta...), e título e chamada de tela só
+  // quando ajudam; as regras de corte e o contrato são os mesmos.
+  selecionar_trechos: 'selecao-v6',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',
@@ -62,7 +65,9 @@ export const VERSAO_DO_PROMPT = {
   // O "Peça à IA" com ferramentas (agente.service.ts).
   // v2: direção de arte completa (identidade, legenda sob medida, textos
   // profissionais, b-roll real, cor, ritmo, som) e padrão de produtora.
-  agente_de_edicao: 'agente-v2',
+  // v3: direção no lugar da lista -- princípios e julgamento por vídeo em
+  // vez de dez etapas em ordem fixa; motion graphics por encenação livre.
+  agente_de_edicao: 'agente-v3',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

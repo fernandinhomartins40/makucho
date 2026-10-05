@@ -78,12 +78,46 @@ import { ErroDoProvedor } from './provedor';
 import type { DefinicaoDeFerramenta, MensagemDoAgente } from './provedor';
 import { RefinoService } from './refino.service';
 
-/** Passos (voltas com a IA) por pedido: o bastante para ler, agir e conferir. */
-const MAX_PASSOS = 14;
-/** Teto de gasto por pedido, em centavos de dólar (a IA é barata; isto é trava). */
-const MAX_CUSTO_CENTAVOS = 15;
-/** Resposta de uma volta: decisões e operações, não texto longo. */
-const MAX_TOKENS_POR_VOLTA = 8000;
+/**
+ * Passos (voltas com a IA) por pedido. Eram 14: o bastante para cumprir uma
+ * lista, pouco para dirigir -- ler, decidir, editar, olhar o resultado e
+ * corrigir. O que segura o gasto é o teto abaixo, não a contagem.
+ */
+const MAX_PASSOS = 30;
+/** A direção do vídeo inteiro (na montagem) tem mais voltas que um pedido. */
+const MAX_PASSOS_DA_DIRECAO = 40;
+/** Teto de gasto por pedido, em centavos de dólar (STUDIO_AGENTE_TETO_CENTAVOS). */
+function tetoDoPedido(): number {
+  const n = Number(process.env.STUDIO_AGENTE_TETO_CENTAVOS ?? 60);
+  return Number.isFinite(n) && n > 0 ? n : 60;
+}
+/** Resposta de uma volta. Com raciocínio, o pensamento conta no teto. */
+const MAX_TOKENS_POR_VOLTA = 16_000;
+
+/** O que muda de um pedido da pessoa para a direção que a montagem pede. */
+export interface OpcoesDoAgente {
+  maxPassos?: number;
+  /** Ferramentas que ficam de fora nesta execução. */
+  sem?: readonly string[];
+  /** Tempo total do pedido: passou disso, o agente fecha com o que já fez. */
+  prazoMs?: number;
+}
+
+/** A direção roda com a pessoa esperando o vídeo ficar pronto (STUDIO_DIRECAO_PRAZO_MIN). */
+function prazoDaDirecaoMs(): number {
+  const n = Number(process.env.STUDIO_DIRECAO_PRAZO_MIN ?? 7);
+  return (Number.isFinite(n) && n > 0 ? n : 7) * 60_000;
+}
+
+/**
+ * O pedido da direção: a montagem entrega o vídeo com o acabamento por
+ * regra (o mesmo de todo vídeo) e o agente o dirige como este vídeo pede.
+ */
+const PEDIDO_DE_DIRECAO = `Dirija este vídeo. Ele acabou de ser montado: os cortes foram escolhidos e o acabamento foi posto por regra, igual ao de qualquer outro vídeo. Seu trabalho é fazer dele um vídeo com direção -- olhe o projeto, a fala e a marca, decida o que ESTE conteúdo pede e refaça o acabamento com as suas escolhas: legenda, textos na tela, imagens, cor, ritmo, som. As animações da fala já foram criadas pela direção de animação: mantenha, a não ser que estejam sobrando ou faltando num momento-chave.
+Os cortes ficam (pode ajustar bordas e silêncios; não refaça a montagem). O que o Kit de marca fixou continua valendo. Menos é mais quando o vídeo pede: tirar o que está sobrando também é dirigir. Confira o resultado antes de terminar.`;
+
+/** Fora da direção: refazer a montagem do zero desfaria o que ela acabou de receber. */
+const FORA_DA_DIRECAO = ['remontar_video', 'definir_tipo_do_video', 'desfazer_tudo', 'criar_animacao', 'criar_cena_animada', 'mudar_cena_animada'] as const;
 /** O que uma ferramenta devolve à IA (o resto é cortado). */
 const MAX_RESULTADO = 9000;
 
@@ -158,7 +192,7 @@ export class AgenteService {
    */
   iniciar(tenant: TenantContext, projectId: string, pedido: string, doEditor?: ContextoDoComando) {
     const atual = this.andamento.get(projectId);
-    if (atual?.ativo && Date.now() - atual.em < 5 * 60_000) throw new BadRequestException('a IA ainda está trabalhando no pedido anterior');
+    if (atual?.ativo && Date.now() - atual.em < 15 * 60_000) throw new BadRequestException('a IA ainda está trabalhando no pedido anterior');
     const registro: Andamento = { passos: ['Entendendo o pedido'], ativo: true, em: Date.now() };
     this.andamento.set(projectId, registro);
     void this.executar(tenant, projectId, pedido, doEditor, registro)
@@ -174,7 +208,19 @@ export class AgenteService {
     return { iniciado: true };
   }
 
-  async executar(tenant: TenantContext, projectId: string, pedido: string, doEditor?: ContextoDoComando, registro?: Andamento) {
+  /**
+   * A direção do vídeo inteiro, pedida pela montagem: o agente recebe o
+   * vídeo com o acabamento por regra e o dirige como aquele conteúdo pede.
+   * Sem as ferramentas que refariam a montagem. Devolve o que ele fez (a
+   * tela do "Peça à IA" mostra a resposta dele quando o editor abre).
+   */
+  async dirigir(tenant: TenantContext, projectId: string) {
+    return this.executar(tenant, projectId, PEDIDO_DE_DIRECAO, undefined, undefined, { maxPassos: MAX_PASSOS_DA_DIRECAO, sem: FORA_DA_DIRECAO, prazoMs: prazoDaDirecaoMs() });
+  }
+
+  async executar(tenant: TenantContext, projectId: string, pedido: string, doEditor?: ContextoDoComando, registro?: Andamento, opcoes: OpcoesDoAgente = {}) {
+    const maxPassos = opcoes.maxPassos ?? MAX_PASSOS;
+    const teto = tetoDoPedido();
     const atual = await this.planos.atual(tenant, projectId);
     const contexto = await this.acabamento.contexto(tenant.workspaceId);
     const conversa: Conversa = {
@@ -192,7 +238,7 @@ export class AgenteService {
     const andamento: Andamento = registro ?? { passos: ['Entendendo o pedido'], ativo: true, em: Date.now() };
     this.andamento.set(projectId, andamento);
 
-    const ferramentas = this.ferramentas();
+    const ferramentas = Object.fromEntries(Object.entries(this.ferramentas()).filter(([nome]) => !opcoes.sem?.includes(nome)));
     const definicoes: DefinicaoDeFerramenta[] = Object.entries(ferramentas).map(([nome, f]) => ({
       type: 'function',
       function: { name: nome, description: f.descricao, parameters: f.parametros },
@@ -205,8 +251,9 @@ export class AgenteService {
 
     let custo = 0;
     let resposta = '';
+    const inicio = Date.now();
     try {
-      for (let passo = 1; passo <= MAX_PASSOS; passo += 1) {
+      for (let passo = 1; passo <= maxPassos; passo += 1) {
         const volta = await this.ai.chamarComFerramentas({
           workspaceId: tenant.workspaceId,
           chamada: 'agente_de_edicao',
@@ -219,7 +266,8 @@ export class AgenteService {
           resposta = volta.texto.trim();
           break;
         }
-        mensagens.push({ role: 'assistant', content: volta.texto || null, tool_calls: volta.chamadas });
+        // O pensamento da volta vai junto: o provedor o pede de volta nas seguintes.
+        mensagens.push({ role: 'assistant', content: volta.texto || null, tool_calls: volta.chamadas, ...(volta.raciocinio ? { reasoning_content: volta.raciocinio } : {}) });
         for (const chamada of volta.chamadas) {
           const f = ferramentas[chamada.function.name];
           let resultado: unknown;
@@ -237,11 +285,15 @@ export class AgenteService {
           const texto = JSON.stringify(resultado);
           mensagens.push({ role: 'tool', tool_call_id: chamada.id, content: texto.length > MAX_RESULTADO ? `${texto.slice(0, MAX_RESULTADO)}… (cortado)` : texto });
         }
-        if (custo >= MAX_CUSTO_CENTAVOS) {
+        if (opcoes.prazoMs && Date.now() - inicio >= opcoes.prazoMs) {
+          resposta = 'Fiz o que deu no tempo da montagem. O que foi feito já está no vídeo; peça o resto no "Peça à IA".';
+          break;
+        }
+        if (custo >= teto) {
           resposta = 'Parei aqui para não passar do limite de gasto deste pedido. O que foi feito até agora já está no vídeo.';
           break;
         }
-        if (passo === MAX_PASSOS) resposta = 'Fiz o que deu nos passos que tenho por pedido. O que foi feito já está no vídeo.';
+        if (passo === maxPassos) resposta = 'Fiz o que deu nos passos que tenho por pedido. O que foi feito já está no vídeo.';
       }
     } catch (e) {
       andamento.ativo = false;
@@ -782,7 +834,11 @@ export class AgenteService {
         executar: async (c) => {
           const atual = estiloDoPlano(c.plano);
           return {
-            estiloDoVideo: atual ? `${atual.chave} (${atual.nome})` : 'nenhum ainda',
+            estiloDoVideo: atual
+              ? `${atual.chave} (${atual.nome})`
+              : (c.plano.mediaLayers ?? []).some((m) => m.kind === 'html' && m.composicao?.tema)
+                ? 'direção livre: um design criado pela IA para este vídeo (as cenas novas seguem o mesmo; só troque por um estilo do catálogo se a pessoa pedir)'
+                : 'nenhum ainda',
             animacoes: (c.plano.mediaLayers ?? [])
               .filter((m) => m.kind === 'html' && m.composicao)
               .map((m) => ({
@@ -791,7 +847,7 @@ export class AgenteService {
                 fimS: (m.timelineStartMs + m.durationMs) / 1000,
                 layout: m.composicao!.layout,
                 lado: m.composicao!.lado,
-                estilo: m.composicao!.estilo ?? 'sem estilo (feita à mão)',
+                estilo: m.composicao!.estilo ?? (m.composicao!.tema ? 'design do vídeo (direção livre)' : 'sem estilo (feita à mão)'),
                 titulo: m.composicao!.titulo,
                 briefing: m.composicao!.briefing?.slice(0, 300),
               })),
@@ -803,7 +859,7 @@ export class AgenteService {
 
       animar_trecho: {
         rotulo: 'Desenhando uma animação (HyperFrames)',
-        descricao: `O JEITO PADRÃO de criar uma animação: você diz o trecho, o lugar, o tipo e o que ela explica, e o motion designer do HyperFrames desenha no estilo do vídeo (ou no estilo pedido), com a doutrina de movimento e cada elemento entrando no instante da palavra. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-12 s). layout: meio_a_meio (painel + rosto na outra metade; lado cima = animação em cima, baixo = embaixo), cartao (menor, por cima do vídeo, fora do rosto), tela_cheia (só o ponto alto), pip (a animação ocupa a tela e o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir -- para conteúdo denso). tipo: numero, lista, comparacao, citacao, passos, grafico, termo, pergunta, destaque. estilo: chave de estilos_e_animacoes (omita para seguir o estilo do vídeo). Demora ~1-2 min.`,
+        descricao: `O JEITO PADRÃO de criar uma cena de motion graphics: você diz o trecho, o enquadramento, o que quem assiste deve entender (ideia) e a ENCENAÇÃO (encenacao: o que aparece, em que ordem, o que se move e por quê -- invente a que o trecho pede: tipografia cinética, dado que ganha forma, diagrama que se desenha, interface simulada, comparação, manchete...). O motion designer desenha com a skill de motion graphics, no design do vídeo (ou no estilo do catálogo pedido em "estilo"), cada elemento entrando no instante da palavra, e um revisor olha os quadros. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-15 s). layout: meio_a_meio (cena + rosto na outra metade; lado cima = cena em cima, baixo = embaixo), cartao (peça menor por cima do vídeo, fora do rosto), tela_cheia (a cena toma o quadro), pip (a cena ocupa a tela e o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir). conteudo: os textos EXATOS que aparecem (só o que foi dito). Demora ~2-3 min.`,
         parametros: objeto(
           {
             inicioS: { type: 'number' },
@@ -812,9 +868,10 @@ export class AgenteService {
             lado: { type: 'string', enum: ['cima', 'baixo'] },
             canto: { type: 'string', enum: ['sup-esq', 'sup-dir', 'inf-esq', 'inf-dir'] },
             paleta: { type: 'string', description: 'clima:indice de estilos_e_animacoes (ex.: dark-premium:2); "" volta às cores do estilo' },
-            tipo: { type: 'string' },
-            ideia: { type: 'string', description: 'o que a animação explica, em uma frase' },
-            conteudo: { type: 'string', description: 'os textos: kicker, título, detalhe, números, itens' },
+            tipo: { type: 'string', description: 'um rótulo curto seu para a cena (livre)' },
+            ideia: { type: 'string', description: 'o que quem assiste entende ou sente, em uma frase' },
+            encenacao: { type: 'string', description: 'a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)' },
+            conteudo: { type: 'string', description: 'os textos exatos da cena (só o que foi dito)' },
             estilo: { type: 'string' },
           },
           ['inicioS', 'fimS', 'layout', 'ideia'],
@@ -829,6 +886,7 @@ export class AgenteService {
             ...(a.lado === 'baixo' || a.lado === 'cima' ? { lado: a.lado } : {}),
             ...(typeof a.tipo === 'string' ? { tipo: a.tipo } : {}),
             ideia: String(a.ideia ?? ''),
+            ...(typeof a.encenacao === 'string' && a.encenacao.trim() ? { conceito: a.encenacao.trim().slice(0, 700) } : {}),
             ...(typeof a.conteudo === 'string' ? { conteudo: a.conteudo } : {}),
             ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
             ...(typeof a.paleta === 'string' && a.paleta ? { paleta: a.paleta } : {}),

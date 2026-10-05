@@ -126,7 +126,11 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   editar_roteiro: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   sugerir_midias: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   montar_por_cenas: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
-  agente_de_edicao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  // O agente dirige o vídeo (o "Peça à IA" e a direção da montagem): decide
+  // o que usar entre dezenas de ferramentas. Com o modelo forte e pensando,
+  // ele julga; sem pensar, segue a lista. O sistema e as ferramentas são o
+  // mesmo prefixo em toda volta (cache de contexto).
+  agente_de_edicao: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
   animar_fala: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   // A direção livre é onde a qualidade do vídeo se decide: o modelo mais
   // forte, pensando. São poucas chamadas por vídeo (uma direção, uma por

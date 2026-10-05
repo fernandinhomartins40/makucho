@@ -227,6 +227,28 @@ async function main() {
   const rp = await s.gerar('w', 'p1');
   t('a montagem cria as animações antes de entregar e avisa quantas', rp.avisos.some((x) => x.includes('3 animações')) && estados.includes('PROPOSAL_READY'));
 
+  // 4. Depois das animações, a montagem automática chama a direção do vídeo
+  //    -- e entrega mesmo se ela falhar; no "Refazer a análise" ela não roda.
+  const ordem: string[] = [];
+  const comDirecao = (dirigir: () => Promise<unknown>) =>
+    new PropostaService(
+      { project: { findUnique: async () => ({ id: 'p1', state: 'ANALYZING' }), update: async (x: { data: { state?: string } }) => { if (x.data.state) ordem.push(`estado:${x.data.state}`); } } } as never,
+      {} as never,
+      {} as never,
+      { publicarProgresso: async () => undefined } as never,
+      { separarNaMontagem: async () => 0 } as never,
+      { criarNaMontagem: async () => (ordem.push('animacoes'), { criadas: 1, nota: 'ok' }) } as never,
+      { dirigir } as never,
+    ) as unknown as { rodarAnimacoes: (job: { projectId: string; workspaceId: string; ativarAoFim: boolean; comMidias: boolean }, criadoEm: number) => Promise<number> };
+  await comDirecao(async () => (ordem.push('direcao'), { aplicadas: 4, custoCentavos: 12, resposta: 'Dirigi.' })).rodarAnimacoes({ projectId: 'p1', workspaceId: 'w', ativarAoFim: true, comMidias: false }, Date.now());
+  t('montagem automática: animações, depois a direção do vídeo, e só então a entrega', ordem.join() === 'animacoes,direcao,estado:PROPOSAL_READY');
+  ordem.length = 0;
+  await comDirecao(async () => { ordem.push('direcao'); throw new Error('a IA caiu'); }).rodarAnimacoes({ projectId: 'p1', workspaceId: 'w', ativarAoFim: true, comMidias: false }, Date.now());
+  t('direção que falha não segura a entrega', ordem.join() === 'animacoes,direcao,estado:PROPOSAL_READY');
+  ordem.length = 0;
+  await comDirecao(async () => (ordem.push('direcao'), {})).rodarAnimacoes({ projectId: 'p1', workspaceId: 'w', ativarAoFim: false, comMidias: false }, Date.now());
+  t('no "Refazer a análise" (a pessoa já está no editor) a direção não roda por cima', ordem.join() === 'animacoes');
+
   console.log(`\n${ok} ok, ${fail} falha(s)`);
   if (fail) process.exit(1);
 }

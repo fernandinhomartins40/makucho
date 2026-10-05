@@ -122,7 +122,7 @@ async function main() {
   t('salvou UMA versão', a.salvos.length === 1);
   const resultadoDoVer = a.vistas[1]!.find((m) => m.role === 'tool');
   t('o resultado de ver_projeto voltou para a IA (com o ramo)', Boolean(resultadoDoVer && resultadoDoVer.content.includes('Comércio')));
-  t('o sistema traz a direção de arte, os conceitos e a referência das operações', a.vistas[0]![0]!.content.includes('Direção de arte completa') && a.vistas[0]![0]!.content.includes('roteiro viral') && a.vistas[0]![0]!.content.includes('trocar_estilo_legenda'));
+  t('o sistema traz a direção (princípios, não lista), o que ele tem e a referência das operações', a.vistas[0]![0]!.content.includes('Você não segue uma lista') && a.vistas[0]![0]!.content.includes('Motion graphics') && !a.vistas[0]![0]!.content.includes('nesta ordem') && a.vistas[0]![0]!.content.includes('trocar_estilo_legenda'));
   const passos = (a.agente as unknown as { andamento: Map<string, { passos: string[]; ativo: boolean }> }).andamento.get('p1')!;
   t('o progresso registra os passos', passos.passos.includes('Olhando o projeto') && passos.passos.includes('Editando o vídeo') && !passos.ativo);
 
@@ -199,6 +199,31 @@ async function main() {
   const camadaHtml = hf.salvos[0]?.mediaLayers?.[0];
   t('HyperFrames: sorteio é devolvido para a IA corrigir', Boolean(recusada?.content.includes('sorteio')));
   t('HyperFrames: a animação entra como camada html e o vídeo já é pedido', camadaHtml?.kind === 'html' && camadaHtml.composicao?.layout === 'meio_a_meio' && camadaHtml.durationMs === 3000 && pedidos[0] === 'Oi');
+
+  // ---------- O pensamento de cada volta volta nas seguintes ----------
+  const pensa = montar([{ chamadas: [{ nome: 'ver_projeto', args: {} }] }, { texto: 'Pronto.' }]);
+  const aiOriginal = (pensa.agente as unknown as { ai: { chamarComFerramentas: (p: unknown) => Promise<Record<string, unknown>> } }).ai;
+  const chamarOriginal = aiOriginal.chamarComFerramentas;
+  let voltas = 0;
+  aiOriginal.chamarComFerramentas = async (p: unknown) => ({ ...(await chamarOriginal(p)), ...((voltas += 1) === 1 ? { raciocinio: 'primeiro olho o projeto' } : {}) });
+  await pensa.agente.executar(tenant as never, 'p1', 'x');
+  const doAssistente = pensa.vistas[1]!.find((m) => m.role === 'assistant') as { reasoning_content?: string } | undefined;
+  t('raciocínio: o pensamento da volta é devolvido ao provedor na seguinte', doAssistente?.reasoning_content === 'primeiro olho o projeto');
+
+  // ---------- A direção da montagem ----------
+  const dir = montar([{ chamadas: [{ nome: 'remontar_video', args: {} }] }, { chamadas: [{ nome: 'editar', args: { operacoes: [{ op: 'trocar_estilo_legenda', styleId: 'hormozi' }] } }] }, { texto: 'Dirigi o vídeo.' }]);
+  let ferramentasDaDirecao: string[] = [];
+  const aiDir = (dir.agente as unknown as { ai: { chamarComFerramentas: (p: { ferramentas: Array<{ function: { name: string } }> }) => Promise<unknown> } }).ai;
+  const chamarDir = aiDir.chamarComFerramentas;
+  aiDir.chamarComFerramentas = async (p) => {
+    ferramentasDaDirecao = p.ferramentas.map((f) => f.function.name);
+    return chamarDir(p);
+  };
+  const rdir = await dir.agente.dirigir(tenant as never, 'p1');
+  const pedidoDaDirecao = dir.vistas[0]![1]!.content as string;
+  t('direção: o agente recebe o pedido de dirigir o vídeo, sem as ferramentas que refazem a montagem', pedidoDaDirecao.includes('Dirija este vídeo') && !ferramentasDaDirecao.includes('remontar_video') && ferramentasDaDirecao.includes('editar') && ferramentasDaDirecao.includes('animar_trecho'));
+  const recusa = dir.vistas[1]!.find((m) => m.role === 'tool');
+  t('direção: ferramenta de fora volta como erro e o resto do trabalho entra', Boolean(recusa?.content.includes('não existe')) && dir.salvos[0]?.captions.styleId === 'hormozi' && rdir.resposta === 'Dirigi o vídeo.');
 
   // ---------- Teto de passos ----------
   const e = montar([{ chamadas: [{ nome: 'conferir_plano', args: {} }] }]);

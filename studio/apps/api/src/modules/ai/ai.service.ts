@@ -273,8 +273,9 @@ export class AiService {
     ferramentas: DefinicaoDeFerramenta[];
     maxTokens: number;
     sinal?: AbortSignal;
-  }): Promise<{ texto: string; chamadas: ChamadaDeFerramenta[]; custoCentavos: number }> {
-    const modelo = configDaChamada(pedido.chamada).modelo;
+  }): Promise<{ texto: string; chamadas: ChamadaDeFerramenta[]; custoCentavos: number; raciocinio?: string }> {
+    const config = configDaChamada(pedido.chamada);
+    const modelo = config.modelo;
     const provedor = await this.provedorDe(pedido.workspaceId, modelo);
     const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
     await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
@@ -283,6 +284,7 @@ export class AiService {
       mensagens: pedido.mensagens,
       ferramentas: pedido.ferramentas,
       maxTokens: pedido.maxTokens,
+      raciocinio: config.raciocinio,
       ...(pedido.sinal ? { sinal: pedido.sinal } : {}),
     });
     const custo = await this.uso.registrar(
@@ -294,7 +296,7 @@ export class AiService {
       resposta.consumo.tokensEmCache ?? 0,
     );
     await this.prisma.aiCredential.updateMany({ where: { workspaceId: pedido.workspaceId }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
-    return { texto: resposta.texto, chamadas: resposta.chamadas, custoCentavos: custo };
+    return { texto: resposta.texto, chamadas: resposta.chamadas, custoCentavos: custo, ...(resposta.raciocinio ? { raciocinio: resposta.raciocinio } : {}) };
   }
 
   /**

@@ -27,6 +27,7 @@ import type { TenantContext } from '../../common/tenant';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { FilaService } from '../../common/fila.service';
 import { MidiasService } from './midias.service';
+import { AgenteService } from './agente.service';
 import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { AnaliseService } from './analise.service';
 
@@ -79,6 +80,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly filas: FilaService,
     private readonly midias: MidiasService,
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
+    @Optional() private readonly agente?: AgenteService,
   ) {}
 
   onModuleInit() {
@@ -315,11 +317,31 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       separarMidias([]);
       if (midias) await midias;
       if (job.ativarAoFim) {
+        // Só na montagem automática: no "Refazer a análise" a pessoa já está
+        // no editor, e a direção salvaria por cima do que ela mexeu.
+        await this.dirigirNaMontagem(sistema, projectId);
         await this.filas.publicarProgresso(projectId, 'montando', 100).catch(() => undefined);
         await this.ativar(projectId);
       }
     }
     return criadas;
+  }
+
+  /**
+   * A direção do vídeo: depois dos cortes, do acabamento por regra, das
+   * animações e das mídias, o agente (com todas as ferramentas do Studio)
+   * olha o vídeo inteiro e o dirige como AQUELE conteúdo pede. É o que tira
+   * a montagem da fórmula. Nunca derruba a montagem: se falhar, o vídeo
+   * sai como estava. Desliga com STUDIO_DIRIGIR_NA_MONTAGEM=off.
+   */
+  private async dirigirNaMontagem(sistema: TenantContext, projectId: string): Promise<void> {
+    if (!this.agente || process.env.STUDIO_DIRIGIR_NA_MONTAGEM === 'off') return;
+    try {
+      const r = await this.agente.dirigir(sistema, projectId);
+      this.log.log(`direção do projeto ${projectId}: ${r.aplicadas} mudança(s), US$ ${(r.custoCentavos / 100).toFixed(3)} -- ${r.resposta.slice(0, 200)}`);
+    } catch (e) {
+      this.log.warn(`direção do projeto ${projectId} não rodou: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   /**

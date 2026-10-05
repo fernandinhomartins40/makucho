@@ -143,6 +143,8 @@ export interface PedidoDeTrecho {
   canto?: CantoDoPip;
   tipo?: string;
   ideia: string;
+  /** A encenação da cena (o que aparece, em que ordem, o que se move). */
+  conceito?: string;
   conteudo?: string;
   estilo?: string;
   paleta?: string;
@@ -889,6 +891,7 @@ ${fala}${
       ideia: p.ideia.slice(0, 300),
       conteudo: (p.conteudo ?? '').slice(0, 800),
       acento: 0,
+      ...(p.conceito ? { conceito: p.conceito.slice(0, 700) } : {}),
       palavras: palavras.filter((x) => x.s >= inicioS && x.s < fimS),
     };
     const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];

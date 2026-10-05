@@ -142,11 +142,11 @@ t(
 );
 // Medido: sem raciocínio a seleção escolhe os mesmos trechos por 1/7
 // do custo; o raciocínio fica só na segunda tentativa (analise.service).
-// A exceção é a direção livre das animações (direção e desenho): é onde
-// a qualidade do vídeo se decide, e são poucas chamadas por vídeo.
-const COM_RACIOCINIO = ['dirigir_animacoes', 'desenhar_animacao'];
+// A exceção é a direção criativa (o agente que dirige o vídeo, a direção
+// e o desenho das animações): é onde a qualidade do vídeo se decide.
+const COM_RACIOCINIO = ['agente_de_edicao', 'dirigir_animacoes', 'desenhar_animacao'];
 t(
-  'só a direção livre das animações paga raciocínio por padrão',
+  'só a direção criativa paga raciocínio por padrão',
   CHAMADAS_DE_IA.every((c) => (CONFIG_POR_CHAMADA[c].raciocinio === 'desligado') !== COM_RACIOCINIO.includes(c)),
 );
 t('a crítica usa o modelo que enxerga', CONFIG_POR_CHAMADA.criticar_animacao.modelo === MODELO_COM_VISAO);

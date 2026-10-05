@@ -27,6 +27,9 @@ const TIMEOUT_DAS_FERRAMENTAS_MS = 240_000;
 /** Com raciocínio, o modelo pensa antes de responder: mais tempo. */
 const TIMEOUT_COM_RACIOCINIO_MS = 300_000;
 
+/** Até quando as voltas com ferramentas vão sem raciocínio (o provedor o recusou). */
+let ferramentasSemRaciocinioAte = 0;
+
 export class DeepseekProvedor implements ProvedorDeIa {
   readonly nome = 'deepseek';
   private readonly log = new Logger(DeepseekProvedor.name);
@@ -158,16 +161,42 @@ export class DeepseekProvedor implements ProvedorDeIa {
   }
 
   /**
-   * Uma volta da conversa com ferramentas. Sem raciocínio: a decisão de
- * qual ferramenta chamar é curta, e o raciocínio exigiria devolver o
- * pensamento a cada volta (e custaria mais sem ganho medido).
- */
+   * Uma volta da conversa com ferramentas.
+   *
+   * Com raciocínio, a IA pensa antes de decidir o que usar -- é o que a
+   * faz dirigir em vez de seguir uma lista -- e o pensamento de cada volta
+   * volta nas seguintes (`reasoning_content`). Se o provedor recusar o
+   * pedido com raciocínio (400), a volta é refeita sem ele e as próximas
+   * já vão sem, por uma hora: o pedido da pessoa não pode morrer por isso.
+   */
   async conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas> {
+    const quer = pedido.raciocinio && pedido.raciocinio !== 'desligado' && Date.now() > ferramentasSemRaciocinioAte;
+    if (!quer) return this.voltaComFerramentas(pedido, 'desligado');
+    try {
+      return await this.voltaComFerramentas(pedido, pedido.raciocinio!);
+    } catch (e) {
+      if (!(e instanceof ErroDoProvedor) || e.temporario || !/\b400\b/.test(e.message)) throw e;
+      this.log.warn(`ferramentas com raciocínio recusadas (${e.publico}); seguindo sem raciocínio por uma hora`);
+      ferramentasSemRaciocinioAte = Date.now() + 60 * 60_000;
+      return this.voltaComFerramentas(pedido, 'desligado');
+    }
+  }
+
+  private async voltaComFerramentas(pedido: PedidoComFerramentas, raciocinio: NonNullable<PedidoComFerramentas['raciocinio']>): Promise<RespostaComFerramentas> {
+  const pensando = raciocinio !== 'desligado';
   // Uma volta pode trazer uma animação inteira (html + css + script do
   // criar_animacao): mais longa que as outras respostas.
-  const relogio = AbortSignal.timeout(TIMEOUT_DAS_FERRAMENTAS_MS);
+  const relogio = AbortSignal.timeout(pensando ? TIMEOUT_COM_RACIOCINIO_MS : TIMEOUT_DAS_FERRAMENTAS_MS);
   const sinal = pedido.sinal ? AbortSignal.any([pedido.sinal, relogio]) : relogio;
   const eu = this;
+  // Sem raciocínio, o pensamento das voltas anteriores não vai.
+  const mensagens = pensando
+    ? pedido.mensagens
+    : pedido.mensagens.map((m) => {
+        if (m.role !== 'assistant' || m.reasoning_content === undefined) return m;
+        const { reasoning_content: _fora, ...resto } = m;
+        return resto;
+      });
   let resposta: Response;
   try {
     resposta = await fetch(`${URL_BASE}/chat/completions`, {
@@ -175,13 +204,12 @@ export class DeepseekProvedor implements ProvedorDeIa {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${eu.apiKey}` },
       body: JSON.stringify({
         model: eu.modelo,
-        messages: pedido.mensagens,
+        messages: mensagens,
         tools: pedido.ferramentas,
         tool_choice: 'auto',
         max_tokens: pedido.maxTokens,
         stream: false,
-        thinking: { type: 'disabled' },
-        temperature: 0.2,
+        ...(pensando ? { thinking: { type: 'enabled' }, reasoning_effort: raciocinio } : { thinking: { type: 'disabled' }, temperature: 0.2 }),
       }),
       signal: sinal,
     });
@@ -209,7 +237,7 @@ export class DeepseekProvedor implements ProvedorDeIa {
     );
   }
   const dados = (await resposta.json().catch(() => null)) as {
-    choices?: Array<{ message?: { content?: string | null; tool_calls?: ChamadaDeFerramenta[] } }>;
+    choices?: Array<{ message?: { content?: string | null; reasoning_content?: string | null; tool_calls?: ChamadaDeFerramenta[] } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
   } | null;
   const msg = dados?.choices?.[0]?.message;
@@ -222,6 +250,7 @@ export class DeepseekProvedor implements ProvedorDeIa {
   return {
     texto,
     chamadas,
+    ...(pensando && msg?.reasoning_content ? { raciocinio: msg.reasoning_content } : {}),
     consumo: {
       inputTokens: dados?.usage?.prompt_tokens ?? Math.ceil(entrada / 4),
       outputTokens: dados?.usage?.completion_tokens ?? Math.ceil((texto.length + JSON.stringify(chamadas).length) / 4),

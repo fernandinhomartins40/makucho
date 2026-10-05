@@ -147,3 +147,26 @@ página lado a lado com custo, tempo e nota de cada uma. É ela que confirma (ou
 Também falta confirmar com a chave real o formato de imagem aceito pela DeepSeek (`image_url`
 com data URL, padrão OpenAI): se for recusado, a crítica se desliga sozinha e as cenas entram
 sem nota.
+
+## 9. Direção do vídeo inteiro e agente que pensa (05/10/2026)
+
+O retorno do primeiro teste foi "ainda muito roteirizado": as animações eram só uma camada, e
+os cortes, o acabamento e o "Peça à IA" continuavam seguindo receita. Mudou:
+
+- **Agente (`agente_de_edicao`)**: Pro com raciocínio alto (o pensamento de cada volta é
+  devolvido ao provedor na seguinte; se o provedor recusar, cai para sem raciocínio por uma
+  hora). 30 passos por pedido em vez de 14 e teto de US$ 0,60 em vez de 0,15
+  (`STUDIO_AGENTE_TETO_CENTAVOS`). Prompt `agente-v3`: princípios de direção no lugar das dez
+  etapas em ordem fixa.
+- **Direção na montagem**: depois dos cortes, do acabamento por regra, das animações e das
+  mídias, o agente dirige o vídeo inteiro (`AgenteService.dirigir`), sem as ferramentas que
+  refazem a montagem, com prazo de 7 minutos (`STUDIO_DIRECAO_PRAZO_MIN`). Só na montagem
+  automática; no "Refazer a análise" não roda, para não salvar por cima de quem está editando.
+  Desliga com `STUDIO_DIRIGIR_NA_MONTAGEM=off`.
+- **Seleção (`selecao-v6`)**: a estrutura sai do conteúdo (história, tutorial, opinião,
+  oferta...) em vez do protocolo gancho-promessa-entrega-chamada; título e chamada de tela só
+  quando ajudam. Regras de corte e contrato iguais.
+- **`animar_trecho`** aceita a encenação livre da cena e segue o design do vídeo.
+
+Continua sem medição com chave real: custo, tempo da montagem (a direção soma minutos) e o
+comportamento do raciocínio com ferramentas na DeepSeek.
