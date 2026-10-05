@@ -132,6 +132,9 @@ A direção manda, para cada cena, a técnica (com o módulo de construção del
 - Uma cor de destaque por quadro. Neutros tingidos, nunca #000000 ou #ffffff puros.
 - Título: peso 700-900. Texto de apoio: peso 400-600, nunca abaixo de 30 px no quadro de 1080.
 - No máximo duas famílias de fonte na cena: as do design.
+- O palco fica pronto cedo: aos 20% da duração o quadro já está COMPOSTO (fundo com as peças do design, moldura, rótulo, a estrutura que vai receber o conteúdo). O conteúdo chega depois, nas batidas; o que não pode é um quadro quase vazio esperando a fala.
+- Na tela_cheia e no pip a cena usa a ALTURA inteira da área útil: distribua em zonas (topo, meio, base) ou ancore o bloco principal e preencha o resto com a camada de fundo. Conteúdo espremido no terço de cima com o resto vazio é o defeito mais comum.
+- Peça física (carimbo, selo, papel, etiqueta) tem matéria: borda irregular, tinta com falha (feTurbulence + feDisplacementMap com seed fixo, ou máscara de pontos), leve rotação fixa, sombra curta. Um retângulo vetorial limpo com borda fina parece botão.
 
 ## 10. Sinais de design feito por IA (não faça, a não ser que o design peça)
 

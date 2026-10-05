@@ -61,6 +61,8 @@ import {
   type JanelaReservada,
   type RelatorioDasAnimacoes,
   CORES_PADRAO_DA_MARCA,
+  areaDaComposicao,
+  janelaDaComposicao,
   INSTANTES_DAS_FOTOS,
   NOTA_MINIMA_DA_CENA,
   type CartaoDirigido,
@@ -417,6 +419,7 @@ Sinais de design feito por IA, proibidos a não ser que o conteúdo peça: texto
 
 ## Passo 3 -- As cenas
 Cada cena MOSTRA o que a fala sozinha não mostra. Para cada uma:
+- "ancora": de 3 a 8 palavras SEGUIDAS, copiadas da fala, em que a cena começa (uma palavra solta como "é" ou "eu" não identifica o instante).
 - "tecnica": uma do REPERTÓRIO abaixo, escolhida pela evidência na fala. Varie: duas cenas seguidas não usam a mesma técnica.
 - "papel": gancho | construcao | impacto | resolucao (o lugar da cena no arco do vídeo).
 - "foco": o elemento que domina o quadro (um só).
@@ -439,7 +442,7 @@ Onde a cena passa ("layout": os quatro enquadramentos que o compositor sabe faze
 - tela_cheia: a cena toma o quadro. Para os momentos de impacto.
 
 REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
-- "ancora": copie LITERALMENTE as palavras da fala em que a cena começa. Âncora que não está na fala do trecho = cena descartada.
+- "ancora": copie LITERALMENTE de 3 a 8 palavras seguidas da fala em que a cena começa. Âncora que não está na fala do trecho = cena descartada.
 - Fidelidade: só números, nomes, preços e itens DITOS. Número que não foi dito = cena descartada. Não arredonde nem complete.
 - Não entre nos ESPAÇOS RESERVADOS da entrada (título da abertura, chamada do fim, mídias já no vídeo).
 - 1 s livre entre duas cenas; no máximo ${Math.round(r.fracaoComGrafico * 100)}% do vídeo com gráfico; no máximo ${r.teto(duracaoS)} cenas (é teto, não meta); cada cena dura de 2,5 a ${r.duracaoMaximaS} s e começa na palavra da âncora (até 0,3 s antes).
@@ -944,12 +947,25 @@ ${fala}${
       const fotos = await this.animacoes.fotografar(c, duracaoMs);
       if (!fotos?.length) return null;
       const instantes = INSTANTES_DAS_FOTOS.slice(0, fotos.length).map((f, i) => `quadro ${i + 1} aos ${((duracaoMs / 1000) * f).toFixed(1)} s`);
+      // Onde fica o vídeo NESTE layout, nas coordenadas das fotos (metade do
+      // quadro). Sem isso a crítica chamava a metade do rosto de "vazio morto".
+      const metade = (r: { x: number; y: number; w: number; h: number }) => `x ${Math.round(r.x / 2)}-${Math.round((r.x + r.w) / 2)}, y ${Math.round(r.y / 2)}-${Math.round((r.y + r.h) / 2)}`;
+      const area = areaDaComposicao(c);
+      const janela = janelaDaComposicao(c);
+      const ondeEstaOVideo =
+        c.layout === 'meio_a_meio'
+          ? `A CENA ocupa só ${metade(area)} (px da foto de 540x960); o resto é o VÍDEO (cinza): não julgue nem peça para preencher.`
+          : c.layout === 'pip' && janela
+            ? `O VÍDEO aparece numa janela em ${metade({ x: janela.x * 1080, y: janela.y * 1920, w: janela.w * 1080, h: janela.h * 1920 })} (px da foto de 540x960): não é vazio.`
+            : c.layout === 'cartao'
+              ? 'Só a peça do cartão é da cena; todo o cinza em volta é o VÍDEO: não julgue nem peça para preencher.'
+              : 'A cena toma o quadro inteiro: vazio grande aqui é defeito.';
       const r = await this.ai.chamar({
         workspaceId,
         projectId,
         chamada: 'criticar_animacao',
         sistema: SISTEMA_DA_CRITICA,
-        usuario: `${textoDoDesign(design)}\n\nA CENA (${m.layout}, ${(duracaoMs / 1000).toFixed(1)} s${m.tecnica ? `, técnica: ${tecnicaDeCena(m.tecnica)?.nome ?? m.tecnica}` : ''}): ${m.ideia}\nPlano da direção (confira se os quadros o cumprem):\n${m.conceito || '(livre)'}\nTextos da cena: ${m.conteudo || '(da fala)'}\nImagens, na ordem: ${instantes.join('; ')}.`,
+        usuario: `${textoDoDesign(design)}\n\nA CENA (${m.layout}, ${(duracaoMs / 1000).toFixed(1)} s${m.tecnica ? `, técnica: ${tecnicaDeCena(m.tecnica)?.nome ?? m.tecnica}` : ''}): ${m.ideia}\nPlano da direção (confira se os quadros o cumprem):\n${m.conceito || '(livre)'}\nTextos da cena: ${m.conteudo || '(da fala)'}\nOnde está o vídeo: ${ondeEstaOVideo}\nImagens, na ordem: ${instantes.join('; ')}.`,
         imagens: fotos,
         maxTokens: 900,
         promptVersion: VERSAO_LIVRE,

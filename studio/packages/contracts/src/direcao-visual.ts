@@ -516,8 +516,14 @@ export function conferirCartoes(
     const fala = falaEntre(ctx.palavras, inicio - 1.5, fim + 0.5);
 
     // Gatilho: as palavras que pedem o cartão estão MESMO na fala do trecho?
-    const doGatilho = palavrasSignificativas(gatilho);
-    const naFala = new Set(palavrasSignificativas(fala));
+    // Âncora só de palavras curtas ("É", "Eu", "A") vale pelas palavras
+    // inteiras -- antes saía como "não está na fala" (visto em produção:
+    // 3 de 7 cenas descartadas assim).
+    const significativas = palavrasSignificativas(gatilho);
+    const curta = !significativas.length;
+    const todas = (t: string) => semAcento(t).split(/[^a-z0-9]+/).filter(Boolean);
+    const doGatilho = curta ? todas(gatilho) : significativas;
+    const naFala = new Set(curta ? todas(fala) : palavrasSignificativas(fala));
     const achadas = doGatilho.filter((p) => naFala.has(p)).length;
     if (!doGatilho.length || achadas / doGatilho.length < 0.5) {
       descartados.push({ inicioS: inicio, tipo, motivo: gatilho ? `o gatilho "${gatilho.slice(0, 50)}" não está na fala do trecho` : 'sem gatilho na fala' });

@@ -109,6 +109,15 @@ const lida = lerDirecao(
 const conf = conferirCartoes(lida.cartoes, { duracaoS: 30, palavras, reservadas: [], regras: REGRAS_LIVRES });
 const plano = conf.aceitos[0]?.plano;
 t('a cena guarda a técnica, o papel e as batidas ancoradas', plano?.tecnica === 'dado_em_destaque' && plano.papel === 'impacto' && plano.batidas[1]?.t === 0 && plano.enfase[0] === 'oitenta');
+// Visto em produção: âncora de uma palavra curta ("É", "Eu") saía como "não está na fala".
+const curtas = conferirCartoes(
+  [
+    { inicioS: 1, fimS: 5, nome: 'curta', tecnica: 'citacao', ancora: 'olha', prioridade: 1 },
+    { inicioS: 10, fimS: 15, nome: 'eu', tecnica: 'citacao', ancora: 'Eu', prioridade: 1 },
+  ],
+  { duracaoS: 30, palavras: [...palavras, { s: 10.2, texto: 'eu' }], reservadas: [], regras: REGRAS_LIVRES },
+);
+t('âncora de palavra curta que está na fala vale', curtas.aceitos.some((c) => c.tipo === 'eu'));
 const d = designDoVideo(lida);
 t('o design em fichas vira linguagem e movimento concretos', d.linguagem.includes('caderno de engenheiro') && d.linguagem.includes('a linha azul') && d.linguagem.includes('grade fina') && d.movimento.includes('expo.out') && d.movimento.includes('a linha que se desenha') && d.movimento.includes('IMPACTO'));
 t('o design antigo (prosa) continua lido', designDoVideo({ design: { linguagem: 'x', movimento: 'lento' } }).movimento === 'lento');
