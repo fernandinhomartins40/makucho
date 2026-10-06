@@ -62,6 +62,8 @@ import {
   textoDoSelecionado,
   CHAVES_DAS_TECNICAS,
   TECNICAS_DE_CENA,
+  PRESETS_DE_MOTION,
+  textoDosPresets,
   textoDoPerfil,
 } from '@makucho/studio-contracts';
 import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
@@ -69,7 +71,7 @@ import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
 import { AnimacoesService } from '../animacoes/animacoes.service';
-import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, listaDePaletas, type LayoutDaAnimacao } from './animacoes-da-fala.service';
+import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, listaDePaletas, modoDasAnimacoes, perfilParaMotion, type LayoutDaAnimacao } from './animacoes-da-fala.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AcabamentoService } from './acabamento.service';
 import { AiService } from './ai.service';
@@ -87,8 +89,12 @@ import { RefinoService } from './refino.service';
  * corrigir. O que segura o gasto é o teto abaixo, não a contagem.
  */
 const MAX_PASSOS = 30;
-/** A direção do vídeo inteiro (na montagem) tem mais voltas que um pedido. */
-const MAX_PASSOS_DA_DIRECAO = 40;
+/**
+ * A direção do vídeo inteiro (na montagem). Eram 40 voltas e 7 min: com as
+ * animações chegando prontas (presets), a direção só ajusta o acabamento,
+ * e é a etapa mais cara e mais lenta do vídeo, com a pessoa esperando.
+ */
+const MAX_PASSOS_DA_DIRECAO = 24;
 /** Teto de gasto por pedido, em centavos de dólar (STUDIO_AGENTE_TETO_CENTAVOS). */
 function tetoDoPedido(): number {
   const n = Number(process.env.STUDIO_AGENTE_TETO_CENTAVOS ?? 60);
@@ -108,8 +114,8 @@ export interface OpcoesDoAgente {
 
 /** A direção roda com a pessoa esperando o vídeo ficar pronto (STUDIO_DIRECAO_PRAZO_MIN). */
 function prazoDaDirecaoMs(): number {
-  const n = Number(process.env.STUDIO_DIRECAO_PRAZO_MIN ?? 7);
-  return (Number.isFinite(n) && n > 0 ? n : 7) * 60_000;
+  const n = Number(process.env.STUDIO_DIRECAO_PRAZO_MIN ?? 5);
+  return (Number.isFinite(n) && n > 0 ? n : 5) * 60_000;
 }
 
 /**
@@ -224,7 +230,10 @@ export class AgenteService {
       .then(async () => {
         if (!this.animacoesDaFala) return '';
         const plano = (await this.planos.atual(tenant, projectId)).document;
-        return textoDoPerfil(await this.animacoesDaFala.perfilDoProjeto(tenant.workspaceId, projectId, plano));
+        const perfil = await this.animacoesDaFala.perfilDoProjeto(tenant.workspaceId, projectId, plano);
+        // A análise no vocabulário de quem fez as animações (presets, por
+        // padrão): o diretor parte das mesmas cenas e da mesma evidência.
+        return modoDasAnimacoes() === 'presets' ? perfilParaMotion(perfil) : textoDoPerfil(perfil);
       })
       .catch(() => '');
     return this.executar(tenant, projectId, analise ? `${PEDIDO_DE_DIRECAO}\n\n${analise}` : PEDIDO_DE_DIRECAO, undefined, undefined,{ maxPassos: MAX_PASSOS_DA_DIRECAO, sem: FORA_DA_DIRECAO, prazoMs: prazoDaDirecaoMs() });
@@ -871,8 +880,10 @@ export class AgenteService {
       },
 
       animar_trecho: {
-        rotulo: 'Desenhando uma animação (HyperFrames)',
-        descricao: `O JEITO PADRÃO de criar uma cena de motion graphics: você diz o trecho, o enquadramento, o que quem assiste deve entender (ideia) e a ENCENAÇÃO (encenacao: o que aparece, em que ordem, o que se move e por quê -- invente a que o trecho pede: tipografia cinética, dado que ganha forma, diagrama que se desenha, interface simulada, comparação, manchete...). O motion designer desenha com a skill de motion graphics, no design do vídeo (ou no estilo do catálogo pedido em "estilo"), cada elemento entrando no instante da palavra, e um revisor olha os quadros. Leia antes ler_fala palavras=true para achar inicioS/fimS (3-15 s). layout: meio_a_meio (cena + rosto na outra metade; lado cima = cena em cima, baixo = embaixo), cartao (peça menor por cima do vídeo, fora do rosto), tela_cheia (a cena toma o quadro), pip (a cena ocupa a tela e o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir). conteudo: os textos EXATOS que aparecem (só o que foi dito). Demora ~2-3 min.`,
+        rotulo: 'Criando uma cena de motion graphics',
+        descricao: `Cria uma cena de motion graphics PRONTA (o jeito padrão, sai em segundos): você escolhe o preset e os textos; cada elemento entra sozinho no instante da palavra, no visual do vídeo (ou no visual pedido em "estilo"). Leia antes ler_fala palavras=true para achar inicioS/fimS (3 a 8 s, começando na palavra que pede a cena). layout: meio_a_meio (cena + rosto na outra metade; lado cima = cena em cima), cartao (sobre o vídeo, fora do rosto), tela_cheia (só o pico), pip (o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir). textos: só o que foi DITO, números em algarismos exatos. Sem preset/textos, a IA escolhe a partir de "ideia".
+PRESETS (chave [layouts]: quando. Campos; * = obrigatório):
+${textoDosPresets()}`,
         parametros: objeto(
           {
             inicioS: { type: 'number' },
@@ -884,6 +895,16 @@ export class AgenteService {
             tipo: { type: 'string', description: 'um rótulo curto seu para a cena (livre)' },
             tecnica: { type: 'string', enum: [...CHAVES_DAS_TECNICAS], description: `a técnica da cena, pela evidência na fala: ${TECNICAS_DE_CENA.map((t) => `${t.chave} (${t.quando})`).join('; ')}` },
             ideia: { type: 'string', description: 'o que quem assiste entende ou sente, em uma frase' },
+            preset: { type: 'string', enum: PRESETS_DE_MOTION.map((x) => x.chave), description: 'a cena pronta (veja a lista na descrição)' },
+            textos: {
+              type: 'object',
+              description: 'os textos da cena, pelos campos do preset',
+              properties: {
+                ...Object.fromEntries(['kicker', 'titulo', 'detalhe', 'numero', 'prefixo', 'unidade', 'antes', 'depois', 'a', 'b', 'enfase', 'icone'].map((k) => [k, { type: 'string' }])),
+                itens: { type: 'array', items: { type: 'string' } },
+                valores: { type: 'array', items: { type: 'string' } },
+              },
+            },
             encenacao: { type: 'string', description: 'a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)' },
             conteudo: { type: 'string', description: 'os textos exatos da cena (só o que foi dito)' },
             estilo: { type: 'string' },
@@ -905,6 +926,8 @@ export class AgenteService {
             ...(typeof a.conteudo === 'string' ? { conteudo: a.conteudo } : {}),
             ...(typeof a.estilo === 'string' ? { estilo: a.estilo } : {}),
             ...(typeof a.paleta === 'string' && a.paleta ? { paleta: a.paleta } : {}),
+            ...(typeof a.preset === 'string' ? { preset: a.preset } : {}),
+            ...(a.textos && typeof a.textos === 'object' ? { textos: a.textos } : {}),
           });
           const inicio = Math.round((Number(a.inicioS) || 0) * 1000);
           const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
@@ -919,7 +942,7 @@ export class AgenteService {
 
       refazer_animacao: {
         rotulo: 'Redesenhando a animação',
-        descricao: 'Redesenha uma animação que já está no vídeo, mantendo o que ela explica e o tempo: em outro estilo (estilo), com outra paleta de cores (paleta), em outro lugar (layout/lado/canto -- trocar o layout ou o canto do pip EXIGE redesenhar, o desenho de um painel não serve num cartão) e/ou com um pedido da pessoa (pedido: "troca o azul pelo verde", "deixa o número maior", "tira o carimbo"). Para só mover no tempo ou mudar a duração, use mudar_animacao. Demora ~1-2 min.',
+        descricao: 'Redesenha uma animação que já está no vídeo, mantendo o que ela explica e o tempo: em outro estilo (estilo), com outra paleta de cores (paleta), em outro lugar (layout/lado/canto) e/ou com um pedido da pessoa (pedido: "troca o texto", "usa um gráfico de barras", "deixa só o número"). Numa cena pronta (visual de motion, mg-...), trocar estilo, paleta ou lugar é instantâneo; um pedido custa uma chamada pequena. Para só mover no tempo ou mudar a duração, use mudar_animacao.',
         parametros: objeto(
           {
             id: { type: 'string' },
@@ -955,7 +978,7 @@ export class AgenteService {
 
       trocar_estilo_das_animacoes: {
         rotulo: 'Trocando o estilo das animações',
-        descricao: 'Redesenha TODAS as animações do vídeo (ou as de ids) em outro estilo do catálogo (e, se pedirem outras cores, com uma paleta), mantendo o que cada uma explica, o tempo e o lugar. Use quando pedirem "muda o estilo das animações", "deixa mais sério/divertido/escuro", "usa o estilo X". Escolha o estilo pelo pedido e pelo tom (veja estilos_e_animacoes). Demora ~2 min (em paralelo).',
+        descricao: 'Redesenha TODAS as animações do vídeo (ou as de ids) em outro estilo do catálogo (e, se pedirem outras cores, com uma paleta), mantendo o que cada uma explica, o tempo e o lugar. Use quando pedirem "muda o estilo das animações", "deixa mais sério/divertido/escuro", "usa o estilo X". Escolha o estilo pelo pedido e pelo tom (veja estilos_e_animacoes); prefira os visuais de motion (mg-...): nas cenas prontas a troca é instantânea, sem IA.',
         parametros: objeto({ estilo: { type: 'string' }, paleta: { type: 'string' }, ids: { type: 'array', items: { type: 'string' } } }, ['estilo']),
         executar: async (c, a) => {
           if (!this.animacoesDaFala) return { erro: 'animações indisponíveis agora' };

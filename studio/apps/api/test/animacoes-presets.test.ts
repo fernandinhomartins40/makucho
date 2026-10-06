@@ -171,6 +171,33 @@ async function main() {
   const rh = await h.servico.animarTrecho('w', 'p1', a.atual(), { inicioS: 9, fimS: 13, layout: 'cartao', ideia: 'destacar que a voz é natural' });
   t('Peça à IA: uma chamada pequena e a cena pronta no visual do vídeo', h.pedidos.length === 1 && h.pedidos[0]!.chamada === 'montar_motion' && rh.composicao.estilo === 'mg-keynote' && cenaDaComposicao(rh.composicao)?.preset === 'selo');
 
+  // 9. O agente já escolheu a cena e os textos: monta sem chamar a IA (e confere a fidelidade).
+  const k = montar(() => {
+    throw new Error('não devia chamar a IA');
+  });
+  const rk = await k.servico.animarTrecho('w', 'p1', a.atual(), { inicioS: 14, fimS: 19, layout: 'pip', ideia: 'três emoções', preset: 'lista', textos: { itens: ['Rir', 'Suspirar', 'Sussurrar'] } });
+  t('cena escolhida pelo agente: sem IA, no visual do vídeo', k.pedidos.length === 0 && cenaDaComposicao(rk.composicao)?.preset === 'lista' && rk.composicao.layout === 'pip');
+  const m2 = montar((p) => (p.chamada === 'montar_motion' ? JSON.stringify({ preset: 'impacto', textos: { titulo: 'Natural' } }) : '{}'));
+  await m2.servico.animarTrecho('w', 'p1', a.atual(), { inicioS: 9, fimS: 13, layout: 'cartao', ideia: 'x', preset: 'contador', textos: { numero: '95', titulo: 'mais natural' } });
+  t('cena do agente com número não dito: volta para a IA escolher, não entra inventada', m2.pedidos.length === 1);
+
+  // 10. Título de abertura e chamada final no visual das animações (o estilo da marca fica).
+  const comTextos = {
+    ...plano,
+    overlays: [
+      { id: 'ov-titulo', component: 'HookTitle', text: 'Gemini novo', timelineStartMs: 0, durationMs: 2000, style: { preset: 'editorial', fontId: 'inter' } },
+      { id: 'ov-chamada', component: 'CTA', text: 'Siga', timelineStartMs: 26000, durationMs: 4000, style: { preset: 'chamada_pro', fontId: 'poppins-extra', bgColor: '#2F66FF' } },
+      { id: 'ov-marca', component: 'Destaque', text: 'Marca', timelineStartMs: 20000, durationMs: 1000, style: { preset: 'impacto', fontId: 'bebas' } },
+    ],
+  } as unknown as EditPlanV1;
+  const n = montar((p) => (p.chamada === 'montar_motion' ? resposta([CENAS[0]], 'mg-soco') : '{}'));
+  await n.planos.salvar(null, 'p1', comTextos);
+  await n.servico.criarNaMontagem(sistema as never, 'p1');
+  const ov = (id: string) => n.atual().overlays.find((o) => o.id === id)!;
+  t('o título de abertura usa a fonte e o destaque do visual', ov('ov-titulo').style?.fontId === 'montserrat-black' && ov('ov-titulo').style?.accentColor?.toLowerCase() === '#ffd400' && ov('ov-titulo').style?.uppercase === true);
+  t('a chamada final vira um botão na cor do visual, com texto legível', ov('ov-chamada').style?.bgColor?.toLowerCase() === '#ffd400' && ov('ov-chamada').style?.color === '#111111');
+  t('texto com estilo próprio (da marca ou da pessoa) fica como está', ov('ov-marca').style?.fontId === 'bebas');
+
   console.log(`\n${ok} ok, ${fail} falha(s)`);
   if (fail) process.exit(1);
 }

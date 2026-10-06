@@ -100,8 +100,11 @@ import {
   textoDosVisuais,
   visualDeMotion,
   NOME_DO_FORMATO,
+  FONTES_DE_VIDEO,
+  contrasteDasCores,
   type CenaDeMotion,
   type FormatoDeConteudo,
+  type VisualDeMotion,
   type RegrasDaDirecao,
 } from '@makucho/studio-contracts';
 import { Prisma } from '@makucho/studio-database';
@@ -183,6 +186,9 @@ export interface PedidoDeTrecho {
   conteudo?: string;
   estilo?: string;
   paleta?: string;
+  /** A cena pronta escolhida por quem pediu (o agente): com os textos, monta sem chamar a IA. */
+  preset?: string;
+  textos?: unknown;
 }
 
 const TECNOLOGIA = estiloDeAnimacao('tecnologia')!;
@@ -231,6 +237,7 @@ export function listaDeEstilos(): string {
   const grupo = (f: EstiloDeAnimacao['familia'], titulo: string) =>
     `${titulo}:\n` + ESTILOS_DE_ANIMACAO.filter((e) => e.familia === f).map((e) => `- ${e.chave} (${e.nome}): ${e.carater}. Para: ${e.quando}.`).join('\n');
   return [
+    grupo('motion', 'Motion -- cenas prontas (o padrão: montadas na hora, trocar o visual não chama a IA)'),
     grupo('cartao', 'Cartões (skill talking-head-recut)'),
     grupo('identidade', 'Identidades visuais (com o caráter do movimento)'),
     grupo('preset', 'Presets de quadro (sistemas de design completos)'),
@@ -478,7 +485,7 @@ function falaEmFrases(palavras: ReadonlyArray<{ s: number; texto: string }>): st
 }
 
 /** A análise do vídeo, no vocabulário dos presets (curta: o que a fala tem e quando). */
-function perfilParaMotion(p: PerfilDoVideo): string {
+export function perfilParaMotion(p: PerfilDoVideo): string {
   const rosto = p.olhar ? { em_cima: 'rosto em cima', no_centro: 'rosto no centro', embaixo: 'rosto embaixo', sem_rosto: 'sem rosto' }[p.olhar.rosto] : '';
   return [
     `ANÁLISE DO VÍDEO: ${p.duracaoS.toFixed(1)} s; ${NOME_DO_FORMATO[p.formato]}; fala ${p.ritmo}; energia ${p.energia}; imagem ${p.receita.fundo === 'claro' ? 'clara' : 'escura'}${rosto ? `, ${rosto}` : ''}${p.olhar?.ambiente ? ` (${p.olhar.ambiente})` : ''}.`,
@@ -516,6 +523,24 @@ function instanteDaAncora(ancora: string, palavras: ReadonlyArray<{ s: number; t
     if (melhor === null || Math.abs(s - dica) < Math.abs(melhor - dica)) melhor = s;
   }
   return melhor === null ? null : Math.max(0, Math.round((melhor - 0.15) * 100) / 100);
+}
+
+/**
+ * O título de abertura e a chamada final no visual das animações: a fonte do
+ * título dele e a cor de destaque. Só os que estão no estilo padrão do
+ * acabamento (editorial e chamada profissional) -- o que a marca escolheu fica.
+ */
+function textosNoVisual(plano: EditPlanV1, v: VisualDeMotion, tema: ReturnType<typeof temaDaAnimacao>): TimelineOperation[] {
+  if (!tema) return [];
+  const fontId = Object.entries(FONTES_DE_VIDEO).find(([, f]) => `'${f.nomeAss}'` === v.fontes[0])?.[0];
+  const tinta = contrasteDasCores('#111111', tema.destaque) >= contrasteDasCores('#ffffff', tema.destaque) ? '#111111' : '#FFFFFF';
+  return plano.overlays.flatMap((o): TimelineOperation[] => {
+    if (o.component === 'HookTitle' && o.style?.preset === 'editorial')
+      return [{ op: 'editar_overlay', overlayId: o.id, style: { ...(fontId ? { fontId } : {}), accentColor: tema.destaque, ...(v.caixaAlta ? { uppercase: true } : {}) } }];
+    if (o.component === 'CTA' && o.style?.preset === 'chamada_pro')
+      return [{ op: 'editar_overlay', overlayId: o.id, style: { ...(fontId ? { fontId } : {}), bgColor: tema.destaque, color: tinta } }];
+    return [];
+  });
 }
 
 /** Uma cena pronta para entrar no vídeo. */
@@ -1052,6 +1077,21 @@ export class AnimacoesDaFalaService {
   }
 
   /**
+   * A cena que quem pediu já escolheu (preset e textos), se estiver completa
+   * e fiel à fala do trecho; `null` manda para a IA escolher.
+   */
+  private cenaDireta(p: PedidoDeTrecho, m: { inicioS: number; fimS: number; layout: LayoutDaAnimacao; lado?: 'cima' | 'baixo'; canto?: CantoDoPip }, palavras: ReadonlyArray<{ s: number; texto: string }>): CenaDeMotion | null {
+    const preset = presetDeMotion(p.preset)?.chave;
+    if (!preset || !p.textos) return null;
+    const textos = lerTextosDaCena(p.textos);
+    if (cenaIncompleta(preset, textos)) return null;
+    const fala = palavras.filter((x) => x.s >= m.inicioS - 4 && x.s < m.fimS + 2).map((x) => x.texto).join(' ');
+    if (numerosInventados(textoDaCena(textos), fala).length) return null;
+    const layout = layoutDoPreset(preset, m.layout);
+    return { preset, textos, layout, ...(layout === 'meio_a_meio' ? { lado: m.lado ?? 'cima' } : {}), ...(layout === 'pip' ? { canto: m.canto ?? 'inf-dir' } : {}) };
+  }
+
+  /**
    * Uma cena pronta para um pedido ("Peça à IA" ou "muda o texto"): uma
    * chamada pequena escolhe o preset e os textos do trecho. `atual` é a cena
    * que já está lá, quando é uma edição em cima dela.
@@ -1382,8 +1422,10 @@ ${fala}${
         ? (visualDeMotion((await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationStyle: true } }).catch(() => null))?.animationStyle)?.chave ?? 'mg-keynote')
         : undefined);
     if (visualMotion) {
+      // O agente já escolheu a cena e os textos: confere e monta, sem IA.
+      const direta = this.cenaDireta(p, m, palavras);
       const pedido = [p.tipo, p.ideia, p.conteudo, p.conceito].filter(Boolean).join('. ');
-      const cena = await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido);
+      const cena = direta ?? (await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido));
       const r = this.montarCena({ inicioS, fimS, cena, ideia: m.ideia }, visualMotion, palavras, paleta);
       return { ...r, ...(estiloDeAnimacao(visualMotion) ? { estilo: estiloDeAnimacao(visualMotion)! } : {}) };
     }
@@ -1676,8 +1718,11 @@ ${fala}${
     cobrem: ReadonlyArray<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>>,
     tema: ReturnType<typeof temaDaAnimacao>,
     relatorio: RelatorioDasAnimacoes,
+    visual?: VisualDeMotion,
   ): Promise<string | null> {
     const agora = (await this.planos.atual(sistema, projectId)).document;
+    // Os textos da montagem falam a língua das animações (uma fonte, um destaque).
+    if (visual) ops = [...ops, ...textosNoVisual(agora, visual, tema)];
     // O zoom de um trecho coberto pela animação (tela cheia, pip) não
     // aparece -- ou sai recortado na janela: tira.
     const semZoom = zoomsEscondidos(agora, cobrem).map((clipId): TimelineOperation => ({ op: 'definir_efeito', clipId, effect: 'nenhum' }));
@@ -1756,7 +1801,7 @@ ${fala}${
       }
     }
     if (!ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
-    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio);
+    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio, visual);
     if (naoSalvo) return { criadas: 0, nota: await registrar(`Sem animações: ${naoSalvo.slice(0, 380)}`) };
     aoAvancar(100);
     const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');

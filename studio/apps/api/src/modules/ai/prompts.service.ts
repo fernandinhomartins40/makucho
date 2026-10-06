@@ -67,7 +67,9 @@ export const VERSAO_DO_PROMPT = {
   // profissionais, b-roll real, cor, ritmo, som) e padrão de produtora.
   // v3: direção no lugar da lista -- princípios e julgamento por vídeo em
   // vez de dez etapas em ordem fixa; motion graphics por encenação livre.
-  agente_de_edicao: 'agente-v3',
+  // v4: motion graphics por cenas prontas (presets) e a coerência com o
+  // visual das animações (legenda, título e chamada já seguem o visual).
+  agente_de_edicao: 'agente-v4',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;
