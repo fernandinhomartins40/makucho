@@ -9,7 +9,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit --tsBuildInfoFile .tsbuildinfo-typecheck",
-    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts && tsx test/pexels.test.ts && tsx test/fontes-de-midia.test.ts && tsx test/agente.test.ts && tsx test/animacoes.test.ts && tsx test/montagem-animacoes.test.ts && tsx test/animacoes-livres.test.ts && tsx test/config-da-chamada.test.ts && tsx test/deepseek-provedor.test.ts && tsx test/cancelamento.test.ts && tsx test/animacoes-presets.test.ts"
+    "test": "tsx test/tenant-isolation.test.ts && tsx test/ai-adapter.test.ts && tsx test/roteiro-ia.test.ts && tsx test/assets.test.ts && tsx test/pexels.test.ts && tsx test/fontes-de-midia.test.ts && tsx test/agente.test.ts && tsx test/animacoes.test.ts && tsx test/montagem-animacoes.test.ts && tsx test/animacoes-livres.test.ts && tsx test/config-da-chamada.test.ts && tsx test/deepseek-provedor.test.ts && tsx test/cancelamento.test.ts && tsx test/animacoes-presets.test.ts && tsx test/olhar-local.test.ts"
   },
   "dependencies": {
     "@hyperframes/lint": "0.8.82",

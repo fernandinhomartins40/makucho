@@ -23,6 +23,7 @@
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import sharp from 'sharp';
+import { olharLocal, pessoaNoInstante } from './olhar-local';
 import {
   ESTILOS_DE_ANIMACAO,
   REGRAS_DA_ANIMACAO_HTML,
@@ -78,6 +79,8 @@ import {
   textoDoPerfil,
   textoDoPlano,
   type OlharDoVideo,
+  type PessoaNoQuadro,
+  lugarDoCartao,
   type PerfilDoVideo,
   designDoVideo,
   lerCritica,
@@ -518,7 +521,10 @@ export function perfilParaMotion(p: PerfilDoVideo): string {
       : 'A fala não tem número, lista, passos nem comparação: poucas cenas (impacto, frase, citação) ou nenhuma.',
     `Por volta de ${p.receita.cenasSugeridas} ${p.receita.cenasSugeridas === 1 ? 'cena' : 'cenas'} (ponto de partida).${p.receita.ladoDaCena ? ` No meio_a_meio, "lado": "${p.receita.ladoDaCena}" (fora do rosto).` : ''}`,
     `Visuais que combinam: ${visuaisSugeridos(p).join(', ')}.`,
-  ].join('\n');
+    p.olhar?.pessoa && !lugarDoCartao(p.olhar.pessoa) ? 'A pessoa está de perto (ocupa o quadro): cartao só com as cenas em volta da pessoa; as outras em meio_a_meio ou pip.' : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 const semAcento = (s: string) =>
@@ -764,10 +770,12 @@ export class AnimacoesDaFalaService {
   private readonly olhares = new Map<string, { em: number; olhar: OlharDoVideo | null }>();
 
   /**
-   * A IA com visão olha até três quadros do vídeo ENVIADO (os que o preparo
-   * já guardou, um por cena) e diz onde está o rosto, como é a luz, que
-   * cores dominam e que ambiente é. `null` quando não deu (sem quadros,
-   * sem visão): o perfil sai só da fala.
+   * A olhada no vídeo ENVIADO, pelos quadros que o preparo já guardou (um
+   * por cena): onde está a pessoa, como é a luz e que cores dominam. Sai da
+   * medida LOCAL (o modelo da pessoa + os pixels, sem tokens; olhar-local.ts).
+   * A IA com visão é só a reserva, quando o modelo não carrega
+   * (STUDIO_OLHAR_O_VIDEO=ia força a IA; =off desliga). `null` quando não
+   * deu: o perfil sai só da fala.
    */
   private async olharOVideo(workspaceId: string, projectId: string): Promise<OlharDoVideo | null> {
     const guardado = this.olhares.get(projectId);
@@ -776,8 +784,20 @@ export class AnimacoesDaFalaService {
     try {
       if (!this.storage || process.env.STUDIO_OLHAR_O_VIDEO === 'off') return null;
       const transcricao = await this.prisma.transcription.findUnique({ where: { projectId }, include: { regions: { where: { kind: 'scene' }, orderBy: { startMs: 'asc' } } } });
-      const quadros = (transcricao?.regions ?? []).map((r) => (r.metadata as { quadro?: string } | null)?.quadro).filter((q): q is string => !!q);
+      const comInstante = (transcricao?.regions ?? []).flatMap((r) => {
+        const quadro = (r.metadata as { quadro?: string } | null)?.quadro;
+        return quadro ? [{ ms: r.startMs, quadro }] : [];
+      });
+      const quadros = comInstante.map((q) => q.quadro);
       if (!quadros.length) return null;
+      if (process.env.STUDIO_OLHAR_O_VIDEO !== 'ia') {
+        const storage = this.storage;
+        const local = await olharLocal(comInstante.map((q) => ({ ms: q.ms, ler: () => storage.ler(q.quadro).catch(() => null) })));
+        if (local) {
+          olhar = local;
+          return olhar;
+        }
+      }
       const escolhidos = [...new Set([quadros[0]!, quadros[Math.floor(quadros.length / 2)]!, quadros[quadros.length - 1]!])];
       const imagens: string[] = [];
       for (const q of escolhidos) {
@@ -808,6 +828,20 @@ export class AnimacoesDaFalaService {
       this.olhares.set(projectId, { em: Date.now(), olhar });
       if (this.olhares.size > 200) this.olhares.delete(this.olhares.keys().next().value!);
     }
+  }
+
+  /**
+   * A pessoa medida no segundo `s` do vídeo final: a do quadro guardado da
+   * cena de origem daquele trecho. `null` sem medida (as cenas ficam no
+   * lugar padrão). Lê o que `olharOVideo` já guardou.
+   */
+  private pessoaNoTrecho(projectId: string, plano: EditPlanV1, s: number): PessoaNoQuadro | null {
+    const olhar = this.olhares.get(projectId)?.olhar;
+    if (!olhar) return null;
+    const ms = s * 1000;
+    const trechos = agendaDoPlano(plano).trechos;
+    const t = [...trechos].reverse().find((x) => x.inicioMs <= ms) ?? trechos[0];
+    return pessoaNoInstante(olhar, t ? t.clip.sourceStartMs + (ms - t.inicioMs) * t.velocidade : ms);
   }
 
   /**
@@ -1045,7 +1079,12 @@ export class AnimacoesDaFalaService {
     const cenas = conferidos.aceitos.map((a): CenaPronta => {
       const [preset, i] = a.tipo.split('#');
       const x = lida.cartoes[Number(i)] ?? {};
-      const layout = layoutDoPreset(preset!, a.layout);
+      // Cartão sobre o vídeo sem lugar fora do rosto (pessoa de perto): a cena
+      // vai para o outro layout do preset. As cenas em volta da pessoa ficam.
+      const pedido = layoutDoPreset(preset!, a.layout);
+      const pessoa = pedido === 'cartao' ? this.pessoaNoTrecho(projectId, plano, a.inicioS) : null;
+      const outro = presetDeMotion(preset!)?.layouts.find((l) => l !== 'cartao');
+      const layout = pessoa && outro && !lugarDoCartao(pessoa) ? outro : pedido;
       return {
         inicioS: a.inicioS,
         fimS: a.fimS,
@@ -1070,10 +1109,10 @@ export class AnimacoesDaFalaService {
   }
 
   /** A animação de uma cena pronta: o preset montado no visual, no tempo da fala do trecho. */
-  private montarCena(c: CenaPronta, visual: string, palavras: ReadonlyArray<{ s: number; texto: string }>, paleta?: string): { composicao: ComposicaoHtml; duracaoMs: number } {
+  private montarCena(c: CenaPronta, visual: string, palavras: ReadonlyArray<{ s: number; texto: string }>, paleta?: string, pessoa?: PessoaNoQuadro | null): { composicao: ComposicaoHtml; duracaoMs: number } {
     const duracaoMs = Math.round((c.fimS - c.inicioS) * 1000);
     const doTrecho = palavras.filter((p) => p.s >= c.inicioS - 0.05 && p.s < c.fimS).map((p) => ({ s: Math.max(0, p.s - c.inicioS), texto: p.texto }));
-    const composicao = composicaoDoPreset(c.cena, visual, duracaoMs / 1000, doTrecho, { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: c.ideia });
+    const composicao = composicaoDoPreset(c.cena, visual, duracaoMs / 1000, doTrecho, { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: c.ideia, ...(pessoa ? { pessoa } : {}) });
     const problemas = problemasDaComposicao(composicao);
     if (problemas.length) throw new Error(problemas.slice(0, 3).join('; '));
     return { composicao, duracaoMs };
@@ -1431,7 +1470,9 @@ ${fala}${
       const direta = this.cenaDireta(p, m, palavras);
       const pedido = [p.tipo, p.ideia, p.conteudo, p.conceito].filter(Boolean).join('. ');
       const cena = direta ?? (await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido));
-      const r = this.montarCena({ inicioS, fimS, cena, ideia: m.ideia }, visualMotion, palavras, paleta);
+      // Onde está a pessoa naquele trecho (medida local, guardada por seis horas).
+      await this.olharOVideo(workspaceId, projectId);
+      const r = this.montarCena({ inicioS, fimS, cena, ideia: m.ideia }, visualMotion, palavras, paleta, this.pessoaNoTrecho(projectId, plano, inicioS));
       return { ...r, ...(estiloDeAnimacao(visualMotion) ? { estilo: estiloDeAnimacao(visualMotion)! } : {}) };
     }
     const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
@@ -1481,8 +1522,10 @@ ${fala}${
         layout,
         ...(layout === 'meio_a_meio' ? { lado: m.lado ?? cena.lado ?? 'cima' } : {}),
         ...(layout === 'pip' ? { canto: m.canto ?? cena.canto ?? 'inf-dir' } : {}),
+        ...(typeof cena.atras === 'boolean' ? { atras: cena.atras } : {}),
       };
-      const r = this.montarCena({ inicioS: m.inicioS, fimS: m.fimS, cena: lugar, ideia: m.ideia }, visual, palavras, paleta);
+      await this.olharOVideo(workspaceId, projectId);
+      const r = this.montarCena({ inicioS: m.inicioS, fimS: m.fimS, cena: lugar, ideia: m.ideia }, visual, palavras, paleta, this.pessoaNoTrecho(projectId, plano, m.inicioS));
       return { ...r, ...(estiloDeAnimacao(visual) ? { estilo: estiloDeAnimacao(visual)! } : {}) };
     }
     // Uma animação da direção livre (tem tema, não tem estilo) continua no
@@ -1798,7 +1841,7 @@ ${fala}${
     for (const c of direcao.cenas) {
       const nome = presetDeMotion(c.cena.preset)?.nome ?? c.cena.preset;
       try {
-        const { composicao, duracaoMs } = this.montarCena(c, visual.chave, palavras, paleta);
+        const { composicao, duracaoMs } = this.montarCena(c, visual.chave, palavras, paleta, this.pessoaNoTrecho(projectId, plano, c.inicioS));
         ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: Math.round(c.inicioS * 1000), durationMs: duracaoMs });
         // As cenas que desenham o espaço em volta de quem fala pedem a pessoa
         // acesa: o contorno de luz no mesmo trecho (só com rosto; sem repetir).

@@ -30,6 +30,7 @@
 
 import type { ComposicaoHtml } from './animacao-html';
 import { CSS_DOS_ASSETS, assetAnimado, assetDeMotion } from './motion-assets';
+import { lugarDoCartao, type PessoaNoQuadro } from './pessoa-no-quadro';
 
 // ---------- Os visuais ----------
 
@@ -1042,6 +1043,17 @@ interface Ctx {
   alto: boolean;
   /** Um asset animado (motion-assets.ts) no segundo `t`: devolve o SVG; o script dele entra na cena. */
   asset: (chave: string, t: number, classe?: string) => string;
+  /** A pessoa medida no trecho (px de 1080x1920): as cenas em volta dela se ajustam; sem medida, o lugar padrão. */
+  p?: PessoaNoQuadro;
+}
+
+const entre = (n: number, a: number, b: number) => Math.round(Math.max(a, Math.min(b, n)));
+
+/** Quanto cabe ao lado da cabeça: a escala (0,6 a 1) de uma peça de `largura` px encostada na borda. */
+function escalaAoLado(p: PessoaNoQuadro | undefined, largura: number): number {
+  if (!p) return 1;
+  const livre = Math.min(p.cabeca.x - p.cabeca.largura / 2, 1080 - (p.cabeca.x + p.cabeca.largura / 2));
+  return r2(Math.max(0.6, Math.min(1, (livre - 24) / largura)));
 }
 
 type ClasseDoTitulo = 't-xl' | 't-l' | 't-m' | 't-s';
@@ -1391,19 +1403,22 @@ const MONTADORES: Record<string, Montador> = {
     const ls: string[] = [];
     for (let i = 0; i < palavras.length; i += por) ls.push(palavras.slice(i, i + por).join(' '));
     const t0 = c.t(x.titulo, 0.1, 0.15);
-    const altura = 660 / Math.max(1, ls.length);
+    // Atrás da cabeça: o bloco começa acima do cabelo e vai até os ombros.
+    const topo = c.p ? entre(c.p.cabeca.topo - 190, 200, 560) : 236;
+    const bloco = c.p ? entre(c.p.ombros + 90 - topo, 420, 700) : 700;
+    const altura = (bloco * 0.94) / Math.max(1, ls.length);
     const linhasHtml = ls
       .map((l, i) => `<span class="cz-m"><span class="cz-l" style="font-size:${corpoPx(l, 1000, altura * 1.15, c.v, 1, true)}px" data-in="mascara" data-t="${r2(t0 + i * 0.14)}">${esc(l)}</span></span>`)
       .join('');
     const tk = r2(t0 + 0.35);
     const td = c.t(x.detalhe, t0 + 0.6, 0.6);
-    const etiqueta = (texto: string, classe: string, t: number) => `<div class="q-pilula cz-tag ${classe}" style="font-size:${corpoPx(texto, 520, 56, c.v, 1, true)}px" data-in="balao" data-t="${t}">${esc(texto)}</div>`;
+    const etiqueta = (texto: string, classe: string, t: number) => `<div class="q-pilula cz-tag ${classe}" style="top:${classe === 'cz-a' ? topo + 56 : topo + bloco - 68}px;font-size:${corpoPx(texto, 520, 56, c.v, 1, true)}px" data-in="balao" data-t="${t}">${esc(texto)}</div>`;
     return {
-      html: `<div class="mg mg-quadro"><div class="cz">${linhasHtml}</div>${x.kicker ? etiqueta(x.kicker, 'cz-a', tk) : ''}${x.detalhe ? etiqueta(x.detalhe, 'cz-b', td) : ''}</div>`,
-      css: `.cz { left: 40px; right: 40px; top: 236px; height: 700px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+      html: `<div class="mg mg-quadro"><div class="cz" style="top:${topo}px;height:${bloco}px">${linhasHtml}</div>${x.kicker ? etiqueta(x.kicker, 'cz-a', tk) : ''}${x.detalhe ? etiqueta(x.detalhe, 'cz-b', td) : ''}</div>`,
+      css: `.cz { left: 40px; right: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .cz-m { display: block; overflow: hidden; padding: .02em .08em .05em; margin-bottom: -.1em; }
 .cz-l { display: block; font-family: var(--fonte-titulo); text-transform: uppercase; line-height: .86; letter-spacing: -.015em; white-space: nowrap; background: linear-gradient(180deg, var(--solto) 38%, color-mix(in srgb, var(--cor-destaque) 70%, var(--solto)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 10px 34px rgba(0,0,0,.38)); }
-.cz-tag { z-index: 3; } .cz-a { left: 64px; top: 292px; rotate: -6deg; } .cz-b { right: 64px; top: 868px; rotate: -4deg; }`,
+.cz-tag { z-index: 3; } .cz-a { left: 64px; rotate: -6deg; } .cz-b { right: 64px; rotate: -4deg; }`,
     };
   },
 
@@ -1415,10 +1430,11 @@ const MONTADORES: Record<string, Montador> = {
     const passo = 0.14;
     const inicio = r2(tn + 0.1);
     const nPassos = Math.max(0, Math.floor((c.D - 0.5 - inicio) / passo));
+    const topoDoNumero = c.p ? entre(c.p.cabeca.topo - 150, 250, 600) : 250;
     return {
-      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ng-k" data-in="sobe" data-t="${r2(Math.max(0, tn - 0.3))}">${esc(x.kicker)}</div>` : ''}<div class="mg-num ng-num" style="font-size:${corpo}px" data-in="escala" data-t="${tn}">${x.prefixo ? `<span class="pre">${esc(x.prefixo)}</span>` : ''}${numero(x.numero, tn, 1.2)}${x.unidade ? `<span class="suf">${esc(x.unidade)}</span>` : ''}</div><div class="ng-mt ng-mt0" data-in="aparece" data-t="${inicio}"><i></i></div><div class="ng-mt ng-mt1" data-in="aparece" data-t="${inicio}"><i></i></div></div>`,
-      css: `.ng-k { left: 0; right: 0; top: 214px; text-align: center; font-size: 40px; letter-spacing: .2em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.5); }
-.ng-num { left: 0; right: 0; top: 250px; justify-content: center; line-height: .84; font-family: var(--fonte-titulo); filter: drop-shadow(0 10px 34px rgba(0,0,0,.35)); }
+      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ng-k" style="top:${topoDoNumero - 36}px" data-in="sobe" data-t="${r2(Math.max(0, tn - 0.3))}">${esc(x.kicker)}</div>` : ''}<div class="mg-num ng-num" style="top:${topoDoNumero}px;font-size:${corpo}px" data-in="escala" data-t="${tn}">${x.prefixo ? `<span class="pre">${esc(x.prefixo)}</span>` : ''}${numero(x.numero, tn, 1.2)}${x.unidade ? `<span class="suf">${esc(x.unidade)}</span>` : ''}</div><div class="ng-mt ng-mt0" data-in="aparece" data-t="${inicio}"><i></i></div><div class="ng-mt ng-mt1" data-in="aparece" data-t="${inicio}"><i></i></div></div>`,
+      css: `.ng-k { left: 0; right: 0; text-align: center; font-size: 40px; letter-spacing: .2em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.5); }
+.ng-num { left: 0; right: 0; justify-content: center; line-height: .84; font-family: var(--fonte-titulo); filter: drop-shadow(0 10px 34px rgba(0,0,0,.35)); }
 .ng-num .v, .ng-num .pre, .ng-num .suf { background: linear-gradient(180deg, var(--solto) 25%, color-mix(in srgb, var(--cor-destaque) 75%, transparent) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ng-mt { top: 560px; width: 46px; height: 600px; border-radius: 6px; background: color-mix(in srgb, var(--solto) 18%, transparent); -webkit-mask: repeating-linear-gradient(to top, #000 0 20px, transparent 20px 30px); mask: repeating-linear-gradient(to top, #000 0 20px, transparent 20px 30px); }
 .ng-mt0 { left: 40px; } .ng-mt1 { right: 40px; }
@@ -1465,18 +1481,21 @@ const MONTADORES: Record<string, Montador> = {
   mosaico: (x, c) => {
     const itens = (x.itens ?? []).slice(0, 4);
     const padrao = ['grafico', 'lampada', 'alvo', 'foguete'];
+    // Na altura do rosto, uma coluna de cada lado; menores quando a cabeça ocupa o quadro.
+    const y0 = c.p ? entre(c.p.cabeca.topo + 10, 390, 700) : 400;
+    const escala = escalaAoLado(c.p, 320);
     const lugares = [
-      [40, 400],
-      [740, 400],
-      [40, 640],
-      [740, 640],
+      [40, y0],
+      [740, y0],
+      [40, y0 + Math.round(240 * escala)],
+      [740, y0 + Math.round(240 * escala)],
     ] as const;
     let t = x.titulo ? 0.45 : 0.15;
     const cards = itens
       .map((it, i) => {
         t = c.t(it, i === 0 ? t : t + 0.3, i === 0 ? 0.1 : 0.45);
         const [l, tp] = lugares[i]!;
-        return `<div class="mo-card mg-card" style="left:${l}px;top:${tp}px" data-in="balao" data-t="${t}">${icone(x.icones?.[i] ?? padrao[i], t + 0.15, 0.6, 'ic mo-ic')}<div class="mo-r" style="font-size:${corpoPx(it, 250, 46, c.v, 2, true)}px">${esc(it)}</div></div>`;
+        return `<div class="mo-card mg-card" style="left:${l}px;top:${tp}px;scale:${escala};transform-origin:${i % 2 ? '100%' : '0'} 0" data-in="balao" data-t="${t}">${icone(x.icones?.[i] ?? padrao[i], t + 0.15, 0.6, 'ic mo-ic')}<div class="mo-r" style="font-size:${corpoPx(it, 250, 46, c.v, 2, true)}px">${esc(it)}</div></div>`;
       })
       .join('');
     const tt = 0.1;
@@ -1495,13 +1514,16 @@ const MONTADORES: Record<string, Montador> = {
   ladeando: (x, c) => {
     const ta = c.t(x.a ?? '', 0.2, 0.15);
     const tb = c.t(x.b ?? '', ta + 0.35, 0.5);
+    // Ao lado do rosto: na altura dele, do tamanho que o espaço livre deixa.
+    const topo = c.p ? entre((c.p.cabeca.topo + c.p.cabeca.base) / 2 - 130, 230, 900) : 400;
+    const escala = escalaAoLado(c.p, 250);
     const lado = (classe: string, nome: string | undefined, rotulo: string | undefined, t: number) =>
-      `<div class="ld ${classe}" data-in="balao" data-t="${t}"><div class="ld-tile mg-card">${icone(nome, t + 0.1, 0.6, 'ic ld-ic')}</div>${rotulo ? `<div class="ld-r" style="font-size:${corpoPx(rotulo, 230, 46, c.v, 2)}px">${esc(rotulo)}</div>` : ''}</div>`;
+      `<div class="ld ${classe}" style="top:${topo}px;scale:${escala}" data-in="balao" data-t="${t}"><div class="ld-tile mg-card">${icone(nome, t + 0.1, 0.6, 'ic ld-ic')}</div>${rotulo ? `<div class="ld-r" style="font-size:${corpoPx(rotulo, 230, 46, c.v, 2)}px">${esc(rotulo)}</div>` : ''}</div>`;
     return {
       html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ld-k" data-in="sobe" data-t="0.05">${esc(x.kicker)}</div>` : ''}${lado('ld-a', x.icones?.[0], x.a, ta)}${lado('ld-b', x.icones?.[1], x.b, tb)}</div>`,
       css: `.ld-k { left: 40px; right: 40px; top: 214px; text-align: center; font-size: 40px; letter-spacing: .16em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.55); }
-.ld { top: 400px; width: 240px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.ld-a { left: 44px; rotate: -8deg; } .ld-b { right: 44px; rotate: 8deg; }
+.ld { width: 240px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.ld-a { left: 44px; rotate: -8deg; transform-origin: 0 0; } .ld-b { right: 44px; rotate: 8deg; transform-origin: 100% 0; }
 .mg-quadro .ld-tile { width: 196px; height: 196px; padding: 0; display: grid; place-items: center; border-radius: 30%; }
 .ld-ic { width: 60%; color: var(--cor-destaque); } .ld-ic.icd { color: var(--cor-texto); }
 .ld-r { font-family: var(--fonte-titulo); color: var(--solto); text-align: center; line-height: 1.05; text-shadow: 0 3px 14px rgba(0,0,0,.55); }`,
@@ -1510,7 +1532,11 @@ const MONTADORES: Record<string, Montador> = {
   },
 
   selecao: (x, c) => {
-    const caixa = { x: 90, y: 330, w: 900, h: 850 };
+    // Em volta da pessoa: da borda do corpo, de cima do cabelo até a faixa da legenda.
+    const cx0 = c.p ? entre(c.p.corpo.esq - 40, 40, 300) : 90;
+    const cx1 = c.p ? entre(c.p.corpo.dir + 40, 780, 1040) : 990;
+    const cy0 = c.p ? entre(c.p.cabeca.topo - 70, 270, 700) : 330;
+    const caixa = { x: cx0, y: cy0, w: cx1 - cx0, h: 1180 - cy0 };
     const t0 = 0.1;
     const tt = c.t(x.titulo, t0 + 0.35, 0.35);
     const alcas = [
@@ -1535,7 +1561,8 @@ const MONTADORES: Record<string, Montador> = {
   },
 
   hud: (x, c) => {
-    const vp = [540, 1090] as const;
+    // O ponto de fuga logo abaixo do rosto de quem fala.
+    const vp = (c.p ? [entre(c.p.cabeca.x, 300, 780), entre(c.p.cabeca.base + 140, 700, 1150)] : [540, 1090]) as readonly [number, number];
     const nos = [
       [95, 265],
       [985, 265],
@@ -1580,12 +1607,14 @@ const MONTADORES: Record<string, Montador> = {
     const texto = x.titulo ?? '';
     const letras = [...texto].map((ch, i) => (ch === ' ' ? ' ' : `<span class="pf-c" data-in="sobe" data-t="${r2(tt + i * 0.035)}">${esc(ch)}</span>`)).join('');
     const camadas = Array.from({ length: 16 }, (_, i) => `0 ${i + 1}px 0 var(--pf-lado)`).join(', ');
+    // No peito: logo abaixo dos ombros, acima da faixa da legenda.
+    const topo = c.p ? entre(c.p.ombros + 50, 720, 950) : 950;
     return {
-      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="q-pilula pf-k" data-in="balao" data-t="${r2(Math.max(0, tt - 0.25))}">${esc(x.kicker)}</div>` : ''}<div class="pf"><div class="pf-w" style="font-size:${corpoPx(texto, 920, 230, c.v, 1, true)}px">${letras}</div></div></div>`,
-      css: `.pf { left: 0; right: 0; top: 950px; height: 240px; display: flex; justify-content: center; align-items: center; transform: perspective(900px) rotateX(22deg); }
+      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="q-pilula pf-k" style="top:${topo - 70}px" data-in="balao" data-t="${r2(Math.max(0, tt - 0.25))}">${esc(x.kicker)}</div>` : ''}<div class="pf" style="top:${topo}px"><div class="pf-w" style="font-size:${corpoPx(texto, 920, 230, c.v, 1, true)}px">${letras}</div></div></div>`,
+      css: `.pf { left: 0; right: 0; height: 240px; display: flex; justify-content: center; align-items: center; transform: perspective(900px) rotateX(22deg); }
 .pf-w { --pf-lado: color-mix(in srgb, var(--cor-destaque) 62%, #000000); font-family: var(--fonte-titulo); text-transform: uppercase; color: var(--solto); line-height: 1; white-space: nowrap; text-shadow: ${camadas}, 0 26px 36px rgba(0,0,0,.55); }
 .pf-c { display: inline-block; white-space: pre; }
-.pf-k { left: 50%; top: 880px; translate: -50% 0; font-size: 34px; }`,
+.pf-k { left: 50%; translate: -50% 0; font-size: 34px; }`,
     };
   },
 
@@ -2026,6 +2055,18 @@ function emCaixa(html: string): string {
   return `<div class="mg ${alinhamento}"><div class="mg-caixa ${m[1]}"${m[2]}>${html.slice(m[0].length)}</div>`;
 }
 
+/**
+ * O cartão sobre o vídeo vai para onde o rosto NÃO está: a faixa acima da
+ * cabeça, se couber; senão a faixa entre o rosto e a legenda. Sem medida
+ * (ou sem lugar), fica na área útil padrão do layout.
+ */
+function cssForaDoRosto(p: PessoaNoQuadro | null | undefined): string {
+  if (!p) return '';
+  const alvo = '.mg:not(.mg-quadro):not(.mg-titulo):not(.mg-chamada)';
+  const lugar = lugarDoCartao(p);
+  return lugar ? `\n${alvo} { top: ${lugar.topo}px; height: ${lugar.altura}px; }` : '';
+}
+
 /** O layout que o preset aceita (o pedido, se servir; senão o preferido dele). */
 export function layoutDoPreset(preset: string, pedido: string | undefined): LayoutDoPreset {
   const p = presetDeMotion(preset);
@@ -2044,7 +2085,8 @@ export function composicaoDoPreset(
   duracaoS: number,
   /** As palavras da fala com o segundo DENTRO da cena. */
   palavras: ReadonlyArray<{ s: number; texto: string }>,
-  extra: { paleta?: string; ideia?: string } = {},
+  /** `pessoa`: quem fala, medida no trecho (pessoa-no-quadro.ts) -- as cenas se ajustam a ela. */
+  extra: { paleta?: string; ideia?: string; pessoa?: PessoaNoQuadro | null } = {},
 ): ComposicaoHtml {
   const v = visualDeMotion(visualChave) ?? VISUAIS_DE_MOTION[0]!;
   const preset = presetDeMotion(cena.preset) ?? PRESETS_DE_MOTION[0]!;
@@ -2071,6 +2113,7 @@ export function composicaoDoPreset(
       return cabe(texto, w, h, v, fracao);
     },
     alto: layout === 'pip' || layout === 'tela_cheia',
+    ...(extra.pessoa ? { p: extra.pessoa } : {}),
   };
   const montado = MONTADORES[preset.chave]!(cena.textos, c);
   // O enfeite do visual (ou o rabisco pedido) nas cenas de destaque, logo
@@ -2100,10 +2143,12 @@ export function composicaoDoPreset(
   });
   return {
     html: `${fundo}${emCaixa(montado.html)}`,
-    css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}`,
+    css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}${sobre ? cssForaDoRosto(extra.pessoa) : ''}`,
     script: scriptDaCena(v, D, layout, lado, sobre, [montado.script ?? '', ...scriptsDosAssets].filter(Boolean).join('\n')),
     layout,
     ...(lado ? { lado } : {}),
+    // Meio a meio: a metade do vídeo enquadra o rosto de quem fala.
+    ...(lado && extra.pessoa ? { foco: r2(Math.max(0.1, Math.min(0.9, (extra.pessoa.cabeca.topo + extra.pessoa.cabeca.base) / 2 / 1920))) } : {}),
     ...(layout === 'pip' ? { canto: cena.canto ?? 'inf-dir' } : {}),
     // `false` também fica guardado: remontar não religa o padrão que a pessoa desligou.
     ...(atras ? { atras: true } : layout === 'cartao' && preset.atras ? { atras: false } : {}),

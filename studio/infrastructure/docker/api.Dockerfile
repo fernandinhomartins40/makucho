@@ -87,6 +87,10 @@ COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/contracts/dist ./
 COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 COPY --from=builder --chown=nestjs:nodejs /app/studio/packages/database/prisma ./studio/packages/database/prisma
 
+# O modelo da pessoa (600 KB): a API mede onde esta quem fala nos
+# quadros do video, sem IA (modules/ai/olhar-local.ts).
+COPY --chown=nestjs:nodejs studio/assets/modelos /app/modelos
+
 # Midia do studio. Vira volume em producao; criar aqui garante o dono
 # certo no ponto de montagem.
 RUN mkdir -p /app/storage/media && chown -R nestjs:nodejs /app/storage

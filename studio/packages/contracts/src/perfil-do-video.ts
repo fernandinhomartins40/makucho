@@ -23,6 +23,7 @@
 
 import { numerosDoTexto, type PalavraNoTempo } from './direcao-visual';
 import { esteticaDoVideo } from './tecnicas-de-cena';
+import type { PessoaNoQuadro } from './pessoa-no-quadro';
 
 export const TIPOS_DE_SINAL = ['numero', 'lista', 'passos', 'comparacao', 'pergunta', 'termo', 'enfase'] as const;
 export type TipoDeSinal = (typeof TIPOS_DE_SINAL)[number];
@@ -55,8 +56,11 @@ export interface OlharDoVideo {
   luz: 'clara' | 'media' | 'escura';
   /** Até três cores que dominam a imagem (hex). */
   cores: string[];
-  /** O ambiente, em poucas palavras ("escritório", "cozinha", "loja de roupas"). */
+  /** O ambiente, em poucas palavras ("escritório", "cozinha", "loja de roupas"); vazio na medida local. */
   ambiente: string;
+  /** A pessoa medida pela máscara (px de 1080x1920): a típica do vídeo e a de cada quadro guardado (ms do original). */
+  pessoa?: PessoaNoQuadro | null;
+  quadros?: Array<{ ms: number; pessoa: PessoaNoQuadro | null }>;
 }
 
 export interface TecnicaSugerida {
