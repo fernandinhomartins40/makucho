@@ -89,14 +89,19 @@ export const ESTRUTURAS_VIRAIS = [
 
 export const TIPOS_DE_GANCHO = ['curiosidade', 'dor', 'promessa', 'polemica', 'pergunta', 'prova', 'numero'] as const;
 
+const cortar = (max: number) => (v: unknown) => (typeof v === 'string' && v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v);
+
 export const analiseDaIaSchema = z
   .object({
+    // Texto de entendimento longo demais é CORTADO, não recusado: visto em
+    // produção, um "audience" de 101+ letras derrubava a proposta inteira e
+    // pagava uma segunda chamada com raciocínio.
     /** O assunto do vídeo, em uma frase. */
-    topic: z.string().min(2).max(140),
+    topic: z.preprocess(cortar(140), z.string().min(2).max(140)),
     /** Para quem é. */
-    audience: z.string().min(2).max(100).optional(),
+    audience: z.preprocess(cortar(100), z.string().min(2).max(100).optional()),
     /** O que quem assiste ganha ficando até o fim. */
-    promise: z.string().min(2).max(160),
+    promise: z.preprocess(cortar(160), z.string().min(2).max(160)),
     structure: z.enum(ESTRUTURAS_VIRAIS),
     hookType: z.enum(TIPOS_DE_GANCHO),
   })

@@ -10,7 +10,8 @@
 // pelo corpo deixaria a interface pular direto para COMPLETED.
 // ============================================================
 
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { cancelarProjeto } from '../../common/cancelamento';
 import { analiseDaIaSchema, canTransition } from '@makucho/studio-contracts';
 import type { ProjectInput, ProjectPatch, ProjectState } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
@@ -34,6 +35,8 @@ const RESUMO = {
 
 @Injectable()
 export class ProjectsService {
+  private readonly log = new Logger(ProjectsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly filas: FilaService,
@@ -232,6 +235,10 @@ export class ProjectsService {
     const pasta = this.storage.pastaDoProjeto(projeto.workspaceId, id);
     const liberadoBytes = await this.storage.tamanhoDaPasta(pasta);
 
+    // A IA para JÁ: as chamadas em andamento (análise, animações, direção)
+    // são abortadas, e as próximas de quem ainda está num laço, recusadas.
+    const abortadas = cancelarProjeto(id);
+    if (abortadas) this.log.log(`projeto ${id} excluído: ${abortadas} chamada(s) de IA abortada(s)`);
     await this.filas.descartarDoProjeto(id);
 
     await this.prisma.$transaction(async (tx) => {

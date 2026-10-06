@@ -144,7 +144,8 @@ t(
 // do custo; o raciocínio fica só na segunda tentativa (analise.service).
 // A exceção é a direção criativa (o agente que dirige o vídeo, a direção
 // e o desenho das animações): é onde a qualidade do vídeo se decide.
-const COM_RACIOCINIO = ['agente_de_edicao', 'dirigir_animacoes', 'desenhar_animacao'];
+const COM_RACIOCINIO = ['agente_de_edicao', 'dirigir_animacoes'];
+t('o desenho das cenas é barato: Flash sem raciocínio (o Pro custava ~US$ 0,06 por cena sem nota melhor)', CONFIG_POR_CHAMADA.desenhar_animacao.modelo === 'deepseek-flash' && CONFIG_POR_CHAMADA.desenhar_animacao.raciocinio === 'desligado');
 t(
   'só a direção criativa paga raciocínio por padrão',
   CHAMADAS_DE_IA.every((c) => (CONFIG_POR_CHAMADA[c].raciocinio === 'desligado') !== COM_RACIOCINIO.includes(c)),

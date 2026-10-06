@@ -346,10 +346,15 @@ const TEMPO_DO_DESENHO_MS = 300_000;
 /** Quantas cenas a IA desenha ao mesmo tempo no modo livre. */
 const DESENHOS_SIMULTANEOS = 4;
 
+/** Abaixo desta nota a cena está quebrada e volta para ser refeita. */
+const NOTA_PARA_REFAZER = 5;
+
 /** Quantas vezes uma cena pode ser refeita pela crítica (0 desliga; no máximo 3). */
 function rodadasDeCritica(): number {
-  const n = Number(process.env.STUDIO_RODADAS_DE_CRITICA ?? 2);
-  return Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 2;
+  // Uma: medido em produção, refazer duas vezes deixava a nota igual (3 a 5)
+  // e só multiplicava o custo e o tempo.
+  const n = Number(process.env.STUDIO_RODADAS_DE_CRITICA ?? 1);
+  return Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 1;
 }
 
 /** `livre` (o padrão) ou `classico` (estilo do catálogo e cartões por gatilho). */
@@ -924,7 +929,9 @@ ${fala}${
       const parecer = await this.criticar(workspaceId, projectId, versaoAtual, duracaoMs, m, design);
       if (!parecer) break;
       if (!melhor || parecer.nota > melhor.nota) melhor = { composicao: versaoAtual, ...parecer };
-      if (parecer.nota >= NOTA_MINIMA_DA_CENA || !parecer.problemas.length || rodada === rodadas) break;
+      // Refaz só a cena QUEBRADA (texto cortado, quadro vazio): cena mediana
+      // refeita não melhorava, e cada volta é um desenho a mais.
+      if (parecer.nota >= NOTA_PARA_REFAZER || !parecer.problemas.length || rodada === rodadas) break;
       const versao = JSON.stringify({ titulo: versaoAtual.titulo, html: versaoAtual.html, css: versaoAtual.css, script: versaoAtual.script }).slice(0, 16_000);
       const nova = await tentar(
         `${pedido}\n\nSua versão anterior:\n${versao}\n\nUM DIRETOR DE ARTE OLHOU OS QUADROS RENDERIZADOS dela e deu nota ${parecer.nota} de 10. Refaça a cena resolvendo cada ponto (pode mudar a composição inteira se for preciso; mantenha os textos e a sincronia com a fala) e responda o JSON inteiro de novo:\n- ${parecer.problemas.join('\n- ')}`,

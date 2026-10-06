@@ -140,8 +140,13 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   // forte, pensando. São poucas chamadas por vídeo (uma direção, uma por
   // cena), e o design do vídeo vai no prefixo de todas as cenas (cache).
   // Trocável sem código: STUDIO_IA_DESENHAR_ANIMACAO=deepseek-flash:high.
-  dirigir_animacoes: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
-  desenhar_animacao: { modelo: 'deepseek-v4-pro', raciocinio: 'high' },
+  // Medido em produção (2026-10): o desenho no Pro pensando custou ~US$ 0,06
+  // por cena (46 cenas, US$ 2,80) e levava minutos, sem nota melhor da
+  // crítica (3 a 5 de 10 nos dois). O desenho vai no Flash sem raciocínio --
+  // o plano da direção, o módulo da técnica e o componente pronto já trazem
+  // o que o pensamento traria. A direção (uma chamada por vídeo) pensa, no Flash.
+  dirigir_animacoes: { modelo: 'deepseek-flash', raciocinio: 'high' },
+  desenhar_animacao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   // Recebe imagens: sempre o modelo com visão (MODELO_COM_VISAO).
   criticar_animacao: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   olhar_video: { modelo: 'deepseek-flash', raciocinio: 'desligado' },

@@ -272,6 +272,7 @@ export class AgenteService {
           mensagens,
           ferramentas: definicoes,
           maxTokens: MAX_TOKENS_POR_VOLTA,
+          projectId,
         });
         custo += volta.custoCentavos;
         if (!volta.chamadas.length) {

@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import IORedis from 'ioredis';
 import { CONFIG_POR_CHAMADA, MODELO_COM_VISAO, MODELOS_DE_IA, lerConfigDaChamada } from '@makucho/studio-contracts';
 import type { ChamadaDeIa, ConfigDaChamada, ModeloDeIa, Raciocinio } from '@makucho/studio-contracts';
+import { ProjetoExcluido, projetoFoiExcluido, sinalDoProjeto } from '../../common/cancelamento';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
@@ -215,6 +216,9 @@ export class AiService {
     const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4) + (pedido.imagens?.length ?? 0) * TOKENS_POR_IMAGEM;
     await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
 
+    // Projeto excluído no meio do caminho: a chamada é abortada na hora (e a
+    // próxima, recusada sem custo) -- ver common/cancelamento.ts.
+    const doProjeto = pedido.projectId ? sinalDoProjeto(pedido.projectId, pedido.sinal) : null;
     const conversar = (raciocinio: Raciocinio) =>
       provedor.conversar({
         chamada: pedido.chamada,
@@ -223,19 +227,26 @@ export class AiService {
         ...(pedido.imagens?.length ? { imagens: pedido.imagens } : {}),
         maxTokens: pedido.maxTokens,
         raciocinio,
-        sinal: pedido.sinal,
+        ...(doProjeto ? { sinal: doProjeto.sinal } : pedido.sinal ? { sinal: pedido.sinal } : {}),
         ...(pedido.tempoMaximoMs ? { tempoMaximoMs: pedido.tempoMaximoMs } : {}),
       });
     let resposta;
     try {
-      resposta = await conversar(config.raciocinio);
+      try {
+        resposta = await conversar(config.raciocinio);
+      } catch (e) {
+        // O raciocínio gastou o teto inteiro e a resposta veio vazia (visto em
+        // produção na direção das animações): a mesma pergunta, sem pensar,
+        // responde -- melhor que perder a etapa.
+        if (projetoFoiExcluido(pedido.projectId) || !(e instanceof ErroDoProvedor) || config.raciocinio === 'desligado' || !/pensou demais|sem conteúdo/.test(e.message)) throw e;
+        this.log.warn(`${pedido.chamada}: resposta vazia com raciocínio (${e.message}); tentando sem raciocínio`);
+        resposta = await conversar('desligado');
+      }
     } catch (e) {
-      // O raciocínio gastou o teto inteiro e a resposta veio vazia (visto em
-      // produção na direção das animações): a mesma pergunta, sem pensar,
-      // responde -- melhor que perder a etapa.
-      if (!(e instanceof ErroDoProvedor) || config.raciocinio === 'desligado' || !/pensou demais|sem conteúdo/.test(e.message)) throw e;
-      this.log.warn(`${pedido.chamada}: resposta vazia com raciocínio (${e.message}); tentando sem raciocínio`);
-      resposta = await conversar('desligado');
+      if (projetoFoiExcluido(pedido.projectId)) throw new ProjetoExcluido(pedido.projectId!);
+      throw e;
+    } finally {
+      doProjeto?.soltar();
     }
 
     const custo = await this.uso.registrar(
@@ -285,20 +296,32 @@ export class AiService {
     ferramentas: DefinicaoDeFerramenta[];
     maxTokens: number;
     sinal?: AbortSignal;
+    /** O projeto do pedido: excluído, a volta é abortada (common/cancelamento.ts). */
+    projectId?: string;
   }): Promise<{ texto: string; chamadas: ChamadaDeFerramenta[]; custoCentavos: number; raciocinio?: string }> {
     const config = configDaChamada(pedido.chamada);
     const modelo = config.modelo;
-    const provedor = await this.provedorDe(pedido.workspaceId, modelo);
-    const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
-    await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
-    const resposta = await provedor.conversarComFerramentas({
-      chamada: pedido.chamada,
-      mensagens: pedido.mensagens,
-      ferramentas: pedido.ferramentas,
-      maxTokens: pedido.maxTokens,
-      raciocinio: config.raciocinio,
-      ...(pedido.sinal ? { sinal: pedido.sinal } : {}),
-    });
+    const doProjeto = pedido.projectId ? sinalDoProjeto(pedido.projectId, pedido.sinal) : null;
+    let resposta;
+    try {
+      const provedor = await this.provedorDe(pedido.workspaceId, modelo);
+      const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
+      await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
+      const sinal = doProjeto?.sinal ?? pedido.sinal;
+      resposta = await provedor.conversarComFerramentas({
+        chamada: pedido.chamada,
+        mensagens: pedido.mensagens,
+        ferramentas: pedido.ferramentas,
+        maxTokens: pedido.maxTokens,
+        raciocinio: config.raciocinio,
+        ...(sinal ? { sinal } : {}),
+      });
+    } catch (e) {
+      if (projetoFoiExcluido(pedido.projectId)) throw new ProjetoExcluido(pedido.projectId!);
+      throw e;
+    } finally {
+      doProjeto?.soltar();
+    }
     const custo = await this.uso.registrar(
       pedido.workspaceId,
       pedido.chamada,

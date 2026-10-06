@@ -18,15 +18,15 @@ async function main() {
   delete process.env.STUDIO_IA_DESENHAR_ANIMACAO;
   const { configDaChamada } = await import('../src/modules/ai/ai.service');
 
-  t('a tabela: direção e desenho no Pro pensando; o resto no Flash sem raciocínio', JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-v4-pro","raciocinio":"high"}' && JSON.stringify(configDaChamada('selecionar_trechos')) === '{"modelo":"deepseek-flash","raciocinio":"desligado"}');
+  t('a tabela: direção no Flash pensando, desenho no Flash sem raciocínio', JSON.stringify(configDaChamada('dirigir_animacoes')) === '{"modelo":"deepseek-flash","raciocinio":"high"}' && JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-flash","raciocinio":"desligado"}' && JSON.stringify(configDaChamada('selecionar_trechos')) === '{"modelo":"deepseek-flash","raciocinio":"desligado"}');
   t('o pedido troca modelo e raciocínio (a bancada)', JSON.stringify(configDaChamada('desenhar_animacao', { modelo: 'deepseek-flash', raciocinio: 'low' })) === '{"modelo":"deepseek-flash","raciocinio":"low"}');
   t('com imagem, sempre o modelo que enxerga -- mesmo pedindo o Pro', configDaChamada('criticar_animacao', { modelo: 'deepseek-v4-pro', imagens: ['x'] }).modelo === 'deepseek-flash');
 
-  process.env.STUDIO_IA_DESENHAR_ANIMACAO = 'deepseek-flash:high';
-  t('ambiente por chamada: troca só aquela', JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-flash","raciocinio":"high"}' && configDaChamada('dirigir_animacoes').modelo === 'deepseek-v4-pro');
-  t('o pedido vale sobre o ambiente', configDaChamada('desenhar_animacao', { modelo: 'deepseek-v4-pro' }).modelo === 'deepseek-v4-pro');
+  process.env.STUDIO_IA_DESENHAR_ANIMACAO = 'deepseek-v4-pro:high';
+  t('ambiente por chamada: troca só aquela', JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-v4-pro","raciocinio":"high"}' && configDaChamada('dirigir_animacoes').modelo === 'deepseek-flash');
+  t('o pedido vale sobre o ambiente', configDaChamada('desenhar_animacao', { modelo: 'deepseek-flash' }).modelo === 'deepseek-flash');
   process.env.STUDIO_IA_DESENHAR_ANIMACAO = 'gpt-9:turbo';
-  t('valor errado no ambiente é ignorado', JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-v4-pro","raciocinio":"high"}');
+  t('valor errado no ambiente é ignorado', JSON.stringify(configDaChamada('desenhar_animacao')) === '{"modelo":"deepseek-flash","raciocinio":"desligado"}');
 
   console.log(`\n${ok} ok, ${fail} falha(s)`);
   if (fail) process.exit(1);

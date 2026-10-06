@@ -18,6 +18,7 @@ import {
   FILA_ANALISE,
   FILA_ANIMACAO,
   FILA_CONFERENCIA_DE_LAYOUT,
+  FILA_ANIMACOES_DA_MONTAGEM,
   JOB_DE_FOTOS,
   FILA_MIDIA,
   FILA_RENDER,
@@ -102,7 +103,9 @@ export class FilaService implements OnModuleDestroy {
    */
   async descartarDoProjeto(projectId: string): Promise<number> {
     let removidos = 0;
-    for (const nome of FILAS) {
+    // A fila das animações da montagem não está em FILAS (não é de worker),
+    // mas é a mais cara: ficava de fora e o job esperando rodava mesmo assim.
+    for (const nome of [...FILAS, FILA_ANIMACOES_DA_MONTAGEM]) {
       try {
         const jobs = await this.fila(nome).getJobs(['waiting', 'delayed', 'paused', 'prioritized', 'waiting-children']);
         for (const job of jobs) {

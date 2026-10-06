@@ -170,12 +170,23 @@ async function main() {
   let notas4 = 0;
   const d = montar((p) => {
     if (p.chamada === 'dirigir_animacoes') return direcao([CENAS[0]]);
-    if (p.chamada === 'criticar_animacao') return [`{"nota": 6, "problemas": ["sem acabamento"]}`, `{"nota": 3, "problemas": ["texto cortado"]}`, `{"nota": 5, "problemas": ["vazio"]}`][notas4++]!;
+    if (p.chamada === 'criticar_animacao') return [`{"nota": 4, "problemas": ["sem acabamento"]}`, `{"nota": 3, "problemas": ["texto cortado"]}`][notas4++]!;
     v4 += 1;
     return cena(`v${v4}`);
   });
   await d.servico.criarNaMontagem(sistema as never, 'p1');
-  t('refazer pode piorar: fica a versão de melhor nota, e a crítica para no limite de rodadas', d.atual().mediaLayers?.[0]?.composicao?.titulo === 'v1' && v4 === 3 && notas4 === 3 && d.relatorios.at(-1)?.escrita[0]?.critica?.nota === 6);
+  t('refazer pode piorar: fica a versão de melhor nota, e a crítica para em UMA rodada', d.atual().mediaLayers?.[0]?.composicao?.titulo === 'v1' && v4 === 2 && notas4 === 2 && d.relatorios.at(-1)?.escrita[0]?.critica?.nota === 4);
+
+  // 4b. Cena mediana (nota 5 ou mais) não é refeita: refazer não melhorava e custava um desenho.
+  let v4b = 0;
+  const d2 = montar((p) => {
+    if (p.chamada === 'dirigir_animacoes') return direcao([CENAS[0]]);
+    if (p.chamada === 'criticar_animacao') return '{"nota": 6, "problemas": ["sem acabamento"]}';
+    v4b += 1;
+    return cena(`m${v4b}`);
+  });
+  await d2.servico.criarNaMontagem(sistema as never, 'p1');
+  t('cena com nota 6 entra sem ser refeita', v4b === 1 && d2.relatorios.at(-1)?.escrita[0]?.critica?.refeita === 0);
 
   // 5. Sem fotos (worker fora): a cena entra sem crítica.
   const e = montar((p) => (p.chamada === 'dirigir_animacoes' ? direcao([CENAS[0]]) : cena('Sem foto')), { fotos: null });
