@@ -856,6 +856,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
   const [pedido, setPedido] = useState('');
   const mudar = (m: Partial<ComposicaoHtml>) => editar({ ...composicao, ...m });
   const grupos: Array<[string, EstiloDeAnimacao[]]> = [
+    ['Motion (cenas prontas)', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'motion')],
     ['Exclusivos', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'exclusivo')],
     ['Cartões', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'cartao')],
     ['Identidades visuais', ESTILOS_DE_ANIMACAO.filter((e) => e.familia === 'identidade' || e.familia === 'referencia')],
@@ -872,7 +873,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
     <div className="pilha" style={{ gap: 'var(--e4)' }}>
       {ocupada && (
         <p className="aviso aviso--info" role="status" style={{ margin: 0, fontSize: 12 }}>
-          A IA está redesenhando as animações… (1-2 min)
+          {atual?.familia === 'motion' ? 'Remontando as animações… (segundos)' : 'A IA está redesenhando as animações… (1-2 min)'}
         </p>
       )}
 

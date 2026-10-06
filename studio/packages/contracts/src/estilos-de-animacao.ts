@@ -9,15 +9,19 @@
 //   preset     -- os 13 frame-presets da hyperframes-creative (sistemas
 //                 de design completos: tokens, componentes, regras);
 //   referencia -- o "tecnologia" dos vídeos de referência do Studio;
-//   exclusivo  -- os do Studio (Liquid Glass, o vidro da Apple; ver liquid-glass.ts).
+//   exclusivo  -- os do Studio (Liquid Glass, o vidro da Apple; ver liquid-glass.ts);
+//   motion     -- os visuais dos presets de motion (motion-presets.ts): cenas
+//                 prontas, montadas sem a IA escrever código.
 // As referências completas (o cartão, os tokens) vivem na API; aqui fica
 // o que a tela e o plano precisam: nome, caráter, quando usar e cores.
 // ============================================================
 
+import { VISUAIS_DE_MOTION } from './motion-presets';
+
 export interface EstiloDeAnimacao {
   chave: string;
   nome: string;
-  familia: 'cartao' | 'identidade' | 'preset' | 'referencia' | 'exclusivo';
+  familia: 'cartao' | 'identidade' | 'preset' | 'referencia' | 'exclusivo' | 'motion';
   /** O visual, em poucas palavras. */
   carater: string;
   /** Quando usar (o tom da fala). */
@@ -620,7 +624,8 @@ export const ESTILOS_DE_ANIMACAO: readonly EstiloDeAnimacao[] = [
       "#FF4D84",
       "#34D15B"
     ]
-  }
+  },
+  ...VISUAIS_DE_MOTION.map((v) => ({ chave: v.chave, nome: v.nome, familia: 'motion' as const, carater: v.carater, quando: v.quando, escuro: v.escuro, fontes: [...v.fontes], cores: [...v.cores] })),
 ];
 
 export const CHAVES_DOS_ESTILOS_DE_ANIMACAO = ESTILOS_DE_ANIMACAO.map((e) => e.chave);

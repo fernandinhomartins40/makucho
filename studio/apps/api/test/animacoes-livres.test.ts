@@ -1,5 +1,5 @@
 // ============================================================
-// A direção LIVRE das animações (o padrão): a IA escreve o design do
+// A direção LIVRE das animações (STUDIO_ANIMACOES_MODO=livre): a IA escreve o design do
 // vídeo, desenha cada cena com ele e a crítica olha os quadros.
 //
 //   - o design da direção chega ao desenho e vira o tema da animação;
@@ -10,7 +10,8 @@
 //   - o estilo que a pessoa escolheu continua valendo sobre tudo.
 // ============================================================
 
-delete process.env.STUDIO_ANIMACOES_MODO;
+// O padrão agora são os presets (animacoes-presets.test.ts): aqui, o modo livre.
+process.env.STUDIO_ANIMACOES_MODO = 'livre';
 delete process.env.STUDIO_RODADAS_DE_CRITICA;
 
 import { problemasDaComposicao, type EditPlanV1, type RelatorioDasAnimacoes } from '@makucho/studio-contracts';
@@ -116,7 +117,7 @@ async function main() {
   const dir = a.pedidos.find((p) => p.chamada === 'dirigir_animacoes')!;
   const desenhos = a.pedidos.filter((p) => p.chamada === 'desenhar_animacao');
   const criticas = a.pedidos.filter((p) => p.chamada === 'criticar_animacao');
-  t('a direção livre é o padrão: uma direção, um desenho por cena e uma crítica por cena', ra.criadas === 3 && !!dir && desenhos.length === 3 && criticas.length === 3);
+  t('a direção livre: uma direção, um desenho por cena e uma crítica por cena', ra.criadas === 3 && !!dir && desenhos.length === 3 && criticas.length === 3);
   t('a direção não recebe catálogo de estilos nem lista de tipos de cartão', dir.sistema.includes('DIRETOR DE CRIAÇÃO') && !dir.sistema.includes('talking-head-recut') && !dir.sistema.includes('GATILHOS'));
   t('a cor da marca vai como informação', dir.usuario.includes('Cor principal da marca: #00aa55'));
   t('o design da direção chega ao desenho (conceito, cores, linguagem, movimento)', desenhos.every((p) => p.sistema.includes('A voz vira onda') && p.sistema.includes('#ff5a3c') && p.sistema.includes('onda sonora') && p.sistema.includes('expo.out')));

@@ -88,6 +88,21 @@ import {
   type DesignDoVideo,
   type ModeloDeIa,
   type Raciocinio,
+  VISUAIS_DE_MOTION,
+  cenaDaComposicao,
+  cenaIncompleta,
+  composicaoDoPreset,
+  layoutDoPreset,
+  lerTextosDaCena,
+  presetDeMotion,
+  textoDaCena,
+  textoDosPresets,
+  textoDosVisuais,
+  visualDeMotion,
+  NOME_DO_FORMATO,
+  type CenaDeMotion,
+  type FormatoDeConteudo,
+  type RegrasDaDirecao,
 } from '@makucho/studio-contracts';
 import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
@@ -357,10 +372,158 @@ function rodadasDeCritica(): number {
   return Number.isFinite(n) ? Math.max(0, Math.min(3, Math.round(n))) : 1;
 }
 
-/** `livre` (o padrão) ou `classico` (estilo do catálogo e cartões por gatilho). */
-export type ModoDasAnimacoes = 'livre' | 'classico';
+/**
+ * `presets` (o padrão: cenas prontas, a IA escolhe e preenche), `livre` (a
+ * IA desenha cada cena em código) ou `classico` (estilo do catálogo e
+ * cartões por gatilho).
+ */
+export type ModoDasAnimacoes = 'presets' | 'livre' | 'classico';
 export function modoDasAnimacoes(): ModoDasAnimacoes {
-  return process.env.STUDIO_ANIMACOES_MODO === 'classico' ? 'classico' : 'livre';
+  const m = process.env.STUDIO_ANIMACOES_MODO;
+  return m === 'classico' || m === 'livre' ? m : 'presets';
+}
+
+// ============================================================
+// AS ANIMAÇÕES POR PRESETS (motion-presets-v1).
+//
+// O jeito que a comunidade usa para sair rápido e bonito (Remotion e
+// HyperFrames com agentes): "template the primitives, data-drive the
+// content". As cenas já existem (motion-presets.ts, 22 cenas em 18
+// visuais); a IA faz UMA chamada pequena por vídeo, sem raciocínio, que
+// escolhe o visual, o preset de cada momento e os textos. O servidor monta
+// cada cena na hora, com cada elemento no segundo da sua palavra.
+//
+// Medido em produção (2026-10), o desenho por código custava ~30 mil
+// tokens e um minuto POR CENA (US$ 0,06). Aqui: ~5 mil tokens por VÍDEO.
+// Trocar o visual, a paleta ou o lugar de uma cena pronta é remontar --
+// sem IA, na hora.
+// ============================================================
+
+const VERSAO_MOTION = 'motion-presets-v1';
+const MAX_TOKENS_DO_MOTION = 5000;
+const TEMPO_DO_MOTION_MS = 120_000;
+
+/** Os limites de ritmo das cenas prontas: curtas (o tempo de ler) e com o rosto em boa parte do vídeo. */
+const REGRAS_DOS_PRESETS: RegrasDaDirecao = { teto: (s) => Math.max(2, Math.min(12, Math.floor(s / 6))), fracaoComGrafico: 0.6, umaTelaCheia: false, duracaoMaximaS: 9 };
+
+/** Que presets cada sinal da fala pede (vai na análise, para a IA partir dela). */
+const PRESETS_DO_SINAL: Record<string, string> = {
+  numero: 'contador, anel, preco, barras, linha',
+  lista: 'lista, ranking',
+  passos: 'passos',
+  comparacao: 'versus, antes_depois',
+  pergunta: 'pergunta',
+  termo: 'termo',
+  enfase: 'impacto, frase, citacao, selo',
+};
+
+/** Os visuais que combinam com o tipo de conteúdo e a luz da imagem (o primeiro é o padrão). */
+const VISUAIS_DO_FORMATO: Record<FormatoDeConteudo, { claro: string[]; escuro: string[] }> = {
+  dica_rapida: { claro: ['mg-pop', 'mg-brutal', 'mg-caderno'], escuro: ['mg-soco', 'mg-y2k', 'mg-neon'] },
+  tutorial: { claro: ['mg-vidro-claro', 'mg-caderno', 'mg-suico'], escuro: ['mg-keynote', 'mg-terminal', 'mg-mercado'] },
+  explicacao: { claro: ['mg-caderno', 'mg-suico', 'mg-vidro-claro'], escuro: ['mg-keynote', 'mg-mercado', 'mg-analogico'] },
+  historia: { claro: ['mg-revista', 'mg-colagem', 'mg-pastel'], escuro: ['mg-cinema', 'mg-analogico', 'mg-luxo'] },
+  opiniao: { claro: ['mg-revista', 'mg-brutal', 'mg-suico'], escuro: ['mg-soco', 'mg-cinema', 'mg-luxo'] },
+  oferta: { claro: ['mg-brutal', 'mg-pop', 'mg-pastel'], escuro: ['mg-soco', 'mg-esporte', 'mg-neon'] },
+  depoimento: { claro: ['mg-pastel', 'mg-revista', 'mg-colagem'], escuro: ['mg-luxo', 'mg-analogico', 'mg-cinema'] },
+};
+
+function visuaisSugeridos(p: PerfilDoVideo): string[] {
+  const doFormato = VISUAIS_DO_FORMATO[p.formato] ?? VISUAIS_DO_FORMATO.explicacao;
+  return p.receita.fundo === 'claro' ? doFormato.claro : doFormato.escuro;
+}
+
+/** O prefixo fixo do pedido (igual em todo vídeo: entra no cache de contexto do provedor). */
+function sistemaDoMotion(): string {
+  return `Você é editor de motion graphics de vídeos verticais (Reels, TikTok, Shorts) de alguém falando para a câmera. As cenas animadas JÁ EXISTEM, prontas e testadas: você escolhe o VISUAL do vídeo e, para cada momento que pede, o PRESET e os TEXTOS. Você não escreve código nem descreve animação -- cada elemento já entra sozinho no segundo em que a palavra dele é dita.
+
+VISUAIS (um para o vídeo inteiro, pelo tom da fala e pela luz da imagem):
+${textoDosVisuais()}
+
+PRESETS (chave [layouts em que funciona]: quando usar. Campos; * = obrigatório):
+${textoDosPresets()}
+
+COMO ESCOLHER:
+- Cena só onde a fala tem o que o preset pede (número dito, enumeração, passos, dois lados, pergunta, termo, oferta, frase de peso). Fala corrida sem nada disso: poucas cenas de impacto ou frase, ou nenhuma. Zero cenas é resposta válida.
+- Ritmo: comece cedo (a primeira cena nos primeiros 3 a 6 s, se a fala tiver o que mostrar); varie o preset (nunca o mesmo duas vezes seguidas) e o layout. tela_cheia só nos picos.
+- layout: cartao = sobre o vídeo, fora do rosto (leve, rápido); meio_a_meio = a cena ocupa metade da tela ("lado": "cima" = cena em cima e rosto embaixo, ou "baixo"); pip = a cena toma a tela e o rosto vai para uma janela num canto ("canto": sup-esq|sup-dir|inf-esq|inf-dir) -- para lista, gráfico, passos e conversa; tela_cheia = a cena toma o quadro.
+- Duração de 3 a 7 s (o tempo de ler o que aparece); 1 s livre entre duas cenas; não entre nos ESPAÇOS RESERVADOS.
+
+REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
+- "ancora": de 3 a 8 palavras SEGUIDAS, copiadas da fala, onde a cena começa.
+- Fidelidade: só números, nomes, preços e itens DITOS. Números em algarismos, exatos como foram ditos ("1.500", "87", "2,5"), sem arredondar nem completar. Nada inventado.
+- Textos curtos em português: titulo até 6 palavras (frase e citação até 12), detalhe até 10, cada item até 4, kicker de 1 a 3.
+- "enfase": 1 ou 2 palavras do título que carregam o sentido (ficam marcadas).
+- "prioridade": 1 = sem a cena o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
+
+Responda SÓ com JSON, sem texto fora dele:
+{"visual":"mg-...","tom":"o que quem assiste deve sentir","cenas":[{"preset":"contador","ancora":"palavras exatas da fala","inicioS":12.3,"fimS":17.0,"layout":"meio_a_meio","lado":"cima","textos":{"numero":"87","unidade":"%","titulo":"...","enfase":"..."},"ideia":"o que a cena mostra","prioridade":1}]}
+Instantes em segundos do vídeo final, iguais aos da fala.`;
+}
+
+/** A fala em frases com o instante (uma linha por frase: metade dos tokens da lista palavra a palavra). */
+function falaEmFrases(palavras: ReadonlyArray<{ s: number; texto: string }>): string {
+  const linhas: string[] = [];
+  let atual: Array<{ s: number; texto: string }> = [];
+  palavras.slice(0, 2000).forEach((p, i) => {
+    const anterior = palavras[i - 1];
+    if (atual.length && (atual.length >= 10 || (anterior && p.s - anterior.s > 0.9))) {
+      linhas.push(`${atual[0]!.s.toFixed(1)} ${atual.map((x) => x.texto).join(' ')}`);
+      atual = [];
+    }
+    atual.push(p);
+  });
+  if (atual.length) linhas.push(`${atual[0]!.s.toFixed(1)} ${atual.map((x) => x.texto).join(' ')}`);
+  return linhas.join('\n');
+}
+
+/** A análise do vídeo, no vocabulário dos presets (curta: o que a fala tem e quando). */
+function perfilParaMotion(p: PerfilDoVideo): string {
+  const rosto = p.olhar ? { em_cima: 'rosto em cima', no_centro: 'rosto no centro', embaixo: 'rosto embaixo', sem_rosto: 'sem rosto' }[p.olhar.rosto] : '';
+  return [
+    `ANÁLISE DO VÍDEO: ${p.duracaoS.toFixed(1)} s; ${NOME_DO_FORMATO[p.formato]}; fala ${p.ritmo}; energia ${p.energia}; imagem ${p.receita.fundo === 'claro' ? 'clara' : 'escura'}${rosto ? `, ${rosto}` : ''}${p.olhar?.ambiente ? ` (${p.olhar.ambiente})` : ''}.`,
+    p.sinais.length
+      ? `O que a fala tem de mostrável (segundo, sinal: presets que servem):\n${p.sinais
+          .slice(0, 20)
+          .map((s) => `${s.s.toFixed(1)} ${s.tipo} "${s.trecho}": ${PRESETS_DO_SINAL[s.tipo] ?? ''}`)
+          .join('\n')}`
+      : 'A fala não tem número, lista, passos nem comparação: poucas cenas (impacto, frase, citação) ou nenhuma.',
+    `Por volta de ${p.receita.cenasSugeridas} ${p.receita.cenasSugeridas === 1 ? 'cena' : 'cenas'} (ponto de partida).${p.receita.ladoDaCena ? ` No meio_a_meio, "lado": "${p.receita.ladoDaCena}" (fora do rosto).` : ''}`,
+    `Visuais que combinam: ${visuaisSugeridos(p).join(', ')}.`,
+  ].join('\n');
+}
+
+const semAcento = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+/**
+ * O segundo em que a âncora é dita: a sequência das primeiras palavras dela
+ * na fala, a ocorrência mais perto do instante que a IA estimou. `null`
+ * quando não está na fala (a conferência descarta depois).
+ */
+function instanteDaAncora(ancora: string, palavras: ReadonlyArray<{ s: number; texto: string }>, dica: number): number | null {
+  const alvo = ancora.split(/\s+/).map(semAcento).filter(Boolean).slice(0, 3);
+  if (!alvo.length) return null;
+  const igual = (a: string, b: string) => a === b || (a.length >= 5 && b.length >= 5 && a.slice(0, 5) === b.slice(0, 5));
+  let melhor: number | null = null;
+  for (let i = 0; i + alvo.length <= palavras.length; i += 1) {
+    if (!alvo.every((w, k) => igual(semAcento(palavras[i + k]!.texto), w))) continue;
+    const s = palavras[i]!.s;
+    if (melhor === null || Math.abs(s - dica) < Math.abs(melhor - dica)) melhor = s;
+  }
+  return melhor === null ? null : Math.max(0, Math.round((melhor - 0.15) * 100) / 100);
+}
+
+/** Uma cena pronta para entrar no vídeo. */
+interface CenaPronta {
+  inicioS: number;
+  fimS: number;
+  cena: CenaDeMotion;
+  ideia: string;
 }
 
 /** Como criar as animações (a bancada de comparação roda o mesmo vídeo em várias). */
@@ -788,6 +951,148 @@ export class AnimacoesDaFalaService {
   }
 
   /**
+   * As animações por presets: UMA chamada pequena escolhe o visual, as
+   * cenas prontas e os textos. A conferência é a mesma das outras direções
+   * (âncora na fala, números ditos, espaço reservado, respiro, teto).
+   */
+  private async dirigirPresets(
+    workspaceId: string,
+    projectId: string,
+    plano: EditPlanV1,
+    palavras: Array<{ s: number; texto: string }>,
+    duracaoS: number,
+    perfil: PerfilDoVideo,
+    /** O visual que a pessoa escolheu para o projeto (a IA não escolhe outro). */
+    fixo?: string,
+  ): Promise<{ visual: string; tom?: string; cenas: CenaPronta[]; pedidos: number; cortada: boolean; descartados: CartaoDescartado[] }> {
+    const reservadas = janelasReservadasDoPlano(plano);
+    const entendimento = await this.entendimento(projectId);
+    const cor = await Promise.resolve()
+      .then(() => this.animacoes.corDaMarca(workspaceId))
+      .catch(() => null);
+    const marca = cor && cor.toLowerCase() !== CORES_PADRAO_DA_MARCA.primary.toLowerCase() ? cor : null;
+    const usuario = [
+      perfilParaMotion(perfil),
+      fixo ? `VISUAL JÁ ESCOLHIDO PELA PESSOA: ${fixo} (use este em "visual").` : '',
+      marca ? `Cor da marca: ${marca} (pese na escolha do visual).` : '',
+      entendimento ? `Assunto: "${entendimento.topic}"; para ${entendimento.audience}; promessa: "${entendimento.promise}".` : '',
+      `No máximo ${REGRAS_DOS_PRESETS.teto(duracaoS)} cenas.`,
+      `ESPAÇOS RESERVADOS (não entre): ${reservadas.length ? reservadas.map((r) => `${r.inicioS.toFixed(1)}-${r.fimS.toFixed(1)}s ${r.motivo}`).join('; ') : 'nenhum'}.`,
+      `FALA (segundo em que a frase começa, frase):\n${falaEmFrases(palavras)}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const r = await this.ai.chamar({
+      workspaceId,
+      projectId,
+      chamada: 'montar_motion',
+      sistema: sistemaDoMotion(),
+      usuario,
+      maxTokens: MAX_TOKENS_DO_MOTION,
+      promptVersion: VERSAO_MOTION,
+      semCache: true,
+      tempoMaximoMs: TEMPO_DO_MOTION_MS,
+    });
+    const lida = lerDirecao(r.texto);
+    const pedido = /"visual"\s*:\s*"([^"]+)"/.exec(r.texto)?.[1];
+    const visual = fixo ?? (visualDeMotion(pedido) ? pedido! : visuaisSugeridos(perfil)[0]!);
+    const descartados: CartaoDescartado[] = [];
+    // A cena vai à conferência com o tipo "preset#índice": o que volta aceito
+    // reencontra os textos e o lugar que a IA pediu.
+    const brutos = lida.cartoes.flatMap((x, i) => {
+      const preset = presetDeMotion(String(x.preset ?? x.tipo ?? ''))?.chave;
+      const textos = lerTextosDaCena(x.textos ?? x.conteudo);
+      const dica = Number(x.inicioS);
+      const falta = cenaIncompleta(preset ?? String(x.preset ?? ''), textos);
+      if (!preset || falta) {
+        descartados.push({ inicioS: Number.isFinite(dica) ? dica : 0, tipo: String(x.preset ?? '?').slice(0, 40), motivo: falta ?? 'preset desconhecido' });
+        return [];
+      }
+      const inicio = instanteDaAncora(String(x.ancora ?? ''), palavras, Number.isFinite(dica) ? dica : 0) ?? dica;
+      const pedida = Number(x.fimS) - dica;
+      const dur = Number.isFinite(pedida) && pedida >= 2.5 ? Math.min(REGRAS_DOS_PRESETS.duracaoMaximaS, pedida) : 4.5;
+      return [{ ...x, tipo: `${preset}#${i}`, inicioS: inicio, fimS: inicio + dur, conteudo: textoDaCena(textos), gatilho: x.ancora, intencao: x.ideia }];
+    });
+    const conferidos = conferirCartoes(brutos, { duracaoS, palavras, reservadas, regras: REGRAS_DOS_PRESETS });
+    const cenas = conferidos.aceitos.map((a): CenaPronta => {
+      const [preset, i] = a.tipo.split('#');
+      const x = lida.cartoes[Number(i)] ?? {};
+      const layout = layoutDoPreset(preset!, a.layout);
+      return {
+        inicioS: a.inicioS,
+        fimS: a.fimS,
+        ideia: a.intencao,
+        cena: {
+          preset: preset!,
+          textos: lerTextosDaCena(x.textos ?? x.conteudo),
+          layout,
+          ...(layout === 'meio_a_meio' ? { lado: x.lado === 'baixo' || x.lado === 'cima' ? x.lado : (perfil.receita.ladoDaCena ?? 'cima') } : {}),
+          ...(layout === 'pip' ? { canto: a.canto ?? 'inf-dir' } : {}),
+        },
+      };
+    });
+    return {
+      visual,
+      ...(lida.tom ? { tom: lida.tom } : {}),
+      cenas,
+      pedidos: lida.cartoes.length,
+      cortada: lida.cortada,
+      descartados: [...descartados, ...conferidos.descartados.map((d) => ({ ...d, tipo: d.tipo.split('#')[0]! }))],
+    };
+  }
+
+  /** A animação de uma cena pronta: o preset montado no visual, no tempo da fala do trecho. */
+  private montarCena(c: CenaPronta, visual: string, palavras: ReadonlyArray<{ s: number; texto: string }>, paleta?: string): { composicao: ComposicaoHtml; duracaoMs: number } {
+    const duracaoMs = Math.round((c.fimS - c.inicioS) * 1000);
+    const doTrecho = palavras.filter((p) => p.s >= c.inicioS - 0.05 && p.s < c.fimS).map((p) => ({ s: Math.max(0, p.s - c.inicioS), texto: p.texto }));
+    const composicao = composicaoDoPreset(c.cena, visual, duracaoMs / 1000, doTrecho, { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: c.ideia });
+    const problemas = problemasDaComposicao(composicao);
+    if (problemas.length) throw new Error(problemas.slice(0, 3).join('; '));
+    return { composicao, duracaoMs };
+  }
+
+  /**
+   * Uma cena pronta para um pedido ("Peça à IA" ou "muda o texto"): uma
+   * chamada pequena escolhe o preset e os textos do trecho. `atual` é a cena
+   * que já está lá, quando é uma edição em cima dela.
+   */
+  private async cenaPorPedido(
+    workspaceId: string,
+    projectId: string,
+    palavras: ReadonlyArray<{ s: number; texto: string }>,
+    m: { inicioS: number; fimS: number; layout: LayoutDaAnimacao; lado?: 'cima' | 'baixo'; canto?: CantoDoPip },
+    pedido: string,
+    atual?: CenaDeMotion,
+  ): Promise<CenaDeMotion> {
+    const fala = palavras.filter((p) => p.s >= m.inicioS - 1 && p.s < m.fimS + 1).map((p) => p.texto).join(' ');
+    const r = await this.ai.chamar({
+      workspaceId,
+      projectId,
+      chamada: 'montar_motion',
+      sistema: `Você escolhe UMA cena de motion graphics pronta (um preset) e os textos dela, para um trecho de um vídeo vertical de alguém falando. Não escreve código.
+PRESETS (chave [layouts]: quando usar. Campos; * = obrigatório):
+${textoDosPresets()}
+Textos curtos em português e fiéis à fala: só números, nomes e itens DITOS (números em algarismos, exatos). titulo até 6 palavras (frase/citação até 12), detalhe até 10, itens até 4 palavras cada.
+Responda SÓ com JSON: {"preset":"chave","textos":{...}}`,
+      usuario: `${atual ? `CENA ATUAL (edite em cima dela; mude só o que o pedido pede): ${JSON.stringify({ preset: atual.preset, textos: atual.textos })}\n` : ''}PEDIDO: ${pedido}\nFala do trecho: "${fala.slice(0, 1500)}"`,
+      maxTokens: 1200,
+      promptVersion: VERSAO_MOTION,
+      semCache: true,
+      tempoMaximoMs: 60_000,
+    });
+    const j = lerJson(r.texto) as Record<string, unknown>;
+    const preset = presetDeMotion(String(j.preset ?? ''))?.chave ?? atual?.preset;
+    const textos = lerTextosDaCena(j.textos);
+    if (!preset) throw new Error('a IA não escolheu uma cena do catálogo');
+    const falta = cenaIncompleta(preset, textos);
+    if (falta) throw new Error(falta);
+    const inventados = numerosInventados(textoDaCena(textos), `${fala} ${atual ? textoDaCena(atual.textos) : ''} ${pedido}`);
+    if (inventados.length) throw new Error(`a cena mostraria ${inventados.slice(0, 3).join(', ')}, que não foi dito`);
+    const layout = layoutDoPreset(preset, m.layout);
+    return { preset, textos, layout, ...(layout === 'meio_a_meio' ? { lado: m.lado ?? 'cima' } : {}), ...(layout === 'pip' ? { canto: m.canto ?? 'inf-dir' } : {}) };
+  }
+
+  /**
    * Escreve e confere o cartão de um momento (uma correção, se precisar).
    * `base`: a animação atual, quando é uma edição em cima dela.
    */
@@ -1066,8 +1371,23 @@ ${fala}${
       ...(tecnicaDeCena(p.tecnica) ? { tecnica: tecnicaDeCena(p.tecnica)!.chave } : {}),
       palavras: palavras.filter((x) => x.s >= inicioS && x.s < fimS),
     };
-    const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
     const paleta = p.paleta ?? paletaDoPlano(plano);
+    // Cenas prontas: o visual pedido, o do vídeo ou (no modo presets, sem
+    // estilo de catálogo nem design próprio no vídeo) o do projeto.
+    const doVideo = estiloDoPlano(plano);
+    const visualMotion =
+      visualDeMotion(p.estilo)?.chave ??
+      (!p.estilo && doVideo?.familia === 'motion' ? doVideo.chave : undefined) ??
+      (!p.estilo && !doVideo && !design && modoDasAnimacoes() === 'presets'
+        ? (visualDeMotion((await this.prisma.project.findUnique({ where: { id: projectId }, select: { animationStyle: true } }).catch(() => null))?.animationStyle)?.chave ?? 'mg-keynote')
+        : undefined);
+    if (visualMotion) {
+      const pedido = [p.tipo, p.ideia, p.conteudo, p.conceito].filter(Boolean).join('. ');
+      const cena = await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido);
+      const r = this.montarCena({ inicioS, fimS, cena, ideia: m.ideia }, visualMotion, palavras, paleta);
+      return { ...r, ...(estiloDeAnimacao(visualMotion) ? { estilo: estiloDeAnimacao(visualMotion)! } : {}) };
+    }
+    const serie = [...this.momentosDoPlano(plano, palavras).map((x) => x.momento), m];
     // Quem pediu está esperando na tela: uma rodada de crítica, não duas.
     const r = await this.escrever(workspaceId, projectId, m, visual, serie, { ...(paleta ? { paleta } : {}), rodadas: Math.min(1, rodadasDeCritica()) });
     return { composicao: r.composicao, duracaoMs: r.duracaoMs, ...(visual.estilo ? { estilo: visual.estilo } : {}) };
@@ -1096,6 +1416,28 @@ ${fala}${
     }
     if (o.canto && m.layout === 'pip') m.canto = o.canto;
     if (o.lado && m.layout === 'meio_a_meio') m.lado = o.lado;
+
+    // Cena pronta (ou pedido de um visual de motion): remonta. Outro visual,
+    // paleta ou lugar sai na hora, sem IA; um pedido em texto custa uma
+    // chamada pequena que troca só o preset ou os textos.
+    const cenaAtual = cenaDaComposicao(atual);
+    const visualPedido = visualDeMotion(o.estilo);
+    if (visualPedido || (cenaAtual && !o.estilo)) {
+      const visual = visualPedido?.chave ?? visualDeMotion(atual.estilo)?.chave ?? 'mg-keynote';
+      const paleta = o.paleta === '' ? undefined : (o.paleta ?? atual.paleta);
+      const pedido = o.pedido ?? (cenaAtual ? '' : `Mostre: ${m.ideia}. ${m.conteudo}`);
+      const cena = pedido ? await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido, cenaAtual ?? undefined) : cenaAtual!;
+      const layout = layoutDoPreset(cena.preset, m.layout);
+      const lugar: CenaDeMotion = {
+        preset: cena.preset,
+        textos: cena.textos,
+        layout,
+        ...(layout === 'meio_a_meio' ? { lado: m.lado ?? cena.lado ?? 'cima' } : {}),
+        ...(layout === 'pip' ? { canto: m.canto ?? cena.canto ?? 'inf-dir' } : {}),
+      };
+      const r = this.montarCena({ inicioS: m.inicioS, fimS: m.fimS, cena: lugar, ideia: m.ideia }, visual, palavras, paleta);
+      return { ...r, ...(estiloDeAnimacao(visual) ? { estilo: estiloDeAnimacao(visual)! } : {}) };
+    }
     // Uma animação da direção livre (tem tema, não tem estilo) continua no
     // design do vídeo -- a não ser que a pessoa peça um estilo do catálogo.
     const doCatalogo = estiloDeAnimacao(o.estilo) ?? estiloDeAnimacao(atual.estilo);
@@ -1212,6 +1554,12 @@ ${fala}${
       const paletaFixa = coresDaPaleta(projeto?.animationPalette) ? projeto!.animationPalette! : undefined;
       const fixo = estiloDeAnimacao(projeto?.animationStyle);
 
+      // Presets por padrão (ou quando a pessoa escolheu um visual de motion):
+      // uma chamada pequena e as cenas prontas.
+      if (fixo?.familia === 'motion' || ((opcoes.modo ?? modoDasAnimacoes()) === 'presets' && !fixo)) {
+        return await this.criarComPresets(sistema, projectId, plano, palavras, duracaoS, relatorio, registrar, aoAvancar, aoDirigir, fixo?.chave, paletaFixa);
+      }
+
       // Direção livre por padrão. O estilo que a pessoa escolheu para o
       // projeto vale sobre ela: aí é o estilo do catálogo, por cartões.
       const livre = (opcoes.modo ?? modoDasAnimacoes()) === 'livre' && !fixo;
@@ -1300,28 +1648,9 @@ ${fala}${
       });
       if (!ops.length) return { criadas: 0, nota: await registrar(`Sem animações: nenhuma passou na conferência (${falhas.join(' | ').slice(0, 380)}).`) };
 
-      // O plano pode ter mudado enquanto a IA escrevia (a montagem salva
-      // antes): aplica sobre o atual.
-      const agora = (await this.planos.atual(sistema, projectId)).document;
-      // O zoom de um trecho coberto pela animação (tela cheia, pip) não
-      // aparece -- ou sai recortado na janela: tira.
-      const semZoom = zoomsEscondidos(agora, escritos).map((clipId): TimelineOperation => ({ op: 'definir_efeito', clipId, effect: 'nenhum' }));
-      relatorio.zoomsTirados = semZoom.length;
-      // A legenda acompanha o tema: a palavra falada na cor de destaque dele
-      // (só se a pessoa não escolheu uma cor).
-      const tema = temaDaAnimacao(estilo?.chave, paletaFixa, design?.tema);
-      const res = aplicarComando(agora, [...ops, ...semZoom], {});
-      if (!res.aplicadas) return { criadas: 0, nota: await registrar(`Sem animações: ${res.ignoradas.join('; ').slice(0, 380)}`) };
-      if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
-        const comLegenda = aplicarComando(res.plan, [{ op: 'configurar_legenda', highlightColor: tema.destaque }], {});
-        if (comLegenda.aplicadas) res.plan = comLegenda.plan;
-      }
-      await this.planos.salvar(sistema, projectId, res.plan, 'ai');
+      const salvo = await this.salvarAnimacoes(sistema, projectId, ops, escritos, temaDaAnimacao(estilo?.chave, paletaFixa, design?.tema), relatorio);
+      if (salvo) return { criadas: 0, nota: await registrar(`Sem animações: ${salvo.slice(0, 380)}`) };
       aoAvancar(100);
-      for (const o of ops) {
-        if (o.op !== 'adicionar_midia' || !o.composicao) continue;
-        void this.animacoes.preparar(sistema, projectId, o.composicao, o.durationMs).catch((e) => this.log.warn(`vídeo da animação não pedido: ${e instanceof Error ? e.message : e}`));
-      }
       const criadas = ops.length;
       const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');
       const saiu = direcao.descartados.length + falhas.length;
@@ -1332,6 +1661,108 @@ ${fala}${
       relatorio.erro = motivo.slice(0, 400);
       return { criadas: 0, nota: await registrar(`Sem animações: ${motivo.slice(0, 400)}`) };
     }
+  }
+
+  /**
+   * Põe as animações no plano ATUAL (ele pode ter mudado enquanto a IA
+   * trabalhava), tira o zoom que ficaria escondido sob elas, pinta a
+   * palavra da legenda na cor do tema, salva e pede o vídeo de cada uma.
+   * Devolve o motivo, se nada entrou.
+   */
+  private async salvarAnimacoes(
+    sistema: TenantContext,
+    projectId: string,
+    ops: TimelineOperation[],
+    cobrem: ReadonlyArray<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>>,
+    tema: ReturnType<typeof temaDaAnimacao>,
+    relatorio: RelatorioDasAnimacoes,
+  ): Promise<string | null> {
+    const agora = (await this.planos.atual(sistema, projectId)).document;
+    // O zoom de um trecho coberto pela animação (tela cheia, pip) não
+    // aparece -- ou sai recortado na janela: tira.
+    const semZoom = zoomsEscondidos(agora, cobrem).map((clipId): TimelineOperation => ({ op: 'definir_efeito', clipId, effect: 'nenhum' }));
+    relatorio.zoomsTirados = semZoom.length;
+    const res = aplicarComando(agora, [...ops, ...semZoom], {});
+    if (!res.aplicadas) return res.ignoradas.join('; ');
+    // A legenda acompanha o tema: a palavra falada na cor de destaque dele
+    // (só se a pessoa não escolheu uma cor).
+    if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
+      const comLegenda = aplicarComando(res.plan, [{ op: 'configurar_legenda', highlightColor: tema.destaque }], {});
+      if (comLegenda.aplicadas) res.plan = comLegenda.plan;
+    }
+    await this.planos.salvar(sistema, projectId, res.plan, 'ai');
+    for (const o of ops) {
+      if (o.op !== 'adicionar_midia' || !o.composicao) continue;
+      void this.animacoes.preparar(sistema, projectId, o.composicao, o.durationMs).catch((e) => this.log.warn(`vídeo da animação não pedido: ${e instanceof Error ? e.message : e}`));
+    }
+    return null;
+  }
+
+  /** A montagem por presets: perfil, UMA chamada de IA, cenas montadas na hora. */
+  private async criarComPresets(
+    sistema: TenantContext,
+    projectId: string,
+    plano: EditPlanV1,
+    palavras: Array<{ s: number; texto: string }>,
+    duracaoS: number,
+    relatorio: RelatorioDasAnimacoes,
+    registrar: (nota: string) => Promise<string>,
+    aoAvancar: (pct: number) => void,
+    aoDirigir: (ocupados: Array<{ inicioMs: number; fimMs: number }>) => void,
+    fixo?: string,
+    paleta?: string,
+  ): Promise<{ criadas: number; nota: string }> {
+    let direcao: Awaited<ReturnType<AnimacoesDaFalaService['dirigirPresets']>>;
+    try {
+      const perfil = await this.perfilDoProjeto(sistema.workspaceId, projectId, plano, palavras);
+      relatorio.analise = resumoDoPerfil(perfil);
+      aoAvancar(10);
+      direcao = await this.dirigirPresets(sistema.workspaceId, projectId, plano, palavras, duracaoS, perfil, fixo);
+    } catch (e) {
+      aoDirigir([]);
+      throw e;
+    }
+    const visual = visualDeMotion(direcao.visual)!;
+    Object.assign(relatorio, {
+      estilo: `Motion: ${visual.nome}`,
+      ...(direcao.tom ? { tom: direcao.tom } : {}),
+      ...(direcao.cortada ? { cortada: true } : {}),
+      pedidos: direcao.pedidos,
+      aceitos: direcao.cenas.map((c) => ({ inicioS: c.inicioS, fimS: c.fimS, tipo: presetDeMotion(c.cena.preset)?.nome ?? c.cena.preset, layout: c.cena.layout, gatilho: palavras.filter((p) => p.s >= c.inicioS && p.s < c.fimS).map((p) => p.texto).join(' ').slice(0, 80) })),
+      descartados: direcao.descartados,
+    });
+    aoDirigir(direcao.cenas.map((c) => ({ inicioMs: Math.round(c.inicioS * 1000), fimMs: Math.round(c.fimS * 1000) })));
+    aoAvancar(60);
+    if (!direcao.cenas.length) {
+      const nota = direcao.pedidos
+        ? `Sem animações: a IA sugeriu ${direcao.pedidos}, mas nenhuma passou na conferência (toque para ver os motivos).`
+        : 'Sem animações: a IA achou que este vídeo fica melhor só com o rosto e a fala.';
+      return { criadas: 0, nota: await registrar(nota) };
+    }
+    const ops: TimelineOperation[] = [];
+    const falhas: string[] = [];
+    const cobrem: Array<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>> = [];
+    for (const c of direcao.cenas) {
+      const nome = presetDeMotion(c.cena.preset)?.nome ?? c.cena.preset;
+      try {
+        const { composicao, duracaoMs } = this.montarCena(c, visual.chave, palavras, paleta);
+        ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: Math.round(c.inicioS * 1000), durationMs: duracaoMs });
+        cobrem.push({ inicioS: c.inicioS, fimS: c.fimS, layout: composicao.layout });
+        relatorio.escrita.push({ inicioS: c.inicioS, tipo: nome, ok: true });
+      } catch (e) {
+        const motivo = e instanceof Error ? e.message : String(e);
+        falhas.push(`${c.inicioS.toFixed(0)}s: ${motivo}`);
+        relatorio.escrita.push({ inicioS: c.inicioS, tipo: nome, ok: false, detalhe: motivo.slice(0, 200) });
+      }
+    }
+    if (!ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
+    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio);
+    if (naoSalvo) return { criadas: 0, nota: await registrar(`Sem animações: ${naoSalvo.slice(0, 380)}`) };
+    aoAvancar(100);
+    const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');
+    const saiu = direcao.descartados.length + falhas.length;
+    const nota = `A IA criou ${ops.length} ${ops.length === 1 ? 'animação' : 'animações'} no visual ${visual.nome} (em ${quando})${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
+    return { criadas: ops.length, nota: await registrar(nota) };
   }
 }
 

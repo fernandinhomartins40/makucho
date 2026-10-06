@@ -25,6 +25,7 @@ import { IconeCheck, IconeIA } from '../icones';
 
 const FILTROS: Array<{ id: 'todos' | EstiloDeAnimacao['familia']; nome: string }> = [
   { id: 'todos', nome: 'Todos' },
+  { id: 'motion', nome: 'Motion' },
   { id: 'exclusivo', nome: 'Exclusivos' },
   { id: 'cartao', nome: 'Cartões' },
   { id: 'identidade', nome: 'Identidades' },
@@ -46,14 +47,12 @@ interface Props {
 
 export function EscolhaDoEstilo({ valor, onValor, paleta, onPaleta }: Props) {
   const [filtro, setFiltro] = useState<(typeof FILTROS)[number]['id']>('todos');
-  // Os exclusivos (Liquid Glass) vêm primeiro: são o diferencial do Studio.
-  const lista = useMemo(
-    () =>
-      ESTILOS_DE_ANIMACAO.filter((e) => filtro === 'todos' || e.familia === filtro).sort(
-        (a, b) => Number(b.familia === 'exclusivo') - Number(a.familia === 'exclusivo'),
-      ),
-    [filtro],
-  );
+  // Os visuais de motion vêm primeiro (cenas prontas: rápidas e baratas),
+  // depois os exclusivos (Liquid Glass), depois o resto do catálogo.
+  const lista = useMemo(() => {
+    const ordem = (e: EstiloDeAnimacao) => (e.familia === 'motion' ? 0 : e.familia === 'exclusivo' ? 1 : 2);
+    return ESTILOS_DE_ANIMACAO.filter((e) => filtro === 'todos' || e.familia === filtro).sort((a, b) => ordem(a) - ordem(b));
+  }, [filtro]);
   const atual = estiloDeAnimacao(valor);
 
   return (
