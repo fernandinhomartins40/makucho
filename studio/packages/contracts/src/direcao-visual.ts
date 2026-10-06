@@ -25,7 +25,7 @@
 
 import type { EditPlanV1 } from './edit-plan';
 import { agendaDoPlano } from './agenda';
-import { tecnicaDeCena } from './tecnicas-de-cena';
+import { esteticaDoVideo, tecnicaDeCena } from './tecnicas-de-cena';
 import { temaLivre, type TemaDaAnimacao } from './tema-da-animacao';
 
 export interface PalavraNoTempo {
@@ -78,6 +78,8 @@ export interface LeituraDaDirecao {
   /** Direção livre: a ideia visual do vídeo e o design que a IA escreveu. */
   conceito?: string;
   design?: Record<string, unknown>;
+  /** A estética escolhida para o vídeo (ESTETICAS). */
+  estetica?: string;
 }
 
 /**
@@ -94,10 +96,12 @@ export interface DesignDoVideo {
   /** Energia, eases, durações, a assinatura do movimento -- texto livre da IA. */
   movimento: string;
   tema: TemaDaAnimacao;
+  /** A estética do vídeo (ESTETICAS). */
+  estetica?: string;
 }
 
 /** O design do vídeo a partir da leitura da direção (sempre devolve um: o que faltar cai no padrão). */
-export function designDoVideo(lida: Pick<LeituraDaDirecao, 'conceito' | 'tom' | 'design'>): DesignDoVideo {
+export function designDoVideo(lida: Pick<LeituraDaDirecao, 'conceito' | 'tom' | 'design' | 'estetica'>): DesignDoVideo {
   const d = lida.design ?? {};
   const texto = (v: unknown, teto: number) => (typeof v === 'string' ? v : v ? JSON.stringify(v) : '').slice(0, teto);
   // O design vem em campos (referência, motivo, fundo, fichas de movimento,
@@ -139,6 +143,7 @@ export function designDoVideo(lida: Pick<LeituraDaDirecao, 'conceito' | 'tom' | 
     linguagem: linguagem.slice(0, 1800),
     movimento: movimento.slice(0, 1200),
     tema: temaLivre(d),
+    ...(esteticaDoVideo(String(lida.estetica ?? d.estetica ?? '')) ? { estetica: esteticaDoVideo(String(lida.estetica ?? d.estetica))!.chave } : {}),
   };
 }
 
@@ -162,6 +167,8 @@ export interface PlanoDaCena {
   papel?: string;
   /** O elemento que domina o quadro. */
   foco?: string;
+  /** O componente pronto do catálogo de que a cena parte. */
+  componente?: string;
   /** As palavras que carregam o sentido (1 ou 2). */
   enfase: string[];
   batidas: BatidaDaCena[];
@@ -203,7 +210,9 @@ export function ancorarBatidas(brutas: unknown, palavras: readonly PalavraNoTemp
 
 /** O plano em texto, para quem desenha a cena (e para quem a critica). */
 export function textoDoPlano(p: PlanoDaCena): string {
-  const linhas = [`Papel no vídeo: ${p.papel || 'construção'}.${p.foco ? ` Foco do quadro: ${p.foco}.` : ''}${p.enfase.length ? ` Palavras de ênfase: ${p.enfase.join(', ')}.` : ''}`];
+  const linhas = [
+    `Papel no vídeo: ${p.papel || 'construção'}.${p.foco ? ` Foco do quadro: ${p.foco}.` : ''}${p.enfase.length ? ` Palavras de ênfase: ${p.enfase.join(', ')}.` : ''}${p.componente ? ` Parta do componente pronto "${p.componente}" (data-hf).` : ''}`,
+  ];
   if (p.batidas.length) {
     linhas.push('BATIDAS (segundo DENTRO da cena, medido na fala pelo servidor -- use estes instantes na `tl`):');
     for (const b of p.batidas) linhas.push(`  ${b.t === null ? 'sem palavra na fala: encaixe entre as vizinhas' : `${b.t.toFixed(2)} s`}${b.palavra ? `  "${b.palavra}"` : '  (abertura)'}  ->  ${b.acao}`);
@@ -219,6 +228,7 @@ export function textoDoDesign(d: DesignDoVideo): string {
     `DESIGN DESTE VÍDEO (escrito pela direção; todas as cenas seguem):`,
     d.conceito ? `Conceito: ${d.conceito}` : '',
     d.tom ? `Tom: ${d.tom}` : '',
+    d.estetica && esteticaDoVideo(d.estetica) ? `Estética do vídeo: ${esteticaDoVideo(d.estetica)!.nome} -- ${esteticaDoVideo(d.estetica)!.gramatica}` : '',
     `Cores (já nas variáveis de CSS): fundo ${t.fundo} var(--cor-fundo), texto ${t.texto} var(--cor-texto), apagado ${t.apagado} var(--cor-apagado), destaques ${t.destaque} var(--cor-destaque), ${t.destaque2} var(--cor-destaque-2), ${t.destaque3} var(--cor-destaque-3).`,
     `Fontes: título ${t.fonteTitulo} var(--fonte-titulo), texto ${t.fonteTexto} var(--fonte-texto).`,
     d.linguagem ? `Linguagem visual: ${d.linguagem}` : '',
@@ -280,6 +290,7 @@ export function lerDirecao(texto: string): LeituraDaDirecao {
         ...(typeof j.estilo === 'string' ? { estilo: j.estilo } : {}),
         ...(typeof j.tom === 'string' ? { tom: j.tom } : {}),
         ...(typeof j.conceito === 'string' ? { conceito: j.conceito } : {}),
+        ...(typeof j.estetica === 'string' ? { estetica: j.estetica } : {}),
         ...(j.design && typeof j.design === 'object' ? { design: j.design as Record<string, unknown> } : {}),
         cartoes: lista.filter((x) => x && typeof x === 'object'),
         cortada: false,
@@ -557,6 +568,7 @@ export function conferirCartoes(
               tecnica: tecnicaDeCena(String(x.tecnica ?? ''))?.chave ?? 'livre',
               ...(typeof x.papel === 'string' && x.papel.trim() ? { papel: x.papel.trim().slice(0, 30) } : {}),
               ...(typeof x.foco === 'string' && x.foco.trim() ? { foco: x.foco.trim().slice(0, 140) } : {}),
+              ...(typeof x.componente === 'string' && /^[a-z0-9-]{3,40}$/.test(x.componente.trim()) ? { componente: x.componente.trim() } : {}),
               enfase: (Array.isArray(x.enfase) ? x.enfase : []).filter((e): e is string => typeof e === 'string' && !!e.trim()).map((e) => e.trim().slice(0, 30)).slice(0, 3),
               batidas: ancorarBatidas(x.batidas, ctx.palavras, Math.round(inicio * 100) / 100, Math.round(fim * 100) / 100),
               ...(typeof x.saida === 'string' && x.saida.trim() ? { saida: x.saida.trim().slice(0, 140) } : {}),

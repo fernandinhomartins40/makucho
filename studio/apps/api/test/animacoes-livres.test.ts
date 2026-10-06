@@ -122,7 +122,7 @@ async function main() {
   t('o design da direção chega ao desenho (conceito, cores, linguagem, movimento)', desenhos.every((p) => p.sistema.includes('A voz vira onda') && p.sistema.includes('#ff5a3c') && p.sistema.includes('onda sonora') && p.sistema.includes('expo.out')));
   t('o desenho não recebe cartão de referência para copiar', desenhos.every((p) => !p.sistema.includes('Cartão de REFERÊNCIA') && !p.sistema.includes('ESTILO DO VÍDEO')));
   t('o desenho carrega a skill de motion graphics (batidas, curvas, receitas, conferência)', desenhos.every((p) => ['SKILL: MOTION GRAPHICS', 'Pense em batidas', 'pathLength="1"', 'O que denuncia o amador', 'Antes de responder, confira'].every((x) => p.sistema.includes(x))));
-  t('as receitas da skill passam nas regras técnicas do Studio', problemasDaComposicao({ html: '<p>x</p>', css: '', script: skill('motion-graphics').texto, layout: 'tela_cheia' }).length === 0 && skill('motion-graphics').versao === 'motion-graphics-v2');
+  t('as receitas da skill passam nas regras técnicas do Studio', problemasDaComposicao({ html: '<p>x</p>', css: '', script: skill('motion-graphics').texto, layout: 'tela_cheia' }).length === 0 && skill('motion-graphics').versao === 'motion-graphics-v3');
   const doNome = desenhos.find((p) => p.usuario.includes('A onda desenha o nome'))!;
   t('o desenho recebe o módulo da técnica e as batidas no segundo medido da fala', doNome.usuario.includes('TÉCNICA DESTA CENA: Manchete') && /\d\.\d\d s {2}"gemini" {2}-> {2}o nome SOBE/.test(doNome.usuario));
   t('a direção recebe a análise do vídeo e o repertório de técnicas', dir.usuario.includes('ANÁLISE DO VÍDEO ENVIADO') && dir.sistema.includes('dado_em_destaque') && dir.sistema.includes('batidas'));

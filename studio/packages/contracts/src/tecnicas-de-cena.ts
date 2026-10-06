@@ -172,6 +172,109 @@ export const TECNICAS_DE_CENA: readonly TecnicaDeCena[] = [
 
 export const CHAVES_DAS_TECNICAS = TECNICAS_DE_CENA.map((t) => t.chave);
 
+/**
+ * Os componentes prontos do catálogo do HyperFrames (catalogo-de-componentes)
+ * que fazem cada técnica. Testados, animam sozinhos e saem no tema: a cena
+ * PARTE de um deles e personaliza -- em vez de reinventar sempre o mesmo
+ * cartão de texto (visto em produção: 5 cenas com o mesmo esqueleto).
+ */
+export const COMPONENTES_DA_TECNICA: Record<string, readonly string[]> = {
+  tipografia_cinetica: ['kinetic-type-swap', 'headline-slam', 'per-word-rise', 'line-swap', 'kinetic-center-build', 'scramble-reveal'],
+  dado_em_destaque: ['count-up', 'conic-progress-ring', 'star-rating-fill'],
+  grafico: ['chart-story', 'decline-chart'],
+  lista_viva: ['stagger-cascade', 'state-chip-rail', 'grid-card-assemble'],
+  passo_a_passo: ['svg-stroke-trace', 'state-chip-rail', 'stagger-cascade'],
+  comparacao: ['comparison-split'],
+  definicao: ['marker-highlight', 'vox-annotate'],
+  pergunta: ['kinetic-center-build', 'headline-slam'],
+  citacao: ['testimonial-card', 'marker-highlight', 'titlecard-calm'],
+  manchete: ['vox-annotate', 'ticker-takeover', 'headline-slam'],
+  interface_simulada: ['native-notification-pop', 'notification-stack'],
+  rotulo: ['vox-annotate', 'spring-pop'],
+  selo: ['spring-pop', 'outline-draw'],
+  livre: [],
+};
+
+// ---------- As estéticas (uma por vídeo) ----------
+
+/**
+ * As estéticas que dominam os vídeos curtos (levantamento da OpusClip,
+ * 2026, e os exemplos públicos do HyperFrames). Um vídeo bom escolhe UMA e
+ * segue a gramática dela do começo ao fim: quanto gráfico, de que tipo, com
+ * que frequência e onde fica a pessoa.
+ */
+export interface EsteticaDoVideo {
+  chave: string;
+  nome: string;
+  quando: string;
+  /** Como o vídeo fica: o que aparece, onde, com que frequência. */
+  gramatica: string;
+  /** As técnicas que a estética usa (TECNICAS_DE_CENA). */
+  tecnicas: readonly string[];
+  /** Os enquadramentos que ela usa. */
+  layouts: string;
+}
+
+export const ESTETICAS: readonly EsteticaDoVideo[] = [
+  {
+    chave: 'video_ensaio',
+    nome: 'Vídeo-ensaio (estilo Vox)',
+    quando: 'explicação de sistema, mercado, história, dado; quem assiste quer entender',
+    gramatica: 'Gráficos, linhas do tempo, anotações e números a cada 8 a 10 s; uma família de fonte sem serifa; anotações que apontam (setas, círculos, grifos) e rótulos discretos; o rosto volta entre os gráficos.',
+    tecnicas: ['grafico', 'dado_em_destaque', 'manchete', 'definicao', 'passo_a_passo'],
+    layouts: 'pip e meio_a_meio para os gráficos; cartao (sobre o vídeo) para anotações rápidas',
+  },
+  {
+    chave: 'explicador_lateral',
+    nome: 'Explicador com referência ao lado ("greenscreen")',
+    quando: 'notícia, análise, reação, educação com referências',
+    gramatica: 'A pessoa ocupa uma parte do quadro e a outra mostra a referência (dado, interface, manchete, comparação), trocando a cada 4 a 6 s enquanto a fala avança. Muitas cenas curtas em sequência, sem respiro longo.',
+    tecnicas: ['manchete', 'interface_simulada', 'dado_em_destaque', 'comparacao', 'grafico'],
+    layouts: 'meio_a_meio (a referência num lado, o rosto no outro) e pip',
+  },
+  {
+    chave: 'legenda_cinetica',
+    nome: 'Fala em destaque (tipografia cinética)',
+    quando: 'opinião, motivação, dica rápida, fala de impacto; o conteúdo É a frase',
+    gramatica: 'A palavra que pesa vira imagem: palavras grandes que BATEM e trocam no ritmo da fala por cima do vídeo, cores de destaque nas palavras-chave, de vez em quando um impacto em tela cheia. Quase nenhum painel.',
+    tecnicas: ['tipografia_cinetica', 'pergunta', 'citacao', 'selo'],
+    layouts: 'cartao (palavras soltas sobre o vídeo, fora do rosto) e tela_cheia nos picos',
+  },
+  {
+    chave: 'cartoes_sociais',
+    nome: 'Cartões de interface e rede social',
+    quando: 'produto, aplicativo, tecnologia, prova social, oferta',
+    gramatica: 'Peças de interface que ENTRAM sobre o rosto: notificação, mensagem, avaliação com estrelas, depoimento, botão de seguir no fim. Cada peça curta (2 a 4 s), com sombra e cantos de produto real.',
+    tecnicas: ['interface_simulada', 'dado_em_destaque', 'citacao', 'selo'],
+    layouts: 'cartao (sobre o vídeo) e pip',
+  },
+  {
+    chave: 'documental',
+    nome: 'Documental',
+    quando: 'história pessoal, depoimento, bastidor, marca humana',
+    gramatica: 'Pouquíssimo gráfico: um rótulo de identificação, uma ou duas frases em tipografia calma (serifa, muito respiro), movimento lento. O rosto conta a história.',
+    tecnicas: ['rotulo', 'citacao', 'tipografia_cinetica'],
+    layouts: 'cartao (sobre o vídeo) e, no máximo uma vez, tela_cheia',
+  },
+  {
+    chave: 'camera_parada',
+    nome: 'Câmera parada (confiança)',
+    quando: 'conselho direto, conversa, fala curta de autoridade',
+    gramatica: 'Só a legenda faz o trabalho; no máximo uma peça gráfica no momento mais forte. Zero cenas é uma escolha válida.',
+    tecnicas: ['tipografia_cinetica', 'dado_em_destaque'],
+    layouts: 'cartao',
+  },
+];
+
+export function esteticaDoVideo(chave: string | undefined | null): EsteticaDoVideo | undefined {
+  return ESTETICAS.find((e) => e.chave === chave);
+}
+
+/** As estéticas, para a direção escolher uma. */
+export function indiceDasEsteticas(): string {
+  return ESTETICAS.map((e) => `- ${e.chave} (${e.nome}). Quando: ${e.quando}. Como fica: ${e.gramatica} Técnicas: ${e.tecnicas.join(', ')}. Onde: ${e.layouts}.`).join('\n');
+}
+
 export function tecnicaDeCena(chave: string | undefined | null): TecnicaDeCena | undefined {
   const c = String(chave ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   return TECNICAS_DE_CENA.find((t) => t.chave === c);
@@ -179,14 +282,18 @@ export function tecnicaDeCena(chave: string | undefined | null): TecnicaDeCena |
 
 /** O repertório para a direção: quando usar cada técnica e o que ela precisa decidir. */
 export function indiceDasTecnicas(): string {
-  return TECNICAS_DE_CENA.map((t) => `- ${t.chave} (${t.nome}). Quando: ${t.quando}. Você decide: ${t.plano}. Onde: ${t.layouts}.`).join('\n');
+  return TECNICAS_DE_CENA.map((t) => {
+    const prontos = COMPONENTES_DA_TECNICA[t.chave] ?? [];
+    return `- ${t.chave} (${t.nome}). Quando: ${t.quando}. Você decide: ${t.plano}. Onde: ${t.layouts}.${prontos.length ? ` Componentes prontos: ${prontos.join(', ')}.` : ''}`;
+  }).join('\n');
 }
 
 /** O módulo de uma técnica, para quem desenha a cena. */
 export function moduloDaTecnica(chave: string | undefined | null): string {
   const t = tecnicaDeCena(chave) ?? tecnicaDeCena('livre')!;
+  const prontos = COMPONENTES_DA_TECNICA[t.chave] ?? [];
   return `TÉCNICA DESTA CENA: ${t.nome} (${t.chave})
-Como se constrói: ${t.construcao}
+${prontos.length ? `COMECE PELO COMPONENTE PRONTO do catálogo (data-hf) que faz isto: ${prontos.join(', ')}. Escolha o que serve à fala, passe os textos e números exatos em data-vars, dê a ele o tamanho e o lugar certos e construa a cena em volta (o que ele não faz). Só desenhe do zero se nenhum servir.\n` : ''}Como se constrói: ${t.construcao}
 Evite: ${t.evitar}.`;
 }
 

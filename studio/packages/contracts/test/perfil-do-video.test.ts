@@ -4,6 +4,10 @@
 // ============================================================
 
 import {
+  COMPONENTES_DA_TECNICA,
+  ESTETICAS,
+  NOMES_DOS_COMPONENTES,
+  textoDoDesign,
   CHAVES_DAS_TECNICAS,
   ancorarBatidas,
   conferirCartoes,
@@ -77,6 +81,13 @@ t('técnica pelo nome, tolerante a espaço e hífen', tecnicaDeCena('Dado em-des
 t('técnica desconhecida: o módulo cai no livre', moduloDaTecnica('xpto').includes('Encenação livre'));
 t('o módulo traz números de construção', /\d+ ?px/.test(moduloDaTecnica('dado_em_destaque')) && moduloDaTecnica('dado_em_destaque').includes('Evite'));
 t('o índice lista todas as técnicas', CHAVES_DAS_TECNICAS.every((c) => indiceDasTecnicas().includes(c)));
+t('o módulo manda partir do componente pronto do catálogo', moduloDaTecnica('dado_em_destaque').includes('count-up') && moduloDaTecnica('dado_em_destaque').includes('COMECE PELO COMPONENTE'));
+t('todo componente indicado existe no catálogo', Object.values(COMPONENTES_DA_TECNICA).flat().every((n) => NOMES_DOS_COMPONENTES.includes(n)));
+t('as técnicas das estéticas existem', ESTETICAS.every((e) => e.tecnicas.every((x) => CHAVES_DAS_TECNICAS.includes(x))));
+t('estética pelo formato: história é documental; dados densos, vídeo-ensaio', historia.receita.estetica === 'documental' && ESTETICAS.some((e) => e.chave === p.receita.estetica));
+t('a estética sugerida vai no texto para a direção', textoDoPerfil(p).includes('Estética sugerida'));
+const comEstetica = designDoVideo({ estetica: 'legenda_cinetica', design: {} });
+t('o design guarda a estética e a gramática dela vai às cenas', comEstetica.estetica === 'legenda_cinetica' && textoDoDesign(comEstetica).includes('Estética do vídeo') && designDoVideo({ estetica: 'inventada' }).estetica === undefined);
 
 // ---------- Batidas ----------
 const trecho = fala(10, 'são oitenta e sete por cento das lojas', 0.4);

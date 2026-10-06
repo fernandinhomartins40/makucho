@@ -24,7 +24,9 @@ export const VERSAO_DA_SKILL = {
   // motion-graphics e hyperframes-animation do HyperFrames, Apache 2.0).
   // v2: executar o plano da direção (batidas com o segundo medido), os
   // números da casa e os sinais de design feito por IA.
-  'motion-graphics': 'motion-graphics-v2',
+  // v3: sem o esqueleto fixo de fundo (5 cenas saíam iguais), a série
+  // diferente e os componentes do catálogo como ponto de partida.
+  'motion-graphics': 'motion-graphics-v3',
 } as const;
 
 export type NomeDeSkill = keyof typeof VERSAO_DA_SKILL;

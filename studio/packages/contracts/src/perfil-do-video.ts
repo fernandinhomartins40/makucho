@@ -22,6 +22,7 @@
 // ============================================================
 
 import { numerosDoTexto, type PalavraNoTempo } from './direcao-visual';
+import { esteticaDoVideo } from './tecnicas-de-cena';
 
 export const TIPOS_DE_SINAL = ['numero', 'lista', 'passos', 'comparacao', 'pergunta', 'termo', 'enfase'] as const;
 export type TipoDeSinal = (typeof TIPOS_DE_SINAL)[number];
@@ -87,6 +88,8 @@ export interface PerfilDoVideo {
     fundo: 'claro' | 'escuro';
     /** No meio a meio, onde a cena cabe sem brigar com o rosto. */
     ladoDaCena?: 'cima' | 'baixo';
+    /** A estética sugerida para o vídeo inteiro (ESTETICAS). */
+    estetica: string;
   };
 }
 
@@ -277,6 +280,22 @@ export function perfilDoVideo(e: EntradaDoPerfil): PerfilDoVideo {
   const doFormato = ESTILOS_DO_FORMATO[formato][fundo];
   // Energia alta: do mais enérgico para o mais sóbrio.
   const estilos = energia === 'alta' ? [...doFormato].reverse() : doFormato;
+  // A estética pelo formato, ajustada pela densidade: fala corrida pede
+  // tipografia ou quase nada; fala cheia de dados pede o vídeo-ensaio.
+  const estetica =
+    formato === 'historia' || formato === 'depoimento'
+      ? 'documental'
+      : formato === 'oferta'
+        ? 'cartoes_sociais'
+        : formato === 'tutorial'
+          ? (tem('passos') && densidade !== 'baixa' ? 'explicador_lateral' : 'cartoes_sociais')
+          : densidade === 'alta'
+            ? 'video_ensaio'
+            : densidade === 'baixa'
+              ? (energia === 'alta' ? 'legenda_cinetica' : 'camera_parada')
+              : formato === 'opiniao' || formato === 'dica_rapida'
+                ? 'legenda_cinetica'
+                : 'explicador_lateral';
   const ladoDaCena = e.olhar?.rosto === 'em_cima' ? ('baixo' as const) : e.olhar?.rosto === 'embaixo' ? ('cima' as const) : undefined;
 
   return {
@@ -288,7 +307,7 @@ export function perfilDoVideo(e: EntradaDoPerfil): PerfilDoVideo {
     energia,
     sinais,
     ...(e.olhar ? { olhar: e.olhar } : {}),
-    receita: { segundosPorCena, cenasSugeridas, tecnicas, estilos, fundo, ...(ladoDaCena ? { ladoDaCena } : {}) },
+    receita: { segundosPorCena, cenasSugeridas, tecnicas, estilos, fundo, ...(ladoDaCena ? { ladoDaCena } : {}), estetica },
   };
 }
 
@@ -337,6 +356,8 @@ export function textoDoPerfil(p: PerfilDoVideo): string {
   );
   const r = p.receita;
   linhas.push(`RECEITA (ponto de partida; você decide):`);
+  const est = esteticaDoVideo(r.estetica);
+  if (est) linhas.push(`- Estética sugerida: ${est.chave} (${est.nome}) -- ${est.gramatica}`);
   linhas.push(`- Ritmo: cerca de uma cena a cada ${s1(r.segundosPorCena)} s -- por volta de ${r.cenasSugeridas} ${r.cenasSugeridas === 1 ? 'cena' : 'cenas'}.`);
   if (r.tecnicas.length) linhas.push(`- Técnicas com evidência na fala:\n${r.tecnicas.map((t) => `  ${t.tecnica}: ${t.porque}${t.momentos.length ? ` (aos ${t.momentos.map(s1).join(', ')} s)` : ''}`).join('\n')}`);
   linhas.push(`- Fundo ${r.fundo} combina com a imagem${r.ladoDaCena ? `; no meio_a_meio, a cena fica ${r.ladoDaCena === 'baixo' ? 'embaixo (o rosto está em cima)' : 'em cima (o rosto está embaixo)'}` : ''}.`);

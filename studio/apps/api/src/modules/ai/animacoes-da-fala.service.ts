@@ -68,6 +68,7 @@ import {
   type CartaoDirigido,
   REGRAS_LIVRES,
   VERBOS_DE_MOVIMENTO,
+  indiceDasEsteticas,
   indiceDasTecnicas,
   lerOlhar,
   moduloDaTecnica,
@@ -411,11 +412,14 @@ Leia a fala inteira. O que quem assiste deve SENTIR? Escreva:
 - "paleta": fundo, texto, apagado, destaque (+ destaque2 e destaque3 só se o conteúdo pedir), em hex de 6 dígitos. UMA cor de destaque manda no vídeo inteiro. Neutros tingidos na direção do destaque (nada de preto #000000 ou branco #ffffff puros). Fundo claro ou escuro conforme a análise da imagem.
 - "fonteTitulo" e "fonteTexto": pelo caráter da referência, SÓ entre estas (nome exato):
   ${listaDeFontes()}
-- "fundo": de 2 a 5 peças da camada de fundo, iguais em toda cena e em movimento lento (brilho radial, a palavra-chave gigante a 3-8% de opacidade, grade, grão, filetes, formas do motivo). É o que impede a cena de parecer vazia enquanto o conteúdo entra.
+- "fundo": de 0 a 3 peças de fundo que a estética e a referência PEDEM (textura de papel, grão, uma cor chapada, a imagem do motivo). Nada de kit fixo: "brilho radial + grade + palavra fantasma + rótulo com filete" em toda cena é a marca do template -- se usar, é numa cena só. Lista vazia é uma resposta boa.
 - "movimento": {"energia": "baixa|media|alta", "entrada": a curva das entradas (ex.: "expo.out"), "saida": a das saídas (ex.: "power2.in"), "duracaoBase": segundos de uma entrada típica (0.3 a 0.7), "stagger": segundos entre itens (0.04 a 0.15), "assinatura": o gesto que se repete e identifica o vídeo, em uma frase}.
 - "ritmo": o padrão das cenas, do começo ao fim, em palavras ("rápida, rápida, LENTA, rápida, IMPACTO, respiro") -- onde está o pico e onde o vídeo respira.
 - "linguagem": de 2 a 4 frases com o que falta (como a composição se organiza, o acabamento: filetes, rótulos, numeração, marcas de registro).
 Sinais de design feito por IA, proibidos a não ser que o conteúdo peça: texto em degradê; ciano sobre fundo escuro ou degradê roxo-azul neon; faixa colorida na borda esquerda de cartões; grade de cartões idênticos; tudo centralizado com o mesmo peso.
+
+- "estetica": UMA das estéticas abaixo para o vídeo inteiro (a análise sugere uma; troque se o conteúdo pedir outra). Ela decide quanto gráfico, de que tipo, com que frequência e onde fica a pessoa -- siga a gramática dela:
+${indiceDasEsteticas()}
 
 ## Passo 3 -- As cenas
 Cada cena MOSTRA o que a fala sozinha não mostra. Para cada uma:
@@ -423,6 +427,7 @@ Cada cena MOSTRA o que a fala sozinha não mostra. Para cada uma:
 - "tecnica": uma do REPERTÓRIO abaixo, escolhida pela evidência na fala. Varie: duas cenas seguidas não usam a mesma técnica.
 - "papel": gancho | construcao | impacto | resolucao (o lugar da cena no arco do vídeo).
 - "foco": o elemento que domina o quadro (um só).
+- "componente": o componente pronto do catálogo de que a cena parte (o módulo da técnica lista os que servem), ou "" para desenho próprio. Varie: o mesmo componente em duas cenas seguidas, não.
 - "enfase": 1 ou 2 palavras da fala que carregam o sentido.
 - "batidas": de 3 a 8 acontecimentos, EM ORDEM. Cada um: {"palavra": UMA palavra copiada da fala do trecho, na qual o acontecimento dispara ("" só na primeira batida, a abertura do palco), "acao": ELEMENTO + VERBO + como}. O servidor mede o segundo exato de cada palavra na transcrição e entrega ao designer: você não estima tempos, você escolhe as palavras certas. Todo elemento tem um verbo de movimento:
   ${VERBOS_DE_MOVIMENTO}
@@ -437,7 +442,7 @@ ${indiceDasTecnicas()}
 
 Onde a cena passa ("layout": os quatro enquadramentos que o compositor sabe fazer):
 - meio_a_meio: a cena ocupa metade da tela e o rosto a outra ("lado": "cima" = cena em cima, rosto embaixo; "baixo" = o contrário). Bom para explicar sem perder o rosto.
-- cartao: uma peça menor por cima do vídeo, fora do rosto. Bom para um detalhe rápido.
+- cartao (SOBRE O VÍDEO): elementos por cima da imagem da pessoa, fora do rosto -- palavras soltas que batem, um número, uma notificação, um selo, uma anotação. Não precisa de caixa nem de fundo. É o enquadramento das estéticas de legenda cinética, cartões sociais e documental.
 - pip: a cena ocupa a tela e o rosto vai para uma janela num canto ("canto": sup-esq|sup-dir|inf-esq|inf-dir). Bom para conteúdo denso.
 - tela_cheia: a cena toma o quadro. Para os momentos de impacto.
 
@@ -450,7 +455,7 @@ REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
 - "prioridade": 1 = sem a cena o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
 
 Responda SÓ com JSON, nesta ordem de chaves, sem texto fora dele:
-{"conceito":"...","tom":"o que quem assiste deve sentir","design":{"referencia":"...","motivo":"...","paleta":{"fundo":"#RRGGBB","texto":"#RRGGBB","apagado":"#RRGGBB","destaque":"#RRGGBB"},"fonteTitulo":"nome exato","fonteTexto":"nome exato","fundo":["...","..."],"movimento":{"energia":"media","entrada":"expo.out","saida":"power2.in","duracaoBase":0.45,"stagger":0.08,"assinatura":"..."},"ritmo":"...","linguagem":"..."},"cenas":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"nome":"rótulo curto seu","tecnica":"dado_em_destaque","papel":"impacto","ancora":"palavras exatas da fala em que a cena começa","intencao":"o que quem assiste entende ou sente","foco":"...","enfase":["..."],"batidas":[{"palavra":"","acao":"..."},{"palavra":"...","acao":"..."}],"saida":"...","conteudo":{"textos":["..."]},"conceito":"...","prioridade":1}]}
+{"conceito":"...","tom":"o que quem assiste deve sentir","estetica":"chave","design":{"referencia":"...","motivo":"...","paleta":{"fundo":"#RRGGBB","texto":"#RRGGBB","apagado":"#RRGGBB","destaque":"#RRGGBB"},"fonteTitulo":"nome exato","fonteTexto":"nome exato","fundo":["...","..."],"movimento":{"energia":"media","entrada":"expo.out","saida":"power2.in","duracaoBase":0.45,"stagger":0.08,"assinatura":"..."},"ritmo":"...","linguagem":"..."},"cenas":[{"inicioS":12.3,"fimS":19.8,"layout":"meio_a_meio","lado":"cima","canto":null,"nome":"rótulo curto seu","tecnica":"dado_em_destaque","componente":"count-up","papel":"impacto","ancora":"palavras exatas da fala em que a cena começa","intencao":"o que quem assiste entende ou sente","foco":"...","enfase":["..."],"batidas":[{"palavra":"","acao":"..."},{"palavra":"...","acao":"..."}],"saida":"...","conteudo":{"textos":["..."]},"conceito":"...","prioridade":1}]}
 Instantes em segundos do vídeo final, iguais aos da fala. Sem cena: "cenas": [].`;
 }
 
@@ -466,7 +471,7 @@ function sistemaDoDesenho(design: DesignDoVideo, paleta?: string): string {
 O QUE SEPARA O PROFISSIONAL DO AMADOR:
 - Uma ideia por cena, com UM foco dominante; o resto apoia.
 - Composição com tensão: escala contrastada (algo muito grande contra algo pequeno), alinhamento a uma grade, conteúdo ancorado nas bordas da área útil, assimetria quando ajuda. Título e texto empilhados no centro é slide.
-- Três camadas: fundo com profundidade (brilho radial, textura, grade, um número ou palavra gigante apagados), o conteúdo, e os acentos de acabamento que a linguagem do design pede.
+- Profundidade que vem do ASSUNTO (o objeto, o gráfico, a interface, a palavra enorme), não de um fundo-padrão. Sobre o vídeo, a cena é leve e solta.
 - Tudo desenhado em código: SVG para ícones, pictogramas, diagramas, gráficos e formas (traço que se desenha com strokeDashoffset, máscaras, clipPath). Nada de emoji nem de imagem de fora.
 - A cena EVOLUI do primeiro ao último segundo, no ritmo das palavras: pause em qualquer instante e algo está acontecendo.
 - Você é livre para qualquer técnica que as regras técnicas abaixo permitam. Se a encenação pedir algo que não está em exemplo nenhum, faça.
@@ -474,8 +479,8 @@ ${skill('motion-graphics').texto}
 ${REGRAS_DE_DESIGN}
 ${DOUTRINA_DE_MOVIMENTO}
 ${REGRAS_DA_ANIMACAO_HTML}
-Pinte o fundo do design em #area inteira no meio_a_meio, no pip e na tela_cheia (o painel é da cena); no cartao, só a peça tem fundo (o resto transparente: o vídeo aparece).
-Os componentes abaixo são OPCIONAIS: use um só quando a encenação pedir exatamente aquilo; o desenho próprio vem primeiro.
+Pinte o fundo do design em #area inteira no meio_a_meio, no pip e na tela_cheia (o painel é da cena); no cartao, nada de fundo (o vídeo aparece): só os elementos da cena, com sombra ou contorno para ler sobre a imagem.
+COMPONENTES PRONTOS (o catálogo do HyperFrames): o módulo da técnica diz quais servem a esta cena. PARTA de um deles quando servir -- são testados e de nível profissional -- e construa em volta; desenhar do zero é para o que nenhum faz. Variar entre eles é o que impede as cenas de saírem iguais.
 ${textoDosComponentes()}
 Responda SÓ com JSON: {"titulo":"nome curto","html":"...","css":"...","script":"..."}.
 
@@ -797,7 +802,7 @@ export class AnimacoesDaFalaService {
           ? 'o painel de BAIXO (o rosto fica na metade de cima)'
           : 'o painel de CIMA (o rosto fica na metade de baixo)'
         : m.layout === 'cartao'
-          ? 'o quadro todo, mas só o cartão tem fundo (o vídeo aparece em volta)'
+          ? 'o quadro todo SOBRE O VÍDEO: tudo transparente, e os elementos flutuam soltos por cima da imagem da pessoa, fora do rosto (caixa só se a técnica pedir)'
           : m.layout === 'pip'
             ? 'o quadro todo, com fundo pintado; o vídeo com o rosto aparece numa janela arredondada (o Studio recorta e emoldura)'
             : 'o quadro todo (o ponto alto do vídeo)';
