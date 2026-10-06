@@ -386,6 +386,38 @@ export async function gerarThumbnail(
   );
 }
 
+/**
+ * A película da timeline: uma folha de quadros (sprite sheet) com um
+ * quadro a cada `passoMs`, cada um cobrindo `largura` x `altura` (vídeo
+ * deitado é cortado no centro), `colunas` por linha. Uma passada só do
+ * FFmpeg sobre o proxy de 720p -- segundos, mesmo num vídeo longo.
+ */
+export async function gerarPelicula(
+  entrada: string,
+  saida: string,
+  p: { passoMs: number; quadros: number; colunas: number; largura: number; altura: number },
+  sinal?: AbortSignal,
+): Promise<void> {
+  const linhas = Math.max(1, Math.ceil(p.quadros / p.colunas));
+  const colunas = Math.min(p.colunas, p.quadros);
+  const passoS = (p.passoMs / 1000).toFixed(3);
+  await executar(
+    'ffmpeg',
+    [
+      '-y',
+      '-i', entrada,
+      '-an',
+      // O quadro do MEIO de cada passo (o editor pede o mesmo ponto).
+      '-vf',
+      `fps=fps=1/${passoS}:start_time=${(p.passoMs / 2000).toFixed(3)},scale=${p.largura}:${p.altura}:force_original_aspect_ratio=increase,crop=${p.largura}:${p.altura},tile=${colunas}x${linhas}`,
+      '-frames:v', '1',
+      '-q:v', '5',
+      saida,
+    ],
+    { sinal, timeoutMs: 5 * 60 * 1000 },
+  );
+}
+
 // ---------- Silêncios ----------
 
 /**

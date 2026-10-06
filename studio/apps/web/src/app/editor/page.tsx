@@ -678,7 +678,7 @@ function Editor({ projectId }: { projectId: string }) {
   };
 
   // A película da timeline: quadros tirados da prévia leve.
-  const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0);
+  const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0, `/api/projects/${projectId}/pelicula`);
 
   // ---------- Reprodução: o que para enquanto o vídeo toca ----------
   const [tocandoNaPrevia, setTocandoNaPrevia] = useState(false);

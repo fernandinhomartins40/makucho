@@ -48,13 +48,18 @@ export type ProposedSegment = z.infer<typeof proposedSegmentSchema>;
 // ha chamada extra para "estilizar". Quem aplica e o acabamento
 // deterministico (acabamento.ts); indices fora da lista sao ignorados
 // la, em vez de derrubar a proposta inteira e gastar outra chamada.
+const vazioComoAusente = (v: unknown) => (v === null || (typeof v === 'string' && v.trim().length < 2) ? undefined : v);
+
 export const estiloPropostoSchema = z
   .object({
     captionPreset: idDoPresetSchema.optional(),
     // Titulo de abertura e chamada final: elementos graficos, nunca
     // legenda -- a legenda continua saindo so da fala.
-    hookTitle: z.string().min(2).max(70).optional(),
-    cta: z.string().min(2).max(60).optional(),
+    // Texto vazio ou nulo vale como "omitido": o prompt pede para omitir
+    // quando não ajuda, e a IA às vezes manda "" -- visto em produção, a
+    // proposta inteira era recusada e pagava uma segunda tentativa.
+    hookTitle: z.preprocess(vazioComoAusente, z.string().min(2).max(70).optional()),
+    cta: z.preprocess(vazioComoAusente, z.string().min(2).max(60).optional()),
     emphasis: z.array(z.number().int().nonnegative()).max(20).optional(),
     transitions: z
       .array(z.object({ before: z.number().int().min(1), type: tipoDeTransicaoSchema }).strict())

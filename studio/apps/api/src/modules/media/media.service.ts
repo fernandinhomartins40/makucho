@@ -415,6 +415,24 @@ export class MediaService {
     return picos;
   }
 
+  // ---------- Película da timeline ----------
+
+  /**
+   * A folha de quadros da timeline e a descrição dela, gerada no preparo
+   * ao lado do proxy. Projeto preparado antes dela existir: 404, e o
+   * editor tira os quadros ele mesmo.
+   */
+  async peliculaDoProjeto(tenant: TenantContext, projectId: string): Promise<{ folha: Buffer; descricao: string }> {
+    const projeto = await this.prisma.project.findUnique({ where: { id: projectId } });
+    assertOwnership(tenant, projeto, 'projeto');
+    const proxy = await this.prisma.mediaSource.findFirst({ where: { projectId, kind: 'PROXY' }, orderBy: { createdAt: 'desc' } });
+    if (!proxy) throw new NotFoundException('o vídeo do projeto ainda não foi preparado');
+    const pasta = proxy.storageKey.slice(0, proxy.storageKey.lastIndexOf('/'));
+    const [folha, descricao] = await Promise.all([this.storage.ler(`${pasta}/pelicula.jpg`).catch(() => null), this.storage.ler(`${pasta}/pelicula.json`).catch(() => null)]);
+    if (!folha || !descricao) throw new NotFoundException('a película deste projeto não existe');
+    return { folha, descricao: descricao.toString('utf8') };
+  }
+
   // ---------- Servir ----------
 
   async arquivoDoProjeto(

@@ -215,16 +215,28 @@ export class AiService {
     const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4) + (pedido.imagens?.length ?? 0) * TOKENS_POR_IMAGEM;
     await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
 
-    const resposta = await provedor.conversar({
-      chamada: pedido.chamada,
-      sistema: pedido.sistema,
-      usuario: pedido.usuario,
-      ...(pedido.imagens?.length ? { imagens: pedido.imagens } : {}),
-      maxTokens: pedido.maxTokens,
-      raciocinio: config.raciocinio,
-      sinal: pedido.sinal,
-      ...(pedido.tempoMaximoMs ? { tempoMaximoMs: pedido.tempoMaximoMs } : {}),
-    });
+    const conversar = (raciocinio: Raciocinio) =>
+      provedor.conversar({
+        chamada: pedido.chamada,
+        sistema: pedido.sistema,
+        usuario: pedido.usuario,
+        ...(pedido.imagens?.length ? { imagens: pedido.imagens } : {}),
+        maxTokens: pedido.maxTokens,
+        raciocinio,
+        sinal: pedido.sinal,
+        ...(pedido.tempoMaximoMs ? { tempoMaximoMs: pedido.tempoMaximoMs } : {}),
+      });
+    let resposta;
+    try {
+      resposta = await conversar(config.raciocinio);
+    } catch (e) {
+      // O raciocínio gastou o teto inteiro e a resposta veio vazia (visto em
+      // produção na direção das animações): a mesma pergunta, sem pensar,
+      // responde -- melhor que perder a etapa.
+      if (!(e instanceof ErroDoProvedor) || config.raciocinio === 'desligado' || !/pensou demais|sem conteúdo/.test(e.message)) throw e;
+      this.log.warn(`${pedido.chamada}: resposta vazia com raciocínio (${e.message}); tentando sem raciocínio`);
+      resposta = await conversar('desligado');
+    }
 
     const custo = await this.uso.registrar(
       pedido.workspaceId,

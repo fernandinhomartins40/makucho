@@ -148,6 +148,24 @@ export class MediaController {
     return new StreamableFile(picos);
   }
 
+  /** A película da timeline: a folha de quadros; a descrição vai no cabeçalho X-Pelicula. */
+  @Get('projects/:id/pelicula')
+  async pelicula(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') projectId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const p = await this.media.peliculaDoProjeto(tenant, projectId);
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(p.folha.length),
+      'X-Pelicula': p.descricao.replace(/[^\x20-\x7e]/g, ''),
+      'Access-Control-Expose-Headers': 'X-Pelicula',
+      'Cache-Control': 'private, max-age=86400',
+    });
+    return new StreamableFile(p.folha);
+  }
+
   @Get('projects/:id/video')
   async video(
     @CurrentTenant() tenant: TenantContext,

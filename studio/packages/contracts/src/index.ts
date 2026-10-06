@@ -70,6 +70,7 @@ export * from './montagem-visual';
 export * from './busca-sem-ia';
 export * from './direcao-visual';
 export * from './perfil-do-video';
+export * from './pelicula';
 export * from './tecnicas-de-cena';
 export * from './ancoragem';
 export * from './liquid-glass';

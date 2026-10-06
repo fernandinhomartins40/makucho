@@ -18,7 +18,7 @@
 import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
-import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS, cenasDosCortes } from '@makucho/studio-contracts';
+import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS, cenasDosCortes, descricaoDaPelicula } from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -26,6 +26,7 @@ import {
   detectarSilencios,
   extrairAudio,
   gerarAudioMudo,
+  gerarPelicula,
   gerarProxy,
   gerarThumbnail,
   juntarVideos,
@@ -327,6 +328,24 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
           sizeBytes: BigInt(await tamanhoDe(`${prefixoNoStorage}/thumb.jpg`)),
         },
       });
+
+      // ---------- Película da timeline ----------
+      //
+      // A tira de quadros dos trechos, numa folha só, a partir do proxy.
+      // Antes saía no navegador, com um <video> escondido que disputava
+      // decodificador e rede com a prévia (a reprodução travava). Uma falha
+      // aqui não para o vídeo: o editor tira os quadros ele mesmo.
+      try {
+        const descricao = descricaoDaPelicula(probe.durationMs);
+        const folhaTmp = espaco.arquivo('pelicula.jpg');
+        await gerarPelicula(caminhoDe(`${prefixoNoStorage}/proxy.mp4`), folhaTmp, descricao);
+        await publicar(folhaTmp, `${prefixoNoStorage}/pelicula.jpg`);
+        const json = espaco.arquivo('pelicula.json');
+        await writeFile(json, JSON.stringify(descricao), 'utf8');
+        await publicar(json, `${prefixoNoStorage}/pelicula.json`);
+      } catch (e) {
+        console.warn(`[midia] película não gerada no projeto ${projectId}: ${(e as Error).message.slice(0, 200)}`);
+      }
 
       await avancar(job, 70);
 

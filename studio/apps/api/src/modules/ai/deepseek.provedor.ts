@@ -128,14 +128,18 @@ export class DeepseekProvedor implements ProvedorDeIa {
     }
 
     const dados = (await resposta.json().catch(() => null)) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
       usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
     } | null;
 
     const texto = dados?.choices?.[0]?.message?.content;
     if (!texto) {
+      // Com raciocínio, o pensamento conta no teto: se ele gasta tudo, a
+      // resposta vem vazia com finish_reason "length" (visto em produção).
+      // Quem chama reconhece "pensou demais" e tenta sem raciocínio.
+      const pensouDemais = raciocinio !== 'desligado' && dados?.choices?.[0]?.finish_reason === 'length';
       throw new ErroDoProvedor(
-        'deepseek devolveu resposta sem conteúdo',
+        pensouDemais ? 'deepseek pensou demais: o raciocínio gastou todo o teto de tokens' : 'deepseek devolveu resposta sem conteúdo',
         'A IA devolveu uma resposta vazia. Tente de novo.',
         true,
       );
@@ -175,6 +179,11 @@ export class DeepseekProvedor implements ProvedorDeIa {
     try {
       return await this.voltaComFerramentas(pedido, pedido.raciocinio!);
     } catch (e) {
+      // Resposta vazia (o pensamento gastou o teto): só esta volta vai sem raciocínio.
+      if (e instanceof ErroDoProvedor && /resposta vazia/.test(e.message)) {
+        this.log.warn('volta com ferramentas vazia com raciocínio; refazendo sem raciocínio');
+        return this.voltaComFerramentas(pedido, 'desligado');
+      }
       if (!(e instanceof ErroDoProvedor) || e.temporario || !/\b400\b/.test(e.message)) throw e;
       this.log.warn(`ferramentas com raciocínio recusadas (${e.publico}); seguindo sem raciocínio por uma hora`);
       ferramentasSemRaciocinioAte = Date.now() + 60 * 60_000;

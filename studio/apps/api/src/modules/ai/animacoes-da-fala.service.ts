@@ -337,9 +337,9 @@ ${referenciaParaEscrita(estilo)}`;
 // ============================================================
 
 const VERSAO_LIVRE = 'animar-livre-v1';
-/** Com raciocínio, o pensamento conta no teto: a resposta precisa de folga. */
-const MAX_TOKENS_DA_DIRECAO_LIVRE = 20_000;
-const MAX_TOKENS_DO_DESENHO = 24_000;
+/** Com raciocínio, o pensamento conta no teto: a resposta precisa de folga (20 mil acabou inteiro no pensamento, em produção). */
+const MAX_TOKENS_DA_DIRECAO_LIVRE = 48_000;
+const MAX_TOKENS_DO_DESENHO = 40_000;
 const TEMPO_DA_DIRECAO_LIVRE_MS = 300_000;
 const TEMPO_DO_DESENHO_MS = 300_000;
 /** Quantas cenas a IA desenha ao mesmo tempo no modo livre. */

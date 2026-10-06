@@ -21,6 +21,7 @@ const t = (nome: string, cond: boolean) => {
 };
 
 const corpos: Array<Record<string, unknown>> = [];
+let vazia = false;
 const servidor = createServer((req, res) => {
   let dados = '';
   req.on('data', (c) => (dados += c));
@@ -32,6 +33,10 @@ const servidor = createServer((req, res) => {
       return;
     }
     res.setHeader('content-type', 'application/json');
+    if (vazia) {
+      res.end(JSON.stringify({ choices: [{ message: { content: '', reasoning_content: 'pensando muito...' }, finish_reason: 'length' }], usage: { prompt_tokens: 10, completion_tokens: 10 } }));
+      return;
+    }
     res.end(
       JSON.stringify({
         choices: [{ message: { content: '{"ok":true}', reasoning_content: 'pensando...' } }],
@@ -81,6 +86,17 @@ async function main() {
   const partes = (corpos[2]!.messages as Array<{ role: string; content: unknown }>)[1]!.content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
   t('com imagens: o texto e cada imagem como data URL', Array.isArray(partes) && partes[0]!.type === 'text' && partes[0]!.text === 'olhe' && partes.length === 3 && partes[1]!.image_url?.url === 'data:image/jpeg;base64,/9j/AAA');
   t('sem imagens: o conteúdo continua texto simples', typeof (corpos[0]!.messages as Array<{ content: unknown }>)[1]!.content === 'string');
+
+  // Visto em produção: com raciocínio, o pensamento gastou o teto e a resposta veio vazia.
+  vazia = true;
+  let erroVazio = '';
+  try {
+    await provedor.conversar({ chamada: 'dirigir_animacoes', sistema: 's', usuario: 'u', maxTokens: 10, raciocinio: 'high' });
+  } catch (e) {
+    erroVazio = (e as Error).message;
+  }
+  vazia = false;
+  t('resposta vazia por falta de teto com raciocínio é reconhecida', erroVazio.includes('pensou demais'));
 
   // Erro de configuração: a mensagem da DeepSeek aparece, a chave não.
   const errado = new DeepseekProvedor('sk-teste', 'modelo-inexistente' as never);

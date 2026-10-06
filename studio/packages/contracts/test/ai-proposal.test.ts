@@ -1,4 +1,5 @@
 import {
+  estiloPropostoSchema,
   parseAiProposal,
   validateSemanticSafety,
   hasBlockingIssues,
@@ -181,6 +182,11 @@ const limpa = validateSemanticSafety(
 );
 t('proposta limpa nao gera pendencia', limpa.length === 0);
 t('risco geral baixo', overallRisk(limpa) === 'low');
+
+// Visto em produção: o prompt pede para omitir a chamada, e a IA manda "".
+const omitida = estiloPropostoSchema.safeParse({ hookTitle: 'Três erros', cta: '', emphasis: [] });
+t('chamada vazia vale como omitida, não derruba a proposta', omitida.success && omitida.data.cta === undefined && omitida.data.hookTitle === 'Três erros');
+t('chamada nula também', estiloPropostoSchema.safeParse({ cta: null }).success);
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);
