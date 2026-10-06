@@ -77,8 +77,19 @@ export const composicaoHtmlSchema = z
     tema: temaLivreSchema.optional(),
     /** O que a animação explica (tipo, ideia, conteúdo): a IA a redesenha a partir disto. */
     briefing: z.string().max(2000).optional(),
+    /**
+     * Atrás da pessoa (só no cartão, sobre o vídeo): a pessoa é recortada do
+     * quadro (a mesma máscara dos textos "atrás") e volta por cima da
+     * animação. Sem a máscara, a animação fica na frente.
+     */
+    atras: z.boolean().optional(),
   })
   .strict();
+
+/** A animação vai atrás da pessoa (cartão marcado "atrás"). */
+export function ehAnimacaoAtras(c: { kind?: string; composicao?: Pick<ComposicaoHtml, 'atras' | 'layout'> | null }): boolean {
+  return c.kind === 'html' && !!c.composicao?.atras && c.composicao.layout === 'cartao';
+}
 
 export type ComposicaoHtml = z.infer<typeof composicaoHtmlSchema>;
 

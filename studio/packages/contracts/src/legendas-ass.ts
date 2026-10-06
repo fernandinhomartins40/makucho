@@ -29,6 +29,7 @@
 import { gradeDaComposicao } from './grade-dos-layouts';
 import { legendaHyperFrames } from './legendas-hyperframes-catalogo';
 import { efeitoUsaPessoa } from './efeitos-de-tela';
+import { ehAnimacaoAtras } from './animacao-html';
 import type { CaptionStyleInput } from './brand';
 import { duracaoNaTimeline, velocidadeDoTrecho } from './edit-plan';
 import type { EditPlanV1 } from './edit-plan';
@@ -106,6 +107,8 @@ export function janelasDaPessoa(plano: EditPlanV1, duracaoMs: number): Array<{ i
       ...(plano.screenEffects ?? []).filter((e) => efeitoUsaPessoa(e.type)).map((e) => ({ inicioMs: e.timelineStartMs, fimMs: e.timelineStartMs + e.durationMs })),
       // Camadas que acompanham a cabeça: a trilha sai da máscara.
       ...(plano.mediaLayers ?? []).filter((m) => m.followPerson).map((m) => ({ inicioMs: m.timelineStartMs, fimMs: m.timelineStartMs + m.durationMs })),
+      // Animações atrás da pessoa: a pessoa recortada volta por cima delas.
+      ...(plano.mediaLayers ?? []).filter(ehAnimacaoAtras).map((m) => ({ inicioMs: m.timelineStartMs, fimMs: m.timelineStartMs + m.durationMs })),
     ],
     duracaoMs,
   );

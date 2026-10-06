@@ -447,6 +447,8 @@ export interface PresetDeMotion {
   campos: string;
   /** Os layouts em que funciona (o primeiro é o preferido). */
   layouts: readonly LayoutDoPreset[];
+  /** Do começo e do fim do vídeo: o servidor cria (a escolha das cenas da fala não os vê). */
+  interno?: boolean;
 }
 
 export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
@@ -471,6 +473,8 @@ export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
   { chave: 'preco', nome: 'Preço', quando: 'um preço ou oferta dita (e o preço antigo, se dito)', campos: 'numero*, prefixo (R$), antes (preço antigo dito), titulo* (o que é), kicker', layouts: ['cartao', 'meio_a_meio', 'tela_cheia'] },
   { chave: 'ranking', nome: 'Ranking', quando: 'um top 3, top 5, os melhores ou piores em ordem', campos: 'itens* (do 1º ao último, 2-5), titulo', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
   { chave: 'rotulo', nome: 'Rótulo (lower third)', quando: 'apresentar quem fala, um lugar, uma marca ou o tema do trecho', campos: 'titulo*, kicker', layouts: ['cartao'] },
+  { chave: 'titulo', nome: 'Título de abertura', quando: 'o título do vídeo, nos primeiros segundos (sem fundo; pode passar atrás da pessoa)', campos: 'titulo* (até 7 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
+  { chave: 'chamada', nome: 'Chamada final', quando: 'a chamada do fim: seguir, salvar, comentar, comprar (sem fundo)', campos: 'titulo* (até 6 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
   { chave: 'icone', nome: 'Ícone grande', quando: 'um conceito simples que um ícone resume', campos: `icone* (${'dinheiro|tempo|alvo|raio|cadeado|grafico|pessoa|check|x|lampada|estrela|fogo|alerta|coracao|mensagem|celular|calendario|foguete|seta|escudo'}), titulo*, detalhe`, layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
 ];
 
@@ -485,7 +489,7 @@ export function textoDosVisuais(): string {
 
 /** Os presets, uma linha cada, para a IA escolher. */
 export function textoDosPresets(): string {
-  return PRESETS_DE_MOTION.map((p) => `- ${p.chave} [${p.layouts.join('|')}]: ${p.quando}. Campos: ${p.campos}.`).join('\n');
+  return PRESETS_DE_MOTION.filter((p) => !p.interno).map((p) => `- ${p.chave} [${p.layouts.join('|')}]: ${p.quando}. Campos: ${p.campos}.`).join('\n');
 }
 
 // ---------- Montagem ----------
@@ -866,6 +870,28 @@ const MONTADORES: Record<string, Montador> = {
       html: `<div class="mg mg-rotulo"><div class="rot-caixa mg-card" data-in="esq" data-t="${t0}"><i class="rot-barra" data-in="cresce" data-t="${t0}" data-d="0.35"></i><div><div class="mg-t t-s" style="${c.corpo('t-s', x.titulo ?? '')}" data-in="mascara-solo" data-t="${r2(t0 + 0.15)}">${esc(x.titulo ?? '')}</div>${x.kicker ? `<div class="rot-k" data-in="sobe" data-t="${r2(t0 + 0.35)}">${esc(x.kicker)}</div>` : ''}</div></div></div>`,
     };
   },
+  titulo: (x, c) => {
+    // Linhas de uma ou duas palavras, uma de cada vez: o título "se monta".
+    const palavras = (x.titulo ?? '').split(/\s+/).filter(Boolean);
+    const porLinha = palavras.length <= 3 ? 1 : 2;
+    const linhasDoTitulo: string[] = [];
+    for (let i = 0; i < palavras.length; i += porLinha) linhasDoTitulo.push(palavras.slice(i, i + porLinha).join(' '));
+    const corpo = cabe(x.titulo ?? '', 24, Math.min(34, 92 / Math.max(1, linhasDoTitulo.length)), c.v);
+    const html = linhasDoTitulo
+      .map((l, i) => {
+        const t = r2(0.15 + i * 0.16);
+        return `<span class="mg-m"><span class="mg-t t-xl mg-l" style="${corpo}" data-in="mascara" data-t="${t}">${c.marcar(l, x.enfase, t + 0.1)}</span></span>`;
+      })
+      .join('');
+    return { html: `<div class="mg mg-centro mg-solto mg-titulo">${kicker(x.kicker, 0.05)}<div class="mg-linhas">${html}</div></div>` };
+  },
+  chamada: (x, c) => {
+    const t0 = 0.15;
+    return {
+      html: `<div class="mg mg-centro mg-solto mg-chamada">${kicker(x.kicker, t0 - 0.1)}<div class="mg-t t-l" style="${cabe(x.titulo ?? '', 11, 30, c.v)}" data-in="bate" data-t="${t0}">${c.marcar(x.titulo ?? '', x.enfase, t0 + 0.25)}</div><svg class="cta-seta" viewBox="0 0 24 24" aria-hidden="true"><path pathLength="1" data-in="desenha" data-t="${r2(t0 + 0.35)}" data-d="0.4" d="M12 3v16m-6-6 6 6 6-6"/></svg></div>`,
+      script: `tl.to('.cta-seta', { y: 16, duration: 0.32, yoyo: true, repeat: 5, ease: 'sine.inOut' }, ${r2(t0 + 0.8)});`,
+    };
+  },
   icone: (x, c) => {
     const ti = c.t(x.titulo, 0.15, 0.1);
     return {
@@ -943,6 +969,13 @@ ${v.extra === 'cinema' && !c.sobre ? '.mg-faixa { position: absolute; left: 0; r
 .mg > * { flex: none; }
 .mg-centro { align-items: center; text-align: center; }
 .mg-esq { align-items: flex-start; text-align: left; }
+.mg.mg-titulo { top: 230px; height: 760px; gap: 1.6cqh; }
+.mg.mg-chamada { top: 880px; height: 300px; gap: 1.4cqh; }
+.mg-titulo .mg-linhas { align-items: center; }
+.mg-titulo .t-xl { line-height: .96; }
+.mg-titulo .mg-m { margin-bottom: -.02em; }
+.cta-seta { width: min(12cqw, 26cqh); fill: none; stroke: var(--cor-destaque); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+.cta-seta path { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .mg-caixa { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 2.4cqh; width: 100%; max-height: 100%; }
 .mg-t { font-family: var(--fonte-titulo); line-height: 1; letter-spacing: -.025em; text-wrap: balance; margin: 0; ${v.caixaAlta ? 'text-transform: uppercase;' : ''} ${v.extra === 'inclinado' ? 'font-style: italic; transform: skewX(-7deg);' : ''} ${v.extra === 'neon' ? 'text-shadow: 0 0 22px color-mix(in srgb, var(--cor-destaque) 55%, transparent);' : ''} }
 .mg-t { overflow-wrap: break-word; }
@@ -1130,6 +1163,8 @@ export interface CenaDeMotion {
   layout: LayoutDoPreset;
   lado?: 'cima' | 'baixo';
   canto?: 'sup-esq' | 'sup-dir' | 'inf-esq' | 'inf-dir';
+  /** Só no cartão: a cena passa atrás da pessoa (recortada por cima no render). */
+  atras?: boolean;
 }
 
 /**
@@ -1202,6 +1237,7 @@ export function composicaoDoPreset(
     layout,
     ...(lado ? { lado } : {}),
     ...(layout === 'pip' ? { canto: cena.canto ?? 'inf-dir' } : {}),
+    ...(cena.atras && layout === 'cartao' ? { atras: true } : {}),
     semFundo: true,
     titulo: `${preset.nome}: ${cena.textos.titulo ?? cena.textos.numero ?? cena.textos.a ?? cena.textos.antes ?? cena.textos.itens?.[0] ?? ''}`.slice(0, 60),
     estilo: v.chave,
@@ -1211,12 +1247,12 @@ export function composicaoDoPreset(
 }
 
 /** A cena de motion guardada numa animação (para remontar em outro visual, paleta ou lugar sem IA). */
-export function cenaDaComposicao(c: Pick<ComposicaoHtml, 'briefing' | 'layout' | 'lado' | 'canto'>): CenaDeMotion | null {
+export function cenaDaComposicao(c: Pick<ComposicaoHtml, 'briefing' | 'layout' | 'lado' | 'canto' | 'atras'>): CenaDeMotion | null {
   try {
     const b = JSON.parse(c.briefing ?? '') as { motion?: { preset?: unknown; textos?: unknown } };
     const preset = presetDeMotion(String(b.motion?.preset ?? ''));
     if (!preset) return null;
-    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}) };
+    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}), ...(c.atras ? { atras: true } : {}) };
   } catch {
     return null;
   }

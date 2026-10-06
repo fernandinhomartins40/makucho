@@ -100,8 +100,6 @@ import {
   textoDosVisuais,
   visualDeMotion,
   NOME_DO_FORMATO,
-  FONTES_DE_VIDEO,
-  contrasteDasCores,
   type CenaDeMotion,
   type FormatoDeConteudo,
   type VisualDeMotion,
@@ -523,24 +521,6 @@ function instanteDaAncora(ancora: string, palavras: ReadonlyArray<{ s: number; t
     if (melhor === null || Math.abs(s - dica) < Math.abs(melhor - dica)) melhor = s;
   }
   return melhor === null ? null : Math.max(0, Math.round((melhor - 0.15) * 100) / 100);
-}
-
-/**
- * O título de abertura e a chamada final no visual das animações: a fonte do
- * título dele e a cor de destaque. Só os que estão no estilo padrão do
- * acabamento (editorial e chamada profissional) -- o que a marca escolheu fica.
- */
-function textosNoVisual(plano: EditPlanV1, v: VisualDeMotion, tema: ReturnType<typeof temaDaAnimacao>): TimelineOperation[] {
-  if (!tema) return [];
-  const fontId = Object.entries(FONTES_DE_VIDEO).find(([, f]) => `'${f.nomeAss}'` === v.fontes[0])?.[0];
-  const tinta = contrasteDasCores('#111111', tema.destaque) >= contrasteDasCores('#ffffff', tema.destaque) ? '#111111' : '#FFFFFF';
-  return plano.overlays.flatMap((o): TimelineOperation[] => {
-    if (o.component === 'HookTitle' && o.style?.preset === 'editorial')
-      return [{ op: 'editar_overlay', overlayId: o.id, style: { ...(fontId ? { fontId } : {}), accentColor: tema.destaque, ...(v.caixaAlta ? { uppercase: true } : {}) } }];
-    if (o.component === 'CTA' && o.style?.preset === 'chamada_pro')
-      return [{ op: 'editar_overlay', overlayId: o.id, style: { ...(fontId ? { fontId } : {}), bgColor: tema.destaque, color: tinta } }];
-    return [];
-  });
 }
 
 /** Uma cena pronta para entrar no vídeo. */
@@ -1718,11 +1698,8 @@ ${fala}${
     cobrem: ReadonlyArray<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>>,
     tema: ReturnType<typeof temaDaAnimacao>,
     relatorio: RelatorioDasAnimacoes,
-    visual?: VisualDeMotion,
   ): Promise<string | null> {
     const agora = (await this.planos.atual(sistema, projectId)).document;
-    // Os textos da montagem falam a língua das animações (uma fonte, um destaque).
-    if (visual) ops = [...ops, ...textosNoVisual(agora, visual, tema)];
     // O zoom de um trecho coberto pela animação (tela cheia, pip) não
     // aparece -- ou sai recortado na janela: tira.
     const semZoom = zoomsEscondidos(agora, cobrem).map((clipId): TimelineOperation => ({ op: 'definir_efeito', clipId, effect: 'nenhum' }));
@@ -1758,8 +1735,9 @@ ${fala}${
     paleta?: string,
   ): Promise<{ criadas: number; nota: string }> {
     let direcao: Awaited<ReturnType<AnimacoesDaFalaService['dirigirPresets']>>;
+    let perfil: PerfilDoVideo | null = null;
     try {
-      const perfil = await this.perfilDoProjeto(sistema.workspaceId, projectId, plano, palavras);
+      perfil = await this.perfilDoProjeto(sistema.workspaceId, projectId, plano, palavras);
       relatorio.analise = resumoDoPerfil(perfil);
       aoAvancar(10);
       direcao = await this.dirigirPresets(sistema.workspaceId, projectId, plano, palavras, duracaoS, perfil, fixo);
@@ -1778,7 +1756,11 @@ ${fala}${
     });
     aoDirigir(direcao.cenas.map((c) => ({ inicioMs: Math.round(c.inicioS * 1000), fimMs: Math.round(c.fimS * 1000) })));
     aoAvancar(60);
-    if (!direcao.cenas.length) {
+    // O título de abertura e a chamada final do acabamento viram cenas do
+    // visual (sem fundo; o título atrás da pessoa quando há rosto) e saem
+    // da camada de textos: um vídeo, uma língua visual.
+    const titulos = this.titulosComoCenas(plano, visual, paleta, perfil);
+    if (!direcao.cenas.length && !titulos.ops.length) {
       const nota = direcao.pedidos
         ? `Sem animações: a IA sugeriu ${direcao.pedidos}, mas nenhuma passou na conferência (toque para ver os motivos).`
         : 'Sem animações: a IA achou que este vídeo fica melhor só com o rosto e a fala.';
@@ -1800,14 +1782,47 @@ ${fala}${
         relatorio.escrita.push({ inicioS: c.inicioS, tipo: nome, ok: false, detalhe: motivo.slice(0, 200) });
       }
     }
-    if (!ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
-    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio, visual);
+    if (!ops.length && !titulos.ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
+    const cenasDaFala = ops.length;
+    ops.push(...titulos.ops);
+    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio);
     if (naoSalvo) return { criadas: 0, nota: await registrar(`Sem animações: ${naoSalvo.slice(0, 380)}`) };
     aoAvancar(100);
-    const quando = ops.map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : '')).join(', ');
+    const quando = ops
+      .slice(0, cenasDaFala)
+      .map((o) => (o.op === 'adicionar_midia' ? `${Math.round(o.timelineStartMs / 1000)}s` : ''))
+      .join(', ');
     const saiu = direcao.descartados.length + falhas.length;
-    const nota = `A IA criou ${ops.length} ${ops.length === 1 ? 'animação' : 'animações'} no visual ${visual.nome} (em ${quando})${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
-    return { criadas: ops.length, nota: await registrar(nota) };
+    const extras = titulos.nomes.length ? ` + ${titulos.nomes.join(' e ')}` : '';
+    const nota = `A IA criou ${cenasDaFala} ${cenasDaFala === 1 ? 'animação' : 'animações'} no visual ${visual.nome}${cenasDaFala ? ` (em ${quando})` : ''}${extras}${saiu ? `; ${saiu} ${saiu === 1 ? 'ficou' : 'ficaram'} de fora (toque para ver por quê)` : ''}.`;
+    return { criadas: cenasDaFala + titulos.nomes.length, nota: await registrar(nota) };
+  }
+
+  /**
+   * O título de abertura e a chamada final (os textos que o acabamento põe)
+   * como cenas do visual: mesmo texto, mesmo instante, sem fundo. O título
+   * passa atrás da pessoa quando a imagem tem rosto (a máscara do render; sem
+   * ela, fica na frente).
+   */
+  private titulosComoCenas(plano: EditPlanV1, visual: VisualDeMotion, paleta: string | undefined, perfil: PerfilDoVideo | null): { ops: TimelineOperation[]; nomes: string[] } {
+    const ops: TimelineOperation[] = [];
+    const nomes: string[] = [];
+    for (const o of plano.overlays) {
+      if ((o.component !== 'HookTitle' && o.component !== 'CTA') || !o.text?.trim()) continue;
+      const titulo = o.component === 'HookTitle';
+      const cena: CenaDeMotion = {
+        preset: titulo ? 'titulo' : 'chamada',
+        textos: lerTextosDaCena({ titulo: o.text }),
+        layout: 'cartao',
+        ...(titulo && perfil?.olhar?.rosto !== 'sem_rosto' ? { atras: true } : {}),
+      };
+      const composicao = composicaoDoPreset(cena, visual.chave, o.durationMs / 1000, [], { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: titulo ? 'o título do vídeo' : 'a chamada final' });
+      if (problemasDaComposicao(composicao).length) continue;
+      ops.push({ op: 'remover_overlay', overlayId: o.id });
+      ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: o.timelineStartMs, durationMs: o.durationMs });
+      nomes.push(titulo ? 'o título de abertura' : 'a chamada final');
+    }
+    return { ops, nomes };
   }
 }
 

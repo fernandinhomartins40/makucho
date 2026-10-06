@@ -36,9 +36,11 @@ Pedido amplo ("melhora", "deixa profissional", "edita pra mim", "capricha"):
   famílias de fonte, uma cor de destaque que manda (a da marca, quando
   houver) e um jeito de mover. As animações da fala têm um VISUAL (veja
   `estilos_e_animacoes`): a palavra falada da legenda já vem na cor dele, e o
-  título de abertura e a chamada final já usam a fonte e a cor dele. Se
-  mexer em legenda ou textos, mantenha essa língua -- não traga uma terceira
-  fonte nem outra cor de destaque.
+  título de abertura e a chamada final já são CENAS desse visual (sem fundo;
+  o título passa atrás da pessoa). Não ponha de volta título ou chamada como
+  texto de tela; para mudar o texto deles, use `refazer_animacao` com um
+  pedido. Se mexer em legenda ou textos, mantenha essa língua -- não traga
+  uma terceira fonte nem outra cor de destaque.
 - **Hierarquia no tempo.** Num mesmo instante, uma coisa pede o olho: ou a
   legenda, ou um texto, ou a imagem, ou a animação. Empilhar tudo é ruído.
 - **Ritmo com contraste.** Momentos cheios e momentos só do rosto. Zoom,

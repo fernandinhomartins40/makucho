@@ -18,6 +18,7 @@ import {
   problemasDaComposicao,
   temaDaAnimacao,
   textoDaCena,
+  textoDosPresets,
   type TextosDaCena,
 } from '../src';
 
@@ -51,6 +52,8 @@ const TEXTOS: Record<string, TextosDaCena> = {
   ranking: { itens: ['Reels', 'TikTok', 'Shorts'], titulo: 'Onde mais cresce' },
   rotulo: { titulo: 'Ana Souza', kicker: 'editora de vídeo' },
   icone: { icone: 'foguete', titulo: 'Crescimento rápido', detalhe: 'sem gastar com anúncio' },
+  titulo: { titulo: 'O erro que trava seu crescimento', kicker: 'pare agora', enfase: 'erro' },
+  chamada: { titulo: 'Siga para a parte 2', enfase: 'parte 2' },
 };
 
 const falaDe = (x: TextosDaCena) =>
@@ -125,6 +128,15 @@ for (const v of VISUAIS_DE_MOTION) {
   t('a animação guarda a cena para remontar', lida?.preset === 'lista' && lida.textos.itens?.length === 3 && lida.layout === 'pip' && lida.canto === 'sup-esq');
   const outra = composicaoDoPreset(lida!, 'mg-neon', 5, []);
   t('remontada em outro visual muda só o visual', outra.estilo === 'mg-neon' && outra.layout === 'pip' && outra.html.includes('Gancho forte'));
+}
+
+// Atrás da pessoa: só no cartão, e guardado para remontar.
+{
+  const c = composicaoDoPreset({ preset: 'titulo', textos: { titulo: 'O erro' }, layout: 'cartao', atras: true }, 'mg-soco', 3, []);
+  t('título atrás da pessoa: marcado na animação', c.atras === true && c.layout === 'cartao' && cenaDaComposicao(c)?.atras === true);
+  const p = composicaoDoPreset({ preset: 'contador', textos: { numero: '9', titulo: 'x' }, layout: 'meio_a_meio', atras: true }, 'mg-soco', 3, []);
+  t('fora do cartão não há "atrás" (o painel cobre a pessoa)', !p.atras);
+  t('título e chamada não entram na escolha das cenas da fala', !textoDosPresets().includes('titulo [') && !textoDosPresets().includes('chamada ['));
 }
 
 // Texto da IA: limpo e cortado, nunca recusado; HTML escapado.

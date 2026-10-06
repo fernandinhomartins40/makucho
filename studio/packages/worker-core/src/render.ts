@@ -37,7 +37,7 @@
 // ============================================================
 
 import type { EditPlanV1, SpriteDaMidia } from '@makucho/studio-contracts';
-import { agendaDoPlano, caixaDaMidia, divisaoDaCamada, divisaoDaCena, janelaDaComposicao, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
+import { agendaDoPlano, caixaDaMidia, divisaoDaCamada, divisaoDaCena, janelaDaComposicao, linhasDoSprite, proporcaoDoQuadro, definicaoDoSom, kenBurnsExpressao, escalaMaxima, expressaoDaTrilha, expressoesDaMidia, midiaEstaAnimada, definicaoDaTransicao, efeitoUsaPessoa, ehEfeitoSonoroEmbutido, ehAnimacaoAtras, janelaDoEfeito, planoPrecisaDeAss } from '@makucho/studio-contracts';
 import type { EfeitoDeTela } from '@makucho/studio-contracts';
 import { executarBinario } from './ffmpeg';
 
@@ -343,7 +343,9 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
   // os efeitos que mudam so o fundo e os textos atras da pessoa.
   const efeitosDeTela = plano.screenEffects ?? [];
   const usamPessoa = opcoes.mascara ? efeitosDeTela.filter((e) => efeitoUsaPessoa(e.type)).length : 0;
-  const usosDaMascara = usamPessoa + (opcoes.legendasAtras && opcoes.mascara ? 1 : 0);
+  // Animações atrás da pessoa: a pessoa recortada volta por cima de cada uma.
+  const animacoesAtras = opcoes.mascara ? (plano.mediaLayers ?? []).filter((c) => ehAnimacaoAtras(c) && opcoes.animacoes?.[c.id]).length : 0;
+  const usosDaMascara = usamPessoa + animacoesAtras + (opcoes.legendasAtras && opcoes.mascara ? 1 : 0);
   const mascaras: string[] = [];
   if (opcoes.mascara && usosDaMascara > 0) {
     const m = opcoes.mascara;
@@ -509,6 +511,18 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
     if (c.fadeInMs) cadeia += `,fade=t=in:st=0:d=${(c.fadeInMs / 1000).toFixed(3)}:alpha=1`;
     if (c.fadeOutMs) cadeia += `,fade=t=out:st=${Math.max(0, d - c.fadeOutMs / 1000).toFixed(3)}:d=${(c.fadeOutMs / 1000).toFixed(3)}:alpha=1`;
     const seguir = Boolean(c.followPerson && opcoes.cabeca?.trilha.length);
+    // Atrás da pessoa: a pessoa sai do vídeo ANTES da animação entrar e volta
+    // por cima dela, só nos quadros da animação.
+    let pessoa = '';
+    if (opcoes.mascara && ehAnimacaoAtras(c)) {
+      const mascaraDaCamada = mascaras.shift();
+      if (mascaraDaCamada) {
+        partes.push(`[${video}]split[${r}va][${r}vb]`);
+        partes.push(`[${r}vb][${mascaraDaCamada}]alphamerge[${r}pp]`);
+        video = `${r}va`;
+        pessoa = `${r}pp`;
+      }
+    }
     if (!midiaEstaAnimada(c) && !seguir) {
       const opacidade = c.opacity ?? 1;
       if (opacidade < 1) cadeia += `,lutyuv=a='val*${opacidade.toFixed(4)}'`;
@@ -540,6 +554,10 @@ export function montarArgumentos(opcoes: OpcoesDoRender): string[] {
       compor(r, `x='(${px})*W-${M / 2}':y='(${py})*H-${M / 2}':eval=frame:eof_action=pass:format=yuv420`, c, n0, nf);
     }
     video = `${r}o`;
+    if (pessoa) {
+      partes.push(`[${video}][${pessoa}]overlay=0:0:enable='between(n,${n0},${n0 + nf - 1})'[${r}pt]`);
+      video = `${r}pt`;
+    }
 
     // O som do vídeo só entra com volume: o B-roll é mudo por padrão.
     if (c.kind === 'video' && (c.volume ?? 0) > 0 && m.temAudio) {

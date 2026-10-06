@@ -45,6 +45,7 @@ import {
   estadoDoTexto,
   ehEfeitoSonoroEmbutido,
   efeitoUsaPessoa,
+  ehAnimacaoAtras,
   ehTextoAtras,
   larguraDoTexto,
   montarBlocos,
@@ -872,6 +873,9 @@ export function Palco({
   // textos) e o da frente (o resto), com a pessoa recortada no meio --
   // a mesma ordem do render.
   const temAtras = planoDaPrevia.overlays.some(ehTextoAtras);
+  // Animações (título, chamada) atrás da pessoa: o mesmo recorte, por cima do iframe delas.
+  const temAnimacaoAtras = (planoDaPrevia.mediaLayers ?? []).some(ehAnimacaoAtras);
+  const temRecorte = temAtras || temAnimacaoAtras;
   const [ass, assAtras] = useMemo(() => {
     const plan = planoDaPrevia;
     if (!planoPrecisaDeAss(plan)) return [null, null];
@@ -893,7 +897,7 @@ export function Palco({
   const [modeloPronto, setModeloPronto] = useState(false);
   const precisaRecortar = useRef(true);
   useEffect(() => {
-    if (!temAtras) return;
+    if (!temRecorte) return;
     let vivo = true;
     carregarModeloDaPessoa()
       .then(() => vivo && setModeloPronto(true))
@@ -901,13 +905,13 @@ export function Palco({
     return () => {
       vivo = false;
     };
-  }, [temAtras]);
+  }, [temRecorte]);
   useEffect(() => {
     precisaRecortar.current = true;
   }, [posicaoMs, plan]);
 
   useEffect(() => {
-    if (!temAtras || !modeloPronto) return;
+    if (!temRecorte || !modeloPronto) return;
     let quadro = 0;
     let ocupado = false;
     let alternado = false;
@@ -916,9 +920,9 @@ export function Palco({
       const destino = recorteRef.current;
       if (!destino || ocupado) return;
       const ms = tempoAoVivo.current;
-      const visivel = planoDaPrevia.overlays.some(
-        (o) => ehTextoAtras(o) && ms >= o.timelineStartMs && ms < o.timelineStartMs + o.durationMs,
-      );
+      const visivel =
+        planoDaPrevia.overlays.some((o) => ehTextoAtras(o) && ms >= o.timelineStartMs && ms < o.timelineStartMs + o.durationMs) ||
+        (planoDaPrevia.mediaLayers ?? []).some((m) => ehAnimacaoAtras(m) && ms >= m.timelineStartMs && ms < m.timelineStartMs + m.durationMs);
       if (!visivel) {
         if (destino.dataset.limpo !== '1') {
           destino.getContext('2d')?.clearRect(0, 0, destino.width, destino.height);
@@ -962,7 +966,7 @@ export function Palco({
     };
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [temAtras, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas]);
+  }, [temRecorte, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas]);
 
   // ---------- Máscara para os efeitos que mudam só o fundo ----------
   // O modelo roda no quadro composto ANTES dos efeitos (o mesmo que o
@@ -1366,7 +1370,7 @@ export function Palco({
             onFalha={() => setLibassFalhou(true)}
           />
         )}
-        {temAtras && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
+        {temRecorte && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
 
         {ass && !libassFalhou && (
           <CamadaDeLegendas largura={plan.canvas.width} altura={plan.canvas.height}

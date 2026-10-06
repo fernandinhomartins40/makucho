@@ -32,6 +32,7 @@ import {
   caixaDaMidia, divisaoNoInstante, janelaNoInstante, proporcaoDoQuadro,
   efeitoUsaPessoa,
   ehTextoAtras,
+  ehAnimacaoAtras,
   estadoDaMidia,
   gerarAss,
   kenBurnsNoInstante,
@@ -338,7 +339,9 @@ export async function exportarNoNavegador(
 
     // ---------- Pessoa (máscara) ----------
     const precisaDePessoa =
-      temAtras || (plano.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type)) || (plano.mediaLayers ?? []).some((m) => m.followPerson);
+      temAtras ||
+      (plano.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type)) ||
+      (plano.mediaLayers ?? []).some((m) => m.followPerson || ehAnimacaoAtras(m));
     if (precisaDePessoa) {
       try {
         await carregarModeloDaPessoa();
@@ -466,6 +469,8 @@ export async function exportarNoNavegador(
 
       // 2. As mídias do instante.
       const midias: MidiaNoQuadro[] = [];
+      // As animações atrás da pessoa no instante (a pessoa volta por cima delas).
+      const midiasAtras = new Set<MidiaNoQuadro>();
       const quadro30 = Math.floor((ms * 30) / 1000);
       for (const c of plano.mediaLayers ?? []) {
         const n0 = Math.round((c.timelineStartMs * 30) / 1000);
@@ -524,7 +529,9 @@ export async function exportarNoNavegador(
         };
         const seguir = Boolean(c.followPerson && cabeca);
         if (!midiaEstaAnimada(c) && !seguir) {
-          midias.push({ fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j), ...(c.kind === 'html' ? { ladoALado: true } : {}) });
+          const item: MidiaNoQuadro = { fonte: el, caixa: base, raio, alfa: (c.opacity ?? 1) * fade, ...extras, ...misturaDaCamada(c), ...recorteDaCamada(c, j), ...(c.kind === 'html' ? { ladoALado: true } : {}) };
+          midias.push(item);
+          if (ehAnimacaoAtras(c)) midiasAtras.add(item);
           continue;
         }
         const est = estadoDaMidia(c, (j * 1000) / 30, { x: (base.x + base.w / 2) / W, y: (base.y + base.h / 2) / H });
@@ -567,6 +574,7 @@ export async function exportarNoNavegador(
       const pessoaAgora =
         precisaDePessoa &&
         (atrasAgora ||
+          midiasAtras.size > 0 ||
           efeitos.some((e) => efeitoUsaPessoa(e.tipo)) ||
           (plano.mediaLayers ?? []).some((m) => m.followPerson && ms >= m.timelineStartMs && ms < m.timelineStartMs + m.durationMs));
       let mascara: Float32Array | null = null;
@@ -597,10 +605,18 @@ export async function exportarNoNavegador(
       const imagemAtras = atrasAgora && legendasAtras ? await legendasAtras.quadro(ms) : null;
       const imagemFrente = legendas ? await legendas.quadro(ms) : null;
 
-      // 5. Montagem final.
+      // 5. Montagem final. Com animação atrás da pessoa, a pessoa sai de um
+      //    quadro montado SEM ela e volta por cima (o mesmo que o render faz).
+      const pessoaPorCima = midiasAtras.size > 0 && mascara;
+      if (pessoaPorCima) {
+        compositor.desenhar({ ...montagem, midias: midias.filter((m) => !midiasAtras.has(m)) });
+        quadroDaPessoa.getContext('2d')!.drawImage(glCanvas, 0, 0, quadroDaPessoa.width, quadroDaPessoa.height);
+        pintarRecorte(quadroDaPessoa, mascara!, recorte);
+      }
       compositor.desenhar(montagem);
       if (compositor.camadasSemImagem > 0) quadrosSemVideo += 1;
       ctx.drawImage(glCanvas, 0, 0, W, H);
+      if (pessoaPorCima) ctx.drawImage(recorte, 0, 0, W, H);
       for (const o of plano.overlays) {
         if (o.component !== 'LogoBug' && o.component !== 'ImageOverlay') continue;
         if (ms < o.timelineStartMs || ms >= o.timelineStartMs + o.durationMs) continue;

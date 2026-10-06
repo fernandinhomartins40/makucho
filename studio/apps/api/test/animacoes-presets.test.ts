@@ -193,9 +193,14 @@ async function main() {
   const n = montar((p) => (p.chamada === 'montar_motion' ? resposta([CENAS[0]], 'mg-soco') : '{}'));
   await n.planos.salvar(null, 'p1', comTextos);
   await n.servico.criarNaMontagem(sistema as never, 'p1');
+  const camadasN = n.atual().mediaLayers ?? [];
+  const tit = camadasN.find((m) => cenaDaComposicao(m.composicao!)?.preset === 'titulo');
+  const cha = camadasN.find((m) => cenaDaComposicao(m.composicao!)?.preset === 'chamada');
+  t('o título de abertura vira uma cena do visual, no mesmo instante, atrás da pessoa', !!tit && tit.timelineStartMs === 0 && tit.durationMs === 2000 && tit.composicao?.estilo === 'mg-soco' && tit.composicao.atras === true && cenaDaComposicao(tit.composicao)?.textos.titulo === 'Gemini novo');
+  t('a chamada final vira uma cena do visual (sem fundo, na frente)', !!cha && cha.timelineStartMs === 26000 && cha.composicao?.layout === 'cartao' && !cha.composicao.atras);
+  t('os textos antigos saem da camada de textos', !n.atual().overlays.some((o) => o.component === 'HookTitle' || o.component === 'CTA'));
+  t('a nota conta o título e a chamada', n.notas.some((x) => x.includes('o título de abertura e a chamada final')));
   const ov = (id: string) => n.atual().overlays.find((o) => o.id === id)!;
-  t('o título de abertura usa a fonte e o destaque do visual', ov('ov-titulo').style?.fontId === 'montserrat-black' && ov('ov-titulo').style?.accentColor?.toLowerCase() === '#ffd400' && ov('ov-titulo').style?.uppercase === true);
-  t('a chamada final vira um botão na cor do visual, com texto legível', ov('ov-chamada').style?.bgColor?.toLowerCase() === '#ffd400' && ov('ov-chamada').style?.color === '#111111');
   t('texto com estilo próprio (da marca ou da pessoa) fica como está', ov('ov-marca').style?.fontId === 'bebas');
 
   console.log(`\n${ok} ok, ${fail} falha(s)`);

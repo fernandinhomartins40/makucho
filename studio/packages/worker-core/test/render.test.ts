@@ -338,6 +338,18 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('a pessoa vai por cima, só na janela', f.includes("[vtras][pessoa]overlay=0:0:enable='between(t,2.000,5.000)'[vcomposto]"));
   t('legenda e textos da frente por último', f.includes('[vcomposto]subtitles=/tmp/frente.ass[vlegendado]'));
 
+  // Animação (cena pronta) atrás da pessoa: a pessoa sai antes dela e volta por cima, só nos quadros dela.
+  const comTitulo = {
+    ...plano,
+    mediaLayers: [{ id: 'tit', assetId: 'html', kind: 'html', layout: 'tela_cheia', timelineStartMs: 0, durationMs: 2000, composicao: { html: '<b>x</b>', css: '', script: 'tl.to({}, {}, 0)', layout: 'cartao', atras: true } }],
+  } as unknown as typeof plano;
+  const an = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: comTitulo, animacoes: { tit: '/tmp/tit.mp4' }, mascara: { caminho: '/tmp/m.raw', inicioMs: 0, quadros: 60, lado: 256 } });
+  const fa = an[an.indexOf('-filter_complex') + 1]!;
+  t('animação atrás: a pessoa recortada antes da animação', /split\[md0va\]\[md0vb\]/.test(fa) && fa.includes('[md0vb][mascara0]alphamerge[md0pp]'));
+  t('animação atrás: a pessoa volta por cima, só nos quadros dela', fa.includes("[md0o][md0pp]overlay=0:0:enable='between(n,0,59)'[md0pt]"));
+  const semMascara = montarArgumentos({ entrada: '/in.mp4', saida: '/out.mp4', plano: comTitulo, animacoes: { tit: '/tmp/tit.mp4' } });
+  t('sem máscara, a animação fica na frente (o vídeo sai do mesmo jeito)', !semMascara[semMascara.indexOf('-filter_complex') + 1]!.includes('md0pp'));
+
   const quadros = montarArgumentos({ entrada: '/in.mp4', saida: 'pipe:1', plano, quadrosParaMascara: { inicioMs: 1000, fimMs: 4000, lado: 256 } });
   const fq = quadros[quadros.indexOf('-filter_complex') + 1]!;
   t('modo máscara: só os quadros do intervalo, 256x256 RGB no stdout', fq.includes('trim=start=1.0000:end=4.0000') && fq.includes('scale=256:256,format=rgb24[mq]') && quadros.at(-1) === 'pipe:1');
