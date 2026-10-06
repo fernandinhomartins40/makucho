@@ -19,6 +19,7 @@ import {
   temaDaAnimacao,
   textoDaCena,
   textoDosPresets,
+  ASSETS_DE_MOTION,
   type TextosDaCena,
 } from '../src';
 
@@ -53,6 +54,8 @@ const TEXTOS: Record<string, TextosDaCena> = {
   rotulo: { titulo: 'Ana Souza', kicker: 'editora de vídeo' },
   icone: { icone: 'foguete', titulo: 'Crescimento rápido', detalhe: 'sem gastar com anúncio' },
   titulo: { titulo: 'O erro que trava seu crescimento', kicker: 'pare agora', enfase: 'erro' },
+  objeto: { objeto: 'celular', titulo: 'A venda chega sozinha', detalhe: 'no automático' },
+  anotacao: { rabisco: 'seta_curva', titulo: 'olha isso' },
   chamada: { titulo: 'Siga para a parte 2', enfase: 'parte 2' },
 };
 
@@ -137,6 +140,24 @@ for (const v of VISUAIS_DE_MOTION) {
   const p = composicaoDoPreset({ preset: 'contador', textos: { numero: '9', titulo: 'x' }, layout: 'meio_a_meio', atras: true }, 'mg-soco', 3, []);
   t('fora do cartão não há "atrás" (o painel cobre a pessoa)', !p.atras);
   t('título e chamada não entram na escolha das cenas da fala', !textoDosPresets().includes('titulo [') && !textoDosPresets().includes('chamada ['));
+}
+
+// Assets animados: todos montam, em todo visual, e passam na checagem.
+for (const a of ASSETS_DE_MOTION) {
+  for (const v of [VISUAIS_DE_MOTION[0]!, VISUAIS_DE_MOTION[1]!]) {
+    const textos = a.tipo === 'objeto' ? { objeto: a.chave, titulo: 'Teste' } : { rabisco: a.chave, titulo: 'Teste' };
+    const c = composicaoDoPreset({ preset: a.tipo === 'objeto' ? 'objeto' : 'anotacao', textos, layout: 'cartao' }, v.chave, 4, []);
+    t(`asset ${a.chave}/${v.chave}: monta e passa na checagem`, c.html.includes(`ast-${a.chave}`) && problemasDaComposicao(c).length === 0);
+  }
+}
+{
+  const comEnfeite = composicaoDoPreset({ preset: 'impacto', textos: { titulo: 'Boom' }, layout: 'tela_cheia' }, 'mg-soco', 4, []);
+  t('cena de destaque ganha o enfeite do visual', /mg-enfeite"><svg id="as\d" class="ast ast-(explosao|velocidade)/.test(comEnfeite.html));
+  const sem = composicaoDoPreset({ preset: 'impacto', textos: { titulo: 'Boom', rabisco: 'nenhum' }, layout: 'tela_cheia' }, 'mg-soco', 4, []);
+  t('"nenhum" tira o enfeite', !sem.html.includes('mg-enfeite'));
+  const sobrio = composicaoDoPreset({ preset: 'impacto', textos: { titulo: 'Boom' }, layout: 'tela_cheia' }, 'mg-suico', 4, []);
+  t('visual sóbrio (suíço) não leva enfeite', !sobrio.html.includes('mg-enfeite'));
+  t('objeto ou rabisco que não existe não entra', lerTextosDaCena({ objeto: 'dragao', rabisco: 'raio-laser' }).objeto === undefined && lerTextosDaCena({ rabisco: 'raio-laser' }).rabisco === undefined);
 }
 
 // Texto da IA: limpo e cortado, nunca recusado; HTML escapado.

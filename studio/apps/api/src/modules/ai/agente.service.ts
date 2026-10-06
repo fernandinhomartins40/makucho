@@ -64,6 +64,9 @@ import {
   TECNICAS_DE_CENA,
   PRESETS_DE_MOTION,
   textoDosPresets,
+  textoDosAssets,
+  CHAVES_DOS_OBJETOS,
+  CHAVES_DOS_RABISCOS,
   textoDoPerfil,
 } from '@makucho/studio-contracts';
 import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
@@ -883,7 +886,8 @@ export class AgenteService {
         rotulo: 'Criando uma cena de motion graphics',
         descricao: `Cria uma cena de motion graphics PRONTA (o jeito padrão, sai em segundos): você escolhe o preset e os textos; cada elemento entra sozinho no instante da palavra, no visual do vídeo (ou no visual pedido em "estilo"). Leia antes ler_fala palavras=true para achar inicioS/fimS (3 a 8 s, começando na palavra que pede a cena). layout: meio_a_meio (cena + rosto na outra metade; lado cima = cena em cima), cartao (sobre o vídeo, fora do rosto), tela_cheia (só o pico), pip (o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir). textos: só o que foi DITO, números em algarismos exatos. Sem preset/textos, a IA escolhe a partir de "ideia".
 PRESETS (chave [layouts]: quando. Campos; * = obrigatório):
-${textoDosPresets()}`,
+${textoDosPresets()}
+${textoDosAssets()}`,
         parametros: objeto(
           {
             inicioS: { type: 'number' },
@@ -901,6 +905,8 @@ ${textoDosPresets()}`,
               description: 'os textos da cena, pelos campos do preset',
               properties: {
                 ...Object.fromEntries(['kicker', 'titulo', 'detalhe', 'numero', 'prefixo', 'unidade', 'antes', 'depois', 'a', 'b', 'enfase', 'icone'].map((k) => [k, { type: 'string' }])),
+                objeto: { type: 'string', enum: CHAVES_DOS_OBJETOS, description: 'um objeto animado (preset objeto, ou no lugar do ícone)' },
+                rabisco: { type: 'string', enum: [...CHAVES_DOS_RABISCOS, 'nenhum'], description: 'uma anotação à mão sobre a cena ("nenhum" tira o enfeite do visual)' },
                 itens: { type: 'array', items: { type: 'string' } },
                 valores: { type: 'array', items: { type: 'string' } },
               },

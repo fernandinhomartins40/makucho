@@ -203,6 +203,13 @@ async function main() {
   const ov = (id: string) => n.atual().overlays.find((o) => o.id === id)!;
   t('texto com estilo próprio (da marca ou da pessoa) fica como está', ov('ov-marca').style?.fontId === 'bebas');
 
+  // 11. Assets animados: a IA os vê e a cena com objeto entra.
+  t('a escolha das cenas recebe os objetos e rabiscos animados', pm.sistema.includes('OBJETOS ANIMADOS') && pm.sistema.includes('celular') && pm.sistema.includes('RABISCOS'));
+  const o = montar((p) => (p.chamada === 'montar_motion' ? resposta([{ preset: 'objeto', ancora: 'lançar o gemini três', inicioS: 3, fimS: 7, layout: 'meio_a_meio', textos: { objeto: 'foguete', titulo: 'Lançamento do Gemini' } }]) : '{}'));
+  await o.servico.criarNaMontagem(sistema as never, 'p1');
+  const co = o.atual().mediaLayers?.[0]?.composicao;
+  t('cena com objeto animado entra com o asset e o script dele', !!co && co.html.includes('ast-foguete') && co.script.includes('#as1-fo') && problemasDaComposicao(co).length === 0);
+
   console.log(`\n${ok} ok, ${fail} falha(s)`);
   if (fail) process.exit(1);
 }

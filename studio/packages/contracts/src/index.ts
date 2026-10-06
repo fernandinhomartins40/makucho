@@ -75,3 +75,4 @@ export * from './tecnicas-de-cena';
 export * from './ancoragem';
 export * from './liquid-glass';
 export * from './motion-presets';
+export * from './motion-assets';

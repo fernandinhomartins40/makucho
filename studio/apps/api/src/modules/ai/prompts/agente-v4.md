@@ -81,6 +81,12 @@ Pedido amplo ("melhora", "deixa profissional", "edita pra mim", "capricha"):
   da fala: confira com `estilos_e_animacoes` antes de criar outra -- uma
   cena a mais num momento-chave sem nenhuma, sim; duas cenas brigando pelo
   mesmo instante, nunca. Varie o preset e o layout entre cenas vizinhas.
+  As cenas ganham vida com ASSETS ANIMADOS: objetos que se mexem (celular
+  recebendo notificação, sino, moedas caindo, foguete, cursor clicando,
+  cadeado abrindo...) no preset `objeto` ou no lugar do ícone, e rabiscos à
+  mão (seta, círculo, X, check, brilhos, explosão) no campo `rabisco` de
+  qualquer cena ou no preset `anotacao`. Use quando o objeto CONTA o que a
+  fala diz -- não como enfeite à toa.
 - Imagens: `ilustrar_a_fala`, `buscar_midia` + `adicionar_midia`,
   `criar_imagem_com_ia` (quando a busca não tem a cena; descrição em inglês,
   concreta, sem texto na imagem), `adicionar_sobreposicao` (luz, grão,

@@ -29,6 +29,7 @@
 // ============================================================
 
 import type { ComposicaoHtml } from './animacao-html';
+import { CSS_DOS_ASSETS, assetAnimado, assetDeMotion } from './motion-assets';
 
 // ---------- Os visuais ----------
 
@@ -63,6 +64,8 @@ export interface VisualDeMotion {
     duracao: number;
     intervalo: number;
   };
+  /** Os rabiscos que enfeitam as cenas de destaque deste visual (motion-assets.ts); vazio = sóbrio. */
+  enfeites: string[];
   /** Um detalhe que só este visual tem (inclinação, faixas de cinema, brilho no texto). */
   extra?: 'inclinado' | 'cinema' | 'neon' | 'fita';
   /** Largura média de uma letra da fonte do título, em em (como sai: com a caixa alta). Mede o corpo que cabe. */
@@ -86,6 +89,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 18,
     movimento: { entrada: 'back.out(1.8)', saida: 'power3.in', impacto: 'power4.in', duracao: 0.28, intervalo: 0.06 },
     largura: 0.8,
+    enfeites: ['explosao', 'velocidade'],
   },
   {
     chave: 'mg-caderno',
@@ -103,6 +107,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 14,
     movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'back.out(1.6)', duracao: 0.45, intervalo: 0.09 },
     largura: 0.62,
+    enfeites: ['circulo', 'sublinhado', 'seta_curva'],
   },
   {
     chave: 'mg-luxo',
@@ -120,6 +125,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 4,
     movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'expo.out', duracao: 0.75, intervalo: 0.13 },
     largura: 0.5,
+    enfeites: ['brilhos'],
   },
   {
     chave: 'mg-keynote',
@@ -137,6 +143,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 28,
     movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.4)', duracao: 0.55, intervalo: 0.08 },
     largura: 0.6,
+    enfeites: ['brilhos'],
   },
   {
     chave: 'mg-brutal',
@@ -154,6 +161,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 14,
     movimento: { entrada: 'back.out(2)', saida: 'power3.in', impacto: 'back.out(2.4)', duracao: 0.32, intervalo: 0.07 },
     largura: 0.72,
+    enfeites: ['estrela', 'explosao'],
   },
   {
     chave: 'mg-suico',
@@ -171,6 +179,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 0,
     movimento: { entrada: 'power4.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.42, intervalo: 0.07 },
     largura: 0.6,
+    enfeites: [],
   },
   {
     chave: 'mg-analogico',
@@ -188,6 +197,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 6,
     movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'power3.out', duracao: 0.6, intervalo: 0.11 },
     largura: 0.55,
+    enfeites: ['sublinhado'],
   },
   {
     chave: 'mg-y2k',
@@ -205,6 +215,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 10,
     movimento: { entrada: 'expo.out', saida: 'power3.in', impacto: 'back.out(2)', duracao: 0.34, intervalo: 0.06 },
     largura: 1.0,
+    enfeites: ['brilhos', 'estrela'],
     extra: 'neon',
   },
   {
@@ -223,6 +234,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 8,
     movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.3, intervalo: 0.06 },
     largura: 0.62,
+    enfeites: [],
   },
   {
     chave: 'mg-mercado',
@@ -240,6 +252,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 10,
     movimento: { entrada: 'power4.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.36, intervalo: 0.06 },
     largura: 0.52,
+    enfeites: ['velocidade'],
   },
   {
     chave: 'mg-pop',
@@ -257,6 +270,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 24,
     movimento: { entrada: 'back.out(2.2)', saida: 'back.in(1.6)', impacto: 'back.out(2.6)', duracao: 0.34, intervalo: 0.07 },
     largura: 0.8,
+    enfeites: ['explosao', 'estrela', 'brilhos'],
   },
   {
     chave: 'mg-pastel',
@@ -274,6 +288,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 36,
     movimento: { entrada: 'back.out(1.5)', saida: 'power2.in', impacto: 'back.out(1.8)', duracao: 0.45, intervalo: 0.09 },
     largura: 0.66,
+    enfeites: ['brilhos'],
   },
   {
     chave: 'mg-cinema',
@@ -291,6 +306,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 2,
     movimento: { entrada: 'power2.out', saida: 'power2.in', impacto: 'expo.out', duracao: 0.8, intervalo: 0.14 },
     largura: 0.44,
+    enfeites: [],
     extra: 'cinema',
   },
   {
@@ -309,6 +325,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 4,
     movimento: { entrada: 'power4.out', saida: 'power4.in', impacto: 'power4.in', duracao: 0.24, intervalo: 0.05 },
     largura: 0.5,
+    enfeites: ['velocidade', 'explosao'],
     extra: 'inclinado',
   },
   {
@@ -327,6 +344,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 30,
     movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.5)', duracao: 0.5, intervalo: 0.08 },
     largura: 0.64,
+    enfeites: ['brilhos'],
   },
   {
     chave: 'mg-revista',
@@ -344,6 +362,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 0,
     movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.5, intervalo: 0.09 },
     largura: 0.64,
+    enfeites: ['sublinhado', 'seta_curva'],
   },
   {
     chave: 'mg-neon',
@@ -361,6 +380,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 22,
     movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.8)', duracao: 0.42, intervalo: 0.08 },
     largura: 0.66,
+    enfeites: ['brilhos', 'estrela'],
     extra: 'neon',
   },
   {
@@ -379,6 +399,7 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     raio: 4,
     movimento: { entrada: 'back.out(1.7)', saida: 'power2.in', impacto: 'back.out(2.2)', duracao: 0.4, intervalo: 0.09 },
     largura: 0.72,
+    enfeites: ['estrela', 'seta_curva', 'circulo'],
     extra: 'fita',
   },
 ];
@@ -408,6 +429,10 @@ export interface TextosDaCena {
   /** A palavra (ou duas) que carrega o sentido. */
   enfase?: string;
   icone?: string;
+  /** Um objeto animado (motion-assets.ts): o herói da cena "objeto" ou o acompanhante do ícone. */
+  objeto?: string;
+  /** Um rabisco à mão sobre a cena ("nenhum" tira o enfeite do visual). */
+  rabisco?: string;
 }
 
 const LIMITES: Record<string, number> = { kicker: 32, titulo: 96, detalhe: 140, numero: 16, prefixo: 6, unidade: 14, antes: 80, depois: 80, a: 60, b: 60, enfase: 40, icone: 20 };
@@ -431,6 +456,11 @@ export function lerTextosDaCena(bruto: unknown): TextosDaCena {
   if (itens.length) saida.itens = itens;
   const valores = lista(b.valores, 16);
   if (valores.length) saida.valores = valores;
+  // Asset que não existe não entra (a cena sai sem ele, nunca quebra).
+  const objeto = texto(b.objeto);
+  if (assetDeMotion(objeto)?.tipo === 'objeto') saida.objeto = objeto;
+  const rabisco = texto(b.rabisco);
+  if (rabisco === 'nenhum' || assetDeMotion(rabisco)?.tipo === 'rabisco') saida.rabisco = rabisco;
   return saida;
 }
 
@@ -475,6 +505,8 @@ export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
   { chave: 'rotulo', nome: 'Rótulo (lower third)', quando: 'apresentar quem fala, um lugar, uma marca ou o tema do trecho', campos: 'titulo*, kicker', layouts: ['cartao'] },
   { chave: 'titulo', nome: 'Título de abertura', quando: 'o título do vídeo, nos primeiros segundos (sem fundo; pode passar atrás da pessoa)', campos: 'titulo* (até 7 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
   { chave: 'chamada', nome: 'Chamada final', quando: 'a chamada do fim: seguir, salvar, comentar, comprar (sem fundo)', campos: 'titulo* (até 6 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
+  { chave: 'objeto', nome: 'Objeto animado', quando: 'um conceito que um objeto que se mexe mostra (o celular que recebe a venda, o sino que toca, as moedas que caem, o foguete que decola)', campos: 'objeto* (da lista de objetos), titulo*, detalhe', layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
+  { chave: 'anotacao', nome: 'Anotação à mão', quando: 'apontar ou marcar algo na imagem, com uma frase curta (seta, círculo, X, check)', campos: 'rabisco* (da lista de rabiscos), titulo* (até 5 palavras)', layouts: ['cartao'] },
   { chave: 'icone', nome: 'Ícone grande', quando: 'um conceito simples que um ícone resume', campos: `icone* (${'dinheiro|tempo|alvo|raio|cadeado|grafico|pessoa|check|x|lampada|estrela|fogo|alerta|coracao|mensagem|celular|calendario|foguete|seta|escudo'}), titulo*, detalhe`, layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
 ];
 
@@ -583,6 +615,8 @@ interface Ctx {
   corpo: (classe: ClasseDoTitulo, texto: string, fracao?: number) => string;
   /** Pip e tela cheia: a área é alta, peças lado a lado vão uma sobre a outra. */
   alto: boolean;
+  /** Um asset animado (motion-assets.ts) no segundo `t`: devolve o SVG; o script dele entra na cena. */
+  asset: (chave: string, t: number, classe?: string) => string;
 }
 
 type ClasseDoTitulo = 't-xl' | 't-l' | 't-m' | 't-s';
@@ -892,10 +926,22 @@ const MONTADORES: Record<string, Montador> = {
       script: `tl.to('.cta-seta', { y: 16, duration: 0.32, yoyo: true, repeat: 5, ease: 'sine.inOut' }, ${r2(t0 + 0.8)});`,
     };
   },
+  objeto: (x, c) => {
+    const ti = c.t(x.titulo, 0.6, 0.5);
+    return {
+      html: `<div class="mg mg-icone${c.sobre ? ' mg-card' : ''}"><div class="obj-roda" data-in="escala" data-t="0.05">${c.asset(x.objeto ?? 'foguete', 0.1, 'ast obj-grande')}</div><div class="ico-txt"><div class="mg-t t-m" style="${c.corpo('t-m', x.titulo ?? '', c.alto ? 1 : 0.5)}" data-in="sobe" data-t="${ti}">${c.marcar(x.titulo ?? '', x.enfase, ti)}</div>${detalhe(x.detalhe, c.t(x.detalhe, ti + 0.5))}</div></div>`,
+    };
+  },
+  anotacao: (x, c) => {
+    const t0 = c.t(x.titulo, 0.15, 0.1);
+    return {
+      html: `<div class="mg mg-solto mg-anot"><div class="mg-t t-m" style="${c.corpo('t-m', x.titulo ?? '', 0.7)}" data-in="sobe" data-t="${t0}">${c.marcar(x.titulo ?? '', x.enfase, t0)}</div><div class="anot-ast">${c.asset(x.rabisco ?? 'seta_curva', t0 + 0.25, 'ast')}</div></div>`,
+    };
+  },
   icone: (x, c) => {
     const ti = c.t(x.titulo, 0.15, 0.1);
     return {
-      html: `<div class="mg mg-icone${c.sobre ? ' mg-card' : ''}"><div class="ico-roda" data-in="escala" data-t="0.05"><svg class="ico-anel" viewBox="0 0 100 100" aria-hidden="true"><circle pathLength="1" cx="50" cy="50" r="46" data-in="desenha" data-t="0.05" data-d="0.7"/></svg>${icone(x.icone, 0.2, 0.9, 'ic ico-grande')}</div><div class="ico-txt"><div class="mg-t t-m" style="${c.corpo('t-m', x.titulo ?? '', c.alto ? 1 : 0.5)}" data-in="sobe" data-t="${ti}">${c.marcar(x.titulo ?? '', x.enfase, ti)}</div>${detalhe(x.detalhe, c.t(x.detalhe, ti + 0.5))}</div></div>`,
+      html: `<div class="mg mg-icone${c.sobre ? ' mg-card' : ''}"><div class="ico-roda" data-in="escala" data-t="0.05"><svg class="ico-anel" viewBox="0 0 100 100" aria-hidden="true"><circle pathLength="1" cx="50" cy="50" r="46" data-in="desenha" data-t="0.05" data-d="0.7"/></svg>${x.objeto ? c.asset(x.objeto, 0.2, 'ast ico-grande') : icone(x.icone, 0.2, 0.9, 'ic ico-grande')}</div><div class="ico-txt"><div class="mg-t t-m" style="${c.corpo('t-m', x.titulo ?? '', c.alto ? 1 : 0.5)}" data-in="sobe" data-t="${ti}">${c.marcar(x.titulo ?? '', x.enfase, ti)}</div>${detalhe(x.detalhe, c.t(x.detalhe, ti + 0.5))}</div></div>`,
     };
   },
 };
@@ -969,6 +1015,15 @@ ${v.extra === 'cinema' && !c.sobre ? '.mg-faixa { position: absolute; left: 0; r
 .mg > * { flex: none; }
 .mg-centro { align-items: center; text-align: center; }
 .mg-esq { align-items: flex-start; text-align: left; }
+${CSS_DOS_ASSETS}
+.mg-enfeite { position: absolute; right: 0; top: 0; width: min(22cqw, 26cqh); translate: 18% -38%; pointer-events: none; z-index: 3; }
+.mg-solto .mg-enfeite, .mg-solto .anot-ast { filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+.obj-roda { position: relative; width: min(46cqw, 82cqh); aspect-ratio: 1; flex: none; color: var(--cor-texto); }
+.obj-roda .ast { width: 100%; height: 100%; }
+.ico-roda .ast.ico-grande { width: 62%; color: var(--cor-texto); }
+.mg.mg-anot { justify-content: center; align-items: flex-start; gap: 0; }
+.anot-ast { width: min(34cqw, 70cqh); margin-left: 34cqw; margin-top: -1cqh; }
+.anot-ast .ast { width: 100%; }
 .mg.mg-titulo { top: 230px; height: 760px; gap: 1.6cqh; }
 .mg.mg-chamada { top: 880px; height: 300px; gap: 1.4cqh; }
 .mg-titulo .mg-linhas { align-items: center; }
@@ -1095,7 +1150,7 @@ ${c.layout === 'cartao' ? `.t-xl { font-size: min(17cqw, 40cqh); } .t-l { font-s
 .notif-tit { font-size: min(5.8cqw, 12cqh); } .notif-det { font-size: max(28px, min(4.2cqw, 9cqh)); } .notif-topo { font-size: max(22px, min(2.8cqw, 6cqh)); } .notif-app { width: min(12cqw, 26cqh); }
 .busca-res { font-size: max(30px, min(4.4cqw, 9cqh)); } .rot-k { font-size: max(28px, min(3.8cqw, 9cqh)); }
 .mg-esq > .mg-num, .preco-v { font-size: min(20cqw, 42cqh); } .mg-lista li, .mg-passos li, .mg-rank li { font-size: min(6cqw, 13cqh); } .bolha { font-size: max(30px, min(4.6cqw, 10cqh)); }` : ''}
-${c.layout === 'pip' || c.layout === 'tela_cheia' ? '.mg-anel, .mg-icone { flex-direction: column; align-items: flex-start; } .anel { width: min(64cqw, 34cqh); } .ico-roda { width: min(52cqw, 30cqh); }' : ''}
+${c.layout === 'pip' || c.layout === 'tela_cheia' ? '.mg-anel, .mg-icone { flex-direction: column; align-items: flex-start; } .anel { width: min(64cqw, 34cqh); } .ico-roda, .obj-roda { width: min(52cqw, 30cqh); }' : ''}
 ${c.layout === 'pip' ? `.mg-vs { grid-template-columns: 1fr; } .vs-lado { min-height: 0; } .vs-meio { justify-self: center; } .vs-ic { width: min(16cqw, 8cqh); }
 .mg-d { font-size: max(28px, min(8cqw, 4.4cqh)); } .mg-k { font-size: max(24px, min(6cqw, 3.4cqh)); } .mg-lista li, .mg-passos li, .mg-rank li { font-size: min(10cqw, 6cqh); }
 .bolha { font-size: max(28px, min(8cqw, 4.6cqh)); max-width: 100%; } .busca-res { font-size: max(28px, min(7cqw, 4.4cqh)); } .barra-r { font-size: max(22px, min(6cqw, 3.4cqh)); } .barra-v { font-size: min(9cqw, 5cqh); }
@@ -1167,6 +1222,16 @@ export interface CenaDeMotion {
   atras?: boolean;
 }
 
+/** As cenas de destaque, que levam o enfeite do visual. */
+const CENAS_COM_ENFEITE = new Set(['impacto', 'contador', 'anel', 'preco', 'selo', 'pergunta', 'citacao', 'titulo', 'chamada', 'frase', 'termo', 'alerta', 'objeto']);
+
+/** Um número estável de um texto (a mesma cena escolhe sempre o mesmo enfeite). */
+function semente(texto: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < texto.length; i += 1) h = Math.imul(h ^ texto.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
 /**
  * A cena com cartão: o cartão vai DENTRO de .mg (o contêiner do tamanho da
  * área útil, que mede as fontes) -- um .mg de altura automática mediria zero.
@@ -1206,7 +1271,15 @@ export function composicaoDoPreset(
   const layout = layoutDoPreset(preset.chave, cena.layout);
   const sobre = layout === 'cartao';
   const D = Math.max(1.5, duracaoS);
+  const scriptsDosAssets: string[] = [];
+  let assets = 0;
   const c: Ctx = {
+    asset: (chave, t, classe = 'ast') => {
+      assets += 1;
+      const a = assetAnimado(chave, `as${assets}`, t, classe);
+      if (a.script) scriptsDosAssets.push(a.script);
+      return a.html;
+    },
     v,
     D,
     layout,
@@ -1220,6 +1293,16 @@ export function composicaoDoPreset(
     alto: layout === 'pip' || layout === 'tela_cheia',
   };
   const montado = MONTADORES[preset.chave]!(cena.textos, c);
+  // O enfeite do visual (ou o rabisco pedido) nas cenas de destaque, logo
+  // depois da batida principal; "nenhum" tira.
+  const pedido = cena.textos.rabisco;
+  const doVisual = v.enfeites.length && CENAS_COM_ENFEITE.has(preset.chave) ? v.enfeites[semente(JSON.stringify(cena.textos)) % v.enfeites.length] : undefined;
+  const enfeite = pedido === 'nenhum' || preset.chave === 'anotacao' ? undefined : (pedido ?? doVisual);
+  if (enfeite) {
+    const batida = Number(/data-in="(?:bate|escala|carimbo|mascara)" data-t="([\d.]+)"/.exec(montado.html)?.[1] ?? 0.3);
+    const html = `<div class="mg-enfeite">${c.asset(enfeite, Math.min(D - 1, batida + 0.3))}</div>`;
+    montado.html = montado.html.replace(/<\/div>$/, `${html}</div>`);
+  }
   const fundo = sobre
     ? ''
     : `<div class="mg-fundo">${v.brilho ? '<i class="mg-brilho"></i><i class="mg-brilho b2"></i>' : ''}<div class="mg-tex"></div>${v.extra === 'cinema' ? '<i class="mg-faixa f1"></i><i class="mg-faixa f2"></i>' : ''}</div>`;
@@ -1233,7 +1316,7 @@ export function composicaoDoPreset(
   return {
     html: `${fundo}${emCaixa(montado.html)}`,
     css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}`,
-    script: scriptDaCena(v, D, layout, lado, sobre, montado.script ?? ''),
+    script: scriptDaCena(v, D, layout, lado, sobre, [montado.script ?? '', ...scriptsDosAssets].filter(Boolean).join('\n')),
     layout,
     ...(lado ? { lado } : {}),
     ...(layout === 'pip' ? { canto: cena.canto ?? 'inf-dir' } : {}),

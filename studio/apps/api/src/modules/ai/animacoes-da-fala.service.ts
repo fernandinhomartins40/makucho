@@ -96,6 +96,7 @@ import {
   lerTextosDaCena,
   presetDeMotion,
   textoDaCena,
+  textoDosAssets,
   textoDosPresets,
   textoDosVisuais,
   visualDeMotion,
@@ -447,6 +448,11 @@ ${textoDosVisuais()}
 
 PRESETS (chave [layouts em que funciona]: quando usar. Campos; * = obrigatório):
 ${textoDosPresets()}
+
+ASSETS ANIMADOS (o que dá vida às cenas: use quando o objeto ou o gesto CONTA o que a fala diz):
+${textoDosAssets()}
+- "objeto" é o herói do preset objeto (e pode trocar o ícone do preset icone).
+- "rabisco" em qualquer cena acrescenta a anotação à mão; cada visual já tem os enfeites dele nas cenas de destaque ("rabisco": "nenhum" tira).
 
 COMO ESCOLHER:
 - Cena só onde a fala tem o que o preset pede (número dito, enumeração, passos, dois lados, pergunta, termo, oferta, frase de peso). Fala corrida sem nada disso: poucas cenas de impacto ou frase, ou nenhuma. Zero cenas é resposta válida.
@@ -1092,6 +1098,7 @@ export class AnimacoesDaFalaService {
       sistema: `Você escolhe UMA cena de motion graphics pronta (um preset) e os textos dela, para um trecho de um vídeo vertical de alguém falando. Não escreve código.
 PRESETS (chave [layouts]: quando usar. Campos; * = obrigatório):
 ${textoDosPresets()}
+${textoDosAssets()}
 Textos curtos em português e fiéis à fala: só números, nomes e itens DITOS (números em algarismos, exatos). titulo até 6 palavras (frase/citação até 12), detalhe até 10, itens até 4 palavras cada.
 Responda SÓ com JSON: {"preset":"chave","textos":{...}}`,
       usuario: `${atual ? `CENA ATUAL (edite em cima dela; mude só o que o pedido pede): ${JSON.stringify({ preset: atual.preset, textos: atual.textos })}\n` : ''}PEDIDO: ${pedido}\nFala do trecho: "${fala.slice(0, 1500)}"`,
