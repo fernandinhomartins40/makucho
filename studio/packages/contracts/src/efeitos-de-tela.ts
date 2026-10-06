@@ -55,6 +55,7 @@ export const EFEITOS_DE_TELA = [
   { id: 'fundo_desfocado', rotulo: 'Fundo desfocado', categoria: 'corpo', descricao: 'Borra tudo menos quem fala.', quando: 'Destacar a pessoa, fundo bagunçado.', duracaoPadraoMs: 3000, intensidadePadrao: 0.6, pesado: true, usaPessoa: true },
   { id: 'fundo_pb', rotulo: 'Fundo P&B', categoria: 'corpo', descricao: 'O fundo perde a cor; a pessoa continua colorida.', quando: 'Momento de foco, "só isso importa".', duracaoPadraoMs: 3000, intensidadePadrao: 1, pesado: true, usaPessoa: true },
   { id: 'fundo_escuro', rotulo: 'Fundo escuro', categoria: 'corpo', descricao: 'Escurece o fundo e acende a pessoa.', quando: 'Revelação, confissão, frase forte.', duracaoPadraoMs: 3000, intensidadePadrao: 0.7, pesado: true, usaPessoa: true },
+  { id: 'contorno_luz', rotulo: 'Contorno de luz', categoria: 'corpo', descricao: 'Uma borda de luz quente em volta da pessoa e o fundo um pouco mais escuro.', quando: 'Apresentação, revelação, cena em volta da pessoa (perspectiva, profundidade).', duracaoPadraoMs: 3000, intensidadePadrao: 0.8, pesado: true, usaPessoa: true },
 ] as const satisfies readonly DefinicaoDeEfeitoDeTela[];
 
 export type TipoDeEfeitoDeTela = (typeof EFEITOS_DE_TELA)[number]['id'];

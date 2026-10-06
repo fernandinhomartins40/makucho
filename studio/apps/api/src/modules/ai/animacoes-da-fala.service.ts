@@ -191,6 +191,8 @@ export interface PedidoDeTrecho {
   /** A cena pronta escolhida por quem pediu (o agente): com os textos, monta sem chamar a IA. */
   preset?: string;
   textos?: unknown;
+  /** Só no cartão: atrás da pessoa (true) ou na frente (false); sem pedido, o padrão do preset. */
+  atras?: boolean;
 }
 
 const TECNOLOGIA = estiloDeAnimacao('tecnologia')!;
@@ -408,7 +410,7 @@ export function modoDasAnimacoes(): ModoDasAnimacoes {
 // sem IA, na hora.
 // ============================================================
 
-const VERSAO_MOTION = 'motion-presets-v1';
+const VERSAO_MOTION = 'motion-presets-v2';
 
 // Os ícones duotone (Phosphor, MIT) só no servidor: as cenas saem com o SVG pronto.
 usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
@@ -420,14 +422,17 @@ const REGRAS_DOS_PRESETS: RegrasDaDirecao = { teto: (s) => Math.max(2, Math.min(
 
 /** Que presets cada sinal da fala pede (vai na análise, para a IA partir dela). */
 const PRESETS_DO_SINAL: Record<string, string> = {
-  numero: 'contador, anel, preco, barras, linha',
-  lista: 'lista, ranking',
-  passos: 'passos',
-  comparacao: 'versus, antes_depois',
+  numero: 'numero_gigante, contador, anel, preco, barras, linha (dois números: placar)',
+  lista: 'mosaico, lista, ranking, linha_do_tempo',
+  passos: 'janela, passos, linha_do_tempo',
+  comparacao: 'placar, ladeando, versus, antes_depois',
   pergunta: 'pergunta',
   termo: 'termo',
-  enfase: 'impacto, frase, citacao, selo',
+  enfase: 'cartaz, impacto, profundidade, frase, citacao, selo',
 };
+
+/** As cenas que desenham o espaço em volta de quem fala: levam o contorno de luz na pessoa. */
+const PRESETS_COM_CONTORNO = new Set(['hud', 'profundidade', 'selecao']);
 
 /** Os visuais que combinam com o tipo de conteúdo e a luz da imagem (o primeiro é o padrão). */
 const VISUAIS_DO_FORMATO: Record<FormatoDeConteudo, { claro: string[]; escuro: string[] }> = {
@@ -461,6 +466,10 @@ ${textoDosIcones()}
 - "icone" no preset icone e na notificação; "icones" (um por item) na lista e no ranking.
 - "objeto" é o herói do preset objeto (e pode trocar o ícone do preset icone).
 - "rabisco" em qualquer cena acrescenta a anotação à mão; cada visual já tem os enfeites dele nas cenas de destaque ("rabisco": "nenhum" tira).
+
+CENAS EM VOLTA DA PESSOA (cartaz, numero_gigante, placar, mosaico, ladeando, selecao, hud, profundidade, janela, linha_do_tempo, comentario, mensagem): usam o quadro inteiro, sem caixa, com os elementos em volta de quem fala; as marcadas "atrás da pessoa" passam por TRÁS dela (o recorte dela fica por cima). São o que mais dá cara de edição profissional: em vídeo com rosto, faça delas de um terço à metade das cenas, nos momentos fortes (o tema, o número-chave, a comparação, o pedido de comentário, o que chega no direct).
+- "fundo" (só nas de atrás): "escuro" apaga o ambiente e acende a pessoa; "xadrez" = a pessoa "sem fundo", crua; "grade" = blueprint. Sem "fundo", o ambiente do vídeo continua.
+- comentario no fim, quando a fala pede para comentar uma palavra; mensagem quando algo chega por mensagem.
 
 COMO ESCOLHER:
 - Cena só onde a fala tem o que o preset pede (número dito, enumeração, passos, dois lados, pergunta, termo, oferta, frase de peso). Fala corrida sem nada disso: poucas cenas de impacto ou frase, ou nenhuma. Zero cenas é resposta válida.
@@ -1082,7 +1091,7 @@ export class AnimacoesDaFalaService {
     const fala = palavras.filter((x) => x.s >= m.inicioS - 4 && x.s < m.fimS + 2).map((x) => x.texto).join(' ');
     if (numerosInventados(textoDaCena(textos), fala).length) return null;
     const layout = layoutDoPreset(preset, m.layout);
-    return { preset, textos, layout, ...(layout === 'meio_a_meio' ? { lado: m.lado ?? 'cima' } : {}), ...(layout === 'pip' ? { canto: m.canto ?? 'inf-dir' } : {}) };
+    return { preset, textos, layout, ...(layout === 'meio_a_meio' ? { lado: m.lado ?? 'cima' } : {}), ...(layout === 'pip' ? { canto: m.canto ?? 'inf-dir' } : {}), ...(typeof p.atras === 'boolean' ? { atras: p.atras } : {}) };
   }
 
   /**
@@ -1783,6 +1792,7 @@ ${fala}${
       return { criadas: 0, nota: await registrar(nota) };
     }
     const ops: TimelineOperation[] = [];
+    const efeitos: TimelineOperation[] = [];
     const falhas: string[] = [];
     const cobrem: Array<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>> = [];
     for (const c of direcao.cenas) {
@@ -1790,6 +1800,13 @@ ${fala}${
       try {
         const { composicao, duracaoMs } = this.montarCena(c, visual.chave, palavras, paleta);
         ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: Math.round(c.inicioS * 1000), durationMs: duracaoMs });
+        // As cenas que desenham o espaço em volta de quem fala pedem a pessoa
+        // acesa: o contorno de luz no mesmo trecho (só com rosto; sem repetir).
+        const inicioMs = Math.round(c.inicioS * 1000);
+        const jaTem = (plano.screenEffects ?? []).some((e) => e.type === 'contorno_luz' && e.timelineStartMs < inicioMs + duracaoMs && e.timelineStartMs + e.durationMs > inicioMs);
+        if (PRESETS_COM_CONTORNO.has(c.cena.preset) && perfil?.olhar?.rosto !== 'sem_rosto' && !jaTem) {
+          efeitos.push({ op: 'adicionar_efeito_de_tela', type: 'contorno_luz', timelineStartMs: inicioMs, durationMs: duracaoMs, intensity: 0.8 });
+        }
         cobrem.push({ inicioS: c.inicioS, fimS: c.fimS, layout: composicao.layout });
         relatorio.escrita.push({ inicioS: c.inicioS, tipo: nome, ok: true });
       } catch (e) {
@@ -1800,7 +1817,7 @@ ${fala}${
     }
     if (!ops.length && !titulos.ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
     const cenasDaFala = ops.length;
-    ops.push(...titulos.ops);
+    ops.push(...titulos.ops, ...efeitos);
     const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio);
     if (naoSalvo) return { criadas: 0, nota: await registrar(`Sem animações: ${naoSalvo.slice(0, 380)}`) };
     aoAvancar(100);

@@ -63,6 +63,18 @@ const TEXTOS: Record<string, TextosDaCena> = {
   objeto: { objeto: 'celular', titulo: 'A venda chega sozinha', detalhe: 'no automático' },
   anotacao: { rabisco: 'seta_curva', titulo: 'olha isso' },
   chamada: { titulo: 'Siga para a parte 2', enfase: 'parte 2' },
+  cartaz: { titulo: 'Editor', kicker: 'O melhor', detalhe: 'de vídeos', fundo: 'escuro' },
+  numero_gigante: { numero: '66', unidade: '%', kicker: 'dos testes' },
+  placar: { a: 'Opus 5', b: 'Opus 5.5', valores: ['27', '66'], unidade: '%', titulo: 'placar Surge AI', kicker: 'Chartography' },
+  mosaico: { itens: ['Gráfico', 'Imagem', 'Mapa', 'Tabela'], icones: ['chart-line-up', 'image', 'map-trifold', 'stack'], titulo: 'Chartography' },
+  ladeando: { icones: ['sparkle', 'robot'], a: 'Claude', b: 'ChatGPT' },
+  selecao: { titulo: 'RAW · sem edição', fundo: 'xadrez' },
+  hud: { titulo: 'Perspectiva', fundo: 'grade' },
+  profundidade: { titulo: 'Profundidade', kicker: 'efeito 3D' },
+  janela: { titulo: 'Abre espaço para explicar', kicker: 'Trecho da VSL · editado com IA', enfase: '100% IA', itens: ['Você pede', 'A IA monta', 'Você revisa'], icones: ['chat-circle-dots', 'stack', 'check-circle'] },
+  linha_do_tempo: { itens: ['Abertura', 'Chartography', '27 → 66', 'Perspectiva', 'Efeitos 3D', 'CTA'], titulo: 'Timeline' },
+  comentario: { titulo: 'GUIA', detalhe: 'Comenta GUIA', kicker: 'Adicione um comentário…' },
+  mensagem: { titulo: 'tiagolemosx', detalhe: 'Aqui está o seu GUIA.', kicker: 'Direct', enfase: 'GUIA' },
 };
 
 const falaDe = (x: TextosDaCena) =>
@@ -121,6 +133,22 @@ for (const v of VISUAIS_DE_MOTION) {
   const c = composicaoDoPreset({ preset: 'impacto', textos: { titulo: 'Consistência' }, layout: 'tela_cheia' }, 'mg-soco', 6, fala);
   const tempos = [...c.html.matchAll(/data-t="([\d.]+)"/g)].map((m) => Number(m[1]));
   t('nada entra no último segundo da cena', Math.max(...tempos) <= 6 - 1.1 + 0.25);
+}
+
+// Em volta da pessoa: as de "atras" passam atrás por padrão, o pedido manda, e o fundo só vem com ela por cima.
+{
+  const padrao = composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Editor', fundo: 'xadrez' }, layout: 'cartao' }, 'mg-soco', 5, []);
+  t('cartaz passa atrás da pessoa por padrão', padrao.atras === true && padrao.html.includes('q-fundo-xadrez'));
+  const naFrente = composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Editor', fundo: 'xadrez' }, layout: 'cartao', atras: false }, 'mg-soco', 5, []);
+  t('pedido de ficar na frente vale e fica guardado', naFrente.atras === false && !naFrente.html.includes('q-fundo') && cenaDaComposicao(naFrente)?.atras === false);
+  const frente = composicaoDoPreset({ preset: 'comentario', textos: { titulo: 'GUIA' }, layout: 'cartao' }, 'mg-soco', 5, []);
+  t('comentário fica na frente', frente.atras === undefined);
+  t('fundo desconhecido não entra', lerTextosDaCena({ titulo: 'x', fundo: 'arco-iris' }).fundo === undefined && lerTextosDaCena({ fundo: 'grade' }).fundo === 'grade');
+  t('as cenas em volta usam o quadro inteiro', padrao.html.includes('mg-quadro'));
+  const placar = composicaoDoPreset({ preset: 'placar', textos: TEXTOS.placar!, layout: 'cartao' }, 'mg-soco', 6, falaDe(TEXTOS.placar!));
+  t('placar: a barra maior é a que ganha', /pl-b topo/.test(placar.html) && !/pl-a topo/.test(placar.html));
+  t('placar: os números contam até o valor dito', placar.html.includes('data-conta="27"') && placar.html.includes('data-conta="66"'));
+  t('o texto dos presets avisa quais vão atrás', textoDosPresets().includes('cartaz [cartao, atrás da pessoa]'));
 }
 
 // Layout que o preset não aceita cai no preferido dele.

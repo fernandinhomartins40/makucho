@@ -29,7 +29,8 @@ const plano: EditPlanV1 = {
   render: { fps: 30, videoCodec: 'h264', audioCodec: 'aac', crf: 23, audioBitrateKbps: 128, loudnessTargetLufs: -14 },
 };
 
-t('16 efeitos, ids únicos', EFEITOS_DE_TELA.length === 16 && new Set(EFEITOS_DE_TELA.map((e) => e.id)).size === 16);
+t('17 efeitos, ids únicos', EFEITOS_DE_TELA.length === 17 && new Set(EFEITOS_DE_TELA.map((e) => e.id)).size === 17);
+t('contorno de luz precisa da pessoa', efeitoUsaPessoa('contorno_luz'));
 t('fundo desfocado precisa da pessoa; flash não', efeitoUsaPessoa('fundo_desfocado') && !efeitoUsaPessoa('flash'));
 t('janela em quadros: 1,0 s + 0,5 s = quadros 30 a 44', (() => {
   const j = janelaDoEfeito({ timelineStartMs: 1000, durationMs: 500 });

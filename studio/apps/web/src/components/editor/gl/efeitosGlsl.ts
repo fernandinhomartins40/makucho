@@ -64,6 +64,10 @@ float pessoa() {
   if (uTemMascara < 0.5) return 0.0;
   return texture(uMascara, vec2((X + 0.5) / W, (Y + 0.5) / H)).r;
 }
+float pessoaEm(float x, float y) {
+  if (uTemMascara < 0.5) return 0.0;
+  return texture(uMascara, vec2((x + 0.5) / W, (y + 0.5) / H)).r;
+}
 vec3 original() { return texelFetch(uOrig, ivec2(int(X), int(H) - 1 - int(Y)), 0).rgb; }
 
 // Desfoque gaussiano em YUV como o gblur no yuv420p: o croma tem metade
@@ -155,6 +159,23 @@ vec3 efeito() {
     return mix(fundo, c, pessoa());
   }
   if (uTipo == ${i('fundo_escuro')}) return mix(c * (1.0 - 0.7 * k), c, pessoa());
+  if (uTipo == ${i('contorno_luz')}) {
+    // O halo: a máscara borrada (anéis em volta) menos ela mesma, como o gblur + blend do render.
+    float sg = max(1.0, 16.0 * S);
+    float m = pessoa();
+    float soma = m, peso = 1.0;
+    for (int a = 0; a < 12; a++) {
+      float ang = float(a) * 0.5235988;
+      for (int r = 1; r <= 3; r++) {
+        float w = exp(-0.5 * float(r * r));
+        soma += pessoaEm(X + cos(ang) * float(r) * sg, Y + sin(ang) * float(r) * sg) * w;
+        peso += w;
+      }
+    }
+    float halo = clamp((soma / peso - m) * 4.0 * k, 0.0, 1.0);
+    vec3 fundo = mix(c * (1.0 - 0.45 * k), vec3(1.0, 0.549, 0.235), halo);
+    return mix(fundo, c, m);
+  }
   return c;
 }
 

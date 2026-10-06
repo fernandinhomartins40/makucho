@@ -442,6 +442,15 @@ console.log(`\n${ok} ok, ${fail} falha(s)`);
   t('fundo P&B: só o fundo perde a cor, a pessoa volta por cima', g.includes("hue=s=0.000000:enable='between(n,60,89)'") && g.includes('[mascara0]alphamerge') && g.includes('[vpessoa][mascara1]alphamerge'));
   const semMascara = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comFundo });
   t('sem máscara (modelo ausente), o efeito de fundo não entra', !semMascara[semMascara.indexOf('-filter_complex') + 1]!.includes('hue='));
+
+  // Contorno de luz: o halo é a máscara borrada menos ela, na cor quente; a pessoa por cima.
+  const comLuz: EditPlanV1 = { ...plano, screenEffects: [{ id: 'f2', type: 'contorno_luz', timelineStartMs: 1000, durationMs: 1000, intensity: 1 }] };
+  const l = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comLuz, mascara });
+  const gl = l[l.indexOf('-filter_complex') + 1]!;
+  t('contorno de luz: halo da máscara borrada menos ela', /gblur=sigma=[\d.]+\[\w+mbl\]/.test(gl) && gl.includes("blend=all_expr='clip((A-B)*4.000000,0,255)'"));
+  t('contorno de luz: a cor quente vira luz e a pessoa volta por cima', gl.includes('lutyuv=y=158:u=76:v=184') && /\[\w+cor\]\[\w+halo\]alphamerge/.test(gl) && /\[\w+p\]\[\w+ma\]alphamerge/.test(gl));
+  const luzSemMascara = montarArgumentos({ entrada: '/in.mp4', saida: '/o.mp4', plano: comLuz });
+  t('contorno de luz sem máscara não entra', !luzSemMascara[luzSemMascara.indexOf('-filter_complex') + 1]!.includes('gblur'));
 }
 
 // ============================================================

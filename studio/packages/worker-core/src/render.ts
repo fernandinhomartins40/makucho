@@ -1074,6 +1074,25 @@ export function filtroDoEfeitoDeTela(
         `[${r}fx][${r}pa]overlay=0:0:format=yuv420:${janela}[${saida}]`,
       ];
     }
+    case 'contorno_luz': {
+      // O fundo um pouco mais escuro, um halo quente logo fora da silhueta
+      // (a máscara borrada menos ela mesma) e a pessoa por cima, intacta.
+      // A cor sai de uma cópia do próprio quadro (mesmos quadros e tempos).
+      if (!mascara) return null;
+      const d = f(0.45 * k);
+      return [
+        `[${entrada}]split=3[${r}f][${r}p][${r}c]`,
+        `[${mascara}]split=3[${r}ma][${r}mb][${r}mc]`,
+        `[${r}f]lutyuv=y='val*(1-${d})+16*${d}':u='128+(val-128)*(1-${d})':v='128+(val-128)*(1-${d})':${janela}[${r}fx]`,
+        `[${r}mb]gblur=sigma=${f(Math.max(1, 16 * S))}[${r}mbl]`,
+        `[${r}mbl][${r}mc]blend=all_expr='clip((A-B)*${f(4 * k)},0,255)'[${r}halo]`,
+        `[${r}c]lutyuv=y=158:u=76:v=184,format=yuva420p[${r}cor]`,
+        `[${r}cor][${r}halo]alphamerge[${r}luz]`,
+        `[${r}fx][${r}luz]overlay=0:0:format=yuv420:${janela}[${r}fl]`,
+        `[${r}p][${r}ma]alphamerge[${r}pa]`,
+        `[${r}fl][${r}pa]overlay=0:0:format=yuv420:${janela}[${saida}]`,
+      ];
+    }
     default:
       return null;
   }

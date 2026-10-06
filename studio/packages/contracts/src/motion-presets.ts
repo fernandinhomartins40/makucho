@@ -798,7 +798,13 @@ export interface TextosDaCena {
   objeto?: string;
   /** Um rabisco à mão sobre a cena ("nenhum" tira o enfeite do visual). */
   rabisco?: string;
+  /** Cena atrás da pessoa: o que pinta o fundo do vídeo por trás dela (a pessoa fica acesa por cima). */
+  fundo?: FundoAtras;
 }
+
+/** O fundo que uma cena atrás da pessoa pinta: escurecido, xadrez de transparência ("sem fundo") ou grade de blueprint. */
+export const FUNDOS_ATRAS = ['escuro', 'xadrez', 'grade'] as const;
+export type FundoAtras = (typeof FUNDOS_ATRAS)[number];
 
 const LIMITES: Record<string, number> = { kicker: 32, titulo: 96, detalhe: 140, numero: 16, prefixo: 6, unidade: 14, antes: 80, depois: 80, a: 60, b: 60, enfase: 40, icone: 32 };
 
@@ -830,6 +836,8 @@ export function lerTextosDaCena(bruto: unknown): TextosDaCena {
   if (assetDeMotion(objeto)?.tipo === 'objeto') saida.objeto = objeto;
   const rabisco = texto(b.rabisco);
   if (rabisco === 'nenhum' || assetDeMotion(rabisco)?.tipo === 'rabisco') saida.rabisco = rabisco;
+  const fundo = texto(b.fundo);
+  if ((FUNDOS_ATRAS as readonly string[]).includes(fundo)) saida.fundo = fundo as FundoAtras;
   return saida;
 }
 
@@ -848,6 +856,8 @@ export interface PresetDeMotion {
   layouts: readonly LayoutDoPreset[];
   /** Do começo e do fim do vídeo: o servidor cria (a escolha das cenas da fala não os vê). */
   interno?: boolean;
+  /** Ocupa o quadro em volta da pessoa e passa ATRÁS dela (recortada por cima) -- salvo pedido contrário. */
+  atras?: boolean;
 }
 
 export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
@@ -877,6 +887,19 @@ export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
   { chave: 'objeto', nome: 'Objeto animado', quando: 'um conceito que um objeto que se mexe mostra (o celular que recebe a venda, o sino que toca, as moedas que caem, o foguete que decola)', campos: 'objeto* (da lista de objetos), titulo*, detalhe', layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
   { chave: 'anotacao', nome: 'Anotação à mão', quando: 'apontar ou marcar algo na imagem, com uma frase curta (seta, círculo, X, check)', campos: 'rabisco* (da lista de rabiscos), titulo* (até 5 palavras)', layouts: ['cartao'] },
   { chave: 'icone', nome: 'Ícone grande', quando: 'um conceito simples que um ícone resume', campos: 'icone* (da lista de ícones), titulo*, detalhe', layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
+  // Em volta da pessoa: o quadro inteiro, sem caixa; as de "atras" passam por trás dela.
+  { chave: 'cartaz', nome: 'Título gigante atrás', quando: 'o nome do assunto, a palavra-tema, uma afirmação de 1 a 3 palavras para gravar (O MELHOR / EDITOR / DE VÍDEOS)', campos: 'titulo* (1-3 palavras), kicker (etiqueta de cima, 1-3 palavras), detalhe (etiqueta de baixo, 1-3 palavras), fundo', layouts: ['cartao'], atras: true },
+  { chave: 'numero_gigante', nome: 'Número gigante atrás', quando: 'um número ou porcentagem DITO que é o ponto alto (66%, 10 mil)', campos: 'numero*, prefixo, unidade, kicker, fundo', layouts: ['cartao'], atras: true },
+  { chave: 'placar', nome: 'Placar nas laterais', quando: 'dois números DITOS que se comparam (A tinha 27%, B tem 66%): uma barra de cada lado da pessoa', campos: 'a* (nome do 1º), b* (nome do 2º), valores* (os 2 números ditos), unidade, titulo, kicker, fundo', layouts: ['cartao'], atras: true },
+  { chave: 'mosaico', nome: 'Cards em volta', quando: 'duas a quatro coisas citadas juntas (gráfico, imagem, mapa; os recursos de algo): um card com ícone para cada uma, em volta da pessoa', campos: 'itens* (2-4, de 1-2 palavras), icones (um por item), titulo', layouts: ['cartao'] },
+  { chave: 'ladeando', nome: 'Ícones ao lado do rosto', quando: 'duas marcas, ferramentas ou ideias citadas juntas (isto e aquilo, um contra o outro)', campos: 'icones* (2), a (rótulo do 1º), b (rótulo do 2º), kicker', layouts: ['cartao'] },
+  { chave: 'selecao', nome: 'Moldura de seleção', quando: 'mostrar a própria imagem como objeto: o "antes" cru, o "editado", o "você", um destaque de quem fala', campos: 'titulo* (a etiqueta: "RAW · sem edição", "✓ EDITADO"), fundo (xadrez = sem fundo)', layouts: ['cartao'], atras: true },
+  { chave: 'hud', nome: 'Linhas de perspectiva', quando: 'perspectiva, visão, análise, enxergar, profundidade, foco: linhas e nós que desenham o ambiente em volta da pessoa', campos: 'titulo* (1-2 palavras), fundo', layouts: ['cartao'], atras: true },
+  { chave: 'profundidade', nome: 'Texto 3D', quando: 'uma palavra que pede peso ou dimensão (PROFUNDIDADE, LONGE, GRANDE), no peito de quem fala', campos: 'titulo* (1-2 palavras), kicker', layouts: ['cartao'] },
+  { chave: 'janela', nome: 'Janela de app 3D', quando: 'apresentar um produto, um método, uma ferramenta: a janela flutua atrás da cabeça com o título e as etapas', campos: 'titulo* (até 6 palavras), kicker (nome da janela), enfase (selo curto), itens (2-3 etapas de 1-2 palavras), icones (um por etapa)', layouts: ['cartao'], atras: true },
+  { chave: 'linha_do_tempo', nome: 'Timeline de editor', quando: 'as partes, capítulos ou etapas de algo, mostradas como blocos numa linha do tempo com o cursor andando', campos: 'itens* (2-7 blocos de 1-2 palavras), titulo, kicker (etiqueta do cursor)', layouts: ['cartao'] },
+  { chave: 'comentario', nome: 'Caixa de comentário', quando: 'o pedido de comentar uma palavra (comenta GUIA, escreve EU QUERO)', campos: 'titulo* (a palavra digitada), detalhe (a chamada acima, ex.: Comenta GUIA), kicker (o texto apagado da caixa)', layouts: ['cartao'] },
+  { chave: 'mensagem', nome: 'Mensagem chegando', quando: 'algo que chega no direct, no e-mail ou no WhatsApp (o material, a resposta, a venda)', campos: 'titulo* (quem manda), detalhe* (a mensagem), kicker (o app), enfase (o anexo, 1 palavra)', layouts: ['cartao'] },
 ];
 
 export function presetDeMotion(chave: string | undefined | null): PresetDeMotion | undefined {
@@ -890,7 +913,9 @@ export function textoDosVisuais(): string {
 
 /** Os presets, uma linha cada, para a IA escolher. */
 export function textoDosPresets(): string {
-  return PRESETS_DE_MOTION.filter((p) => !p.interno).map((p) => `- ${p.chave} [${p.layouts.join('|')}]: ${p.quando}. Campos: ${p.campos}.`).join('\n');
+  return PRESETS_DE_MOTION.filter((p) => !p.interno)
+    .map((p) => `- ${p.chave} [${p.layouts.join('|')}${p.atras ? ', atrás da pessoa' : ''}]: ${p.quando}. Campos: ${p.campos}.`)
+    .join('\n');
 }
 
 // ---------- Montagem ----------
@@ -1080,6 +1105,18 @@ function cabe(texto: string, maxCqw: number, maxCqh: number, v: VisualDeMotion, 
   const letra = v.largura;
   const cqw = Math.min(maxCqw, (92 * fracao) / (longa * letra));
   return `font-size:min(${cqw.toFixed(1)}cqw,${maxCqh}cqh)`;
+}
+
+/**
+ * O corpo (px no quadro de 1080) em que um texto cabe em `linhas` linhas de
+ * `largura` px: a palavra mais longa numa linha só, o todo nas linhas.
+ * `caixa`: o texto sai em caixa alta mesmo num visual que não usa (letra mais larga).
+ */
+function corpoPx(texto: string, largura: number, teto: number, v: VisualDeMotion, linhas = 1, caixa = false): number {
+  const l = Math.max(0.42, v.largura) * (caixa && !v.caixaAlta ? 1.12 : 1);
+  const longa = Math.max(2, ...texto.split(/\s+/).map((w) => [...w].length));
+  const todo = Math.max(2, [...texto].length);
+  return Math.max(18, Math.round(Math.min(teto, largura / (longa * l), (largura * linhas) / (todo * l * 1.08))));
 }
 
 /** Um título em linhas que sobem por máscara, uma de cada vez, no ritmo da fala. */
@@ -1344,6 +1381,331 @@ const MONTADORES: Record<string, Montador> = {
       html: `<div class="mg mg-icone${c.sobre ? ' mg-card' : ''}"><div class="ico-roda" data-in="escala" data-t="0.05"><svg class="ico-anel" viewBox="0 0 100 100" aria-hidden="true"><circle pathLength="1" cx="50" cy="50" r="46" data-in="desenha" data-t="0.05" data-d="0.7"/></svg>${x.objeto ? c.asset(x.objeto, 0.2, 'ast ico-grande') : icone(x.icone, 0.2, 0.9, 'ic ico-grande')}</div><div class="ico-txt"><div class="mg-t t-m" style="${c.corpo('t-m', x.titulo ?? '', c.alto ? 1 : 0.5)}" data-in="sobe" data-t="${ti}">${c.marcar(x.titulo ?? '', x.enfase, ti)}</div>${detalhe(x.detalhe, c.t(x.detalhe, ti + 0.5))}</div></div>`,
     };
   },
+
+  // ---------- Em volta da pessoa (o quadro inteiro, px de 1080x1920) ----------
+  // Fora das áreas do app (até y 192 e depois de 1600) e da faixa da legenda (1200-1440).
+
+  cartaz: (x, c) => {
+    const palavras = (x.titulo ?? '').split(/\s+/).filter(Boolean);
+    const por = palavras.length <= 3 ? 1 : 2;
+    const ls: string[] = [];
+    for (let i = 0; i < palavras.length; i += por) ls.push(palavras.slice(i, i + por).join(' '));
+    const t0 = c.t(x.titulo, 0.1, 0.15);
+    const altura = 660 / Math.max(1, ls.length);
+    const linhasHtml = ls
+      .map((l, i) => `<span class="cz-m"><span class="cz-l" style="font-size:${corpoPx(l, 1000, altura * 1.15, c.v, 1, true)}px" data-in="mascara" data-t="${r2(t0 + i * 0.14)}">${esc(l)}</span></span>`)
+      .join('');
+    const tk = r2(t0 + 0.35);
+    const td = c.t(x.detalhe, t0 + 0.6, 0.6);
+    const etiqueta = (texto: string, classe: string, t: number) => `<div class="q-pilula cz-tag ${classe}" style="font-size:${corpoPx(texto, 520, 56, c.v, 1, true)}px" data-in="balao" data-t="${t}">${esc(texto)}</div>`;
+    return {
+      html: `<div class="mg mg-quadro"><div class="cz">${linhasHtml}</div>${x.kicker ? etiqueta(x.kicker, 'cz-a', tk) : ''}${x.detalhe ? etiqueta(x.detalhe, 'cz-b', td) : ''}</div>`,
+      css: `.cz { left: 40px; right: 40px; top: 236px; height: 700px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.cz-m { display: block; overflow: hidden; padding: .02em .08em .05em; margin-bottom: -.1em; }
+.cz-l { display: block; font-family: var(--fonte-titulo); text-transform: uppercase; line-height: .86; letter-spacing: -.015em; white-space: nowrap; background: linear-gradient(180deg, var(--solto) 38%, color-mix(in srgb, var(--cor-destaque) 70%, var(--solto)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 10px 34px rgba(0,0,0,.38)); }
+.cz-tag { z-index: 3; } .cz-a { left: 64px; top: 292px; rotate: -6deg; } .cz-b { right: 64px; top: 868px; rotate: -4deg; }`,
+    };
+  },
+
+  numero_gigante: (x, c) => {
+    const tn = c.t(x.numero, 0.2, 0.2);
+    const n = [...(x.numero ?? '')].length + ([...(x.prefixo ?? '')].length + [...(x.unidade ?? '')].length) * 0.42;
+    const corpo = Math.round(Math.min(600, 920 / (Math.max(1.5, n) * Math.max(0.45, c.v.largura))));
+    // Os medidores (como de áudio) nas laterais: o nível pula no ritmo, sem sorteio.
+    const passo = 0.14;
+    const inicio = r2(tn + 0.1);
+    const nPassos = Math.max(0, Math.floor((c.D - 0.5 - inicio) / passo));
+    return {
+      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ng-k" data-in="sobe" data-t="${r2(Math.max(0, tn - 0.3))}">${esc(x.kicker)}</div>` : ''}<div class="mg-num ng-num" style="font-size:${corpo}px" data-in="escala" data-t="${tn}">${x.prefixo ? `<span class="pre">${esc(x.prefixo)}</span>` : ''}${numero(x.numero, tn, 1.2)}${x.unidade ? `<span class="suf">${esc(x.unidade)}</span>` : ''}</div><div class="ng-mt ng-mt0" data-in="aparece" data-t="${inicio}"><i></i></div><div class="ng-mt ng-mt1" data-in="aparece" data-t="${inicio}"><i></i></div></div>`,
+      css: `.ng-k { left: 0; right: 0; top: 214px; text-align: center; font-size: 40px; letter-spacing: .2em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.5); }
+.ng-num { left: 0; right: 0; top: 250px; justify-content: center; line-height: .84; font-family: var(--fonte-titulo); filter: drop-shadow(0 10px 34px rgba(0,0,0,.35)); }
+.ng-num .v, .ng-num .pre, .ng-num .suf { background: linear-gradient(180deg, var(--solto) 25%, color-mix(in srgb, var(--cor-destaque) 75%, transparent) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ng-mt { top: 560px; width: 46px; height: 600px; border-radius: 6px; background: color-mix(in srgb, var(--solto) 18%, transparent); -webkit-mask: repeating-linear-gradient(to top, #000 0 20px, transparent 20px 30px); mask: repeating-linear-gradient(to top, #000 0 20px, transparent 20px 30px); }
+.ng-mt0 { left: 40px; } .ng-mt1 { right: 40px; }
+.ng-mt i { position: absolute; inset: 0; background: linear-gradient(to top, var(--cor-destaque), var(--cor-destaque-2)); transform-origin: 50% 100%; transform: scaleY(.2); }`,
+      script: `q('.ng-mt i').forEach(function (el, m) { for (var k = 0; k < ${nPassos}; k++) tl.to(el, { scaleY: 0.16 + 0.8 * Math.abs(Math.sin(k * 1.37 + m * 2.1) * Math.sin(k * 0.71 + m)), duration: ${passo}, ease: 'power1.out' }, ${inicio} + k * ${passo}); });`,
+    };
+  },
+
+  placar: (x, c) => {
+    const va = lerNumero(x.valores?.[0])?.valor ?? 0;
+    const vb = lerNumero(x.valores?.[1])?.valor ?? 0;
+    const teto = /%/.test(x.unidade ?? '') && Math.max(va, vb) <= 100 ? 100 : Math.max(1, va, vb);
+    const altura = (v: number) => Math.max(5, Math.min(100, (v / teto) * 100));
+    const ta = c.t(x.a ?? x.valores?.[0], 0.35, 0.2);
+    const tb = c.t(x.b ?? x.valores?.[1], ta + 0.7, 0.9);
+    // O tubo: de y 320 a 1066 (746 px), 8 px de folga dentro.
+    const TOPO = 320;
+    const TUBO = 746;
+    const lado = (i: 'a' | 'b', nome: string, valor: string | undefined, v: number, t: number, ganha: boolean) => {
+      const h = altura(v);
+      return `<div class="pl-col pl-${i}${ganha ? ' topo' : ''}"><div class="pl-tubo mg-card" data-in="aparece" data-t="${r2(Math.max(0, t - 0.25))}"><i class="pl-enche" style="height:calc(${(h / 100).toFixed(3)} * (100% - 16px))" data-in="cresce" data-t="${t}" data-d="1.1"></i><div class="pl-v mg-num" style="bottom:calc(${(h / 100).toFixed(3)} * (100% - 16px) + 22px)" data-in="balao" data-t="${r2(t + 0.75)}">${numero(valor, t, 1.1)}${x.unidade ? `<span class="suf">${esc(x.unidade)}</span>` : ''}</div></div><div class="pl-nome mg-card" style="font-size:${corpoPx(nome, 136, 44, c.v, 2)}px" data-in="sobe" data-t="${t}">${esc(nome)}</div></div>`;
+    };
+    const menor = Math.min(altura(va), altura(vb));
+    const yTracejado = Math.round(TOPO + TUBO - 8 - ((TUBO - 16) * menor) / 100);
+    const cab = x.kicker || x.titulo ? `<div class="pl-cab" data-in="sobe" data-t="0.05"><b>●</b> ${x.kicker ? `<strong>${esc(x.kicker)}</strong>` : ''}${x.kicker && x.titulo ? ' · ' : ''}${x.titulo ? esc(x.titulo) : ''}</div>` : '';
+    return {
+      html: `<div class="mg mg-quadro">${cab}<i class="pl-grade" data-in="aparece" data-t="0.1"></i>${lado('a', x.a ?? '', x.valores?.[0], va, ta, va > vb)}${lado('b', x.b ?? '', x.valores?.[1], vb, tb, vb >= va)}<i class="pl-tracejado" style="top:${yTracejado}px" data-in="enche" data-t="${r2(Math.max(ta, tb) + 1)}" data-d="0.6"></i></div>`,
+      css: `.pl-cab { left: 40px; right: 40px; top: 210px; text-align: center; font-size: 36px; letter-spacing: .12em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.55); white-space: nowrap; overflow: hidden; }
+.pl-cab b { color: var(--cor-destaque); } .pl-cab strong { font-family: var(--fonte-titulo); }
+.pl-grade { left: 0; right: 0; top: ${TOPO}px; height: ${TUBO}px; background: repeating-linear-gradient(to bottom, color-mix(in srgb, var(--solto) 22%, transparent) 0 2px, transparent 2px ${TUBO / 5}px); }
+.pl-col { top: ${TOPO}px; width: 172px; height: 870px; display: flex; flex-direction: column; gap: 14px; }
+.pl-a { left: 34px; } .pl-b { right: 34px; }
+.mg-quadro .pl-tubo { position: relative; height: ${TUBO}px; flex: none; padding: 0; border-radius: 24px; }
+.pl-enche { position: absolute; left: 8px; right: 8px; bottom: 8px; border-radius: 17px; background: color-mix(in srgb, var(--cor-texto) 26%, transparent); transform-origin: 50% 100%; }
+.topo .pl-enche { background: linear-gradient(to top, color-mix(in srgb, var(--cor-destaque) 55%, transparent), var(--cor-destaque)); box-shadow: 0 0 44px color-mix(in srgb, var(--cor-destaque) 55%, transparent); }
+.pl-v { position: absolute; left: -10px; right: -10px; justify-content: center; font-size: 72px; color: var(--cor-texto); background: color-mix(in srgb, var(--cor-fundo) 82%, transparent); border-radius: 20px; padding: 10px 0 6px; box-shadow: 0 12px 30px rgba(0,0,0,.35); }
+.topo .pl-v { color: var(--cor-destaque); }
+.mg-quadro .pl-nome { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px 10px; font-family: var(--fonte-titulo); line-height: 1.02; }
+.topo .pl-nome { box-shadow: 0 0 0 3px var(--cor-destaque), 0 20px 50px rgba(0,0,0,.35); }
+.pl-tracejado { left: 214px; right: 214px; height: 0; border-top: 4px dashed color-mix(in srgb, var(--solto) 70%, transparent); transform-origin: 0 50%; }`,
+    };
+  },
+
+  mosaico: (x, c) => {
+    const itens = (x.itens ?? []).slice(0, 4);
+    const padrao = ['grafico', 'lampada', 'alvo', 'foguete'];
+    const lugares = [
+      [40, 400],
+      [740, 400],
+      [40, 640],
+      [740, 640],
+    ] as const;
+    let t = x.titulo ? 0.45 : 0.15;
+    const cards = itens
+      .map((it, i) => {
+        t = c.t(it, i === 0 ? t : t + 0.3, i === 0 ? 0.1 : 0.45);
+        const [l, tp] = lugares[i]!;
+        return `<div class="mo-card mg-card" style="left:${l}px;top:${tp}px" data-in="balao" data-t="${t}">${icone(x.icones?.[i] ?? padrao[i], t + 0.15, 0.6, 'ic mo-ic')}<div class="mo-r" style="font-size:${corpoPx(it, 250, 46, c.v, 2, true)}px">${esc(it)}</div></div>`;
+      })
+      .join('');
+    const tt = 0.1;
+    const titulo = x.titulo ? `<div class="mo-tit mg-card" data-in="desce" data-t="${tt}"><div class="mg-t" style="font-size:${corpoPx(x.titulo, 880, 104, c.v, 1)}px">${c.marcar(x.titulo, x.enfase, tt + 0.3)}</div></div>` : '';
+    return {
+      html: `<div class="mg mg-quadro">${titulo}${cards}</div>`,
+      css: `.mg-quadro .mo-tit { left: 60px; right: 60px; top: 218px; height: 150px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 24px; }
+.mo-tit .mg-t { white-space: nowrap; }
+.mg-quadro .mo-card { width: 300px; height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+.mo-ic { width: 96px; color: var(--cor-destaque); } .mo-ic.icd { color: var(--cor-texto); }
+.mo-r { font-family: var(--fonte-titulo); text-transform: uppercase; text-align: center; line-height: 1; letter-spacing: .01em; }`,
+      script: `q('.mo-card').forEach(function (el, i) { tl.to(el, { y: i % 2 ? 9 : -9, duration: 1.5, yoyo: true, repeat: 3, ease: 'sine.inOut' }, 1.4 + i * 0.2); });`,
+    };
+  },
+
+  ladeando: (x, c) => {
+    const ta = c.t(x.a ?? '', 0.2, 0.15);
+    const tb = c.t(x.b ?? '', ta + 0.35, 0.5);
+    const lado = (classe: string, nome: string | undefined, rotulo: string | undefined, t: number) =>
+      `<div class="ld ${classe}" data-in="balao" data-t="${t}"><div class="ld-tile mg-card">${icone(nome, t + 0.1, 0.6, 'ic ld-ic')}</div>${rotulo ? `<div class="ld-r" style="font-size:${corpoPx(rotulo, 230, 46, c.v, 2)}px">${esc(rotulo)}</div>` : ''}</div>`;
+    return {
+      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ld-k" data-in="sobe" data-t="0.05">${esc(x.kicker)}</div>` : ''}${lado('ld-a', x.icones?.[0], x.a, ta)}${lado('ld-b', x.icones?.[1], x.b, tb)}</div>`,
+      css: `.ld-k { left: 40px; right: 40px; top: 214px; text-align: center; font-size: 40px; letter-spacing: .16em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.55); }
+.ld { top: 400px; width: 240px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.ld-a { left: 44px; rotate: -8deg; } .ld-b { right: 44px; rotate: 8deg; }
+.mg-quadro .ld-tile { width: 196px; height: 196px; padding: 0; display: grid; place-items: center; border-radius: 30%; }
+.ld-ic { width: 60%; color: var(--cor-destaque); } .ld-ic.icd { color: var(--cor-texto); }
+.ld-r { font-family: var(--fonte-titulo); color: var(--solto); text-align: center; line-height: 1.05; text-shadow: 0 3px 14px rgba(0,0,0,.55); }`,
+      script: `q('.ld').forEach(function (el, i) { tl.to(el, { y: i ? 12 : -12, duration: 1.4, yoyo: true, repeat: 3, ease: 'sine.inOut' }, 1 + i * 0.3); });`,
+    };
+  },
+
+  selecao: (x, c) => {
+    const caixa = { x: 90, y: 330, w: 900, h: 850 };
+    const t0 = 0.1;
+    const tt = c.t(x.titulo, t0 + 0.35, 0.35);
+    const alcas = [
+      [0, 0],
+      [0.5, 0],
+      [1, 0],
+      [0, 0.5],
+      [1, 0.5],
+      [0, 1],
+      [0.5, 1],
+      [1, 1],
+    ]
+      .map(([a, b], i) => `<i class="sl-h" style="left:${caixa.x + a! * caixa.w - 12}px;top:${caixa.y + b! * caixa.h - 12}px" data-in="balao" data-t="${r2(t0 + 0.55 + i * 0.04)}"></i>`)
+      .join('');
+    return {
+      html: `<div class="mg mg-quadro"><svg class="sl-caixa" viewBox="0 0 1080 1920" aria-hidden="true" data-in="mascara-solo" data-t="${t0}"><rect x="${caixa.x}" y="${caixa.y}" width="${caixa.w}" height="${caixa.h}"/></svg>${alcas}<div class="q-pilula sl-tag" style="font-size:${corpoPx(x.titulo ?? '', 700, 46, c.v)}px" data-in="balao" data-t="${tt}">${esc(x.titulo ?? '')}</div></div>`,
+      css: `.sl-caixa { left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+.sl-caixa rect { fill: none; stroke: color-mix(in srgb, var(--cor-destaque) 55%, var(--solto)); stroke-width: 4; stroke-dasharray: 18 12; filter: drop-shadow(0 0 6px rgba(0,0,0,.4)); }
+.sl-h { width: 24px; height: 24px; background: #ffffff; border: 3px solid #1d1d22; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.sl-tag { left: ${caixa.x}px; top: ${caixa.y - 74}px; text-transform: none; font-family: var(--fonte-texto); font-weight: 700; }`,
+    };
+  },
+
+  hud: (x, c) => {
+    const vp = [540, 1090] as const;
+    const nos = [
+      [95, 265],
+      [985, 265],
+      [95, 515],
+      [985, 515],
+      [95, 765],
+      [985, 765],
+    ] as const;
+    const t0 = 0.1;
+    let k = 0;
+    const desenha = (d: string, dur = 0.5) => `<path pathLength="1" d="${d}" data-in="desenha" data-t="${r2(t0 + k++ * 0.06)}" data-d="${dur}"/>`;
+    const moldura = [desenha('M95 225V1160', 0.8), desenha('M985 225V1160', 0.8), ...[265, 515, 765].map((y) => desenha(`M95 ${y}H985`, 0.6))].join('');
+    const raios = [...nos, [0, 200] as const, [1080, 200] as const].map(([px, py]) => desenha(`M${px} ${py}L${vp[0]} ${vp[1]}`, 0.7)).join('');
+    const cantos = (
+      [
+        [150, 300, 150],
+        [800, 560, 140],
+        [160, 820, 130],
+        [790, 300, 120],
+      ] as const
+    )
+      .map(([bx, by, s]) => desenha(`M${bx} ${by + 30}V${by}H${bx + 30}M${bx + s - 30} ${by}H${bx + s}V${by + 30}M${bx + s} ${by + s - 30}V${by + s}H${bx + s - 30}M${bx + 30} ${by + s}H${bx}V${by + s - 30}`, 0.4))
+      .join('');
+    const tn = r2(t0 + k * 0.06);
+    const pontos = nos.map(([px, py], i) => `<circle class="hud-no" cx="${px}" cy="${py}" r="11" data-in="escala" data-t="${r2(tn + i * 0.05)}"/>`).join('');
+    const tt = c.t(x.titulo, 0.5, 0.5);
+    return {
+      html: `<div class="mg mg-quadro"><svg class="hud" viewBox="0 0 1080 1920" aria-hidden="true">${moldura}${raios}${cantos}<path class="hud-horizonte" d="M0 ${vp[1]}H1080" data-in="aparece" data-t="${tn}"/>${pontos}<circle class="hud-vp" cx="${vp[0]}" cy="${vp[1]}" r="14" data-in="escala" data-t="${tn}"/></svg><div class="hud-w"><span class="hud-t" style="font-size:${corpoPx(x.titulo ?? '', 900, 118, c.v, 1, true)}px" data-in="mascara-solo" data-t="${tt}">${esc(x.titulo ?? '')}</span></div></div>`,
+      css: `.hud { left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--cor-destaque) 55%, transparent)); }
+.hud path { fill: none; stroke: var(--cor-destaque); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.hud .hud-horizonte { stroke-dasharray: 14 12; stroke-dashoffset: 0; stroke-width: 2.5; opacity: .8; }
+.hud-no { fill: var(--cor-fundo); stroke: var(--cor-destaque); stroke-width: 4; transform-box: fill-box; transform-origin: center; }
+.hud-vp { fill: var(--cor-destaque); transform-box: fill-box; transform-origin: center; }
+.hud-w { left: 0; right: 0; top: 196px; text-align: center; transform: perspective(700px) rotateX(24deg); filter: drop-shadow(0 6px 22px rgba(0,0,0,.45)); }
+.hud-t { display: inline-block; padding: 0 .1em; font-family: var(--fonte-titulo); text-transform: uppercase; line-height: 1.04; letter-spacing: .02em; white-space: nowrap; background: linear-gradient(180deg, var(--solto) 30%, var(--cor-destaque)); -webkit-background-clip: text; background-clip: text; color: transparent; }`,
+      script: `tl.to('.hud-vp', { scale: 1.7, duration: 0.5, yoyo: true, repeat: 5, ease: 'sine.inOut' }, ${r2(tn + 0.4)});`,
+    };
+  },
+
+  profundidade: (x, c) => {
+    const tt = c.t(x.titulo, 0.15, 0.15);
+    const texto = x.titulo ?? '';
+    const letras = [...texto].map((ch, i) => (ch === ' ' ? ' ' : `<span class="pf-c" data-in="sobe" data-t="${r2(tt + i * 0.035)}">${esc(ch)}</span>`)).join('');
+    const camadas = Array.from({ length: 16 }, (_, i) => `0 ${i + 1}px 0 var(--pf-lado)`).join(', ');
+    return {
+      html: `<div class="mg mg-quadro">${x.kicker ? `<div class="q-pilula pf-k" data-in="balao" data-t="${r2(Math.max(0, tt - 0.25))}">${esc(x.kicker)}</div>` : ''}<div class="pf"><div class="pf-w" style="font-size:${corpoPx(texto, 920, 230, c.v, 1, true)}px">${letras}</div></div></div>`,
+      css: `.pf { left: 0; right: 0; top: 950px; height: 240px; display: flex; justify-content: center; align-items: center; transform: perspective(900px) rotateX(22deg); }
+.pf-w { --pf-lado: color-mix(in srgb, var(--cor-destaque) 62%, #000000); font-family: var(--fonte-titulo); text-transform: uppercase; color: var(--solto); line-height: 1; white-space: nowrap; text-shadow: ${camadas}, 0 26px 36px rgba(0,0,0,.55); }
+.pf-c { display: inline-block; white-space: pre; }
+.pf-k { left: 50%; top: 880px; translate: -50% 0; font-size: 34px; }`,
+    };
+  },
+
+  janela: (x, c) => {
+    const itens = (x.itens ?? []).slice(0, 3);
+    const padrao = ['mensagem', 'raio', 'check'];
+    const tt = c.t(x.titulo, 0.45, 0.35);
+    let t = tt;
+    const passos = itens
+      .map((it, i) => {
+        t = c.t(it, t + 0.4, 0.55);
+        return `${i ? `<span class="jn-seta" data-in="aparece" data-t="${r2(t - 0.12)}">→</span>` : ''}<div class="jn-passo" data-in="sobe" data-t="${t}"><div class="jn-ic">${icone(x.icones?.[i] ?? padrao[i], t + 0.1, 0.5, 'ic jn-i')}</div><b style="font-size:${corpoPx(it, 200, 30, c.v, 2)}px">${esc(it)}</b></div>`;
+      })
+      .join('');
+    return {
+      html: `<div class="mg mg-quadro"><div class="jn mg-card"><div class="jn-barra"><svg class="jn-play" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12"/><path d="M9.5 7.5v9l7-4.5z"/></svg><b>${esc(x.kicker ?? '')}</b>${x.enfase ? `<span class="jn-selo">${esc(x.enfase)}</span>` : ''}</div><div class="jn-corpo"><div class="mg-t jn-tit" style="font-size:${corpoPx(x.titulo ?? '', 860, 70, c.v, 2)}px" data-in="mascara-solo" data-t="${tt}">${esc(x.titulo ?? '')}</div>${passos ? `<div class="jn-passos">${passos}</div>` : ''}</div><div class="jn-prog"><i data-in="enche" data-t="0.4" data-d="${r2(Math.max(0.6, c.D - 1))}"></i></div></div></div>`,
+      css: `.mg-quadro .jn { left: 70px; top: 226px; width: 940px; height: 440px; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.jn-barra { display: flex; align-items: center; gap: 14px; padding: 18px 26px; font-size: 30px; border-bottom: 2px solid color-mix(in srgb, var(--cor-texto) 10%, transparent); white-space: nowrap; }
+.jn-play { width: 40px; flex: none; } .jn-play circle { fill: var(--cor-destaque); } .jn-play path { fill: var(--cor-fundo); }
+.jn-selo { margin-left: auto; font-size: 22px; letter-spacing: .14em; padding: 7px 16px; border-radius: 99px; background: var(--cor-destaque); color: var(--cor-fundo); text-transform: uppercase; font-weight: 700; }
+.jn-corpo { flex: 1; padding: 22px 30px 10px; display: flex; flex-direction: column; justify-content: center; gap: 24px; min-height: 0; }
+.jn-tit { line-height: 1.05; }
+.jn-passos { display: flex; align-items: center; gap: 10px; }
+.jn-passo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--cor-texto) 7%, transparent); }
+.jn-passo b { font-family: var(--fonte-titulo); line-height: 1.1; }
+.jn-ic { width: 62px; height: 62px; border-radius: 16px; background: var(--cor-destaque); display: grid; place-items: center; color: var(--cor-fundo); }
+.jn-i { width: 60%; } .jn-i.icd { color: var(--cor-fundo); } .jn-i.icd .icd-f { fill: var(--cor-fundo); opacity: .35; }
+.jn-seta { flex: none; font-size: 34px; color: var(--cor-apagado); }
+.jn-prog { height: 8px; margin: 0 30px 22px; border-radius: 99px; background: color-mix(in srgb, var(--cor-texto) 12%, transparent); overflow: hidden; }
+.jn-prog i { display: block; height: 100%; background: var(--cor-destaque); transform-origin: 0 50%; }`,
+      script: `tl.fromTo('.jn', { rotationY: -36, rotationX: 14, scale: 0.8, autoAlpha: 0, transformPerspective: 1400 }, { rotationY: -11, rotationX: 7, scale: 1, autoAlpha: 1, duration: 0.8, ease: M.e }, 0.05);
+tl.to('.jn', { rotationY: -5, rotationX: 4, duration: ${r2(Math.max(1, c.D - 1.2))}, ease: 'sine.inOut' }, 0.85);`,
+    };
+  },
+
+  linha_do_tempo: (x, c) => {
+    const itens = (x.itens ?? []).slice(0, 7);
+    const total = itens.reduce((s, it) => s + Math.max(5, [...it].length), 0);
+    const cores = ['var(--cor-destaque)', 'var(--cor-destaque-2)', 'var(--cor-destaque-3)'];
+    let t = 0.35;
+    const clipes = itens
+      .map((it, i) => {
+        t = c.t(it, i === 0 ? t : t + 0.22, i === 0 ? 0.1 : 0.35);
+        const w = (Math.max(5, [...it].length) / total) * 100;
+        return `<div class="tl-clip" style="flex:0 0 calc(${w.toFixed(2)}% - 6px);background:${cores[i % 3]}" data-in="escala" data-t="${t}"><span>${esc(it)}</span></div>`;
+      })
+      .join('');
+    // A onda do áudio: barras com alturas de uma soma de senos (igual em todo quadro).
+    const onda = Array.from({ length: 90 }, (_, i) => {
+      const h = 8 + 40 * Math.abs(Math.sin(i * 0.53) * Math.cos(i * 0.21) + 0.3 * Math.sin(i * 1.7));
+      return `<rect x="${i * 10}" y="${(56 - Math.min(52, h)) / 2}" width="5" height="${Math.min(52, h).toFixed(1)}" rx="2"/>`;
+    }).join('');
+    const D = c.D;
+    return {
+      html: `<div class="mg mg-quadro"><div class="tlp mg-card" data-in="sobe" data-t="0.05"><div class="tl-cab"><b>${esc(x.titulo ?? 'Timeline')}</b><span class="tl-reg"></span></div><div class="tl-faixas"><div class="tl-f" data-in="esq" data-t="0.2"><em>FX</em><div class="tl-clipes">${clipes}</div></div><div class="tl-f" data-in="esq" data-t="0.28"><em>V1</em><div class="tl-filme"></div></div><div class="tl-f tl-fina" data-in="esq" data-t="0.36"><em>LEG</em><div class="tl-leg"></div></div><div class="tl-f" data-in="esq" data-t="0.44"><em>A1</em><svg class="tl-onda" viewBox="0 0 900 56" preserveAspectRatio="none" aria-hidden="true">${onda}</svg></div><div class="tl-cursor"><span class="q-pilula tl-aqui">${esc(x.kicker ?? 'você está aqui')}</span></div></div></div></div>`,
+      css: `.mg-quadro .tlp { left: 30px; right: 30px; top: 846px; height: 334px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; }
+.tl-cab { display: flex; align-items: center; gap: 16px; font-size: 30px; font-family: var(--fonte-titulo); }
+.tl-reg { flex: 1; height: 18px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--cor-texto) 35%, transparent) 0 2px, transparent 2px 24px); align-self: flex-end; }
+.tl-faixas { position: relative; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.tl-f { display: flex; align-items: center; gap: 12px; height: 56px; }
+.tl-f.tl-fina { height: 24px; }
+.tl-f em { width: 56px; flex: none; font-style: normal; font-size: 20px; letter-spacing: .08em; color: var(--cor-apagado); }
+.tl-clipes { flex: 1; display: flex; gap: 6px; height: 100%; min-width: 0; }
+.tl-clip { height: 100%; border-radius: 10px; display: flex; align-items: center; padding: 0 10px; overflow: hidden; color: var(--cor-fundo); font-family: var(--fonte-titulo); font-size: 22px; white-space: nowrap; transform-origin: 0 50%; box-shadow: inset 0 0 0 2px rgba(255,255,255,.18); }
+.tl-clip span { overflow: hidden; text-overflow: ellipsis; }
+.tl-filme { flex: 1; height: 100%; border-radius: 8px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--cor-texto) 30%, var(--cor-fundo)) 0 52px, color-mix(in srgb, var(--cor-texto) 14%, var(--cor-fundo)) 52px 56px); }
+.tl-leg { flex: 1; height: 100%; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--cor-texto) 55%, transparent) 0 3px, transparent 3px 7px, color-mix(in srgb, var(--cor-texto) 55%, transparent) 7px 9px, transparent 9px 16px); border-radius: 4px; }
+.tl-onda { flex: 1; height: 100%; } .tl-onda rect { fill: var(--cor-destaque); opacity: .85; }
+.tl-cursor { position: absolute; top: -8px; bottom: -6px; width: 4px; margin-left: 66px; background: var(--cor-texto); border-radius: 2px; box-shadow: 0 0 12px rgba(0,0,0,.4); }
+.tl-aqui { position: absolute; bottom: 100%; left: 50%; translate: -50% -6px; font-size: 20px; padding: .4em .8em; }`,
+      script: `tl.fromTo('.tl-cursor', { left: '2%' }, { left: '82%', duration: ${r2(Math.max(1, D - 0.9))}, ease: 'none' }, 0.5);`,
+    };
+  },
+
+  comentario: (x, c) => {
+    const palavra = x.titulo ?? '';
+    const t0 = c.t(palavra, 0.6, 0.5);
+    const fim = r2(t0 + [...palavra].length * 0.045);
+    const letras = [...palavra].map((ch) => `<i class="c">${esc(ch)}</i>`).join('');
+    return {
+      html: `<div class="mg mg-quadro">${x.detalhe ? `<div class="cm-chamada" style="font-size:${corpoPx(x.detalhe, 900, 84, c.v, 1)}px" data-in="sobe" data-t="0.1">${c.marcar(x.detalhe, x.enfase ?? palavra, 0.45)}</div>` : ''}<div class="cm mg-card" data-in="sobe" data-t="0.2"><div class="cm-av">${icone('pessoa', 0.35, 0.5, 'ic cm-ic')}</div><div class="cm-campo"><span class="cm-ph">${esc(x.kicker ?? 'Adicione um comentário…')}</span><span class="cm-q" data-digita="1" data-t="${t0}">${letras}<span class="cursor"></span></span></div><div class="cm-env" data-in="bate" data-t="${r2(fim + 0.2)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></div></div><div class="cm-coracao" data-in="balao" data-t="${r2(fim + 0.55)}">${icone('coracao', fim + 0.55, 0.4, 'ic cm-cor')}</div></div>`,
+      css: `.cm-chamada { left: 60px; right: 60px; top: 892px; text-align: center; font-family: var(--fonte-titulo); color: var(--solto); line-height: 1.05; text-shadow: 0 4px 22px rgba(0,0,0,.55); }
+.mg-quadro .cm { left: 50px; right: 50px; top: 1040px; height: 124px; padding: 0 18px; border-radius: 999px; display: flex; align-items: center; gap: 22px; }
+.cm-av { width: 88px; height: 88px; border-radius: 50%; flex: none; display: grid; place-items: center; background: linear-gradient(135deg, var(--cor-destaque), var(--cor-destaque-2)); color: var(--cor-fundo); }
+.cm-ic { width: 56%; }
+.cm-campo { position: relative; flex: 1; min-width: 0; height: 64px; display: flex; align-items: center; font-size: 42px; }
+.cm-ph { position: absolute; left: 0; right: 0; color: var(--cor-apagado); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cm-q { font-family: var(--fonte-titulo); white-space: nowrap; } .cm-q .c { font-style: normal; }
+.cm-env { width: 88px; height: 88px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--cor-destaque); }
+.cm-env svg { width: 46%; fill: none; stroke: var(--cor-fundo); stroke-width: 2.8; stroke-linecap: round; stroke-linejoin: round; }
+.cm-coracao { right: 96px; top: 930px; width: 92px; color: #ff3b5c; filter: drop-shadow(0 4px 12px rgba(0,0,0,.4)); }
+.cm-cor { width: 100%; fill: color-mix(in srgb, #ff3b5c 35%, transparent); }`,
+      script: `tl.to('.cm-ph', { autoAlpha: 0, duration: 0.15 }, ${r2(Math.max(0, t0 - 0.05))});
+tl.to('.cm-env', { scale: 1.12, duration: 0.3, yoyo: true, repeat: 3, ease: 'sine.inOut' }, ${r2(fim + 0.6)});
+tl.to('.cm-coracao', { y: -150, autoAlpha: 0, duration: 1.1, ease: 'power1.in' }, ${r2(fim + 1.1)});`,
+    };
+  },
+
+  mensagem: (x, c) => {
+    const t0 = c.t(x.titulo ?? x.detalhe, 0.55, 0.5);
+    const ts = r2(Math.max(0.05, t0 - 0.55));
+    const app = iconeExiste('paper-plane-tilt') ? 'paper-plane-tilt' : 'mensagem';
+    return {
+      html: `<div class="mg mg-quadro"><svg class="dm-seta" viewBox="0 0 1080 1920" aria-hidden="true"><path pathLength="1" d="M236 1010C40 880 50 600 140 446" data-in="desenha" data-t="${ts}" data-d="0.55"/><path pathLength="1" d="M104 478L140 432L182 474" data-in="desenha" data-t="${r2(ts + 0.5)}" data-d="0.18"/></svg><div class="dm mg-card" data-in="desce" data-t="${t0}"><div class="dm-app">${icone(app, t0 + 0.15, 0.5, 'ic dm-ic')}<b class="dm-badge" data-in="balao" data-t="${r2(t0 + 0.45)}">1</b></div><div class="dm-txt"><div class="dm-topo"><span>${esc(x.kicker ?? 'Direct')}</span> agora</div><div class="dm-nome">${esc(x.titulo ?? '')}</div><div class="dm-msg">${c.marcar(x.detalhe ?? '', x.enfase, t0 + 0.35)}</div></div>${x.enfase ? `<div class="dm-doc" data-in="escala" data-t="${r2(t0 + 0.35)}"><b style="font-size:${corpoPx(x.enfase, 84, 36, c.v, 1, true)}px">${esc(x.enfase)}</b><i></i><i></i><i></i></div>` : ''}</div></div>`,
+      css: `.dm-seta { left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+.dm-seta path { fill: none; stroke: var(--cor-destaque); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--cor-destaque) 60%, transparent)); }
+.mg-quadro .dm { left: 40px; right: 40px; top: 236px; min-height: 170px; display: flex; align-items: center; gap: 24px; padding: 22px 26px; border-radius: 40px; }
+.dm-app { position: relative; width: 112px; height: 112px; border-radius: 28px; flex: none; display: grid; place-items: center; background: linear-gradient(135deg, var(--cor-destaque), var(--cor-destaque-3)); color: var(--cor-fundo); }
+.dm-ic { width: 58%; } .dm-ic.icd { color: var(--cor-fundo); } .dm-ic.icd .icd-f { fill: var(--cor-fundo); opacity: .35; }
+.dm-badge { position: absolute; top: -12px; right: -12px; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #ff3b30; color: #ffffff; font-size: 26px; font-family: var(--fonte-texto); border: 3px solid var(--cor-fundo); }
+.dm-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dm-topo { font-size: 24px; letter-spacing: .12em; text-transform: uppercase; color: var(--cor-apagado); }
+.dm-topo span { color: var(--cor-destaque); font-weight: 700; }
+.dm-nome { font-family: var(--fonte-titulo); font-size: 42px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-msg { font-size: 34px; line-height: 1.2; }
+.dm-doc { width: 100px; height: 128px; flex: none; border-radius: 14px; display: flex; flex-direction: column; align-items: center; padding-top: 14px; gap: 8px; background: color-mix(in srgb, var(--cor-texto) 10%, var(--cor-fundo)); border: 2px solid color-mix(in srgb, var(--cor-texto) 20%, transparent); }
+.dm-doc b { font-family: var(--fonte-titulo); color: var(--cor-destaque); text-transform: uppercase; line-height: 1; }
+.dm-doc i { width: 64%; height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--cor-texto) 28%, transparent); }`,
+    };
+  },
 };
 
 // ---------- O CSS e o movimento comuns ----------
@@ -1415,6 +1777,15 @@ ${v.extra === 'cinema' && !c.sobre ? '.mg-faixa { position: absolute; left: 0; r
 .mg > * { flex: none; }
 .mg-centro { align-items: center; text-align: center; }
 .mg-esq { align-items: flex-start; text-align: left; }
+.mg.mg-quadro { left: 0; top: 0; width: 1080px; height: 1920px; display: block; --solto: ${corSolta}; }
+.mg-quadro > * { position: absolute; }
+.mg-quadro .mg-card { padding: 22px 28px; }
+.q-pilula { display: inline-flex; align-items: center; gap: .4em; padding: .3em .7em .26em; border-radius: 999px; background: var(--cor-destaque); color: var(--cor-fundo); font-family: var(--fonte-titulo); text-transform: uppercase; letter-spacing: .02em; line-height: 1; white-space: nowrap; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.q-fundo { position: absolute; inset: 0; z-index: 0; }
+.q-fundo-escuro { background: radial-gradient(ellipse 75% 55% at 50% 42%, rgba(0,0,0,.4), rgba(0,0,0,.78)); }
+.q-fundo-xadrez { background: repeating-conic-gradient(#2a2a31 0 25%, #3a3a42 0 50%) 0 0 / 64px 64px; }
+.q-fundo-xadrez::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 70% 50% at 50% 40%, color-mix(in srgb, var(--cor-destaque) 22%, transparent), transparent 70%); }
+.q-fundo-grade { background: linear-gradient(color-mix(in srgb, var(--cor-destaque) 26%, transparent) 2px, transparent 2px) 0 0 / 72px 72px, linear-gradient(90deg, color-mix(in srgb, var(--cor-destaque) 26%, transparent) 2px, transparent 2px) 0 0 / 72px 72px, rgba(4,8,22,.8); }
 ${CSS_DOS_ASSETS}
 .mg-enfeite { position: absolute; right: 0; top: 0; width: min(22cqw, 26cqh); translate: 18% -38%; pointer-events: none; z-index: 3; }
 .mg-solto .mg-enfeite, .mg-solto .anot-ast { filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
@@ -1712,8 +2083,13 @@ export function composicaoDoPreset(
     const html = `<div class="mg-enfeite">${c.asset(enfeite, Math.min(D - 1, batida + 0.3))}</div>`;
     montado.html = montado.html.replace(/<\/div>$/, `${html}</div>`);
   }
+  // Atrás da pessoa: o pedido da cena; sem pedido, o padrão do preset (só no cartão).
+  const atras = layout === 'cartao' && (cena.atras ?? preset.atras ?? false);
+  // O fundo pintado atrás da pessoa (escuro, xadrez, grade): só faz sentido com ela por cima.
+  const pano = atras && cena.textos.fundo ? `<div class="q-fundo q-fundo-${cena.textos.fundo}" data-in="aparece" data-t="0"></div>` : '';
+  if (pano) montado.script = `${montado.script ?? ''}\ntl.to('.q-fundo', { autoAlpha: 0, duration: 0.3, ease: 'power2.in' }, ${r2(D - 0.34)});`;
   const fundo = sobre
-    ? ''
+    ? pano
     : `<div class="mg-fundo">${v.brilho ? '<i class="mg-brilho"></i><i class="mg-brilho b2"></i>' : ''}<div class="mg-tex"></div>${v.extra === 'cinema' ? '<i class="mg-faixa f1"></i><i class="mg-faixa f2"></i>' : ''}</div>`;
   const lado = layout === 'meio_a_meio' ? (cena.lado === 'baixo' ? 'baixo' : 'cima') : undefined;
   const briefing = JSON.stringify({
@@ -1729,7 +2105,8 @@ export function composicaoDoPreset(
     layout,
     ...(lado ? { lado } : {}),
     ...(layout === 'pip' ? { canto: cena.canto ?? 'inf-dir' } : {}),
-    ...(cena.atras && layout === 'cartao' ? { atras: true } : {}),
+    // `false` também fica guardado: remontar não religa o padrão que a pessoa desligou.
+    ...(atras ? { atras: true } : layout === 'cartao' && preset.atras ? { atras: false } : {}),
     semFundo: true,
     titulo: `${preset.nome}: ${cena.textos.titulo ?? cena.textos.numero ?? cena.textos.a ?? cena.textos.antes ?? cena.textos.itens?.[0] ?? ''}`.slice(0, 60),
     estilo: v.chave,
@@ -1744,7 +2121,7 @@ export function cenaDaComposicao(c: Pick<ComposicaoHtml, 'briefing' | 'layout' |
     const b = JSON.parse(c.briefing ?? '') as { motion?: { preset?: unknown; textos?: unknown } };
     const preset = presetDeMotion(String(b.motion?.preset ?? ''));
     if (!preset) return null;
-    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}), ...(c.atras ? { atras: true } : {}) };
+    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}), ...(typeof c.atras === 'boolean' ? { atras: c.atras } : {}) };
   } catch {
     return null;
   }

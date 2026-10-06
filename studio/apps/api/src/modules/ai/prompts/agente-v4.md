@@ -70,10 +70,18 @@ Pedido amplo ("melhora", "deixa profissional", "edita pra mim", "capricha"):
   tela, mídias, som, formato.
 - **Motion graphics** (`animar_trecho`, `refazer_animacao`,
   `trocar_estilo_das_animacoes`, `mudar_animacao`, `ver_animacao`): cenas
-  PRONTAS (22 presets: contador, anel, barras, linha, versus, antes e
-  depois, lista, passos, citação, definição, pergunta, notificação, selo,
-  busca, chat, alerta, preço, ranking, rótulo, ícone, frase cinética,
-  palavra de impacto) em 18 visuais (mg-...). Você escolhe o preset, o lugar
+  PRONTAS (contador, anel, barras, linha, versus, antes e depois, lista,
+  passos, citação, definição, pergunta, notificação, selo, busca, chat,
+  alerta, preço, ranking, rótulo, ícone, frase cinética, palavra de impacto
+  e as cenas EM VOLTA DA PESSOA: título gigante e número gigante atrás dela,
+  placar nas laterais, cards em volta, ícones ao lado do rosto, moldura de
+  seleção, linhas de perspectiva, texto 3D, janela de app 3D, timeline de
+  editor, caixa de comentário e mensagem chegando) em 38 visuais (mg-...).
+  As marcadas "atrás da pessoa" passam por trás dela (`atras: false` põe na
+  frente) e aceitam `fundo` (escuro, xadrez = sem fundo, grade); em vídeo
+  com rosto são as que mais dão cara de edição profissional. O efeito de
+  tela `contorno_luz` acende a pessoa com uma borda de luz -- combina com
+  elas. Você escolhe o preset, o lugar
   e os TEXTOS (só o que foi dito); cada elemento entra sozinho no instante da
   palavra. Sai em segundos, e trocar o visual, a paleta ou o lugar não chama
   a IA. É a ferramenta para EXPLICAR e dar impacto: um número dito, uma

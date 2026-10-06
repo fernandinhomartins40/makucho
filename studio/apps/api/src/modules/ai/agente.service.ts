@@ -68,6 +68,7 @@ import {
   textoDosIcones,
   CHAVES_DOS_OBJETOS,
   CHAVES_DOS_RABISCOS,
+  FUNDOS_ATRAS,
   textoDoPerfil,
 } from '@makucho/studio-contracts';
 import type { Composicao, ContextoDoComando, EditPlanV1, ItemDaBibliotecaDaMarca, OperacaoDoComando, ResultadoDaBusca, TipoDaBusca, TimelineOperation } from '@makucho/studio-contracts';
@@ -902,6 +903,7 @@ ${textoDosIcones()}`,
             tecnica: { type: 'string', enum: [...CHAVES_DAS_TECNICAS], description: `a técnica da cena, pela evidência na fala: ${TECNICAS_DE_CENA.map((t) => `${t.chave} (${t.quando})`).join('; ')}` },
             ideia: { type: 'string', description: 'o que quem assiste entende ou sente, em uma frase' },
             preset: { type: 'string', enum: PRESETS_DE_MOTION.map((x) => x.chave), description: 'a cena pronta (veja a lista na descrição)' },
+            atras: { type: 'boolean', description: 'só no cartão: a cena passa atrás da pessoa (as marcadas "atrás da pessoa" já vão por padrão; false põe na frente)' },
             textos: {
               type: 'object',
               description: 'os textos da cena, pelos campos do preset',
@@ -911,7 +913,8 @@ ${textoDosIcones()}`,
                 rabisco: { type: 'string', enum: [...CHAVES_DOS_RABISCOS, 'nenhum'], description: 'uma anotação à mão sobre a cena ("nenhum" tira o enfeite do visual)' },
                 itens: { type: 'array', items: { type: 'string' } },
                 valores: { type: 'array', items: { type: 'string' } },
-                icones: { type: 'array', items: { type: 'string' }, description: 'um ícone por item (lista, ranking)' },
+                icones: { type: 'array', items: { type: 'string' }, description: 'um ícone por item (lista, ranking, mosaico, janela; os 2 do ladeando)' },
+                fundo: { type: 'string', enum: [...FUNDOS_ATRAS], description: 'só nas cenas atrás da pessoa: escuro (apaga o ambiente), xadrez (a pessoa sem fundo), grade (blueprint)' },
               },
             },
             encenacao: { type: 'string', description: 'a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)' },
@@ -937,6 +940,7 @@ ${textoDosIcones()}`,
             ...(typeof a.paleta === 'string' && a.paleta ? { paleta: a.paleta } : {}),
             ...(typeof a.preset === 'string' ? { preset: a.preset } : {}),
             ...(a.textos && typeof a.textos === 'object' ? { textos: a.textos } : {}),
+            ...(typeof a.atras === 'boolean' ? { atras: a.atras } : {}),
           });
           const inicio = Math.round((Number(a.inicioS) || 0) * 1000);
           const antes = new Set((c.plano.mediaLayers ?? []).map((m) => m.id));
