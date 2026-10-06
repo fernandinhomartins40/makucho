@@ -402,6 +402,369 @@ export const VISUAIS_DE_MOTION: readonly VisualDeMotion[] = [
     enfeites: ['estrela', 'seta_curva', 'circulo'],
     extra: 'fita',
   },
+  {
+    chave: 'mg-quadro-negro',
+    nome: 'Quadro-negro',
+    carater: 'lousa verde, giz branco e amarelo, letra de professor e rabiscos de giz',
+    quando: 'aula, explicação passo a passo, matemática, concurso, ensino',
+    escuro: true,
+    fontes: ["'Caveat Brush'", "'Kalam Bold'"],
+    cores: ['#1F3B2F', '#F1F1E8', '#F6D365', '#8FD3FE', '#F49FBC'],
+    superficie: 'nenhuma',
+    textura: 'grao',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'circulo',
+    raio: 6,
+    movimento: { entrada: 'power2.out', saida: 'power2.in', impacto: 'back.out(1.6)', duracao: 0.45, intervalo: 0.1 },
+    largura: 0.5,
+    enfeites: ['circulo', 'seta_curva', 'sublinhado'],
+  },
+  {
+    chave: 'mg-blueprint',
+    nome: 'Blueprint',
+    carater: 'planta técnica azul, grade fina, traço branco e cotas de engenheiro',
+    quando: 'engenharia, arquitetura, processo, plano, produto em construção',
+    escuro: true,
+    fontes: ["'Space Grotesk Bold'", "'Space Grotesk Bold'"],
+    cores: ['#0B3D91', '#EAF2FF', '#7FD1FF', '#FFD166', '#FF8FA3'],
+    superficie: 'contorno',
+    textura: 'grade',
+    brilho: false,
+    caixaAlta: true,
+    marcador: 'sublinhado',
+    raio: 4,
+    movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.4, intervalo: 0.08 },
+    largura: 0.66,
+    enfeites: ['seta_curva'],
+  },
+  {
+    chave: 'mg-vaporwave',
+    nome: 'Vaporwave',
+    carater: 'roxo profundo, rosa e ciano neon, scanlines e brilho anos 80',
+    quando: 'nostalgia, música, cultura pop, estética, entretenimento',
+    escuro: true,
+    fontes: ["'Righteous'", "'Outfit ExtraBold'"],
+    cores: ['#1A0B2E', '#FFF1FA', '#FF71CE', '#01CDFE', '#FFFB96'],
+    superficie: 'contorno',
+    textura: 'scanlines',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 18,
+    movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.8)', duracao: 0.45, intervalo: 0.08 },
+    largura: 0.62,
+    enfeites: ['brilhos', 'estrela'],
+    extra: 'neon',
+  },
+  {
+    chave: 'mg-retro70',
+    nome: 'Retrô 70',
+    carater: 'creme, laranja queimado e mostarda, letras gordas e arredondadas',
+    quando: 'lifestyle, música, moda, café, marca com personalidade',
+    escuro: false,
+    fontes: ["'Bowlby One'", "'Lora Bold'"],
+    cores: ['#F3E3C3', '#3B2314', '#E2711D', '#C9A227', '#8C4A2F'],
+    superficie: 'solida',
+    textura: 'papel',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 30,
+    movimento: { entrada: 'back.out(1.6)', saida: 'power2.in', impacto: 'back.out(2)', duracao: 0.42, intervalo: 0.09 },
+    largura: 0.8,
+    enfeites: ['estrela', 'brilhos'],
+  },
+  {
+    chave: 'mg-jornal',
+    nome: 'Jornal',
+    carater: 'papel-jornal, serifa clássica, manchete e marca-texto vermelho',
+    quando: 'notícia, polêmica, fato, análise, "saiu hoje"',
+    escuro: false,
+    fontes: ["'Libre Baskerville Bold'", "'Source Sans 3'"],
+    cores: ['#F2EFE8', '#111111', '#C1121F', '#1D3557', '#6C757D'],
+    superficie: 'nenhuma',
+    textura: 'papel',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'marca-texto',
+    raio: 0,
+    movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.5, intervalo: 0.09 },
+    largura: 0.62,
+    enfeites: ['circulo', 'sublinhado'],
+  },
+  {
+    chave: 'mg-gamer',
+    nome: 'Gamer',
+    carater: 'roxo-noite, verde e rosa elétricos, letras de placar e scanlines',
+    quando: 'games, e-sports, desafio, ranking, streaming',
+    escuro: true,
+    fontes: ["'Russo One'", "'Space Grotesk Bold'"],
+    cores: ['#0D0221', '#F5F5F5', '#00FF9F', '#FF3864', '#FFD319'],
+    superficie: 'contorno',
+    textura: 'scanlines',
+    brilho: true,
+    caixaAlta: true,
+    marcador: 'bloco',
+    raio: 8,
+    movimento: { entrada: 'expo.out', saida: 'power3.in', impacto: 'back.out(2.2)', duracao: 0.3, intervalo: 0.05 },
+    largura: 0.78,
+    enfeites: ['explosao', 'velocidade'],
+    extra: 'neon',
+  },
+  {
+    chave: 'mg-cripto',
+    nome: 'Cripto',
+    carater: 'grafite escuro, laranja e roxo de blockchain, vidro e grade de dados',
+    quando: 'cripto, fintech, investimento digital, Web3, mercado',
+    escuro: true,
+    fontes: ["'Orbitron ExtraBold'", "'Inter SemiBold'"],
+    cores: ['#0B0F1A', '#E6EDF7', '#F7931A', '#627EEA', '#16C784'],
+    superficie: 'vidro',
+    textura: 'grade',
+    brilho: true,
+    caixaAlta: true,
+    marcador: 'sublinhado',
+    raio: 18,
+    movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.6)', duracao: 0.42, intervalo: 0.07 },
+    largura: 0.9,
+    enfeites: ['brilhos'],
+  },
+  {
+    chave: 'mg-saude',
+    nome: 'Saúde',
+    carater: 'branco-menta, verde-água e azul calmo, cartões macios e limpos',
+    quando: 'saúde, medicina, nutrição, clínica, bem-estar, psicologia',
+    escuro: false,
+    fontes: ["'Nunito Black'", "'Nunito Black'"],
+    cores: ['#F3FAF8', '#0F2A2E', '#12A594', '#4D96FF', '#FF6B6B'],
+    superficie: 'solida',
+    textura: 'nenhuma',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'marca-texto',
+    raio: 28,
+    movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'back.out(1.5)', duracao: 0.45, intervalo: 0.09 },
+    largura: 0.62,
+    enfeites: ['check', 'brilhos'],
+  },
+  {
+    chave: 'mg-juridico',
+    nome: 'Jurídico',
+    carater: 'grafite e marfim, serifa romana em caixa alta e bronze, sóbrio',
+    quando: 'direito, contabilidade, consultoria, contratos, autoridade',
+    escuro: true,
+    fontes: ["'Cinzel ExtraBold'", "'Source Sans 3'"],
+    cores: ['#10151C', '#F1ECE2', '#B08D57', '#7A8B99', '#C2410C'],
+    superficie: 'contorno',
+    textura: 'grao',
+    brilho: false,
+    caixaAlta: true,
+    marcador: 'sublinhado',
+    raio: 2,
+    movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'expo.out', duracao: 0.7, intervalo: 0.12 },
+    largura: 0.82,
+    enfeites: [],
+  },
+  {
+    chave: 'mg-gourmet',
+    nome: 'Gourmet',
+    carater: 'chocolate escuro, creme e laranja-especiaria, serifa de cardápio',
+    quando: 'gastronomia, receita, restaurante, café, delivery',
+    escuro: true,
+    fontes: ["'DM Serif Display'", "'Work Sans ExtraBold'"],
+    cores: ['#1E1410', '#F7EBDD', '#E07A2F', '#D9A441', '#8FB339'],
+    superficie: 'contorno',
+    textura: 'grao',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'sublinhado',
+    raio: 14,
+    movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'back.out(1.5)', duracao: 0.55, intervalo: 0.1 },
+    largura: 0.55,
+    enfeites: ['brilhos', 'sublinhado'],
+  },
+  {
+    chave: 'mg-fitness',
+    nome: 'Fitness',
+    carater: 'preto, verde-limão e laranja, letras condensadas altas e inclinadas',
+    quando: 'treino, academia, corrida, dieta, desafio físico',
+    escuro: true,
+    fontes: ["'Big Shoulders Display Black'", "'Barlow Condensed ExtraBold'"],
+    cores: ['#111111', '#FFFFFF', '#C6FF00', '#FF4D00', '#00B2FF'],
+    superficie: 'solida',
+    textura: 'nenhuma',
+    brilho: false,
+    caixaAlta: true,
+    marcador: 'bloco',
+    raio: 6,
+    movimento: { entrada: 'power4.out', saida: 'power4.in', impacto: 'power4.in', duracao: 0.24, intervalo: 0.05 },
+    largura: 0.46,
+    enfeites: ['velocidade', 'explosao'],
+    extra: 'inclinado',
+  },
+  {
+    chave: 'mg-imovel',
+    nome: 'Imóveis',
+    carater: 'off-white de catálogo, verde-floresta e madeira, vidro claro e letras geométricas',
+    quando: 'imóveis, arquitetura, decoração, construção, corretor',
+    escuro: false,
+    fontes: ["'Manrope ExtraBold'", "'Manrope ExtraBold'"],
+    cores: ['#F5F3EF', '#1F2933', '#2F855A', '#B7791F', '#2B6CB0'],
+    superficie: 'vidro',
+    textura: 'nenhuma',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'sublinhado',
+    raio: 24,
+    movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.4)', duracao: 0.55, intervalo: 0.09 },
+    largura: 0.64,
+    enfeites: ['brilhos'],
+  },
+  {
+    chave: 'mg-infantil',
+    nome: 'Infantil',
+    carater: 'amarelo-manteiga, coral, turquesa e letras de gibi que pulam',
+    quando: 'crianças, educação infantil, maternidade divertida, brinquedos',
+    escuro: false,
+    fontes: ["'Luckiest Guy'", "'Nunito Black'"],
+    cores: ['#FFF7E0', '#2B2D42', '#FF6B6B', '#1FA9A0', '#E0A800'],
+    superficie: 'solida',
+    textura: 'pontos',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 40,
+    movimento: { entrada: 'back.out(2.2)', saida: 'back.in(1.6)', impacto: 'back.out(2.8)', duracao: 0.38, intervalo: 0.08 },
+    largura: 0.72,
+    enfeites: ['estrela', 'brilhos', 'explosao'],
+  },
+  {
+    chave: 'mg-beleza',
+    nome: 'Beleza',
+    carater: 'rosé, malva e ameixa, serifa delicada e vidro suave',
+    quando: 'beleza, skincare, estética, moda feminina, autocuidado',
+    escuro: false,
+    fontes: ["'Cormorant Garamond Bold'", "'Poppins'"],
+    cores: ['#FBF1EE', '#3A2A2A', '#B8606C', '#8E6C88', '#6D597A'],
+    superficie: 'vidro',
+    textura: 'nenhuma',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'sublinhado',
+    raio: 30,
+    movimento: { entrada: 'power2.out', saida: 'power2.in', impacto: 'back.out(1.4)', duracao: 0.65, intervalo: 0.12 },
+    largura: 0.5,
+    enfeites: ['brilhos'],
+  },
+  {
+    chave: 'mg-minimal',
+    nome: 'Minimal',
+    carater: 'quase branco, preto e um laranja só, tipografia grande e muito espaço',
+    quando: 'qualquer assunto que pede clareza: produto, ideia, opinião, design',
+    escuro: false,
+    fontes: ["'Inter ExtraBold'", "'Inter SemiBold'"],
+    cores: ['#F6F6F4', '#0B0B0B', '#FF4F00', '#5C5C5C', '#A3A3A3'],
+    superficie: 'nenhuma',
+    textura: 'nenhuma',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 0,
+    movimento: { entrada: 'power4.out', saida: 'power2.in', impacto: 'power4.out', duracao: 0.45, intervalo: 0.07 },
+    largura: 0.6,
+    enfeites: [],
+  },
+  {
+    chave: 'mg-oceano',
+    nome: 'Oceano',
+    carater: 'azul-petróleo profundo, turquesa e coral, vidro e luz que ondula',
+    quando: 'viagem, natureza, sustentabilidade, calma, bem-estar',
+    escuro: true,
+    fontes: ["'Sora ExtraBold'", "'Inter SemiBold'"],
+    cores: ['#04293A', '#ECFBFF', '#64CCC5', '#FFB703', '#F28482'],
+    superficie: 'vidro',
+    textura: 'nenhuma',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'sublinhado',
+    raio: 26,
+    movimento: { entrada: 'power2.out', saida: 'power2.in', impacto: 'back.out(1.4)', duracao: 0.6, intervalo: 0.1 },
+    largura: 0.66,
+    enfeites: ['brilhos'],
+  },
+  {
+    chave: 'mg-adesivo',
+    nome: 'Adesivo',
+    carater: 'roxo vivo, adesivos com borda branca grossa, amarelo, verde e rosa',
+    quando: 'redes sociais, criadores, dicas rápidas, humor, público jovem',
+    escuro: true,
+    fontes: ["'Titan One'", "'Nunito Black'"],
+    cores: ['#5B4BDB', '#FFFFFF', '#FFD166', '#06D6A0', '#EF476F'],
+    superficie: 'brutal',
+    textura: 'nenhuma',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 26,
+    movimento: { entrada: 'back.out(2)', saida: 'back.in(1.5)', impacto: 'back.out(2.6)', duracao: 0.36, intervalo: 0.07 },
+    largura: 0.72,
+    enfeites: ['estrela', 'brilhos'],
+  },
+  {
+    chave: 'mg-podcast',
+    nome: 'Podcast',
+    carater: 'preto de estúdio, verde de player e laranja, ondas de áudio e cartões sólidos',
+    quando: 'podcast, entrevista, corte de episódio, conversa, áudio',
+    escuro: true,
+    fontes: ["'Montserrat ExtraBold'", "'Inter SemiBold'"],
+    cores: ['#121212', '#F5F5F5', '#1DB954', '#FF9F1C', '#E5383B'],
+    superficie: 'solida',
+    textura: 'nenhuma',
+    brilho: true,
+    caixaAlta: false,
+    marcador: 'bloco',
+    raio: 16,
+    movimento: { entrada: 'expo.out', saida: 'power2.in', impacto: 'back.out(1.6)', duracao: 0.4, intervalo: 0.07 },
+    largura: 0.66,
+    enfeites: ['velocidade'],
+  },
+  {
+    chave: 'mg-produto',
+    nome: 'Produto',
+    carater: 'branco de app (Notion, Linear), cinza fino, azul e vermelho de interface',
+    quando: 'SaaS, produtividade, tutorial de software, startup, ferramenta',
+    escuro: false,
+    fontes: ["'Inter ExtraBold'", "'Inter SemiBold'"],
+    cores: ['#FBFBFA', '#191919', '#2383E2', '#E03E3E', '#0F7B6C'],
+    superficie: 'contorno',
+    textura: 'nenhuma',
+    brilho: false,
+    caixaAlta: false,
+    marcador: 'marca-texto',
+    raio: 12,
+    movimento: { entrada: 'power3.out', saida: 'power2.in', impacto: 'back.out(1.4)', duracao: 0.4, intervalo: 0.07 },
+    largura: 0.6,
+    enfeites: [],
+  },
+  {
+    chave: 'mg-grafite',
+    nome: 'Grafite',
+    carater: 'muro escuro, spray rosa, ciano e amarelo, letras de rua e rabiscos',
+    quando: 'cultura urbana, rap, skate, moda de rua, atitude',
+    escuro: true,
+    fontes: ["'Bangers'", "'Permanent Marker'"],
+    cores: ['#1B1B1B', '#FAFAFA', '#FF2E63', '#08D9D6', '#F9ED69'],
+    superficie: 'nenhuma',
+    textura: 'grao',
+    brilho: false,
+    caixaAlta: true,
+    marcador: 'bloco',
+    raio: 4,
+    movimento: { entrada: 'back.out(1.8)', saida: 'power3.in', impacto: 'back.out(2.4)', duracao: 0.32, intervalo: 0.06 },
+    largura: 0.5,
+    enfeites: ['explosao', 'estrela', 'seta_curva'],
+  },
 ];
 
 export function visualDeMotion(chave: string | undefined | null): VisualDeMotion | undefined {
@@ -429,13 +792,15 @@ export interface TextosDaCena {
   /** A palavra (ou duas) que carrega o sentido. */
   enfase?: string;
   icone?: string;
+  /** Um ícone por item (lista, ranking), na ordem dos itens. */
+  icones?: string[];
   /** Um objeto animado (motion-assets.ts): o herói da cena "objeto" ou o acompanhante do ícone. */
   objeto?: string;
   /** Um rabisco à mão sobre a cena ("nenhum" tira o enfeite do visual). */
   rabisco?: string;
 }
 
-const LIMITES: Record<string, number> = { kicker: 32, titulo: 96, detalhe: 140, numero: 16, prefixo: 6, unidade: 14, antes: 80, depois: 80, a: 60, b: 60, enfase: 40, icone: 20 };
+const LIMITES: Record<string, number> = { kicker: 32, titulo: 96, detalhe: 140, numero: 16, prefixo: 6, unidade: 14, antes: 80, depois: 80, a: 60, b: 60, enfase: 40, icone: 32 };
 
 /** Os textos que a IA mandou, limpos e no tamanho (nunca recusa: o que sobra é cortado). */
 export function lerTextosDaCena(bruto: unknown): TextosDaCena {
@@ -457,6 +822,10 @@ export function lerTextosDaCena(bruto: unknown): TextosDaCena {
   const valores = lista(b.valores, 16);
   if (valores.length) saida.valores = valores;
   // Asset que não existe não entra (a cena sai sem ele, nunca quebra).
+  // Ícone que não existe cai no padrão do preset (nunca quebra a cena).
+  if (saida.icone && !iconeExiste(saida.icone)) delete saida.icone;
+  const icones = lista(b.icones, 32).filter(iconeExiste);
+  if (icones.length) saida.icones = icones;
   const objeto = texto(b.objeto);
   if (assetDeMotion(objeto)?.tipo === 'objeto') saida.objeto = objeto;
   const rabisco = texto(b.rabisco);
@@ -490,7 +859,7 @@ export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
   { chave: 'linha', nome: 'Gráfico de linha', quando: 'uma evolução dita (cresceu de X para Y, ao longo do tempo)', campos: 'valores* (2-6 números ditos, em ordem), itens (rótulos do eixo), titulo, unidade', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
   { chave: 'versus', nome: 'Versus', quando: 'dois lados: A x B, errado x certo, isto ou aquilo', campos: 'a*, b*, kicker, detalhe', layouts: ['meio_a_meio', 'tela_cheia', 'pip'] },
   { chave: 'antes_depois', nome: 'Antes e depois', quando: 'uma troca: o jeito velho riscado e o novo', campos: 'antes*, depois*, kicker', layouts: ['cartao', 'meio_a_meio', 'tela_cheia'] },
-  { chave: 'lista', nome: 'Lista com checks', quando: 'três ou mais itens enumerados', campos: 'itens* (2-5, curtos), titulo', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
+  { chave: 'lista', nome: 'Lista com checks', quando: 'três ou mais itens enumerados', campos: 'itens* (2-5, curtos), titulo, icones (um ícone por item, opcional)', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
   { chave: 'passos', nome: 'Passo a passo', quando: 'uma sequência de ações ou etapas', campos: 'itens* (2-5 passos), titulo', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
   { chave: 'citacao', nome: 'Citação', quando: 'uma frase de alguém, ou a conclusão para lembrar', campos: 'titulo* (a frase), kicker (quem disse), enfase', layouts: ['tela_cheia', 'meio_a_meio', 'cartao'] },
   { chave: 'termo', nome: 'Definição', quando: 'um nome técnico ou conceito que quem assiste pode não conhecer', campos: 'titulo* (o termo), detalhe* (o que é, como foi dito), kicker (classe: substantivo, sigla...)', layouts: ['cartao', 'meio_a_meio', 'pip'] },
@@ -501,13 +870,13 @@ export const PRESETS_DE_MOTION: readonly PresetDeMotion[] = [
   { chave: 'chat', nome: 'Conversa', quando: 'um diálogo, o que alguém disse e a resposta, um prompt e a resposta da IA', campos: 'itens* (2-4 falas, alternando os lados)', layouts: ['meio_a_meio', 'pip', 'tela_cheia', 'cartao'] },
   { chave: 'alerta', nome: 'Alerta', quando: 'um erro comum, um cuidado, um "não faça isso"', campos: 'titulo*, kicker (ATENÇÃO, ERRO...), detalhe', layouts: ['cartao', 'meio_a_meio', 'tela_cheia'] },
   { chave: 'preco', nome: 'Preço', quando: 'um preço ou oferta dita (e o preço antigo, se dito)', campos: 'numero*, prefixo (R$), antes (preço antigo dito), titulo* (o que é), kicker', layouts: ['cartao', 'meio_a_meio', 'tela_cheia'] },
-  { chave: 'ranking', nome: 'Ranking', quando: 'um top 3, top 5, os melhores ou piores em ordem', campos: 'itens* (do 1º ao último, 2-5), titulo', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
+  { chave: 'ranking', nome: 'Ranking', quando: 'um top 3, top 5, os melhores ou piores em ordem', campos: 'itens* (do 1º ao último, 2-5), titulo, icones (um por item, opcional)', layouts: ['meio_a_meio', 'pip', 'tela_cheia'] },
   { chave: 'rotulo', nome: 'Rótulo (lower third)', quando: 'apresentar quem fala, um lugar, uma marca ou o tema do trecho', campos: 'titulo*, kicker', layouts: ['cartao'] },
   { chave: 'titulo', nome: 'Título de abertura', quando: 'o título do vídeo, nos primeiros segundos (sem fundo; pode passar atrás da pessoa)', campos: 'titulo* (até 7 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
   { chave: 'chamada', nome: 'Chamada final', quando: 'a chamada do fim: seguir, salvar, comentar, comprar (sem fundo)', campos: 'titulo* (até 6 palavras), kicker, enfase', layouts: ['cartao'], interno: true },
   { chave: 'objeto', nome: 'Objeto animado', quando: 'um conceito que um objeto que se mexe mostra (o celular que recebe a venda, o sino que toca, as moedas que caem, o foguete que decola)', campos: 'objeto* (da lista de objetos), titulo*, detalhe', layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
   { chave: 'anotacao', nome: 'Anotação à mão', quando: 'apontar ou marcar algo na imagem, com uma frase curta (seta, círculo, X, check)', campos: 'rabisco* (da lista de rabiscos), titulo* (até 5 palavras)', layouts: ['cartao'] },
-  { chave: 'icone', nome: 'Ícone grande', quando: 'um conceito simples que um ícone resume', campos: `icone* (${'dinheiro|tempo|alvo|raio|cadeado|grafico|pessoa|check|x|lampada|estrela|fogo|alerta|coracao|mensagem|celular|calendario|foguete|seta|escudo'}), titulo*, detalhe`, layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
+  { chave: 'icone', nome: 'Ícone grande', quando: 'um conceito simples que um ícone resume', campos: 'icone* (da lista de ícones), titulo*, detalhe', layouts: ['meio_a_meio', 'cartao', 'pip', 'tela_cheia'] },
 ];
 
 export function presetDeMotion(chave: string | undefined | null): PresetDeMotion | undefined {
@@ -595,8 +964,39 @@ const ICONES: Record<string, string> = {
 
 export const ICONES_DE_MOTION = Object.keys(ICONES);
 
-/** Um ícone de traço que se desenha a partir de `t` (cada traço com pathLength 1). */
+/** Os ícones duotone (Phosphor) registrados pelo servidor: [fundo, contorno] em 256x256. */
+let ICONES_DUOTONE: Record<string, readonly [string, string]> = {};
+let CATEGORIAS_DUOTONE: Record<string, readonly string[]> = {};
+
+/**
+ * Registra os ícones duotone ('@makucho/studio-contracts/icones-phosphor').
+ * Só o servidor chama: o módulo tem centenas de ícones e não deve ir para o
+ * navegador (as cenas já saem dele com o SVG pronto).
+ */
+export function usarIconesDuotone(icones: Record<string, readonly [string, string]>, categorias: Record<string, readonly string[]> = {}): void {
+  ICONES_DUOTONE = icones;
+  CATEGORIAS_DUOTONE = categorias;
+}
+
+/** O ícone existe (desenhado à mão ou duotone registrado)? */
+export function iconeExiste(nome: string | undefined | null): boolean {
+  return !!nome && (nome in ICONES || nome in ICONES_DUOTONE);
+}
+
+/** Os ícones, por assunto, para a IA escolher pelo nome. */
+export function textoDosIcones(): string {
+  const cats = Object.entries(CATEGORIAS_DUOTONE);
+  if (!cats.length) return `ÍCONES: ${ICONES_DE_MOTION.join(', ')}.`;
+  return `ÍCONES (campo "icone"; animados: o contorno se revela e a cor preenche):\n${cats.map(([c, l]) => `- ${c}: ${l.join(' ')}`).join('\n')}`;
+}
+
+/** Um ícone de traço que se desenha a partir de `t` (cada traço com pathLength 1); duotone: revela e preenche. */
 function icone(nome: string | undefined, t: number, d = 0.9, classe = 'ic'): string {
+  const duo = !ICONES[nome ?? ''] ? ICONES_DUOTONE[nome ?? ''] : undefined;
+  if (duo) {
+    const cls = classe.replace(/\bic\b/, 'icd');
+    return `<svg class="${cls}" viewBox="0 0 256 256" aria-hidden="true" data-in="revela" data-t="${r2(t)}" data-d="${Math.min(0.7, d)}">${duo[0] ? `<path class="icd-f" d="${duo[0]}" data-in="aparece" data-t="${r2(t + 0.25)}"/>` : ''}<path class="icd-l" d="${duo[1]}"/></svg>`;
+  }
   const miolo = ICONES[nome ?? ''] ?? ICONES.estrela!;
   const desenhado = miolo.replace(/<(path|circle|rect)\b/g, `<$1 pathLength="1" data-in="desenha" data-t="${r2(t)}" data-d="${d}"`);
   return `<svg class="${classe}" viewBox="0 0 24 24" aria-hidden="true">${desenhado}</svg>`;
@@ -789,7 +1189,7 @@ const MONTADORES: Record<string, Montador> = {
     const linhasHtml = itens
       .map((it, i) => {
         t = c.t(it, i === 0 ? t : t + 0.35, i === 0 ? 0.15 : 0.55);
-        return `<li data-in="esq" data-t="${t}">${icone('check', t + 0.12, 0.45, 'ic li-ic')}<span>${esc(it)}</span></li>`;
+        return `<li data-in="esq" data-t="${t}">${icone(x.icones?.[i] ?? 'check', t + 0.12, 0.45, 'ic li-ic')}<span>${esc(it)}</span></li>`;
       })
       .join('');
     return { html: `<div class="mg mg-esq${c.sobre ? ' mg-card' : ''}">${x.titulo ? `<div class="mg-t t-s" style="${c.corpo('t-s', x.titulo)}" data-in="sobe" data-t="0.05">${esc(x.titulo)}</div>` : ''}<ul class="mg-lista">${linhasHtml}</ul></div>` };
@@ -895,7 +1295,7 @@ const MONTADORES: Record<string, Montador> = {
       tempos[i] = t;
       t += 0.3;
     }
-    const linhasHtml = itens.map((it, i) => `<li class="${i === 0 ? 'topo' : ''}" data-in="${i === 0 ? 'bate' : 'dir'}" data-t="${tempos[i]}"><b>${i + 1}º</b><span>${esc(it)}</span></li>`).join('');
+    const linhasHtml = itens.map((it, i) => `<li class="${i === 0 ? 'topo' : ''}" data-in="${i === 0 ? 'bate' : 'dir'}" data-t="${tempos[i]}"><b>${i + 1}º</b>${x.icones?.[i] ? icone(x.icones[i], tempos[i]! + 0.1, 0.4, 'ic rk-ic') : ''}<span>${esc(it)}</span></li>`).join('');
     return { html: `<div class="mg mg-esq${c.sobre ? ' mg-card' : ''}">${x.titulo ? `<div class="mg-t t-s" style="${c.corpo('t-s', x.titulo)}" data-in="sobe" data-t="0.05">${esc(x.titulo)}</div>` : ''}<ol class="mg-rank">${linhasHtml}</ol></div>` };
   },
   rotulo: (x, c) => {
@@ -1050,6 +1450,14 @@ ${cssDaSuperficie(v, c.sobre)}
 ${cssDoMarcador(v)}
 .ic { fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
 .ic * { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.icd { overflow: visible; display: block; }
+.icd .icd-l { fill: currentColor; }
+.icd .icd-f { fill: var(--cor-destaque); opacity: .9; }
+.ico-roda .icd.ico-grande { width: 60%; color: var(--cor-texto); }
+.li-ic.icd { width: 1.25em; flex: none; color: var(--cor-texto); }
+.rk-ic { width: 1.1em; flex: none; }
+.notif-ic.icd { width: 66%; color: var(--cor-fundo); }
+.notif-ic.icd .icd-f { fill: var(--cor-fundo); opacity: .35; }
 .mg-num { font-family: var(--fonte-titulo); color: var(--cor-destaque); line-height: .9; letter-spacing: -.035em; font-variant-numeric: tabular-nums; display: flex; align-items: baseline; gap: .04em; ${v.extra === 'neon' ? 'text-shadow: 0 0 30px color-mix(in srgb, var(--cor-destaque) 60%, transparent);' : ''} }
 .mg-num .pre, .mg-num .suf { font-size: .42em; letter-spacing: 0; }
 .mg-esq > .mg-num { font-size: min(30cqw, 36cqh); }
@@ -1191,6 +1599,7 @@ q('[data-in]').forEach(function (el) {
   else if (k === 'esq') tl.fromTo(el, { x: -110, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: M.d, ease: M.e }, t);
   else if (k === 'dir') tl.fromTo(el, { x: 110, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: M.d, ease: M.e }, t);
   else if (k === 'aparece') tl.fromTo(el, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: 'power1.out' }, t);
+  else if (k === 'revela') { tl.fromTo(el, { clipPath: 'inset(100% 0% 0% 0%)', scale: 0.7 }, { clipPath: 'inset(0% 0% 0% 0%)', scale: 1, duration: d, ease: M.e }, t); tl.to(el, { scale: 1.06, duration: 0.5, yoyo: true, repeat: 1, ease: 'sine.inOut' }, t + d + 0.2); }
   else if (k === 'desenha') tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: num(el, 'data-ate', 0), duration: d, ease: 'power2.inOut' }, t);
   else if (k === 'enche') tl.fromTo(el, { scaleX: 0 }, { scaleX: 1, duration: d, ease: 'power3.out' }, t);
   else if (k === 'cresce') tl.fromTo(el, { scaleY: 0 }, { scaleY: 1, duration: d, ease: 'power3.out' }, t);

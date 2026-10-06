@@ -65,6 +65,7 @@ import {
   PRESETS_DE_MOTION,
   textoDosPresets,
   textoDosAssets,
+  textoDosIcones,
   CHAVES_DOS_OBJETOS,
   CHAVES_DOS_RABISCOS,
   textoDoPerfil,
@@ -887,7 +888,8 @@ export class AgenteService {
         descricao: `Cria uma cena de motion graphics PRONTA (o jeito padrão, sai em segundos): você escolhe o preset e os textos; cada elemento entra sozinho no instante da palavra, no visual do vídeo (ou no visual pedido em "estilo"). Leia antes ler_fala palavras=true para achar inicioS/fimS (3 a 8 s, começando na palavra que pede a cena). layout: meio_a_meio (cena + rosto na outra metade; lado cima = cena em cima), cartao (sobre o vídeo, fora do rosto), tela_cheia (só o pico), pip (o rosto vai para uma janela no canto: canto sup-esq|sup-dir|inf-esq|inf-dir). textos: só o que foi DITO, números em algarismos exatos. Sem preset/textos, a IA escolhe a partir de "ideia".
 PRESETS (chave [layouts]: quando. Campos; * = obrigatório):
 ${textoDosPresets()}
-${textoDosAssets()}`,
+${textoDosAssets()}
+${textoDosIcones()}`,
         parametros: objeto(
           {
             inicioS: { type: 'number' },
@@ -909,6 +911,7 @@ ${textoDosAssets()}`,
                 rabisco: { type: 'string', enum: [...CHAVES_DOS_RABISCOS, 'nenhum'], description: 'uma anotação à mão sobre a cena ("nenhum" tira o enfeite do visual)' },
                 itens: { type: 'array', items: { type: 'string' } },
                 valores: { type: 'array', items: { type: 'string' } },
+                icones: { type: 'array', items: { type: 'string' }, description: 'um ícone por item (lista, ranking)' },
               },
             },
             encenacao: { type: 'string', description: 'a encenação: o que aparece, em que ordem, o que se move e por quê (3 a 5 frases)' },

@@ -97,6 +97,8 @@ import {
   presetDeMotion,
   textoDaCena,
   textoDosAssets,
+  textoDosIcones,
+  usarIconesDuotone,
   textoDosPresets,
   textoDosVisuais,
   visualDeMotion,
@@ -106,6 +108,7 @@ import {
   type VisualDeMotion,
   type RegrasDaDirecao,
 } from '@makucho/studio-contracts';
+import { CATEGORIAS_DOS_ICONES, ICONES_PHOSPHOR } from '@makucho/studio-contracts/dist/icones-phosphor';
 import { Prisma } from '@makucho/studio-database';
 import { PrismaService } from '../../common/prisma.service';
 import { StorageService } from '../../common/storage.service';
@@ -406,6 +409,9 @@ export function modoDasAnimacoes(): ModoDasAnimacoes {
 // ============================================================
 
 const VERSAO_MOTION = 'motion-presets-v1';
+
+// Os ícones duotone (Phosphor, MIT) só no servidor: as cenas saem com o SVG pronto.
+usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
 const MAX_TOKENS_DO_MOTION = 5000;
 const TEMPO_DO_MOTION_MS = 120_000;
 
@@ -425,13 +431,13 @@ const PRESETS_DO_SINAL: Record<string, string> = {
 
 /** Os visuais que combinam com o tipo de conteúdo e a luz da imagem (o primeiro é o padrão). */
 const VISUAIS_DO_FORMATO: Record<FormatoDeConteudo, { claro: string[]; escuro: string[] }> = {
-  dica_rapida: { claro: ['mg-pop', 'mg-brutal', 'mg-caderno'], escuro: ['mg-soco', 'mg-y2k', 'mg-neon'] },
-  tutorial: { claro: ['mg-vidro-claro', 'mg-caderno', 'mg-suico'], escuro: ['mg-keynote', 'mg-terminal', 'mg-mercado'] },
-  explicacao: { claro: ['mg-caderno', 'mg-suico', 'mg-vidro-claro'], escuro: ['mg-keynote', 'mg-mercado', 'mg-analogico'] },
-  historia: { claro: ['mg-revista', 'mg-colagem', 'mg-pastel'], escuro: ['mg-cinema', 'mg-analogico', 'mg-luxo'] },
-  opiniao: { claro: ['mg-revista', 'mg-brutal', 'mg-suico'], escuro: ['mg-soco', 'mg-cinema', 'mg-luxo'] },
-  oferta: { claro: ['mg-brutal', 'mg-pop', 'mg-pastel'], escuro: ['mg-soco', 'mg-esporte', 'mg-neon'] },
-  depoimento: { claro: ['mg-pastel', 'mg-revista', 'mg-colagem'], escuro: ['mg-luxo', 'mg-analogico', 'mg-cinema'] },
+  dica_rapida: { claro: ['mg-pop', 'mg-brutal', 'mg-adesivo', 'mg-caderno', 'mg-minimal'], escuro: ['mg-soco', 'mg-y2k', 'mg-neon', 'mg-podcast', 'mg-grafite'] },
+  tutorial: { claro: ['mg-produto', 'mg-vidro-claro', 'mg-caderno', 'mg-suico'], escuro: ['mg-keynote', 'mg-terminal', 'mg-blueprint', 'mg-quadro-negro'] },
+  explicacao: { claro: ['mg-caderno', 'mg-suico', 'mg-vidro-claro', 'mg-jornal', 'mg-saude'], escuro: ['mg-keynote', 'mg-quadro-negro', 'mg-blueprint', 'mg-mercado', 'mg-analogico'] },
+  historia: { claro: ['mg-revista', 'mg-colagem', 'mg-retro70', 'mg-pastel'], escuro: ['mg-cinema', 'mg-analogico', 'mg-oceano', 'mg-luxo'] },
+  opiniao: { claro: ['mg-revista', 'mg-jornal', 'mg-brutal', 'mg-minimal'], escuro: ['mg-soco', 'mg-cinema', 'mg-grafite', 'mg-luxo'] },
+  oferta: { claro: ['mg-brutal', 'mg-pop', 'mg-adesivo', 'mg-pastel', 'mg-imovel'], escuro: ['mg-soco', 'mg-esporte', 'mg-neon', 'mg-cripto', 'mg-gourmet'] },
+  depoimento: { claro: ['mg-pastel', 'mg-beleza', 'mg-revista', 'mg-saude'], escuro: ['mg-luxo', 'mg-analogico', 'mg-cinema', 'mg-oceano'] },
 };
 
 function visuaisSugeridos(p: PerfilDoVideo): string[] {
@@ -451,6 +457,8 @@ ${textoDosPresets()}
 
 ASSETS ANIMADOS (o que dá vida às cenas: use quando o objeto ou o gesto CONTA o que a fala diz):
 ${textoDosAssets()}
+${textoDosIcones()}
+- "icone" no preset icone e na notificação; "icones" (um por item) na lista e no ranking.
 - "objeto" é o herói do preset objeto (e pode trocar o ícone do preset icone).
 - "rabisco" em qualquer cena acrescenta a anotação à mão; cada visual já tem os enfeites dele nas cenas de destaque ("rabisco": "nenhum" tira).
 
@@ -1099,6 +1107,7 @@ export class AnimacoesDaFalaService {
 PRESETS (chave [layouts]: quando usar. Campos; * = obrigatório):
 ${textoDosPresets()}
 ${textoDosAssets()}
+${textoDosIcones()}
 Textos curtos em português e fiéis à fala: só números, nomes e itens DITOS (números em algarismos, exatos). titulo até 6 palavras (frase/citação até 12), detalhe até 10, itens até 4 palavras cada.
 Responda SÓ com JSON: {"preset":"chave","textos":{...}}`,
       usuario: `${atual ? `CENA ATUAL (edite em cima dela; mude só o que o pedido pede): ${JSON.stringify({ preset: atual.preset, textos: atual.textos })}\n` : ''}PEDIDO: ${pedido}\nFala do trecho: "${fala.slice(0, 1500)}"`,

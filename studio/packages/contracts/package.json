@@ -9,6 +9,14 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./icones-phosphor": {
+      "types": "./dist/icones-phosphor.d.ts",
+      "default": "./dist/icones-phosphor.js"
+    },
+    "./dist/icones-phosphor": {
+      "types": "./dist/icones-phosphor.d.ts",
+      "default": "./dist/icones-phosphor.js"
+    },
     "./componentes-hyperframes": {
       "types": "./dist/componentes-hyperframes.d.ts",
       "default": "./dist/componentes-hyperframes.js"

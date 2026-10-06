@@ -20,8 +20,14 @@ import {
   textoDaCena,
   textoDosPresets,
   ASSETS_DE_MOTION,
+  usarIconesDuotone,
+  ICONES_DE_MOTION,
+  iconeExiste,
   type TextosDaCena,
 } from '../src';
+
+import { CATEGORIAS_DOS_ICONES, ICONES_PHOSPHOR } from '../src/icones-phosphor';
+usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
 
 let ok = 0,
   fail = 0;
@@ -158,6 +164,22 @@ for (const a of ASSETS_DE_MOTION) {
   const sobrio = composicaoDoPreset({ preset: 'impacto', textos: { titulo: 'Boom' }, layout: 'tela_cheia' }, 'mg-suico', 4, []);
   t('visual sóbrio (suíço) não leva enfeite', !sobrio.html.includes('mg-enfeite'));
   t('objeto ou rabisco que não existe não entra', lerTextosDaCena({ objeto: 'dragao', rabisco: 'raio-laser' }).objeto === undefined && lerTextosDaCena({ rabisco: 'raio-laser' }).rabisco === undefined);
+}
+
+// Os ícones duotone: todos montam e passam na checagem; listas com ícone por item.
+{
+  const nomes = Object.keys(ICONES_PHOSPHOR);
+  t(`centenas de ícones registrados (${nomes.length})`, nomes.length > 350 && iconeExiste('rocket-launch') && iconeExiste('foguete'));
+  let quebrados = 0;
+  // Os nomes que os ícones desenhados à mão já têm (check, x) ficam com o traço que se desenha.
+  for (const n of nomes.filter((x) => !ICONES_DE_MOTION.includes(x))) {
+    const c = composicaoDoPreset({ preset: 'icone', textos: { icone: n, titulo: 'Teste' }, layout: 'meio_a_meio' }, 'mg-keynote', 3, []);
+    if (!c.html.includes('class="icd') || problemasDaComposicao(c).length) quebrados += 1;
+  }
+  t('todo ícone duotone monta a cena sem problema', quebrados === 0);
+  const l = composicaoDoPreset({ preset: 'lista', textos: lerTextosDaCena({ itens: ['Café', 'Treino', 'Leitura'], icones: ['coffee', 'barbell', 'book-open'] }), layout: 'meio_a_meio' }, 'mg-saude', 4, []);
+  t('lista com um ícone por item', (l.html.match(/class="icd li-ic"/g) ?? []).length === 3);
+  t('ícone que não existe cai fora (a cena usa o padrão)', lerTextosDaCena({ icone: 'unicornio-voador' }).icone === undefined);
 }
 
 // Texto da IA: limpo e cortado, nunca recusado; HTML escapado.
