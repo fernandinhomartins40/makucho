@@ -114,6 +114,13 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
   );
 }
 
+/** Um resumo curto de um texto (para notar que o CSS mudou sem guardar o CSS inteiro). */
+function resumo(t: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < t.length; i += 1) h = Math.imul(h ^ t.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
 export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, editando }: Props) {
   const html = camadas.filter((c) => c.kind === 'html' && c.composicao);
   const caixa = useRef<HTMLDivElement>(null);
@@ -132,7 +139,8 @@ export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, edi
 
   // O vídeo com transparência de cada animação, para exportar: pedido
   // quando ela aparece ou muda (um pouco depois, para não pedir a cada tecla).
-  const assinatura = html.map((c) => `${c.id}:${c.durationMs}:${c.composicao!.html.length}:${c.composicao!.script.length}:${c.composicao!.layout}`).join('|');
+  // O CSS entra (o ajuste de posição e tamanho mora nele): aplicar refaz o vídeo da animação.
+  const assinatura = html.map((c) => `${c.id}:${c.durationMs}:${c.composicao!.html.length}:${c.composicao!.script.length}:${c.composicao!.layout}:${resumo(c.composicao!.css)}`).join('|');
   useEffect(() => {
     if (!projectId || !html.length) return;
     // A legenda do HyperFrames muda a cada ajuste de texto ou posição e cada

@@ -64,6 +64,7 @@ import { AnimacoesAoVivo } from './AnimacoesAoVivo';
 import { EdicaoNoPalco, type PecaDaAnimacao } from './EdicaoNoPalco';
 import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
+import { cenaDaComposicao, comPecasEditaveis } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -1241,6 +1242,13 @@ export function Palco({
     setPecasDaAnimacao([]);
     setCssAoVivo(null);
   }, [animacaoEditada?.id, animacaoEditada?.composicao]);
+  // Animação feita antes da edição no palco: ganha as marcas das peças (só atributos; o desenho fica).
+  useEffect(() => {
+    const c = animacaoEditada?.composicao;
+    if (!animacaoEditada || !c || !onEditarAnimacao || !cenaDaComposicao(c)) return;
+    const marcada = comPecasEditaveis(c);
+    if (marcada !== c) onEditarAnimacao(animacaoEditada.id, marcada);
+  }, [animacaoEditada?.id, animacaoEditada?.composicao]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trechoAtual = agenda.trechos[indiceRef.current];
   const legendaCss =

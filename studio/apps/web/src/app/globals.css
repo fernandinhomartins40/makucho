@@ -14473,3 +14473,19 @@ button.midia-cartao__previa:disabled {
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+.palco__aplicar-da-peca {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  z-index: 7;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}

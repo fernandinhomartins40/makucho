@@ -2216,6 +2216,14 @@ function marcarEditaveis(html: string): string {
   });
 }
 
+/**
+ * A animação com as peças marcadas (data-ed): as feitas antes da edição no
+ * palco não tinham. Só acrescenta atributos -- o desenho e o tempo ficam.
+ */
+export function comPecasEditaveis(c: ComposicaoHtml): ComposicaoHtml {
+  return c.html.includes('data-ed=') ? c : { ...c, html: marcarEditaveis(c.html) };
+}
+
 /** O layout que o preset aceita (o pedido, se servir; senão o preferido dele). */
 export function layoutDoPreset(preset: string, pedido: string | undefined): LayoutDoPreset {
   const p = presetDeMotion(preset);
