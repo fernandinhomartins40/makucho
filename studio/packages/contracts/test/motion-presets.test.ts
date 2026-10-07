@@ -24,6 +24,9 @@ import {
   ICONES_DE_MOTION,
   iconeExiste,
   aplicarEdicaoDaCena,
+  amostraDoModelo,
+  EXEMPLOS_DOS_PRESETS,
+  cenaIncompleta,
   camposDoPreset,
   comAjuste,
   lerAjuste,
@@ -177,6 +180,19 @@ for (const v of VISUAIS_DE_MOTION) {
   t('ajustar de novo troca, não acumula', (comAjuste(movida, lerAjuste({ x: 0, y: 0, escala: 0.8 })).css.match(/ajuste-da-cena/g) ?? []).length === 1);
   t('voltar ao original tira o ajuste', !comAjuste(movida, undefined).css.includes('ajuste-da-cena') && !cenaDaComposicao(comAjuste(movida, undefined))?.ajuste);
   t('ajuste preso a limites (a cena não sai do quadro)', lerAjuste({ x: 9999, y: -9999, escala: 9 })?.x === 500 && lerAjuste({ x: 9999, y: -9999, escala: 9 })?.escala === 2);
+}
+
+// As peças da cena no palco: marcadas, e cada uma com o seu ajuste.
+{
+  const c = composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Editor', kicker: 'O melhor', detalhe: 'de vídeos' }, layout: 'cartao' }, 'mg-soco', 5, []);
+  t('as peças editáveis levam data-ed e o campo do texto', c.html.includes('data-ed="cz.0" data-campo="titulo"') && c.html.includes('data-ed="cz-a.0" data-campo="kicker"'));
+  t('a raiz da cena e as linhas soltas não são peças', !/class="mg mg-quadro"[^>]*data-ed|data-ed="[^"]*"[^>]*class="[^"]*mg-l/.test(c.html));
+  const movida = comAjuste(c, lerAjuste({ x: 0, y: 0, escala: 1, elementos: { 'cz.0': { x: 100, y: 50, escala: 1.5 } } }));
+  t('ajuste de uma peça só', movida.css.includes('[data-ed="cz.0"] { translate: 100px 50px; scale: 1.5; }') && !movida.css.includes('.mg { translate'));
+  t('o ajuste da peça fica guardado e volta ao remontar', composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('[data-ed="cz.0"]'));
+  t('chave de peça estranha não entra', !lerAjuste({ elementos: { 'x"]{}': { x: 1, y: 1, escala: 1 } } }));
+  t('modelo de amostra: a cena atual quando serve, o exemplo quando falta', amostraDoModelo({ preset: 'contador', textos: { numero: '87', titulo: 'x' }, layout: 'meio_a_meio' }, 'numero_gigante').faltam === null && amostraDoModelo({ preset: 'contador', textos: { numero: '87', titulo: 'x' }, layout: 'meio_a_meio' }, 'versus').faltam !== null);
+  t('todo modelo tem exemplo completo', PRESETS_DE_MOTION.every((p) => cenaIncompleta(p.chave, EXEMPLOS_DOS_PRESETS[p.chave] ?? {}) === null));
 }
 
 // Layout que o preset não aceita cai no preferido dele.

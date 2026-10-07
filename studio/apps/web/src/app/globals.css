@@ -14273,3 +14273,182 @@ button.midia-cartao__previa:disabled {
 .ia-sobre__visual .escolha-do-estilo__grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .ia-sobre .ia-sobre__visual > summary { display: block; line-height: 1.4; }
+
+/* ---------- Edição da animação no palco: cada peça vira uma caixa ---------- */
+.palco__edicao-animacao {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  touch-action: none;
+}
+.palco__peca {
+  position: absolute;
+  border: 1.5px dashed rgb(255 255 255 / 0%);
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+.palco__edicao-animacao:hover .palco__peca {
+  border-color: rgb(255 255 255 / 40%);
+}
+.palco__peca:hover,
+.palco__peca[data-selecionado] {
+  border-color: var(--accent) !important;
+  border-style: solid;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.palco__peca:active {
+  cursor: grabbing;
+}
+.palco__barra-da-peca {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 10px;
+  background: var(--bg-elevado, var(--bg-sidebar));
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+}
+.palco__texto-da-peca {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-elevado, var(--bg-sidebar));
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+}
+.palco__texto-da-peca .campo__entrada {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ---------- O painel visual da animação ---------- */
+.editor-da-cena {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e3);
+}
+.modelos-da-cena {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 92px;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x proximity;
+}
+.modelos-da-cena__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+.modelos-da-cena__item[aria-checked='true'] {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.modelos-da-cena__quadro {
+  position: relative;
+  display: block;
+  width: 88px;
+  height: 156px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(#5b6b80, #2c333d);
+}
+.modelos-da-cena__quadro iframe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1080px;
+  height: 1920px;
+  border: 0;
+  transform: scale(0.0815);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.modelos-da-cena__falta {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: var(--warning);
+  color: #111;
+  font-size: 10px;
+}
+.grade-de-elementos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.grade-de-elementos--icones {
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+}
+.grade-de-elementos__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cor-fundo, #111) 85%, transparent);
+  color: var(--cor-texto, #fff);
+  font-size: 10px;
+  line-height: 1.1;
+  cursor: pointer;
+}
+.grade-de-elementos__item[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.grade-de-elementos__item svg,
+.miniatura-asset {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+.grade-de-elementos--icones .grade-de-elementos__item svg {
+  width: 28px;
+  height: 28px;
+}
+.miniatura-asset .ast {
+  width: 100%;
+  height: 100%;
+}
+.grade-de-elementos__vazio {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  font-size: 22px;
+}
+.editor-da-cena__mais summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

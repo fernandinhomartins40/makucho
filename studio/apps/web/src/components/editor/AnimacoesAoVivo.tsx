@@ -16,12 +16,15 @@ import type { CamadaDeMidia } from '@makucho/studio-contracts';
 import { PREFIXO_DA_LEGENDA_HF, componentesDaComposicao, documentoDaComposicao } from '@makucho/studio-contracts';
 import { ouvirPosicao } from '../../lib/relogioAoVivo';
 import { animacoes as apiAnimacoes } from '../../lib/api';
+import type { PecaDaAnimacao } from './EdicaoNoPalco';
 
 interface Props {
   projectId?: string;
   camadas: readonly CamadaDeMidia[];
   posicaoMs: number;
   corDaMarca?: string;
+  /** A animação sendo editada no palco: ela informa onde estão as peças e recebe o ajuste ao vivo. */
+  editando?: { id: string; css: string | null; onPecas: (pecas: PecaDaAnimacao[]) => void } | null;
 }
 
 /**
@@ -34,7 +37,7 @@ function carregarComponentes(): Promise<Record<string, string>> {
   return fontesDosComponentes;
 }
 
-function Animacao({ camada, origem, corDaMarca, posicaoMs, escala }: { camada: CamadaDeMidia; origem: string; corDaMarca?: string | undefined; posicaoMs: number; escala: number }) {
+function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: { camada: CamadaDeMidia; origem: string; corDaMarca?: string | undefined; posicaoMs: number; escala: number; editando?: Props['editando'] }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [visivel, setVisivel] = useState(false);
   const usaComponentes = !!camada.composicao && componentesDaComposicao(camada.composicao.html).length > 0;
@@ -72,6 +75,25 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala }: { camada: C
     ref.current?.contentWindow?.postMessage({ hfT: (ms - camada.timelineStartMs) / 1000 }, '*');
   };
   useEffect(() => mandar(posicaoMs), [posicaoMs, camada.timelineStartMs, camada.durationMs]);
+
+  // Edição no palco: liga o relato das peças e passa o ajuste ao vivo; ouve só o próprio iframe.
+  const editandoEsta = editando?.id === camada.id;
+  const aoReceber = useRef(editando?.onPecas);
+  aoReceber.current = editando?.onPecas;
+  useEffect(() => {
+    ref.current?.contentWindow?.postMessage({ hfEditar: editandoEsta }, '*');
+    if (!editandoEsta) return;
+    const ouvir = (e: MessageEvent) => {
+      if (e.source !== ref.current?.contentWindow || !e.data || !Array.isArray(e.data.hfEd)) return;
+      aoReceber.current?.(e.data.hfEd as PecaDaAnimacao[]);
+    };
+    window.addEventListener('message', ouvir);
+    return () => window.removeEventListener('message', ouvir);
+  }, [editandoEsta, doc]);
+  const cssAoVivo = editandoEsta ? editando?.css ?? null : null;
+  useEffect(() => {
+    if (cssAoVivo !== null) ref.current?.contentWindow?.postMessage({ hfCss: cssAoVivo }, '*');
+  }, [cssAoVivo]);
   useEffect(() => ouvirPosicao(mandar), [camada.timelineStartMs, camada.durationMs]);
 
   return (
@@ -81,7 +103,10 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala }: { camada: C
       className="palco__animacao"
       sandbox="allow-scripts"
       srcDoc={doc}
-      onLoad={() => mandar(ultimo.current)}
+      onLoad={() => {
+        if (editandoEsta) ref.current?.contentWindow?.postMessage({ hfEditar: true }, '*');
+        mandar(ultimo.current);
+      }}
       style={{ transform: `scale(${escala})`, visibility: visivel ? 'visible' : 'hidden', opacity: camada.opacity ?? 1 }}
       aria-hidden
       tabIndex={-1}
@@ -89,7 +114,7 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala }: { camada: C
   );
 }
 
-export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca }: Props) {
+export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, editando }: Props) {
   const html = camadas.filter((c) => c.kind === 'html' && c.composicao);
   const caixa = useRef<HTMLDivElement>(null);
   const [escala, setEscala] = useState(0.3);
@@ -129,7 +154,7 @@ export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca }: P
   return (
     <div ref={caixa} className="palco__animacoes" aria-hidden>
       {html.map((c) => (
-        <Animacao key={c.id} camada={c} origem={origem} corDaMarca={corDaMarca} posicaoMs={posicaoMs} escala={escala} />
+        <Animacao key={c.id} camada={c} origem={origem} corDaMarca={corDaMarca} posicaoMs={posicaoMs} escala={escala} editando={editando} />
       ))}
     </div>
   );

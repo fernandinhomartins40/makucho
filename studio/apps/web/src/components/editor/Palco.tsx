@@ -61,6 +61,9 @@ import type { EstadoNoInstante } from './motorDaPrevia';
 import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
 import { fontesDaCena, QuadrosDasCenas } from './gl/cenasNoNavegador';
 import { AnimacoesAoVivo } from './AnimacoesAoVivo';
+import { EdicaoNoPalco, type PecaDaAnimacao } from './EdicaoNoPalco';
+import { useAnimacoesDaIa } from './animacoesDaIa';
+import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
@@ -125,6 +128,8 @@ interface Props {
   onPosicionarBloco?: (inicioMs: number, fimMs: number, y: number) => void;
   /** Gravando narração: toca SEM SOM a partir daqui (null para). */
   gravandoDe?: number | null;
+  /** A animação selecionada editada no palco (peças movidas ou redimensionadas): a animação nova. */
+  onEditarAnimacao?: (id: string, composicao: ComposicaoHtml) => void;
 }
 
 export function Palco({
@@ -147,6 +152,7 @@ export function Palco({
   midiaSelecionada,
   onSelecionarMidia,
   onAjustarMidia,
+  onEditarAnimacao,
   onAbrirEstilos,
   onAjustarLegenda,
   onPosicionarBloco,
@@ -163,6 +169,10 @@ export function Palco({
   /** Que trecho (índice da agenda) cada player carrega. */
   const donoRef = useRef<Array<number | null>>([null, null]);
   const quadroRef = useRef<HTMLDivElement>(null);
+  const ia = useAnimacoesDaIa();
+  // Edição da animação no palco: as peças que o iframe informa e o ajuste ao vivo (antes de soltar).
+  const [pecasDaAnimacao, setPecasDaAnimacao] = useState<PecaDaAnimacao[]>([]);
+  const [cssAoVivo, setCssAoVivo] = useState<string | null>(null);
   const imagemRef = useRef<HTMLDivElement>(null);
   const fundoRef = useRef<HTMLCanvasElement>(null);
   const trilhaRef = useRef<HTMLAudioElement>(null);
@@ -1222,6 +1232,16 @@ export function Palco({
     );
   };
 
+  const animacaoEditada =
+    !tocando && midiaSelecionada
+      ? (plan.mediaLayers ?? []).find((m) => m.id === midiaSelecionada && m.kind === 'html' && !!m.composicao && posicaoMs >= m.timelineStartMs && posicaoMs < m.timelineStartMs + m.durationMs) ?? null
+      : null;
+  // Outra animação (ou nenhuma): as peças e o ajuste ao vivo da anterior saem.
+  useEffect(() => {
+    setPecasDaAnimacao([]);
+    setCssAoVivo(null);
+  }, [animacaoEditada?.id, animacaoEditada?.composicao]);
+
   const trechoAtual = agenda.trechos[indiceRef.current];
   const legendaCss =
     libassFalhou && plan.captions.enabled && sourceMs !== null && trechoAtual
@@ -1324,7 +1344,22 @@ export function Palco({
           camadas={camadasComLegenda}
           posicaoMs={posicaoMs}
           {...(marca?.cores.primary ? { corDaMarca: marca.cores.primary } : {})}
+          editando={animacaoEditada ? { id: animacaoEditada.id, css: cssAoVivo, onPecas: setPecasDaAnimacao } : null}
         />
+        {/* A animação selecionada, parada: cada peça dela se seleciona, move e redimensiona no vídeo. */}
+        {animacaoEditada && onEditarAnimacao && (
+          <EdicaoNoPalco
+            composicao={animacaoEditada.composicao!}
+            pecas={pecasDaAnimacao}
+            quadro={quadroRef}
+            onAoVivo={setCssAoVivo}
+            onSalvar={(c) => onEditarAnimacao(animacaoEditada.id, c)}
+            onEditarTexto={(campo, valor) => {
+              const lista = campo === 'itens' || campo === 'valores' || campo === 'icones';
+              ia?.refazer([animacaoEditada.id], { cena: { textos: { [campo]: lista ? valor.split(',').map((x) => x.trim()).filter(Boolean) : valor } } });
+            }}
+          />
+        )}
 
         {/* Logo e imagem: mesmas posições e tamanhos do render. */}
         {urlDoAsset &&

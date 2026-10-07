@@ -1656,6 +1656,7 @@ function Editor({ projectId }: { projectId: string }) {
             }}
             midiaSelecionada={itemSelecionado?.tipo === 'midia' ? itemSelecionado.id : null}
             onSelecionarMidia={(id) => setItemSelecionado({ tipo: 'midia', id })}
+            onEditarAnimacao={(id, composicao) => executar({ op: 'editar_midia', mediaId: id, composicao })}
             onAjustarMidia={(id, mudanca) => {
               const c = plano.mediaLayers?.find((m) => m.id === id);
               if (!c?.keyframes?.length) return executar({ op: 'editar_midia', mediaId: id, ...mudanca });

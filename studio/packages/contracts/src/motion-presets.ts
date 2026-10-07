@@ -1671,7 +1671,7 @@ const MONTADORES: Record<string, Montador> = {
       css: `.pf { left: 0; right: 0; height: 240px; display: flex; justify-content: center; align-items: center; transform: perspective(900px) rotateX(22deg); }
 .pf-w { --pf-lado: color-mix(in srgb, var(--cor-destaque) 62%, #000000); font-family: var(--fonte-titulo); text-transform: uppercase; color: var(--solto); line-height: 1; white-space: nowrap; text-shadow: ${camadas}, 0 26px 36px rgba(0,0,0,.55); }
 .pf-c { display: inline-block; white-space: pre; }
-.pf-k { left: 50%; translate: -50% 0; font-size: 34px; }`,
+.pf-k { left: 0; right: 0; margin: 0 auto; width: fit-content; font-size: 34px; }`,
     };
   },
 
@@ -2096,21 +2096,37 @@ export interface AjusteDaCena {
   x: number;
   y: number;
   escala: number;
+  /** Cada elemento movido ou redimensionado no palco (a chave é o data-ed dele). */
+  elementos?: Record<string, { x: number; y: number; escala: number }>;
 }
 
 /** O ajuste lido e preso a limites que nunca tiram a cena do quadro; `undefined` quando é o neutro. */
 export function lerAjuste(bruto: unknown): AjusteDaCena | undefined {
   const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
   const n = (v: unknown, min: number, max: number, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : padrao);
-  const a = { x: Math.round(n(b.x, -500, 500, 0)), y: Math.round(n(b.y, -900, 900, 0)), escala: Math.round(n(b.escala, 0.4, 2, 1) * 100) / 100 };
-  return a.x || a.y || a.escala !== 1 ? a : undefined;
+  const a: AjusteDaCena = { x: Math.round(n(b.x, -500, 500, 0)), y: Math.round(n(b.y, -900, 900, 0)), escala: Math.round(n(b.escala, 0.4, 2, 1) * 100) / 100 };
+  const els = b.elementos && typeof b.elementos === 'object' ? Object.entries(b.elementos as Record<string, unknown>) : [];
+  const elementos: Record<string, { x: number; y: number; escala: number }> = {};
+  for (const [chave, v] of els.slice(0, 40)) {
+    if (!/^[a-z0-9-]{1,24}\.\d{1,2}$/.test(chave) || !v || typeof v !== 'object') continue;
+    const e = v as Record<string, unknown>;
+    const el = { x: Math.round(n(e.x, -1080, 1080, 0)), y: Math.round(n(e.y, -1920, 1920, 0)), escala: Math.round(n(e.escala, 0.2, 4, 1) * 100) / 100 };
+    if (el.x || el.y || el.escala !== 1) elementos[chave] = el;
+  }
+  if (Object.keys(elementos).length) a.elementos = elementos;
+  return a.x || a.y || a.escala !== 1 || a.elementos ? a : undefined;
 }
 
 const MARCA_DO_AJUSTE = '/*ajuste-da-cena*/';
 
 /** O CSS do ajuste: a cena inteira (não o fundo) deslocada e em outro tamanho. */
 export function cssDoAjuste(a: AjusteDaCena | undefined): string {
-  return a ? `\n${MARCA_DO_AJUSTE}.mg { translate: ${a.x}px ${a.y}px; scale: ${a.escala}; }` : '';
+  if (!a) return '';
+  const cena = a.x || a.y || a.escala !== 1 ? `.mg { translate: ${a.x}px ${a.y}px; scale: ${a.escala}; }` : '';
+  const els = Object.entries(a.elementos ?? {})
+    .map(([k, e]) => `[data-ed="${k}"] { translate: ${e.x}px ${e.y}px; scale: ${e.escala}; }`)
+    .join(' ');
+  return `\n${MARCA_DO_AJUSTE}${cena}${els ? ` ${els}` : ''}`;
 }
 
 /**
@@ -2168,6 +2184,36 @@ function cssForaDoRosto(p: PessoaNoQuadro | null | undefined): string {
   const alvo = '.mg:not(.mg-quadro):not(.mg-titulo):not(.mg-chamada)';
   const lugar = lugarDoCartao(p);
   return lugar ? `\n${alvo} { top: ${lugar.topo}px; height: ${lugar.altura}px; }` : '';
+}
+
+/**
+ * As peças da cena que o editor deixa selecionar, mover e redimensionar, na
+ * ordem de preferência (a mais específica primeiro), com o campo de texto
+ * que cada uma mostra ('' = sem texto editável direto).
+ */
+const EDITAVEIS: ReadonlyArray<readonly [string, string]> = [
+  ['cz-a', 'kicker'], ['cz-b', 'detalhe'], ['cz', 'titulo'], ['hud-w', 'titulo'], ['pf-k', 'kicker'], ['pf', 'titulo'],
+  ['ng-k', 'kicker'], ['ng-num', 'numero'], ['pl-cab', 'titulo'], ['pl-a', 'a'], ['pl-b', 'b'], ['mo-tit', 'titulo'], ['mo-card', ''],
+  ['ld-k', 'kicker'], ['ld-a', 'a'], ['ld-b', 'b'], ['sl-tag', 'titulo'], ['jn', ''], ['tlp', ''], ['cm-chamada', 'detalhe'], ['cm', ''], ['dm', ''],
+  ['ad-antes', 'antes'], ['ad-depois', 'depois'], ['perg-resp', 'detalhe'], ['termo-classe', 'kicker'], ['cit-autor', 'kicker'],
+  ['vs-a', 'a'], ['vs-b', 'b'], ['vs-meio', ''], ['selo', 'titulo'], ['busca', 'titulo'], ['notif', ''], ['bolha', ''], ['rot-caixa', ''],
+  ['mg-lista', ''], ['mg-passos', ''], ['mg-rank', ''], ['mg-barras', ''], ['mg-linha', ''], ['anel', ''], ['ico-roda', ''], ['obj-roda', ''],
+  ['anot-ast', ''], ['cit-aspas', ''], ['mg-linhas', 'titulo'], ['mg-k', 'kicker'], ['mg-d', 'detalhe'], ['mg-num', 'numero'], ['mg-t', 'titulo'],
+];
+
+/** O html com `data-ed` (a chave da peça: classe.ordem) e `data-campo` nas peças editáveis. */
+function marcarEditaveis(html: string): string {
+  const contagem = new Map<string, number>();
+  return html.replace(/<([a-z][a-z0-9]*)(\s[^>]*?)?\sclass="([^"]*)"/gi, (todo, tag: string, antes: string | undefined, classes: string) => {
+    const lista = classes.split(/\s+/);
+    // A raiz da cena (.mg) e as linhas soltas de um título (.mg-l) não são peças.
+    if (lista.includes('mg') || lista.includes('mg-l') || /\bdata-ed=/.test(todo)) return todo;
+    const achado = EDITAVEIS.find(([classe]) => lista.includes(classe));
+    if (!achado) return todo;
+    const n = contagem.get(achado[0]) ?? 0;
+    contagem.set(achado[0], n + 1);
+    return `<${tag} data-ed="${achado[0]}.${n}"${achado[1] ? ` data-campo="${achado[1]}"` : ''}${antes ?? ''} class="${classes}"`;
+  });
 }
 
 /** O layout que o preset aceita (o pedido, se servir; senão o preferido dele). */
@@ -2245,7 +2291,7 @@ export function composicaoDoPreset(
     motion: { preset: preset.chave, textos: cena.textos, ...(lerAjuste(cena.ajuste) ? { ajuste: lerAjuste(cena.ajuste) } : {}) },
   });
   return {
-    html: `${fundo}${emCaixa(montado.html)}`,
+    html: marcarEditaveis(`${fundo}${emCaixa(montado.html)}`),
     css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}${sobre ? cssForaDoRosto(extra.pessoa) : ''}${cssDoAjuste(lerAjuste(cena.ajuste))}`,
     script: scriptDaCena(v, D, layout, lado, sobre, [montado.script ?? '', ...scriptsDosAssets].filter(Boolean).join('\n')),
     layout,
@@ -2339,4 +2385,60 @@ export function aplicarEdicaoDaCena(atual: CenaDeMotion, e: EdicaoDaCena): { cen
       ...(ajuste ? { ajuste } : {}),
     },
   };
+}
+
+/** Textos de exemplo de cada modelo: as miniaturas do editor mostram a cena com eles quando a atual não serve. */
+export const EXEMPLOS_DOS_PRESETS: Readonly<Record<string, TextosDaCena>> = {
+  impacto: { titulo: 'Consistência', kicker: 'o segredo' },
+  frase: { titulo: 'Quem posta todo dia cresce mais rápido', enfase: 'todo dia' },
+  contador: { numero: '1.500', prefixo: 'R$', titulo: 'de renda extra' },
+  anel: { numero: '87', titulo: 'desistem' },
+  barras: { itens: ['Jan', 'Fev', 'Mar'], valores: ['12', '30', '75'], titulo: 'Vendas' },
+  linha: { valores: ['200', '900', '4.000'], titulo: 'Seguidores' },
+  versus: { a: 'Sem plano', b: 'Com plano' },
+  antes_depois: { antes: 'Editar na mão', depois: 'A IA edita' },
+  lista: { itens: ['Gancho', 'Legenda', 'Corte'], titulo: 'Três regras' },
+  passos: { itens: ['Abra', 'Envie', 'Monte'], titulo: 'Como fazer' },
+  citacao: { titulo: 'Feito é melhor que perfeito', kicker: 'autor' },
+  termo: { titulo: 'Retenção', detalhe: 'quanto do vídeo as pessoas assistem' },
+  pergunta: { titulo: 'Por que não viraliza?' },
+  notificacao: { titulo: 'Nova venda', detalhe: 'R$ 97 via Pix', kicker: 'Loja' },
+  selo: { titulo: 'Mito' },
+  busca: { titulo: 'como editar vídeos' },
+  chat: { itens: ['Quanto custa?', 'Menos que um café'] },
+  alerta: { titulo: 'Não faça isso', kicker: 'Erro comum' },
+  preco: { numero: '97', prefixo: 'R$', titulo: 'Curso completo' },
+  ranking: { itens: ['Reels', 'TikTok', 'Shorts'] },
+  rotulo: { titulo: 'Ana Souza', kicker: 'editora' },
+  titulo: { titulo: 'O erro que trava você' },
+  chamada: { titulo: 'Siga para a parte 2' },
+  objeto: { objeto: 'foguete', titulo: 'Crescimento' },
+  anotacao: { rabisco: 'seta_curva', titulo: 'olha isso' },
+  icone: { icone: 'raio', titulo: 'Rápido' },
+  cartaz: { titulo: 'Editor', kicker: 'O melhor' },
+  numero_gigante: { numero: '66', unidade: '%' },
+  placar: { a: 'Antes', b: 'Depois', valores: ['27', '66'], unidade: '%' },
+  mosaico: { itens: ['Gráfico', 'Imagem', 'Mapa'], titulo: 'Recursos' },
+  ladeando: { icones: ['raio', 'alvo'], a: 'Isto', b: 'Aquilo' },
+  selecao: { titulo: 'RAW · sem edição' },
+  hud: { titulo: 'Perspectiva' },
+  profundidade: { titulo: 'Profundidade' },
+  janela: { titulo: 'Abre espaço para explicar', kicker: 'App', itens: ['Pede', 'Monta', 'Revisa'] },
+  linha_do_tempo: { itens: ['Abertura', 'Meio', 'Fim'], titulo: 'Timeline' },
+  comentario: { titulo: 'GUIA', detalhe: 'Comenta GUIA' },
+  mensagem: { titulo: 'você', detalhe: 'Aqui está o seu guia.', kicker: 'Direct' },
+};
+
+/**
+ * A cena de amostra de um modelo (a miniatura do editor): a cena atual no
+ * modelo, se ela tem o que ele pede; senão o exemplo dele com o título
+ * atual. `faltam` diz o que a pessoa precisa preencher para usar.
+ */
+export function amostraDoModelo(atual: CenaDeMotion, preset: string): { cena: CenaDeMotion; faltam: string | null } {
+  const r = aplicarEdicaoDaCena(atual, { preset });
+  if ('cena' in r) return { cena: r.cena, faltam: null };
+  const exemplo = EXEMPLOS_DOS_PRESETS[preset] ?? {};
+  const titulo = atual.textos.titulo && exemplo.titulo !== undefined ? { titulo: atual.textos.titulo } : {};
+  const layout = layoutDoPreset(preset, atual.layout);
+  return { cena: { preset, textos: { ...exemplo, ...titulo }, layout, ...(layout === 'meio_a_meio' ? { lado: atual.lado ?? 'cima' } : {}) }, faltam: r.erro.replace(/: preencha antes de salvar$/, '') };
 }
