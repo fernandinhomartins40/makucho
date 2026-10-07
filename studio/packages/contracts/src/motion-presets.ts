@@ -31,6 +31,7 @@
 import type { ComposicaoHtml } from './animacao-html';
 import { CSS_DOS_ASSETS, assetAnimado, assetDeMotion } from './motion-assets';
 import { lugarDoCartao, type PessoaNoQuadro } from './pessoa-no-quadro';
+import { iconeDoTexto, objetoDoTexto } from './ilustracao';
 
 // ---------- Os visuais ----------
 
@@ -1238,7 +1239,7 @@ const MONTADORES: Record<string, Montador> = {
     const linhasHtml = itens
       .map((it, i) => {
         t = c.t(it, i === 0 ? t : t + 0.35, i === 0 ? 0.15 : 0.55);
-        return `<li data-in="esq" data-t="${t}">${icone(x.icones?.[i] ?? 'check', t + 0.12, 0.45, 'ic li-ic')}<span>${esc(it)}</span></li>`;
+        return `<li data-in="esq" data-t="${t}">${icone(x.icones?.[i] ?? iconeDoTexto(it) ?? 'check', t + 0.12, 0.45, 'ic li-ic')}<span>${esc(it)}</span></li>`;
       })
       .join('');
     return { html: `<div class="mg mg-esq${c.sobre ? ' mg-card' : ''}">${x.titulo ? `<div class="mg-t t-s" style="${c.corpo('t-s', x.titulo)}" data-in="sobe" data-t="0.05">${esc(x.titulo)}</div>` : ''}<ul class="mg-lista">${linhasHtml}</ul></div>` };
@@ -1344,7 +1345,7 @@ const MONTADORES: Record<string, Montador> = {
       tempos[i] = t;
       t += 0.3;
     }
-    const linhasHtml = itens.map((it, i) => `<li class="${i === 0 ? 'topo' : ''}" data-in="${i === 0 ? 'bate' : 'dir'}" data-t="${tempos[i]}"><b>${i + 1}º</b>${x.icones?.[i] ? icone(x.icones[i], tempos[i]! + 0.1, 0.4, 'ic rk-ic') : ''}<span>${esc(it)}</span></li>`).join('');
+    const linhasHtml = itens.map((it, i) => `<li class="${i === 0 ? 'topo' : ''}" data-in="${i === 0 ? 'bate' : 'dir'}" data-t="${tempos[i]}"><b>${i + 1}º</b>${(x.icones?.[i] ?? iconeDoTexto(it)) ? icone(x.icones?.[i] ?? iconeDoTexto(it), tempos[i]! + 0.1, 0.4, 'ic rk-ic') : ''}<span>${esc(it)}</span></li>`).join('');
     return { html: `<div class="mg mg-esq${c.sobre ? ' mg-card' : ''}">${x.titulo ? `<div class="mg-t t-s" style="${c.corpo('t-s', x.titulo)}" data-in="sobe" data-t="0.05">${esc(x.titulo)}</div>` : ''}<ol class="mg-rank">${linhasHtml}</ol></div>` };
   },
   rotulo: (x, c) => {
@@ -1491,11 +1492,16 @@ const MONTADORES: Record<string, Montador> = {
       [740, y0 + Math.round(240 * escala)],
     ] as const;
     let t = x.titulo ? 0.45 : 0.15;
+    const usados = new Set<string>();
     const cards = itens
       .map((it, i) => {
         t = c.t(it, i === 0 ? t : t + 0.3, i === 0 ? 0.1 : 0.45);
         const [l, tp] = lugares[i]!;
-        return `<div class="mo-card mg-card" style="left:${l}px;top:${tp}px;scale:${escala};transform-origin:${i % 2 ? '100%' : '0'} 0" data-in="balao" data-t="${t}">${icone(x.icones?.[i] ?? padrao[i], t + 0.15, 0.6, 'ic mo-ic')}<div class="mo-r" style="font-size:${corpoPx(it, 250, 46, c.v, 2, true)}px">${esc(it)}</div></div>`;
+        // O item que tem objeto animado (gráfico, mapa, foto...) mostra o objeto se mexendo; o resto, o ícone.
+        const obj = x.icones?.[i] ? undefined : objetoDoTexto(it, usados);
+        if (obj) usados.add(obj);
+        const figura = obj ? c.asset(obj, t + 0.15, 'ast mo-ast') : icone(x.icones?.[i] ?? iconeDoTexto(it) ?? padrao[i], t + 0.15, 0.6, 'ic mo-ic');
+        return `<div class="mo-card mg-card" style="left:${l}px;top:${tp}px;scale:${escala};transform-origin:${i % 2 ? '100%' : '0'} 0" data-in="balao" data-t="${t}">${figura}<div class="mo-r" style="font-size:${corpoPx(it, 250, 46, c.v, 2, true)}px">${esc(it)}</div></div>`;
       })
       .join('');
     const tt = 0.1;
@@ -1506,6 +1512,7 @@ const MONTADORES: Record<string, Montador> = {
 .mo-tit .mg-t { white-space: nowrap; }
 .mg-quadro .mo-card { width: 300px; height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
 .mo-ic { width: 96px; color: var(--cor-destaque); } .mo-ic.icd { color: var(--cor-texto); }
+.mo-ast { width: 150px; height: 112px; color: var(--cor-texto); }
 .mo-r { font-family: var(--fonte-titulo); text-transform: uppercase; text-align: center; line-height: 1; letter-spacing: .01em; }`,
       script: `q('.mo-card').forEach(function (el, i) { tl.to(el, { y: i % 2 ? 9 : -9, duration: 1.5, yoyo: true, repeat: 3, ease: 'sine.inOut' }, 1.4 + i * 0.2); });`,
     };
@@ -1626,7 +1633,7 @@ const MONTADORES: Record<string, Montador> = {
     const passos = itens
       .map((it, i) => {
         t = c.t(it, t + 0.4, 0.55);
-        return `${i ? `<span class="jn-seta" data-in="aparece" data-t="${r2(t - 0.12)}">→</span>` : ''}<div class="jn-passo" data-in="sobe" data-t="${t}"><div class="jn-ic">${icone(x.icones?.[i] ?? padrao[i], t + 0.1, 0.5, 'ic jn-i')}</div><b style="font-size:${corpoPx(it, 200, 30, c.v, 2)}px">${esc(it)}</b></div>`;
+        return `${i ? `<span class="jn-seta" data-in="aparece" data-t="${r2(t - 0.12)}">→</span>` : ''}<div class="jn-passo" data-in="sobe" data-t="${t}"><div class="jn-ic">${icone(x.icones?.[i] ?? iconeDoTexto(it) ?? padrao[i], t + 0.1, 0.5, 'ic jn-i')}</div><b style="font-size:${corpoPx(it, 200, 30, c.v, 2)}px">${esc(it)}</b></div>`;
       })
       .join('');
     return {

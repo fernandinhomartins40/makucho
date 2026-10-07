@@ -4,7 +4,9 @@
 // mesmos textos ditos).
 // ============================================================
 
-import { cenaEmVolta, cenaIncompleta, PRESETS_EM_VOLTA, variarCenas, visualPorRodizio, type CenaDeMotion } from '../src';
+import { cenaEmVolta, cenaIncompleta, composicaoDoPreset, iconeDoTexto, iconeExiste, ilustrarCenas, objetoDoTexto, PRESETS_EM_VOLTA, PRESETS_SO_TEXTO, problemasDaComposicao, usarIconesDuotone, variarCenas, visualPorRodizio, type CenaDeMotion } from '../src';
+import { CATEGORIAS_DOS_ICONES, ICONES_PHOSPHOR } from '../src/icones-phosphor';
+usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
 
 let ok = 0,
   fail = 0;
@@ -72,6 +74,44 @@ const cena = (preset: string, textos: CenaDeMotion['textos'], layout: CenaDeMoti
   t('projetos diferentes trocam cenas diferentes', new Set(outras).size > 1);
   const jaVariado = [{ cena: cena('cartaz', { titulo: 'Foco' }, 'cartao') }, { cena: cena('placar', { a: 'x', b: 'y', valores: ['1', '2'] }, 'cartao') }, { cena: cena('contador', { numero: '3', titulo: 'x' }) }];
   t('já tem o bastante em volta: não troca', variarCenas(jaVariado, { comRosto: true, semente: 'p' }).trocadas === 0);
+}
+
+// 4. O que ilustra cada palavra.
+{
+  t('gráfico → gráfico de linha subindo', objetoDoTexto('Gráfico') === 'linha_subindo');
+  t('dinheiro → moedas; mapa → mapa; imagem → foto', objetoDoTexto('ganhar mais dinheiro') === 'moedas' && objetoDoTexto('Mapa') === 'mapa' && objetoDoTexto('Imagem') === 'foto');
+  t('objeto já usado: o próximo sentido do texto', objetoDoTexto('dinheiro e tempo', new Set(['moedas'])) === 'relogio');
+  t('sem sentido: nada', objetoDoTexto('o que você acha disso') === undefined && iconeDoTexto('o que você acha disso') === undefined);
+  t('palavra curta só inteira ("ia" não casa "dia"? "dia" casa o calendário)', iconeDoTexto('a IA responde') === 'robot' && objetoDoTexto('todo dia') === 'calendario');
+  const icones = ['chart-line-up', 'coins', 'map-trifold', 'image', 'calendar-check', 'clock', 'users-three', 'chat-circle-dots', 'device-mobile', 'file-text', 'magnifying-glass', 'play-circle', 'cube', 'browser', 'rocket-launch', 'trophy', 'heart', 'lightbulb', 'target', 'robot', 'briefcase', 'warning', 'check-circle'];
+  t('os ícones do dicionário existem no catálogo', icones.every((i) => iconeExiste(i)));
+}
+
+// 5. As cenas ilustradas.
+{
+  const opiniao = [
+    cena('impacto', { titulo: 'Mesma coisa', kicker: 'Casamento' }, 'cartao'),
+    cena('versus', { a: 'Ele vive', b: 'A empresa manda' }),
+    cena('pergunta', { titulo: 'Quanto tempo você perde?' }),
+    cena('antes_depois', { antes: 'Viver eu', depois: 'Viver a empresa' }),
+  ].map((c, i) => ({ inicioS: i * 8, cena: c }));
+  const r = ilustrarCenas(opiniao, { comRosto: true });
+  const comAlgo = r.cenas.filter((c) => !PRESETS_SO_TEXTO.has(c.cena.preset)).length;
+  t('ao menos 65% das cenas com algo além de texto', comAlgo >= Math.ceil(opiniao.length * 0.65));
+  t('versus de nomes curtos: ícones ao lado do rosto', r.cenas[1]!.cena.preset === 'ladeando' && r.cenas[1]!.cena.textos.icones?.length === 2 && r.cenas[1]!.cena.textos.a === 'Ele vive');
+  t('a pergunta sobre tempo vira o relógio animado, com o mesmo título', r.cenas.some((c) => c.cena.preset === 'objeto' && c.cena.textos.objeto === 'relogio' && c.cena.textos.titulo === 'Quanto tempo você perde?'));
+  const objetos = r.cenas.map((c) => c.cena.textos.objeto).filter(Boolean);
+  t('cada objeto uma vez por vídeo', new Set(objetos).size === objetos.length);
+  t('sem duas cenas iguais seguidas', r.cenas.every((c, i) => i === 0 || c.cena.preset !== r.cenas[i - 1]!.cena.preset));
+  t('as ilustradas montam sem problemas', r.cenas.every((c) => problemasDaComposicao(composicaoDoPreset(c.cena, 'mg-soco', 5, [])).length === 0 && !cenaIncompleta(c.cena.preset, c.cena.textos)));
+  t('sem rosto: nada de ícones ao lado do rosto', ilustrarCenas(opiniao, { comRosto: false }).cenas.every((c) => c.cena.preset !== 'ladeando'));
+  t('texto que nada ilustra fica como está', ilustrarCenas([{ cena: cena('frase', { titulo: 'Isso muda tudo' }) }], { comRosto: true }).ilustradas === 0);
+  const mosaico = composicaoDoPreset(cena('mosaico', { itens: ['Gráfico', 'Imagem', 'Mapa'] }, 'cartao'), 'mg-soco', 5, []);
+  t('cards em volta: o item com objeto mostra o objeto se mexendo', mosaico.html.includes('ast-linha_subindo') && mosaico.html.includes('ast-foto') && mosaico.html.includes('ast-mapa'));
+  const lista = composicaoDoPreset(cena('lista', { itens: ['Mais vendas', 'Menos tempo'] }), 'mg-soco', 5, []);
+  t('lista: ícone pelo item, não o check de sempre', !/class="ic li-ic"/.test(lista.html) && (lista.html.match(/icd li-ic/g) ?? []).length === 2);
+  t('frase com ênfase curta vira palavra grande', ['cartaz', 'profundidade'].includes(cenaEmVolta(cena('frase', { titulo: 'Casado, você vai viver o casamento', enfase: 'viver o casamento' }))?.preset ?? ''));
+  t('visão e perspectiva viram as linhas de perspectiva', cenaEmVolta(cena('impacto', { titulo: 'Perspectiva' }, 'cartao'))?.preset === 'hud');
 }
 
 console.log(`${ok} ok, ${fail} falha(s)`);

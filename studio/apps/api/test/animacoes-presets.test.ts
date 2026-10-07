@@ -12,7 +12,7 @@
 
 delete process.env.STUDIO_ANIMACOES_MODO;
 
-import { cenaDaComposicao, layoutDoPreset, problemasDaComposicao, type EditPlanV1, type RelatorioDasAnimacoes } from '@makucho/studio-contracts';
+import { cenaDaComposicao, layoutDoPreset, PRESETS_EM_VOLTA, problemasDaComposicao, type EditPlanV1, type RelatorioDasAnimacoes } from '@makucho/studio-contracts';
 import { AnimacoesDaFalaService } from '../src/modules/ai/animacoes-da-fala.service';
 
 let ok = 0,
@@ -109,7 +109,10 @@ async function main() {
   t('as cenas passam na checagem da animação', camadas.every((c) => problemasDaComposicao(c.composicao!).length === 0));
   // Com rosto (sem medida, presume-se), uma parte vira cena em volta da pessoa: o impacto curto vira o título gigante.
   const imp = camadas.find((c) => ['impacto', 'cartaz'].includes(cenaDaComposicao(c.composicao!)?.preset ?? ''))!;
-  t('a mistura: ao menos uma cena em volta da pessoa, com os mesmos textos', camadas.some((c) => cenaDaComposicao(c.composicao!)?.preset === 'cartaz' && cenaDaComposicao(c.composicao!)?.textos.titulo === 'Gemini'));
+  t('a mistura: ao menos uma cena em volta da pessoa, com os mesmos textos', camadas.some((c) => {
+    const x = cenaDaComposicao(c.composicao!);
+    return !!x && PRESETS_EM_VOLTA.has(x.preset) && ['Gemini', 'natural', 'Uma voz muito mais natural'].includes(x.textos.titulo ?? '') || x?.textos.itens?.join() === 'Rir,Suspirar,Sussurrar';
+  }));
   t('a cena começa na âncora dita (3,30 s - 0,15), não no instante que a IA estimou (1 s)', imp.timelineStartMs === 3150);
   const lista = camadas.find((c) => ['lista', 'mosaico'].includes(cenaDaComposicao(c.composicao!)?.preset ?? ''))!;
   const cenaDaLista = cenaDaComposicao(lista.composicao!)!;

@@ -81,6 +81,7 @@ import {
   type OlharDoVideo,
   type PessoaNoQuadro,
   variarCenas,
+  ilustrarCenas,
   visualPorRodizio,
   lugarDoCartao,
   type PerfilDoVideo,
@@ -1101,10 +1102,13 @@ export class AnimacoesDaFalaService {
     // volta da pessoa (os mesmos textos ditos), por rodízio.
     const comRosto = perfil.olhar ? perfil.olhar.rosto !== 'sem_rosto' : true;
     const variadas = variarCenas(cenas, { comRosto, semente: projectId });
+    // As ilustradas: a cena só de texto em que a fala cita o que um objeto
+    // mostra vira o objeto animado; o versus de dois nomes, os ícones ao lado do rosto.
+    const ilustradas = ilustrarCenas(variadas.cenas, { comRosto });
     return {
       visual,
       ...(lida.tom ? { tom: lida.tom } : {}),
-      cenas: variadas.cenas,
+      cenas: ilustradas.cenas,
       pedidos: lida.cartoes.length,
       cortada: lida.cortada,
       descartados: [...descartados, ...conferidos.descartados.map((d) => ({ ...d, tipo: d.tipo.split('#')[0]! }))],

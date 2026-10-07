@@ -43,6 +43,17 @@ export const ASSETS_DE_MOTION: readonly AssetDeMotion[] = [
   { chave: 'envelope', nome: 'Envelope abrindo', tipo: 'objeto', quando: 'e-mail, mensagem, convite, lista' },
   { chave: 'lampada', nome: 'Lâmpada acendendo', tipo: 'objeto', quando: 'ideia, dica, descoberta' },
   { chave: 'alvo', nome: 'Flecha no alvo', tipo: 'objeto', quando: 'meta, foco, acertar, público-alvo' },
+  { chave: 'linha_subindo', nome: 'Gráfico de linha subindo', tipo: 'objeto', quando: 'dados, crescimento, evolução, gráfico, análise' },
+  { chave: 'mapa', nome: 'Mapa com pino', tipo: 'objeto', quando: 'lugar, cidade, rota, viagem, localização, mapa' },
+  { chave: 'foto', nome: 'Foto na moldura', tipo: 'objeto', quando: 'imagem, foto, visual, câmera, design' },
+  { chave: 'pizza', nome: 'Gráfico de pizza', tipo: 'objeto', quando: 'parte, fatia, porcentagem, divisão, mercado' },
+  { chave: 'calendario', nome: 'Calendário marcando', tipo: 'objeto', quando: 'data, agenda, dia, prazo, rotina' },
+  { chave: 'pessoas', nome: 'Pessoas chegando', tipo: 'objeto', quando: 'público, equipe, clientes, seguidores, comunidade' },
+  { chave: 'conversa', nome: 'Conversa digitando', tipo: 'objeto', quando: 'conversa, chat, atendimento, IA respondendo' },
+  { chave: 'documento', nome: 'Documento sendo escrito', tipo: 'objeto', quando: 'texto, roteiro, contrato, guia, material' },
+  { chave: 'lupa', nome: 'Lupa analisando', tipo: 'objeto', quando: 'pesquisar, analisar, detalhe, descobrir' },
+  { chave: 'video', nome: 'Player de vídeo', tipo: 'objeto', quando: 'vídeo, edição, conteúdo, YouTube, reels' },
+  { chave: 'cubo', nome: 'Cubo 3D', tipo: 'objeto', quando: 'produto, 3D, estrutura, bloco, construir' },
   { chave: 'seta_curva', nome: 'Seta à mão', tipo: 'rabisco', quando: 'apontar para algo, "olha isso"' },
   { chave: 'circulo', nome: 'Círculo à mão', tipo: 'rabisco', quando: 'destacar uma palavra ou um ponto' },
   { chave: 'sublinhado', nome: 'Sublinhado em onda', tipo: 'rabisco', quando: 'enfatizar' },
@@ -74,6 +85,8 @@ export function textoDosAssets(): string {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 /** Um traço que se desenha a partir de `t` (o runtime da cena anima data-in="desenha"). */
 const traco = (t: number, d = 0.5) => `class="tr" pathLength="1" data-in="desenha" data-t="${r2(t)}" data-d="${d}"`;
+/** O mesmo traço, na cor de destaque e mais grosso. */
+const tracoCor = (t: number, d = 0.5) => traco(t, d).replace('class="tr"', 'class="tr tr-cor"');
 
 /**
  * Um asset animado: o SVG (com os data-in que o runtime da cena entende) e
@@ -232,6 +245,109 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
       return { html: svg(`<path ${traco(T, 0.25)} d="M10 40h70"/><path ${traco(T + 0.08, 0.25)} d="M30 60h84"/><path ${traco(T + 0.16, 0.25)} d="M16 80h56"/>`), script: '' };
     case 'exclamacao':
       return { html: svg(`<path ${traco(T, 0.3)} d="M46 16l4 62"/><path ${traco(T + 0.1, 0.3)} d="M76 16l-4 62"/><circle class="ch" cx="51" cy="96" r="6"/><circle class="ch" cx="71" cy="96" r="6"/>`), script: '' };
+    case 'linha_subindo': {
+      const pts = [[14, 88], [30, 80], [46, 84], [62, 66], [78, 70], [94, 44], [106, 30]];
+      const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x} ${y}`).join(' ');
+      return {
+        html: svg(`${[0, 1, 2, 3, 4, 5, 6, 7].map((k) => `<rect id="${id}-b${k}" class="sv-f" x="${12 + k * 12}" y="${104 - (8 + ((k * 7) % 13) + k * 3)}" width="6" height="${8 + ((k * 7) % 13) + k * 3}" rx="2"/>`).join('')}<path id="${id}-a" class="area" d="${d} L106 104 L14 104Z"/><path ${tracoCor(T + 0.25, 0.9)} d="${d}"/><path class="tracejado" d="M106 30V104M14 30H106"/><circle id="${id}-r" class="onda" cx="106" cy="30" r="9"/><circle id="${id}-p" class="ch" cx="106" cy="30" r="5"/>`),
+        script: s([
+          ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => `tl.fromTo('#${id}-b${k}', { scaleY: 0, transformOrigin: '50% 100%' }, { scaleY: 1, duration: 0.3, ease: 'power2.out' }, ${r2(T + k * 0.05)});`),
+          `tl.fromTo('#${id}-a', { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.5 }, ${r2(T + 0.8)});`,
+          `tl.fromTo('#${id}-p', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.3, ease: 'back.out(3)' }, ${r2(T + 1.1)});`,
+          `tl.fromTo('#${id}-r', { scale: 0.5, autoAlpha: 1, transformOrigin: '50% 50%' }, { scale: 2, autoAlpha: 0, duration: 0.8, repeat: 2, ease: 'power1.out' }, ${r2(T + 1.2)});`,
+        ]),
+      };
+    }
+    case 'mapa':
+      return {
+        html: svg(`${[0, 1, 2, 3].map((k) => `<ellipse ${k === 3 ? tracoCor(T + k * 0.12, 0.6) : traco(T + k * 0.12, 0.6)} cx="${58 + k * 3}" cy="${72 - k * 2}" rx="${50 - k * 12}" ry="${30 - k * 7}"/>`).join('')}${[0, 1, 2, 3, 4].map((k) => `<circle id="${id}-c${k}" class="ch2" cx="${22 + k * 11}" cy="${100 - k * 9}" r="2.4"/>`).join('')}<g id="${id}-pin"><path class="ch" d="M80 18c-9 0-15 7-15 15 0 11 15 25 15 25s15-14 15-25c0-8-6-15-15-15z"/><circle class="fu" cx="80" cy="33" r="5.5"/></g>`),
+        script: s([
+          ...[0, 1, 2, 3, 4].map((k) => `tl.fromTo('#${id}-c${k}', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.2, ease: 'back.out(3)' }, ${r2(T + 0.6 + k * 0.1)});`),
+          `tl.fromTo('#${id}-pin', { y: -40, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.55, ease: 'bounce.out' }, ${r2(T + 1.1)});`,
+        ]),
+      };
+    case 'foto':
+      return {
+        html: svg(`<rect class="sv" x="14" y="24" width="92" height="72" rx="8"/><rect ${traco(T, 0.6)} x="14" y="24" width="92" height="72" rx="8"/><g id="${id}-m"><path class="ch2" d="M16 92L46 58l18 20 14-12 26 26z"/></g><circle id="${id}-s" class="ch" cx="84" cy="44" r="8"/><path id="${id}-q" class="tr-ch" d="M6 36V16h20M114 36V16H94M6 84v20h20M114 84v20H94"/>`),
+        script: s([
+          `tl.fromTo('#${id}-m', { y: 26, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.5, ease: 'power3.out' }, ${r2(T + 0.35)});`,
+          `tl.fromTo('#${id}-s', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.4, ease: 'back.out(2.5)' }, ${r2(T + 0.6)});`,
+          `tl.fromTo('#${id}-q', { scale: 1.25, autoAlpha: 0, transformOrigin: '50% 50%' }, { scale: 1, autoAlpha: 1, duration: 0.45, ease: 'power3.out' }, ${r2(T + 0.15)});`,
+        ]),
+      };
+    case 'pizza':
+      // Fatias em cunha (65% e 20%) que crescem do centro; a menor se solta um pouco.
+      return {
+        html: svg(`<circle class="sv" cx="60" cy="60" r="46"/><path id="${id}-f1" class="ch" d="M60 60L60 16A44 44 0 1 1 24.4 85.86Z"/><path id="${id}-f2" class="ch2" d="M60 60L24.4 85.86A44 44 0 0 1 24.4 34.14Z"/><circle class="fu" cx="60" cy="60" r="15"/>`),
+        script: s([
+          `tl.fromTo('#${id}-f1', { scale: 0, rotation: -60, svgOrigin: '60 60' }, { scale: 1, rotation: 0, svgOrigin: '60 60', duration: 0.7, ease: 'back.out(1.6)' }, ${T});`,
+          `tl.fromTo('#${id}-f2', { scale: 0, svgOrigin: '60 60' }, { scale: 1, svgOrigin: '60 60', duration: 0.45, ease: 'back.out(2)' }, ${r2(T + 0.55)});`,
+          `tl.to('#${id}-f2', { x: -6, y: 0, duration: 0.35, ease: 'power2.out' }, ${r2(T + 1)});`,
+        ]),
+      };
+    case 'calendario':
+      return {
+        html: svg(`<rect class="sv" x="16" y="20" width="88" height="84" rx="10"/><rect ${traco(T, 0.6)} x="16" y="20" width="88" height="84" rx="10"/><rect id="${id}-h" class="ch" x="16" y="20" width="88" height="20" rx="10"/><path class="fu-tr" d="M38 14v12M82 14v12"/>${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((k) => `<circle id="${id}-d${k}" class="sv-f" cx="${30 + (k % 4) * 20}" cy="${54 + Math.floor(k / 4) * 16}" r="4"/>`).join('')}<circle ${tracoCor(T + 1, 0.4)} cx="70" cy="70" r="10"/>`),
+        script: s([
+          `tl.fromTo('#${id}-h', { scaleY: 0, transformOrigin: '50% 0%' }, { scaleY: 1, duration: 0.35, ease: 'power3.out' }, ${r2(T + 0.2)});`,
+          ...[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((k) => `tl.fromTo('#${id}-d${k}', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.2, ease: 'back.out(2)' }, ${r2(T + 0.4 + k * 0.04)});`),
+        ]),
+      };
+    case 'pessoas':
+      return {
+        html: svg(`${[
+          [34, 0],
+          [86, 2],
+          [60, 1],
+        ]
+          .map(([x, k]) => {
+            const meio = k === 1;
+            return `<g id="${id}-p${k}"><circle class="${meio ? 'ch' : 'sv-f'}" cx="${x}" cy="${meio ? 46 : 52}" r="${meio ? 14 : 11}"/><path class="${meio ? 'ch' : 'sv-f'}" d="M${x! - (meio ? 24 : 19)} ${meio ? 94 : 96}c0-15 ${meio ? 10 : 8}-24 ${meio ? 24 : 19}-24s${meio ? 24 : 19} 9 ${meio ? 24 : 19} 24z"/></g>`;
+          })
+          .join('')}<g id="${id}-mais"><circle class="ch2" cx="98" cy="28" r="12"/><path class="fu-tr" d="M98 22v12M92 28h12"/></g>`),
+        script: s([
+          ...[0, 2, 1].map((k, i) => `tl.fromTo('#${id}-p${k}', { y: 24, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.4, ease: 'back.out(1.8)' }, ${r2(T + i * 0.18)});`),
+          `tl.fromTo('#${id}-mais', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.35, ease: 'back.out(3)' }, ${r2(T + 0.75)});`,
+        ]),
+      };
+    case 'conversa':
+      return {
+        html: svg(`<g id="${id}-b1"><path class="sv-f" d="M12 22h62a8 8 0 0 1 8 8v22a8 8 0 0 1-8 8H30l-12 10V60h-6a8 8 0 0 1-8-8V30a8 8 0 0 1 8-8z"/><path class="tr-fixo" d="M20 36h46M20 47h30"/></g><g id="${id}-b2"><path class="ch" d="M108 62H50a8 8 0 0 0-8 8v18a8 8 0 0 0 8 8h40l12 10V96h6a8 8 0 0 0 8-8V70a8 8 0 0 0-8-8z"/>${[0, 1, 2].map((k) => `<circle id="${id}-t${k}" class="fu" cx="${68 + k * 12}" cy="79" r="4"/>`).join('')}</g>`),
+        script: s([
+          `tl.fromTo('#${id}-b1', { scale: 0.3, autoAlpha: 0, transformOrigin: '0% 100%' }, { scale: 1, autoAlpha: 1, duration: 0.4, ease: 'back.out(1.8)' }, ${T});`,
+          `tl.fromTo('#${id}-b2', { scale: 0.3, autoAlpha: 0, transformOrigin: '100% 100%' }, { scale: 1, autoAlpha: 1, duration: 0.4, ease: 'back.out(1.8)' }, ${r2(T + 0.55)});`,
+          ...[0, 1, 2].map((k) => `tl.fromTo('#${id}-t${k}', { y: 0 }, { y: -5, duration: 0.22, yoyo: true, repeat: 5, ease: 'sine.inOut' }, ${r2(T + 0.9 + k * 0.1)});`),
+        ]),
+      };
+    case 'documento':
+      return {
+        html: svg(`<path class="sv" d="M26 10h48l22 22v78H26z"/><path ${traco(T, 0.6)} d="M26 10h48l22 22v78H26z"/><path ${traco(T + 0.3, 0.25)} d="M74 10v22h22"/>${[0, 1, 2, 3, 4].map((k) => `<path ${k === 0 ? tracoCor(T + 0.5, 0.3) : traco(T + 0.5 + k * 0.18, 0.3)} d="M36 ${44 + k * 12}h${k === 0 ? 34 : [48, 40, 46, 26][k - 1]}"/>`).join('')}<g id="${id}-ok"><circle class="ch" cx="88" cy="94" r="14"/><path class="fu-tr" d="M81 94l5 5 9-10"/></g>`),
+        script: s([`tl.fromTo('#${id}-ok', { scale: 0, rotation: -30, transformOrigin: '50% 50%' }, { scale: 1, rotation: 0, duration: 0.4, ease: 'back.out(2.5)' }, ${r2(T + 1.5)});`]),
+      };
+    case 'lupa':
+      return {
+        html: svg(`${[0, 1, 2, 3].map((k) => `<path class="tr-fixo fraco" d="M14 ${34 + k * 18}h${[86, 64, 78, 50][k]}"/>`).join('')}<g id="${id}-l"><circle class="sv" cx="44" cy="52" r="20"/><circle class="tr-fixo" cx="44" cy="52" r="20"/><path class="tr-ch" d="M58 66l20 20"/><circle class="brilho" cx="38" cy="46" r="6"/></g>`),
+        script: s([
+          `tl.fromTo('#${id}-l', { x: -20, y: 10, autoAlpha: 0 }, { x: 0, y: 0, autoAlpha: 1, duration: 0.45, ease: 'power3.out' }, ${T});`,
+          `tl.to('#${id}-l', { x: 38, y: 18, duration: 0.9, yoyo: true, repeat: 1, ease: 'sine.inOut' }, ${r2(T + 0.5)});`,
+        ]),
+      };
+    case 'video':
+      return {
+        html: svg(`<rect class="sv" x="10" y="22" width="100" height="70" rx="10"/><rect ${traco(T, 0.6)} x="10" y="22" width="100" height="70" rx="10"/><g id="${id}-p"><circle class="ch" cx="60" cy="54" r="16"/><path class="fu" d="M55 46v16l13-8z"/></g><rect class="sv-f" x="18" y="100" width="84" height="6" rx="3"/><rect id="${id}-b" class="ch" x="18" y="100" width="84" height="6" rx="3"/>`),
+        script: s([
+          `tl.fromTo('#${id}-p', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.4, ease: 'back.out(2.5)' }, ${r2(T + 0.4)});`,
+          `tl.fromTo('#${id}-b', { scaleX: 0, transformOrigin: '0% 50%' }, { scaleX: 1, duration: 2, ease: 'none' }, ${r2(T + 0.6)});`,
+        ]),
+      };
+    case 'cubo':
+      return {
+        html: svg(`<g id="${id}-g"><path class="ch" d="M60 14l40 22-40 22-40-22z"/><path class="sv-f" d="M20 36l40 22v46L20 82z"/><path class="ch2" d="M100 36L60 58v46l40-22z"/><path ${traco(T, 0.8)} d="M60 14l40 22v46l-40 22-40-22V36zM20 36l40 22 40-22M60 58v46"/></g>`),
+        script: s([
+          `tl.fromTo('#${id}-g', { y: 18, rotation: -8, autoAlpha: 0, transformOrigin: '50% 50%' }, { y: 0, rotation: 0, autoAlpha: 1, duration: 0.6, ease: 'back.out(1.6)' }, ${T});`,
+          `tl.to('#${id}-g', { y: -6, duration: 0.8, yoyo: true, repeat: 3, ease: 'sine.inOut' }, ${r2(T + 0.7)});`,
+        ]),
+      };
     default:
       return { html: '', script: '' };
   }
@@ -255,5 +371,9 @@ export const CSS_DOS_ASSETS = `
 .ast .onda { fill: none; stroke: var(--cor-destaque); stroke-width: 3; }
 .ast .brilho { fill: color-mix(in srgb, var(--cor-destaque) 32%, transparent); }
 .ast * { transform-box: fill-box; }
+.ast .tr.tr-cor { stroke: var(--cor-destaque); stroke-width: 5.5; }
+.ast .area { fill: color-mix(in srgb, var(--cor-destaque) 22%, transparent); }
+.ast .tracejado { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 4 5; opacity: .55; }
+.ast .fraco { opacity: .35; }
 .ast-seta_curva, .ast-circulo, .ast-sublinhado, .ast-explosao, .ast-x, .ast-check, .ast-estrela, .ast-velocidade, .ast-exclamacao { color: var(--cor-destaque); }
 `;

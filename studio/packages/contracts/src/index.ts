@@ -77,4 +77,5 @@ export * from './liquid-glass';
 export * from './motion-presets';
 export * from './pessoa-no-quadro';
 export * from './variedade-do-motion';
+export * from './ilustracao';
 export * from './motion-assets';
