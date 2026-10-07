@@ -1791,6 +1791,8 @@ function Editor({ projectId }: { projectId: string }) {
                 // A etiqueta do item aparece junto dele; a folha de
                 // propriedades só abre sozinha no clique duplo (estilos).
                 if (item && item.tipo === 'elemento' && item.aba && (window.matchMedia('(max-width: 899px)').matches || simples)) setFolha('inspector');
+                // A animação abre direto para editar (textos, modelo, elemento, posição e tamanho).
+                if (item && item.tipo === 'midia' && plano.mediaLayers?.find((m) => m.id === item.id)?.kind === 'html' && (window.matchMedia('(max-width: 899px)').matches || simples)) setFolha('inspector');
               }}
             />
           </section>

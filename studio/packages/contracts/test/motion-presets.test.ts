@@ -23,6 +23,10 @@ import {
   usarIconesDuotone,
   ICONES_DE_MOTION,
   iconeExiste,
+  aplicarEdicaoDaCena,
+  camposDoPreset,
+  comAjuste,
+  lerAjuste,
   type TextosDaCena,
 } from '../src';
 
@@ -149,6 +153,30 @@ for (const v of VISUAIS_DE_MOTION) {
   t('placar: a barra maior é a que ganha', /pl-b topo/.test(placar.html) && !/pl-a topo/.test(placar.html));
   t('placar: os números contam até o valor dito', placar.html.includes('data-conta="27"') && placar.html.includes('data-conta="66"'));
   t('o texto dos presets avisa quais vão atrás', textoDosPresets().includes('cartaz [cartao, atrás da pessoa]'));
+}
+
+// Editar a cena no painel: modelo, textos, ajuste.
+{
+  const atual = { preset: 'contador', textos: { numero: '87', unidade: '%', titulo: 'desistem' }, layout: 'meio_a_meio' as const, lado: 'cima' as const };
+  const trocada = aplicarEdicaoDaCena(atual, { preset: 'numero_gigante' });
+  t('trocar o modelo mantém os textos que o novo usa', 'cena' in trocada && trocada.cena.preset === 'numero_gigante' && trocada.cena.textos.numero === '87' && trocada.cena.layout === 'cartao' && !trocada.cena.textos.titulo);
+  const semCampo = aplicarEdicaoDaCena(atual, { preset: 'versus' });
+  t('modelo sem os campos obrigatórios: avisa o que falta', 'erro' in semCampo && semCampo.erro.includes('a, b'));
+  const texto = aplicarEdicaoDaCena(atual, { textos: { titulo: 'saem no 1º mês', numero: '90' } });
+  t('editar os textos', 'cena' in texto && texto.cena.textos.titulo === 'saem no 1º mês' && texto.cena.textos.numero === '90');
+  const limpo = aplicarEdicaoDaCena(atual, { textos: { unidade: '' } });
+  t('apagar um campo tira o texto', 'cena' in limpo && limpo.cena.textos.unidade === undefined);
+  const elemento = aplicarEdicaoDaCena({ preset: 'objeto', textos: { objeto: 'foguete', titulo: 'Lançamento' }, layout: 'cartao' }, { textos: { objeto: 'mapa' } });
+  t('trocar o elemento (objeto animado)', 'cena' in elemento && elemento.cena.textos.objeto === 'mapa');
+  t('elemento que não existe: não entra', (() => { const r = aplicarEdicaoDaCena({ preset: 'objeto', textos: { objeto: 'foguete', titulo: 'x' }, layout: 'cartao' }, { textos: { objeto: 'dragao' } }); return 'erro' in r; })());
+  t('campos do modelo, com os obrigatórios', camposDoPreset('placar').filter((c) => c.obrigatorio).map((c) => c.campo).join() === 'a,b,valores');
+  const comp = composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Editor' }, layout: 'cartao' }, 'mg-soco', 5, []);
+  const movida = comAjuste(comp, lerAjuste({ x: 40, y: -120, escala: 1.2 }));
+  t('posição e tamanho na hora: só o CSS do ajuste muda', movida.html === comp.html && movida.css.endsWith('.mg { translate: 40px -120px; scale: 1.2; }'));
+  t('o ajuste fica guardado na cena (remontar mantém)', cenaDaComposicao(movida)?.ajuste?.y === -120 && composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('translate: 40px -120px'));
+  t('ajustar de novo troca, não acumula', (comAjuste(movida, lerAjuste({ x: 0, y: 0, escala: 0.8 })).css.match(/ajuste-da-cena/g) ?? []).length === 1);
+  t('voltar ao original tira o ajuste', !comAjuste(movida, undefined).css.includes('ajuste-da-cena') && !cenaDaComposicao(comAjuste(movida, undefined))?.ajuste);
+  t('ajuste preso a limites (a cena não sai do quadro)', lerAjuste({ x: 9999, y: -9999, escala: 9 })?.x === 500 && lerAjuste({ x: 9999, y: -9999, escala: 9 })?.escala === 2);
 }
 
 // Layout que o preset não aceita cai no preferido dele.

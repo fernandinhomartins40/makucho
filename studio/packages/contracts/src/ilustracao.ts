@@ -97,3 +97,6 @@ export function objetoDoTexto(texto: string | undefined, usados: ReadonlySet<str
   for (const s of sentidosDe(texto ?? '')) if (s.objeto && !usados.has(s.objeto)) return s.objeto;
   return undefined;
 }
+
+/** Os ícones do dicionário (os mais úteis para o vídeo de alguém falando): o seletor do editor mostra estes. */
+export const ICONES_SUGERIDOS: readonly string[] = [...new Set(SENTIDOS.flatMap((s) => s.icones))];

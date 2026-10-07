@@ -2087,6 +2087,51 @@ export interface CenaDeMotion {
   canto?: 'sup-esq' | 'sup-dir' | 'inf-esq' | 'inf-dir';
   /** Só no cartão: a cena passa atrás da pessoa (recortada por cima no render). */
   atras?: boolean;
+  /** O ajuste feito à mão no editor: deslocamento (px no quadro de 1080x1920) e tamanho. */
+  ajuste?: AjusteDaCena;
+}
+
+/** Mover e redimensionar a cena inteira (o painel da animação no editor). */
+export interface AjusteDaCena {
+  x: number;
+  y: number;
+  escala: number;
+}
+
+/** O ajuste lido e preso a limites que nunca tiram a cena do quadro; `undefined` quando é o neutro. */
+export function lerAjuste(bruto: unknown): AjusteDaCena | undefined {
+  const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
+  const n = (v: unknown, min: number, max: number, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : padrao);
+  const a = { x: Math.round(n(b.x, -500, 500, 0)), y: Math.round(n(b.y, -900, 900, 0)), escala: Math.round(n(b.escala, 0.4, 2, 1) * 100) / 100 };
+  return a.x || a.y || a.escala !== 1 ? a : undefined;
+}
+
+const MARCA_DO_AJUSTE = '/*ajuste-da-cena*/';
+
+/** O CSS do ajuste: a cena inteira (não o fundo) deslocada e em outro tamanho. */
+export function cssDoAjuste(a: AjusteDaCena | undefined): string {
+  return a ? `\n${MARCA_DO_AJUSTE}.mg { translate: ${a.x}px ${a.y}px; scale: ${a.escala}; }` : '';
+}
+
+/**
+ * A animação com outro ajuste, na hora e sem remontar: troca só a linha do
+ * ajuste no CSS e guarda o ajuste na cena (remontar depois mantém).
+ */
+export function comAjuste(c: ComposicaoHtml, a: AjusteDaCena | undefined): ComposicaoHtml {
+  const i = c.css.indexOf(`\n${MARCA_DO_AJUSTE}`);
+  const css = (i >= 0 ? c.css.slice(0, i) : c.css) + cssDoAjuste(a);
+  let briefing = c.briefing;
+  try {
+    const b = JSON.parse(c.briefing ?? '{}') as { motion?: Record<string, unknown> };
+    if (b.motion) {
+      if (a) b.motion.ajuste = a;
+      else delete b.motion.ajuste;
+      briefing = JSON.stringify(b);
+    }
+  } catch {
+    // briefing que não é JSON: o ajuste vale só no CSS.
+  }
+  return { ...c, css, ...(briefing !== undefined ? { briefing } : {}) };
 }
 
 /** As cenas de destaque, que levam o enfeite do visual. */
@@ -2197,11 +2242,11 @@ export function composicaoDoPreset(
     tipo: preset.chave,
     ideia: (extra.ideia ?? preset.nome).slice(0, 300),
     conteudo: JSON.stringify(cena.textos).slice(0, 900),
-    motion: { preset: preset.chave, textos: cena.textos },
+    motion: { preset: preset.chave, textos: cena.textos, ...(lerAjuste(cena.ajuste) ? { ajuste: lerAjuste(cena.ajuste) } : {}) },
   });
   return {
     html: `${fundo}${emCaixa(montado.html)}`,
-    css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}${sobre ? cssForaDoRosto(extra.pessoa) : ''}`,
+    css: `${cssDaCena(v, { sobre, layout })}${montado.css ?? ''}${sobre ? cssForaDoRosto(extra.pessoa) : ''}${cssDoAjuste(lerAjuste(cena.ajuste))}`,
     script: scriptDaCena(v, D, layout, lado, sobre, [montado.script ?? '', ...scriptsDosAssets].filter(Boolean).join('\n')),
     layout,
     ...(lado ? { lado } : {}),
@@ -2221,10 +2266,10 @@ export function composicaoDoPreset(
 /** A cena de motion guardada numa animação (para remontar em outro visual, paleta ou lugar sem IA). */
 export function cenaDaComposicao(c: Pick<ComposicaoHtml, 'briefing' | 'layout' | 'lado' | 'canto' | 'atras'>): CenaDeMotion | null {
   try {
-    const b = JSON.parse(c.briefing ?? '') as { motion?: { preset?: unknown; textos?: unknown } };
+    const b = JSON.parse(c.briefing ?? '') as { motion?: { preset?: unknown; textos?: unknown; ajuste?: unknown } };
     const preset = presetDeMotion(String(b.motion?.preset ?? ''));
     if (!preset) return null;
-    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}), ...(typeof c.atras === 'boolean' ? { atras: c.atras } : {}) };
+    return { preset: preset.chave, textos: lerTextosDaCena(b.motion?.textos), layout: c.layout as LayoutDoPreset, ...(c.lado ? { lado: c.lado } : {}), ...(c.canto ? { canto: c.canto } : {}), ...(typeof c.atras === 'boolean' ? { atras: c.atras } : {}), ...(lerAjuste(b.motion?.ajuste) ? { ajuste: lerAjuste(b.motion?.ajuste) } : {}) };
   } catch {
     return null;
   }
@@ -2246,4 +2291,52 @@ export function cenaIncompleta(preset: string, t: TextosDaCena): string | null {
 /** Todo o texto que a cena mostra (a conferência de números ditos usa). */
 export function textoDaCena(t: TextosDaCena): string {
   return [t.kicker, t.titulo, t.detalhe, t.prefixo, t.numero, t.unidade, t.antes, t.depois, t.a, t.b, ...(t.itens ?? []), ...(t.valores ?? [])].filter(Boolean).join(' ');
+}
+
+/** Os campos que o preset usa, na ordem da descrição (os obrigatórios marcados). */
+export function camposDoPreset(chave: string): Array<{ campo: keyof TextosDaCena; obrigatorio: boolean }> {
+  const p = presetDeMotion(chave);
+  if (!p) return [];
+  const validos = new Set(['kicker', 'titulo', 'detalhe', 'numero', 'prefixo', 'unidade', 'antes', 'depois', 'a', 'b', 'itens', 'valores', 'enfase', 'icone', 'icones', 'objeto', 'rabisco', 'fundo']);
+  const saida: Array<{ campo: keyof TextosDaCena; obrigatorio: boolean }> = [];
+  for (const m of p.campos.matchAll(/(?:^|,\s*)([a-z]+)(\*)?/g)) {
+    if (validos.has(m[1]!) && !saida.some((x) => x.campo === m[1])) saida.push({ campo: m[1] as keyof TextosDaCena, obrigatorio: !!m[2] });
+  }
+  return saida;
+}
+
+/** A cena editada à mão: o modelo, os textos, o elemento e atrás/na frente (o resto da cena fica). */
+export interface EdicaoDaCena {
+  preset?: string;
+  textos?: Record<string, unknown>;
+  atras?: boolean;
+  ajuste?: AjusteDaCena;
+}
+
+/**
+ * A cena atual com a edição aplicada. Trocar o modelo mantém os textos que
+ * o novo também usa. `erro` quando falta um campo obrigatório do modelo.
+ */
+export function aplicarEdicaoDaCena(atual: CenaDeMotion, e: EdicaoDaCena): { cena: CenaDeMotion } | { erro: string } {
+  const preset = e.preset ? presetDeMotion(e.preset) : presetDeMotion(atual.preset);
+  if (!preset) return { erro: `a cena "${e.preset}" não existe` };
+  const textos = lerTextosDaCena({ ...atual.textos, ...(e.textos ?? {}) });
+  // Do modelo antigo, só o que o novo usa (um "antes" esquecido não aparece em outra cena).
+  const usados = new Set(camposDoPreset(preset.chave).map((c) => c.campo));
+  const doNovo = Object.fromEntries(Object.entries(textos).filter(([k]) => usados.has(k as keyof TextosDaCena) || k === 'rabisco')) as TextosDaCena;
+  const falta = cenaIncompleta(preset.chave, doNovo);
+  if (falta) return { erro: `${falta}: preencha antes de salvar` };
+  const layout = layoutDoPreset(preset.chave, atual.layout);
+  const ajuste = e.ajuste !== undefined ? lerAjuste(e.ajuste) : atual.ajuste;
+  return {
+    cena: {
+      preset: preset.chave,
+      textos: doNovo,
+      layout,
+      ...(layout === 'meio_a_meio' ? { lado: atual.lado ?? 'cima' } : {}),
+      ...(layout === 'pip' ? { canto: atual.canto ?? 'inf-dir' } : {}),
+      ...(typeof e.atras === 'boolean' ? { atras: e.atras } : typeof atual.atras === 'boolean' ? { atras: atual.atras } : {}),
+      ...(ajuste ? { ajuste } : {}),
+    },
+  };
 }

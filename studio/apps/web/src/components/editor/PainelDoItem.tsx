@@ -69,6 +69,7 @@ import { assets as apiAssets } from '../../lib/api';
 import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
 import { useAnimacoesDaIa, type OpcoesDeRefazerAnimacao } from './animacoesDaIa';
 import { Segmentado } from './Inspector';
+import { EditorDaCena } from './EditorDaCena';
 
 interface Props {
   plan: EditPlanV1;
@@ -876,6 +877,8 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
           {atual?.familia === 'motion' ? 'Remontando as animações… (segundos)' : 'A IA está redesenhando as animações… (1-2 min)'}
         </p>
       )}
+
+      <EditorDaCena id={id} composicao={composicao} editar={editar} ocupada={ocupada} refazer={(camadas, o) => refazer(camadas, o)} />
 
       <div className="campo" style={{ marginBottom: 0 }}>
         <span className="campo__rotulo">Estilo</span>

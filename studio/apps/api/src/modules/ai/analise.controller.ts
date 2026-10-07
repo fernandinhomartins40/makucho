@@ -30,9 +30,19 @@ const pedidoDeRefazerSchema = z
     lado: z.enum(['cima', 'baixo']).optional(),
     pedido: z.string().trim().min(2).max(600).optional(),
     paleta: z.string().refine((p) => p === '' || coresDaPaleta(p) !== null, 'paleta desconhecida').optional(),
+    // A cena editada no painel: modelo, textos (lidos e limpos no servidor), atrás/na frente e o ajuste.
+    cena: z
+      .object({
+        preset: z.string().max(40).optional(),
+        textos: z.record(z.string(), z.unknown()).optional(),
+        atras: z.boolean().optional(),
+        ajuste: z.object({ x: z.number(), y: z.number(), escala: z.number() }).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
-  .refine((p) => p.estilo || p.layout || p.lado || p.canto || p.pedido || p.paleta !== undefined, 'diga o que mudar (estilo, lugar ou pedido)');
+  .refine((p) => p.estilo || p.layout || p.lado || p.canto || p.pedido || p.cena || p.paleta !== undefined, 'diga o que mudar (estilo, lugar, cena ou pedido)');
 
 @ApiTags('ai')
 @Controller()

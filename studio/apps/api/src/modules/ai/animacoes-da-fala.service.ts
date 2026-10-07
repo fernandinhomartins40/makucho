@@ -80,6 +80,8 @@ import {
   textoDoPlano,
   type OlharDoVideo,
   type PessoaNoQuadro,
+  type EdicaoDaCena,
+  aplicarEdicaoDaCena,
   variarCenas,
   operacoesDeRiqueza,
   cenasDoPlano,
@@ -179,6 +181,8 @@ export interface OpcoesDeRefazer {
   canto?: CantoDoPip;
   /** O pedido da pessoa ("troca o azul pelo verde", "deixa o número maior"). */
   pedido?: string;
+  /** A cena editada à mão no painel (modelo, textos, elemento, atrás/na frente, ajuste): remonta sem IA. */
+  cena?: EdicaoDaCena;
 }
 
 /** Um trecho para animar (o "Peça à IA" pede assim, sem escrever o HTML). */
@@ -1535,7 +1539,11 @@ ${fala}${
       const visual = visualPedido?.chave ?? visualDeMotion(atual.estilo)?.chave ?? 'mg-keynote';
       const paleta = o.paleta === '' ? undefined : (o.paleta ?? atual.paleta);
       const pedido = o.pedido ?? (cenaAtual ? '' : `Mostre: ${m.ideia}. ${m.conteudo}`);
-      const cena = pedido ? await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido, cenaAtual ?? undefined) : cenaAtual!;
+      const pedida = pedido ? await this.cenaPorPedido(workspaceId, projectId, palavras, m, pedido, cenaAtual ?? undefined) : cenaAtual!;
+      // Editada à mão no painel: o modelo, os textos e o elemento que a pessoa escolheu, no mesmo visual.
+      const editada = o.cena ? aplicarEdicaoDaCena(pedida, o.cena) : { cena: pedida };
+      if ('erro' in editada) throw new Error(editada.erro);
+      const cena = editada.cena;
       const layout = layoutDoPreset(cena.preset, m.layout);
       const lugar: CenaDeMotion = {
         preset: cena.preset,
@@ -1544,6 +1552,7 @@ ${fala}${
         ...(layout === 'meio_a_meio' ? { lado: m.lado ?? cena.lado ?? 'cima' } : {}),
         ...(layout === 'pip' ? { canto: m.canto ?? cena.canto ?? 'inf-dir' } : {}),
         ...(typeof cena.atras === 'boolean' ? { atras: cena.atras } : {}),
+        ...(cena.ajuste ? { ajuste: cena.ajuste } : {}),
       };
       await this.olharOVideo(workspaceId, projectId);
       const r = this.montarCena({ inicioS: m.inicioS, fimS: m.fimS, cena: lugar, ideia: m.ideia }, visual, palavras, paleta, this.pessoaNoTrecho(projectId, plano, m.inicioS));

@@ -17,6 +17,8 @@ export interface OpcoesDeRefazerAnimacao {
   lado?: 'cima' | 'baixo';
   canto?: 'sup-esq' | 'sup-dir' | 'inf-esq' | 'inf-dir';
   pedido?: string;
+  /** A cena editada à mão: modelo, textos, elemento, atrás/na frente e o ajuste. */
+  cena?: { preset?: string; textos?: Record<string, unknown>; atras?: boolean; ajuste?: { x: number; y: number; escala: number } };
 }
 
 export interface AnimacoesDaIa {

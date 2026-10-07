@@ -165,6 +165,18 @@ async function main() {
   const rf = await f.servico.refazerNoProjeto(sistema as never, 'p1', [id], { estilo: 'mg-neon', layout: 'meio_a_meio', lado: 'baixo' });
   const cf = f.atual().mediaLayers!.find((m) => m.id === id)!.composicao!;
   t('trocar o visual e o lugar de uma cena pronta: sem IA, na hora', rf.feitas === 1 && f.pedidos.length === 0 && cf.estilo === 'mg-neon' && cf.layout === layoutDoPreset(cenaDaComposicao(cf)!.preset, 'meio_a_meio') && (cf.layout !== 'meio_a_meio' || cf.lado === 'baixo') && cenaDaComposicao(cf)?.textos.titulo === 'Gemini');
+
+  // Editar a cena no painel: outro modelo e outro texto, no mesmo visual, sem IA.
+  const ge = montar(() => {
+    throw new Error('não devia chamar a IA');
+  });
+  await ge.planos.salvar(null, 'p1', f.atual());
+  const rg = await ge.servico.refazerNoProjeto(sistema as never, 'p1', [id], { cena: { preset: 'profundidade', textos: { titulo: 'Gemini 3.8' }, ajuste: { x: 0, y: -100, escala: 1.1 } } });
+  const cge = ge.atual().mediaLayers!.find((m) => m.id === id)!.composicao!;
+  const lida = cenaDaComposicao(cge);
+  t('editar a cena (modelo, texto, posição): sem IA, no visual que já tinha', rg.feitas === 1 && ge.pedidos.length === 0 && cge.estilo === 'mg-neon' && lida?.preset === 'profundidade' && lida.textos.titulo === 'Gemini 3.8' && lida.ajuste?.y === -100);
+  const rfalta = await ge.servico.refazerNoProjeto(sistema as never, 'p1', [id], { cena: { preset: 'versus' } });
+  t('modelo sem os campos obrigatórios: não salva e diz o que falta', rfalta.feitas === 0 && /a, b/.test(rfalta.nota));
   const rf2 = await f.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { paleta: 'bold-energetic:0' });
   t('recolorir todas: sem IA', rf2.feitas === 3 && f.pedidos.length === 0 && f.atual().mediaLayers!.every((m) => m.composicao?.paleta === 'bold-energetic:0' || !m.composicao));
 
