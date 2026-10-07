@@ -80,6 +80,8 @@ import {
   textoDoPlano,
   type OlharDoVideo,
   type PessoaNoQuadro,
+  variarCenas,
+  visualPorRodizio,
   lugarDoCartao,
   type PerfilDoVideo,
   designDoVideo,
@@ -103,7 +105,6 @@ import {
   textoDosIcones,
   usarIconesDuotone,
   textoDosPresets,
-  textoDosVisuais,
   visualDeMotion,
   NOME_DO_FORMATO,
   type CenaDeMotion,
@@ -413,7 +414,7 @@ export function modoDasAnimacoes(): ModoDasAnimacoes {
 // sem IA, na hora.
 // ============================================================
 
-const VERSAO_MOTION = 'motion-presets-v2';
+const VERSAO_MOTION = 'motion-presets-v3';
 
 // Os ícones duotone (Phosphor, MIT) só no servidor: as cenas saem com o SVG pronto.
 usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
@@ -455,10 +456,7 @@ function visuaisSugeridos(p: PerfilDoVideo): string[] {
 
 /** O prefixo fixo do pedido (igual em todo vídeo: entra no cache de contexto do provedor). */
 function sistemaDoMotion(): string {
-  return `Você é editor de motion graphics de vídeos verticais (Reels, TikTok, Shorts) de alguém falando para a câmera. As cenas animadas JÁ EXISTEM, prontas e testadas: você escolhe o VISUAL do vídeo e, para cada momento que pede, o PRESET e os TEXTOS. Você não escreve código nem descreve animação -- cada elemento já entra sozinho no segundo em que a palavra dele é dita.
-
-VISUAIS (um para o vídeo inteiro, pelo tom da fala e pela luz da imagem):
-${textoDosVisuais()}
+  return `Você é editor de motion graphics de vídeos verticais (Reels, TikTok, Shorts) de alguém falando para a câmera. As cenas animadas JÁ EXISTEM, prontas e testadas, e o VISUAL do vídeo (cores, fontes, movimento) já está escolhido: você escolhe, para cada momento que pede, o PRESET e os TEXTOS. Você não escreve código nem descreve animação -- cada elemento já entra sozinho no segundo em que a palavra dele é dita.
 
 PRESETS (chave [layouts em que funciona]: quando usar. Campos; * = obrigatório):
 ${textoDosPresets()}
@@ -476,7 +474,7 @@ CENAS EM VOLTA DA PESSOA (cartaz, numero_gigante, placar, mosaico, ladeando, sel
 
 COMO ESCOLHER:
 - Cena só onde a fala tem o que o preset pede (número dito, enumeração, passos, dois lados, pergunta, termo, oferta, frase de peso). Fala corrida sem nada disso: poucas cenas de impacto ou frase, ou nenhuma. Zero cenas é resposta válida.
-- Ritmo: comece cedo (a primeira cena nos primeiros 3 a 6 s, se a fala tiver o que mostrar); varie o preset (nunca o mesmo duas vezes seguidas) e o layout. tela_cheia só nos picos.
+- Ritmo: comece cedo (a primeira cena nos primeiros 3 a 6 s, se a fala tiver o que mostrar); varie o preset (nunca o mesmo duas vezes seguidas; no vídeo todo, no máximo 2 do mesmo) e o layout. tela_cheia só nos picos.
 - layout: cartao = sobre o vídeo, fora do rosto (leve, rápido); meio_a_meio = a cena ocupa metade da tela ("lado": "cima" = cena em cima e rosto embaixo, ou "baixo"); pip = a cena toma a tela e o rosto vai para uma janela num canto ("canto": sup-esq|sup-dir|inf-esq|inf-dir) -- para lista, gráfico, passos e conversa; tela_cheia = a cena toma o quadro.
 - Duração de 3 a 7 s (o tempo de ler o que aparece); 1 s livre entre duas cenas; não entre nos ESPAÇOS RESERVADOS.
 
@@ -488,7 +486,7 @@ REGRAS DURAS (o servidor confere e descarta a cena que não cumprir):
 - "prioridade": 1 = sem a cena o ponto se perde; 2 = ajuda de verdade; 3 = só enfeita (não mande).
 
 Responda SÓ com JSON, sem texto fora dele:
-{"visual":"mg-...","tom":"o que quem assiste deve sentir","cenas":[{"preset":"contador","ancora":"palavras exatas da fala","inicioS":12.3,"fimS":17.0,"layout":"meio_a_meio","lado":"cima","textos":{"numero":"87","unidade":"%","titulo":"...","enfase":"..."},"ideia":"o que a cena mostra","prioridade":1}]}
+{"tom":"o que quem assiste deve sentir","cenas":[{"preset":"contador","ancora":"palavras exatas da fala","inicioS":12.3,"fimS":17.0,"layout":"meio_a_meio","lado":"cima","textos":{"numero":"87","unidade":"%","titulo":"...","enfase":"..."},"ideia":"o que a cena mostra","prioridade":1}]}
 Instantes em segundos do vídeo final, iguais aos da fala.`;
 }
 
@@ -520,7 +518,6 @@ export function perfilParaMotion(p: PerfilDoVideo): string {
           .join('\n')}`
       : 'A fala não tem número, lista, passos nem comparação: poucas cenas (impacto, frase, citação) ou nenhuma.',
     `Por volta de ${p.receita.cenasSugeridas} ${p.receita.cenasSugeridas === 1 ? 'cena' : 'cenas'} (ponto de partida).${p.receita.ladoDaCena ? ` No meio_a_meio, "lado": "${p.receita.ladoDaCena}" (fora do rosto).` : ''}`,
-    `Visuais que combinam: ${visuaisSugeridos(p).join(', ')}.`,
     p.olhar?.pessoa && !lugarDoCartao(p.olhar.pessoa) ? 'A pessoa está de perto (ocupa o quadro): cartao só com as cenas em volta da pessoa; as outras em meio_a_meio ou pip.' : '',
   ]
     .filter(Boolean)
@@ -1033,10 +1030,14 @@ export class AnimacoesDaFalaService {
       .then(() => this.animacoes.corDaMarca(workspaceId))
       .catch(() => null);
     const marca = cor && cor.toLowerCase() !== CORES_PADRAO_DA_MARCA.primary.toLowerCase() ? cor : null;
+    // O visual: o da pessoa, ou um dos que combinam com o vídeo por rodízio,
+    // fora os últimos usados no espaço de trabalho (inclusive neste projeto:
+    // montar de novo dá outra cara). Um modelo barato escolhia sempre o mesmo.
+    const visual = fixo ?? visualPorRodizio(visuaisSugeridos(perfil), await this.visuaisRecentes(workspaceId), projectId);
+    const doVisual = visualDeMotion(visual);
     const usuario = [
       perfilParaMotion(perfil),
-      fixo ? `VISUAL JÁ ESCOLHIDO PELA PESSOA: ${fixo} (use este em "visual").` : '',
-      marca ? `Cor da marca: ${marca} (pese na escolha do visual).` : '',
+      `VISUAL DO VÍDEO: ${doVisual ? `${doVisual.nome} (${doVisual.carater})` : visual}.`,
       entendimento ? `Assunto: "${entendimento.topic}"; para ${entendimento.audience}; promessa: "${entendimento.promise}".` : '',
       `No máximo ${REGRAS_DOS_PRESETS.teto(duracaoS)} cenas.`,
       `ESPAÇOS RESERVADOS (não entre): ${reservadas.length ? reservadas.map((r) => `${r.inicioS.toFixed(1)}-${r.fimS.toFixed(1)}s ${r.motivo}`).join('; ') : 'nenhum'}.`,
@@ -1056,8 +1057,6 @@ export class AnimacoesDaFalaService {
       tempoMaximoMs: TEMPO_DO_MOTION_MS,
     });
     const lida = lerDirecao(r.texto);
-    const pedido = /"visual"\s*:\s*"([^"]+)"/.exec(r.texto)?.[1];
-    const visual = fixo ?? (visualDeMotion(pedido) ? pedido! : visuaisSugeridos(perfil)[0]!);
     const descartados: CartaoDescartado[] = [];
     // A cena vai à conferência com o tipo "preset#índice": o que volta aceito
     // reencontra os textos e o lugar que a IA pediu.
@@ -1098,14 +1097,30 @@ export class AnimacoesDaFalaService {
         },
       };
     });
+    // A mistura: com rosto, uma parte das cenas clássicas vira a versão em
+    // volta da pessoa (os mesmos textos ditos), por rodízio.
+    const comRosto = perfil.olhar ? perfil.olhar.rosto !== 'sem_rosto' : true;
+    const variadas = variarCenas(cenas, { comRosto, semente: projectId });
     return {
       visual,
       ...(lida.tom ? { tom: lida.tom } : {}),
-      cenas,
+      cenas: variadas.cenas,
       pedidos: lida.cartoes.length,
       cortada: lida.cortada,
       descartados: [...descartados, ...conferidos.descartados.map((d) => ({ ...d, tipo: d.tipo.split('#')[0]! }))],
     };
+  }
+
+  /** Os visuais de motion usados por último no espaço de trabalho (do mais recente ao mais antigo). */
+  private async visuaisRecentes(workspaceId: string): Promise<string[]> {
+    const projetos = await Promise.resolve()
+      .then(() => this.prisma.project.findMany({ where: { workspaceId }, orderBy: { updatedAt: 'desc' }, take: 6, select: { animationReport: true } }))
+      .catch(() => []);
+    const porNome = new Map(VISUAIS_DE_MOTION.map((v) => [`Motion: ${v.nome}`, v.chave]));
+    return (projetos ?? []).flatMap((x) => {
+      const chave = porNome.get(String((x.animationReport as { estilo?: unknown } | null)?.estilo ?? ''));
+      return chave ? [chave] : [];
+    });
   }
 
   /** A animação de uma cena pronta: o preset montado no visual, no tempo da fala do trecho. */

@@ -12,7 +12,7 @@
 
 delete process.env.STUDIO_ANIMACOES_MODO;
 
-import { cenaDaComposicao, problemasDaComposicao, type EditPlanV1, type RelatorioDasAnimacoes } from '@makucho/studio-contracts';
+import { cenaDaComposicao, layoutDoPreset, problemasDaComposicao, type EditPlanV1, type RelatorioDasAnimacoes } from '@makucho/studio-contracts';
 import { AnimacoesDaFalaService } from '../src/modules/ai/animacoes-da-fala.service';
 
 let ok = 0,
@@ -96,21 +96,27 @@ async function main() {
   const sistema = { userId: 'sistema', workspaceId: 'w', role: 'OWNER' } as const;
 
   // 1. O caminho inteiro.
-  const a = montar((p) => (p.chamada === 'montar_motion' ? resposta(CENAS) : '{}'));
+  const a = montar((p) => (p.chamada === 'montar_motion' ? resposta(CENAS) : '{}'), { projeto: { animationStyle: 'mg-keynote' } });
   const ra = await a.servico.criarNaMontagem(sistema as never, 'p1');
   const camadas = a.atual().mediaLayers ?? [];
   t('presets é o padrão: UMA chamada de IA, sem desenho e sem crítica', ra.criadas === 3 && a.pedidos.length === 1 && a.pedidos[0]!.chamada === 'montar_motion');
   const pm = a.pedidos[0]!;
   t('a chamada é pequena: sem raciocínio pedido, teto de 5 mil tokens', !pm.raciocinio && !pm.modelo && pm.maxTokens <= 5000);
-  t('o pedido traz os visuais, os presets e a análise do vídeo', pm.sistema.includes('mg-soco') && pm.sistema.includes('contador [') && pm.usuario.includes('ANÁLISE DO VÍDEO') && pm.usuario.includes('Visuais que combinam'));
+  t('o pedido traz os presets, a análise e o visual já escolhido (sem a lista de visuais)', !pm.sistema.includes('mg-soco') && pm.sistema.includes('contador [') && pm.usuario.includes('ANÁLISE DO VÍDEO') && pm.usuario.includes('VISUAL DO VÍDEO: Keynote'));
   t('a fala vai em frases com o instante (não palavra por palavra)', /\n0\.5 o google acabou de lançar/.test(pm.usuario) && !pm.usuario.includes('\n0.50 o\n'));
   t('o sistema é o mesmo em todo vídeo (cache de contexto do provedor)', !pm.sistema.includes('gemini') && !pm.sistema.includes('#00aa55'));
   t('todas as cenas entram como cenas prontas no visual escolhido', camadas.length === 3 && camadas.every((c) => c.composicao?.estilo === 'mg-keynote' && !!cenaDaComposicao(c.composicao!)));
   t('as cenas passam na checagem da animação', camadas.every((c) => problemasDaComposicao(c.composicao!).length === 0));
-  const imp = camadas.find((c) => cenaDaComposicao(c.composicao!)?.preset === 'impacto')!;
+  // Com rosto (sem medida, presume-se), uma parte vira cena em volta da pessoa: o impacto curto vira o título gigante.
+  const imp = camadas.find((c) => ['impacto', 'cartaz'].includes(cenaDaComposicao(c.composicao!)?.preset ?? ''))!;
+  t('a mistura: ao menos uma cena em volta da pessoa, com os mesmos textos', camadas.some((c) => cenaDaComposicao(c.composicao!)?.preset === 'cartaz' && cenaDaComposicao(c.composicao!)?.textos.titulo === 'Gemini'));
   t('a cena começa na âncora dita (3,30 s - 0,15), não no instante que a IA estimou (1 s)', imp.timelineStartMs === 3150);
-  const lista = camadas.find((c) => cenaDaComposicao(c.composicao!)?.preset === 'lista')!;
-  t('o lugar pedido vale (pip no canto pedido)', lista.composicao?.layout === 'pip' && lista.composicao.canto === 'sup-dir');
+  const lista = camadas.find((c) => ['lista', 'mosaico'].includes(cenaDaComposicao(c.composicao!)?.preset ?? ''))!;
+  const cenaDaLista = cenaDaComposicao(lista.composicao!)!;
+  t(
+    'o lugar pedido vale (pip no canto pedido); trocada pela versão em volta, os itens ditos ficam',
+    cenaDaLista.preset === 'lista' ? lista.composicao?.layout === 'pip' && lista.composicao.canto === 'sup-dir' : lista.composicao?.layout === 'cartao' && cenaDaLista.textos.itens?.join() === 'Rir,Suspirar,Sussurrar',
+  );
   t('o vídeo de cada animação é pedido ao render', a.preparadas.length === 3);
   const rel = a.relatorios.at(-1)!;
   t('o relatório diz o visual e as cenas', rel.estilo === 'Motion: Keynote' && rel.aceitos.length === 3 && rel.escrita.every((e) => e.ok));
@@ -140,7 +146,7 @@ async function main() {
   // 4. O visual escolhido pela pessoa vale.
   const d = montar((p) => (p.chamada === 'montar_motion' ? resposta([CENAS[0]], 'mg-pop') : '{}'), { projeto: { animationStyle: 'mg-luxo' } });
   await d.servico.criarNaMontagem(sistema as never, 'p1');
-  t('visual escolhido pela pessoa: vale sobre o da IA, e o pedido avisa', d.atual().mediaLayers?.[0]?.composicao?.estilo === 'mg-luxo' && d.pedidos[0]!.usuario.includes('VISUAL JÁ ESCOLHIDO PELA PESSOA: mg-luxo'));
+  t('visual escolhido pela pessoa: vale sobre o da IA, e o pedido avisa', d.atual().mediaLayers?.[0]?.composicao?.estilo === 'mg-luxo' && d.pedidos[0]!.usuario.includes('VISUAL DO VÍDEO: '));
 
   // 5. Um estilo antigo do catálogo segue o caminho antigo (cartões).
   const e = montar((p) => (p.sistema.includes('DIRETOR VISUAL') ? JSON.stringify({ cartoes: [{ inicioS: 1, fimS: 7, layout: 'cartao', tipo: 'termo', gatilho: 'lançar o gemini', intencao: 'x' }] }) : JSON.stringify({ titulo: 'x', html: '<div id="a">G</div>', css: '', script: "tl.from('#a', { opacity: 0 }, 0);" })), { projeto: { animationStyle: 'coral' } });
@@ -148,14 +154,14 @@ async function main() {
   t('estilo antigo escolhido: segue pelos cartões, sem presets', e.atual().mediaLayers?.[0]?.composicao?.estilo === 'coral' && !e.pedidos.some((p) => p.chamada === 'montar_motion'));
 
   // 6. Refazer no editor: trocar visual, paleta ou lugar não chama a IA.
-  const id = a.atual().mediaLayers!.find((m) => cenaDaComposicao(m.composicao!)?.preset === 'impacto')!.id;
+  const id = a.atual().mediaLayers!.find((m) => ['impacto', 'cartaz'].includes(cenaDaComposicao(m.composicao!)?.preset ?? ''))!.id;
   const f = montar(() => {
     throw new Error('não devia chamar a IA');
   });
   await f.planos.salvar(null, 'p1', a.atual());
   const rf = await f.servico.refazerNoProjeto(sistema as never, 'p1', [id], { estilo: 'mg-neon', layout: 'meio_a_meio', lado: 'baixo' });
   const cf = f.atual().mediaLayers!.find((m) => m.id === id)!.composicao!;
-  t('trocar o visual e o lugar de uma cena pronta: sem IA, na hora', rf.feitas === 1 && f.pedidos.length === 0 && cf.estilo === 'mg-neon' && cf.layout === 'meio_a_meio' && cf.lado === 'baixo' && cenaDaComposicao(cf)?.textos.titulo === 'Gemini');
+  t('trocar o visual e o lugar de uma cena pronta: sem IA, na hora', rf.feitas === 1 && f.pedidos.length === 0 && cf.estilo === 'mg-neon' && cf.layout === layoutDoPreset(cenaDaComposicao(cf)!.preset, 'meio_a_meio') && (cf.layout !== 'meio_a_meio' || cf.lado === 'baixo') && cenaDaComposicao(cf)?.textos.titulo === 'Gemini');
   const rf2 = await f.servico.refazerNoProjeto(sistema as never, 'p1', 'todas', { paleta: 'bold-energetic:0' });
   t('recolorir todas: sem IA', rf2.feitas === 3 && f.pedidos.length === 0 && f.atual().mediaLayers!.every((m) => m.composicao?.paleta === 'bold-energetic:0' || !m.composicao));
 
@@ -196,7 +202,7 @@ async function main() {
   const camadasN = n.atual().mediaLayers ?? [];
   const tit = camadasN.find((m) => cenaDaComposicao(m.composicao!)?.preset === 'titulo');
   const cha = camadasN.find((m) => cenaDaComposicao(m.composicao!)?.preset === 'chamada');
-  t('o título de abertura vira uma cena do visual, no mesmo instante, atrás da pessoa', !!tit && tit.timelineStartMs === 0 && tit.durationMs === 2000 && tit.composicao?.estilo === 'mg-soco' && tit.composicao.atras === true && cenaDaComposicao(tit.composicao)?.textos.titulo === 'Gemini novo');
+  t('o título de abertura vira uma cena do visual, no mesmo instante, atrás da pessoa', !!tit && tit.timelineStartMs === 0 && tit.durationMs === 2000 && !!tit.composicao?.estilo && camadasN.every((m) => m.composicao?.estilo === tit.composicao?.estilo) && tit.composicao!.atras === true && cenaDaComposicao(tit.composicao)?.textos.titulo === 'Gemini novo');
   t('a chamada final vira uma cena do visual (sem fundo, na frente)', !!cha && cha.timelineStartMs === 26000 && cha.composicao?.layout === 'cartao' && !cha.composicao.atras);
   t('os textos antigos saem da camada de textos', !n.atual().overlays.some((o) => o.component === 'HookTitle' || o.component === 'CTA'));
   t('a nota conta o título e a chamada', n.notas.some((x) => x.includes('o título de abertura e a chamada final')));
