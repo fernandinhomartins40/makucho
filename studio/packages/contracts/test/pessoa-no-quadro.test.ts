@@ -3,7 +3,7 @@
 // e as cores pelos pixels; e as cenas de motion que se ajustam a ela.
 // ============================================================
 
-import { composicaoDoPreset, luzECores, lugarDoCartao, pessoaDaMascara, pessoaTipica, tercoDoRosto, type PessoaNoQuadro } from '../src';
+import { blocoAcimaDaCabeca, composicaoDoPreset, luzECores, lugarDoCartao, pessoaDaMascara, pessoaTipica, tercoDoRosto, type PessoaNoQuadro } from '../src';
 
 let ok = 0,
   fail = 0;
@@ -109,7 +109,20 @@ function silhueta(cx: number, cy: number, r: number, ombros: number, meiaLargura
   t('ícones ao lado do rosto: na altura dele', comMedida.html.includes(`top:${(620 + 900) / 2 - 130}px`));
   const larga: PessoaNoQuadro = { ...p, cabeca: { ...p.cabeca, largura: 700 } };
   t('cabeça que ocupa o quadro: os ícones encolhem', cena('ladeando', { icones: ['raio', 'alvo'] }, larga).html.includes('scale:0.6'));
-  t('título gigante: começa acima do cabelo', cena('cartaz', { titulo: 'Editor' }, p).html.includes(`top:${620 - 190}px`));
+  const gigante = cena('cartaz', { titulo: 'Editor' }, p).html;
+  const topoDoGigante = Number(/class="cz" style="top:(\d+)px;height:(\d+)px"/.exec(gigante)?.[1]);
+  const alturaDoGigante = Number(/class="cz" style="top:\d+px;height:(\d+)px"/.exec(gigante)?.[1]);
+  t('título gigante: o pé do bloco no topo da cabeça, todo acima dela', topoDoGigante >= 200 && Math.abs(topoDoGigante + alturaDoGigante - (620 + 0.12 * 280)) <= 2);
+  // O bloco acima da cabeça: menos linhas, letra grande, ligação nunca no fim de linha.
+  const v = { largura: 0.6, caixaAlta: true };
+  const um = blocoAcimaDaCabeca('Editor', v, p, { fonteMax: 420, alvo: 190 });
+  t('uma palavra: uma linha, letra enorme', um.linhas.length === 1 && um.fonte >= 190);
+  const frase = blocoAcimaDaCabeca('O melhor editor de vídeos do Brasil', v, p, { fonteMax: 230, alvo: 130 });
+  t('frase longa: o menor número de linhas com a letra grande', frase.linhas.length >= 2 && frase.linhas.length <= 3 && frase.fonte >= 110);
+  t('palavra de ligação não termina linha', frase.linhas.slice(0, -1).every((l) => !/(de|do|o)$/i.test(l)));
+  t('o bloco cabe acima da cabeça (não desce para o rosto)', frase.topo >= 205 && frase.base <= 620 + 0.12 * 280 + 1);
+  const curta = blocoAcimaDaCabeca('Sim', v, { ...p, cabeca: { ...p.cabeca, topo: 380, base: 700 } }, { fonteMax: 420, alvo: 190 });
+  t('pouco espaço acima: a letra diminui para caber', curta.topo >= 205 && curta.fonte <= 420);
   t('texto 3D: logo abaixo dos ombros', cena('profundidade', { titulo: 'Longe' }, p).html.includes(`top:${900 + 50}px`) || cena('profundidade', { titulo: 'Longe' }, p).html.includes('top:950px'));
   const moldura = cena('selecao', { titulo: 'RAW' }, p).html;
   t('moldura: em volta do corpo medido', moldura.includes(`x="${180 - 40}"`) && moldura.includes(`y="${620 - 70}"`));

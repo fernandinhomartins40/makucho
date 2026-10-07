@@ -1859,7 +1859,7 @@ ${fala}${
     // O título de abertura e a chamada final do acabamento viram cenas do
     // visual (sem fundo; o título atrás da pessoa quando há rosto) e saem
     // da camada de textos: um vídeo, uma língua visual.
-    const titulos = this.titulosComoCenas(plano, visual, paleta, perfil);
+    const titulos = this.titulosComoCenas(plano, visual, paleta, perfil, projectId);
     if (!direcao.cenas.length && !titulos.ops.length) {
       const nota = direcao.pedidos
         ? `Sem animações: a IA sugeriu ${direcao.pedidos}, mas nenhuma passou na conferência (toque para ver os motivos).`
@@ -1909,7 +1909,7 @@ ${fala}${
    * passa atrás da pessoa quando a imagem tem rosto (a máscara do render; sem
    * ela, fica na frente).
    */
-  private titulosComoCenas(plano: EditPlanV1, visual: VisualDeMotion, paleta: string | undefined, perfil: PerfilDoVideo | null): { ops: TimelineOperation[]; nomes: string[] } {
+  private titulosComoCenas(plano: EditPlanV1, visual: VisualDeMotion, paleta: string | undefined, perfil: PerfilDoVideo | null, projectId?: string): { ops: TimelineOperation[]; nomes: string[] } {
     const ops: TimelineOperation[] = [];
     const nomes: string[] = [];
     for (const o of plano.overlays) {
@@ -1921,7 +1921,7 @@ ${fala}${
         layout: 'cartao',
         ...(titulo && perfil?.olhar?.rosto !== 'sem_rosto' ? { atras: true } : {}),
       };
-      const composicao = composicaoDoPreset(cena, visual.chave, o.durationMs / 1000, [], { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: titulo ? 'o título do vídeo' : 'a chamada final' });
+      const composicao = composicaoDoPreset(cena, visual.chave, o.durationMs / 1000, [], { ...(paleta && coresDaPaleta(paleta) ? { paleta } : {}), ideia: titulo ? 'o título do vídeo' : 'a chamada final', ...(projectId ? { pessoa: this.pessoaNoTrecho(projectId, plano, o.timelineStartMs / 1000) } : {}) });
       if (problemasDaComposicao(composicao).length) continue;
       ops.push({ op: 'remover_overlay', overlayId: o.id });
       ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: o.timelineStartMs, durationMs: o.durationMs });

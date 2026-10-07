@@ -1132,6 +1132,61 @@ function corpoPx(texto: string, largura: number, teto: number, v: VisualDeMotion
   return Math.max(18, Math.round(Math.min(teto, largura / (longa * l), (largura * linhas) / (todo * l * 1.08))));
 }
 
+/** Palavras que não terminam linha: ficam com a palavra seguinte ("de vídeos", não "de / vídeos"). */
+const LIGACOES = new Set(['o', 'a', 'os', 'as', 'de', 'da', 'do', 'das', 'dos', 'e', 'em', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'para', 'pra', 'com', 'que', 'por', 'se', 'ao', 'à', 'é', 'seu', 'sua', 'meu', 'minha']);
+
+/** As palavras em `n` linhas: a divisão com a linha mais longa mais curta, sem ligação no fim de linha. */
+function quebrarEm(palavras: readonly string[], n: number): string[] {
+  let melhor: { linhas: string[]; nota: number } | null = null;
+  const tentar = (de: number, resto: number, acc: string[][]) => {
+    if (resto === 1) {
+      const linhas = [...acc, palavras.slice(de) as string[]].map((l) => l.join(' '));
+      const nota = Math.max(...linhas.map((l) => [...l].length)) + 4 * [...acc].filter((l) => LIGACOES.has(normal(l[l.length - 1]!))).length;
+      if (!melhor || nota < melhor.nota) melhor = { linhas, nota };
+      return;
+    }
+    for (let ate = de + 1; ate <= palavras.length - resto + 1; ate += 1) tentar(ate, resto - 1, [...acc, palavras.slice(de, ate) as string[]]);
+  };
+  tentar(0, Math.min(n, palavras.length), []);
+  return melhor!.linhas;
+}
+
+/**
+ * O bloco de texto acima da cabeça (os textos que passam atrás da pessoa):
+ * o MENOR número de linhas em que a letra ainda fica grande (`alvo`), o
+ * corpo que cabe na largura e na altura livre, e o pé do bloco encostado no
+ * topo da cabeça -- o máximo de texto à mostra. Sem a pessoa medida, o
+ * rosto de um vídeo típico (topo da cabeça em ~560 px).
+ */
+export function blocoAcimaDaCabeca(
+  texto: string,
+  v: Pick<VisualDeMotion, 'largura' | 'caixaAlta'>,
+  p: PessoaNoQuadro | null | undefined,
+  o: { caixa?: boolean; fonteMax: number; alvo: number; maxLinhas?: number; topoMin?: number; acima?: number; altura?: number },
+): { linhas: string[]; fonte: number; topo: number; base: number } {
+  const palavras = texto.split(/\s+/).filter(Boolean);
+  const l = Math.max(0.42, v.largura) * (o.caixa && !v.caixaAlta ? 1.12 : 1);
+  const alturaDaLinha = o.altura ?? 0.9;
+  const topoMin = o.topoMin ?? 205;
+  // O pé do bloco: um pouco abaixo do topo da cabeça (o cabelo cobre a base das letras: dá profundidade).
+  const base = p ? Math.max(topoMin + 160, Math.min(1000, p.cabeca.topo + Math.round((p.cabeca.base - p.cabeca.topo) * 0.12))) : 620;
+  const livre = base - topoMin - (o.acima ?? 0);
+  const larguraUtil = 1000;
+  const corpoDe = (linhas: string[]) => Math.min(o.fonteMax, larguraUtil / (Math.max(...linhas.map((x) => [...x].length)) * l));
+  const max = Math.max(1, Math.min(o.maxLinhas ?? 4, palavras.length));
+  const opcoes = Array.from({ length: max }, (_, i) => {
+    const linhas = quebrarEm(palavras, i + 1);
+    return { linhas, fonte: Math.min(corpoDe(linhas), livre / ((i + 1) * alturaDaLinha)) };
+  });
+  // A menor quantidade de linhas com a letra grande o bastante; se nenhuma
+  // chega lá, a de menos linhas que fica perto (85%) da maior letra possível.
+  const maior = Math.max(...opcoes.map((x) => x.fonte));
+  const escolha = opcoes.find((x) => x.fonte >= o.alvo) ?? opcoes.find((x) => x.fonte >= maior * 0.85)!;
+  const fonte = Math.max(40, Math.floor(escolha.fonte));
+  const alturaDoBloco = Math.round(escolha.linhas.length * fonte * alturaDaLinha);
+  return { linhas: escolha.linhas, fonte, base, topo: Math.max(topoMin + (o.acima ?? 0), base - alturaDoBloco) };
+}
+
 /** Um título em linhas que sobem por máscara, uma de cada vez, no ritmo da fala. */
 function linhas(c: Ctx, texto: string, desde: number, enfase?: string, classe = 't-l', porLinha = 0): { html: string; fim: number } {
   const palavras = texto.split(/\s+/).filter(Boolean);
@@ -1355,19 +1410,16 @@ const MONTADORES: Record<string, Montador> = {
     };
   },
   titulo: (x, c) => {
-    // Linhas de uma ou duas palavras, uma de cada vez: o título "se monta".
-    const palavras = (x.titulo ?? '').split(/\s+/).filter(Boolean);
-    const porLinha = palavras.length <= 3 ? 1 : 2;
-    const linhasDoTitulo: string[] = [];
-    for (let i = 0; i < palavras.length; i += porLinha) linhasDoTitulo.push(palavras.slice(i, i + porLinha).join(' '));
-    const corpo = cabe(x.titulo ?? '', 24, Math.min(34, 92 / Math.max(1, linhasDoTitulo.length)), c.v);
-    const html = linhasDoTitulo
+    // O menor número de linhas com a letra grande, acima da cabeça; cada linha entra na sua vez.
+    const b = blocoAcimaDaCabeca(x.titulo ?? '', c.v, c.p, { fonteMax: 230, alvo: 130, maxLinhas: 4, acima: x.kicker ? 64 : 0, altura: 0.98 });
+    const html = b.linhas
       .map((l, i) => {
         const t = r2(0.15 + i * 0.16);
-        return `<span class="mg-m"><span class="mg-t t-xl mg-l" style="${corpo}" data-in="mascara" data-t="${t}">${c.marcar(l, x.enfase, t + 0.1)}</span></span>`;
+        return `<span class="mg-m"><span class="mg-t t-xl mg-l" style="font-size:${b.fonte}px" data-in="mascara" data-t="${t}">${c.marcar(l, x.enfase, t + 0.1)}</span></span>`;
       })
       .join('');
-    return { html: `<div class="mg mg-centro mg-solto mg-titulo">${kicker(x.kicker, 0.05)}<div class="mg-linhas">${html}</div></div>` };
+    const topo = b.topo - (x.kicker ? 64 : 0);
+    return { html: `<div class="mg mg-centro mg-solto mg-titulo" style="top:${topo}px;height:${b.base - topo}px">${kicker(x.kicker, 0.05)}<div class="mg-linhas">${html}</div></div>` };
   },
   chamada: (x, c) => {
     const t0 = 0.15;
@@ -1399,26 +1451,22 @@ const MONTADORES: Record<string, Montador> = {
   // Fora das áreas do app (até y 192 e depois de 1600) e da faixa da legenda (1200-1440).
 
   cartaz: (x, c) => {
-    const palavras = (x.titulo ?? '').split(/\s+/).filter(Boolean);
-    const por = palavras.length <= 3 ? 1 : 2;
-    const ls: string[] = [];
-    for (let i = 0; i < palavras.length; i += por) ls.push(palavras.slice(i, i + por).join(' '));
     const t0 = c.t(x.titulo, 0.1, 0.15);
-    // Atrás da cabeça: o bloco começa acima do cabelo e vai até os ombros.
-    const topo = c.p ? entre(c.p.cabeca.topo - 190, 200, 560) : 236;
-    const bloco = c.p ? entre(c.p.ombros + 90 - topo, 420, 700) : 700;
-    const altura = (bloco * 0.94) / Math.max(1, ls.length);
-    const linhasHtml = ls
-      .map((l, i) => `<span class="cz-m"><span class="cz-l" style="font-size:${corpoPx(l, 1000, altura * 1.15, c.v, 1, true)}px" data-in="mascara" data-t="${r2(t0 + i * 0.14)}">${esc(l)}</span></span>`)
+    // Acima da cabeça: o menor número de linhas com a letra enorme; o pé do bloco no topo do cabelo.
+    const b = blocoAcimaDaCabeca(x.titulo ?? '', c.v, c.p, { caixa: true, fonteMax: 420, alvo: 190, maxLinhas: 3, altura: 0.86 });
+    const topo = b.topo;
+    const bloco = b.base - b.topo;
+    const linhasHtml = b.linhas
+      .map((l, i) => `<span class="cz-m"><span class="cz-l" style="font-size:${b.fonte}px" data-in="mascara" data-t="${r2(t0 + i * 0.14)}">${esc(l)}</span></span>`)
       .join('');
     const tk = r2(t0 + 0.35);
     const td = c.t(x.detalhe, t0 + 0.6, 0.6);
-    const etiqueta = (texto: string, classe: string, t: number) => `<div class="q-pilula cz-tag ${classe}" style="top:${classe === 'cz-a' ? topo + 56 : topo + bloco - 68}px;font-size:${corpoPx(texto, 520, 56, c.v, 1, true)}px" data-in="balao" data-t="${t}">${esc(texto)}</div>`;
+    const etiqueta = (texto: string, classe: string, t: number) => `<div class="q-pilula cz-tag ${classe}" style="top:${classe === 'cz-a' ? Math.max(200, topo - 30) : topo + Math.round(bloco * 0.55)}px;font-size:${corpoPx(texto, 520, 56, c.v, 1, true)}px" data-in="balao" data-t="${t}">${esc(texto)}</div>`;
     return {
       html: `<div class="mg mg-quadro"><div class="cz" style="top:${topo}px;height:${bloco}px">${linhasHtml}</div>${x.kicker ? etiqueta(x.kicker, 'cz-a', tk) : ''}${x.detalhe ? etiqueta(x.detalhe, 'cz-b', td) : ''}</div>`,
-      css: `.cz { left: 40px; right: 40px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+      css: `.cz { left: 40px; right: 40px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; filter: drop-shadow(0 10px 30px rgba(0,0,0,.35)); }
 .cz-m { display: block; overflow: hidden; padding: .02em .08em .05em; margin-bottom: -.1em; }
-.cz-l { display: block; font-family: var(--fonte-titulo); text-transform: uppercase; line-height: .86; letter-spacing: -.015em; white-space: nowrap; background: linear-gradient(180deg, var(--solto) 38%, color-mix(in srgb, var(--cor-destaque) 70%, var(--solto)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 10px 34px rgba(0,0,0,.38)); }
+.cz-l { display: block; font-family: var(--fonte-titulo); text-transform: uppercase; line-height: .86; letter-spacing: -.015em; white-space: nowrap; background: linear-gradient(180deg, var(--solto) 38%, color-mix(in srgb, var(--cor-destaque) 70%, var(--solto)) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .cz-tag { z-index: 3; } .cz-a { left: 64px; rotate: -6deg; } .cz-b { right: 64px; rotate: -4deg; }`,
     };
   },
@@ -1426,12 +1474,14 @@ const MONTADORES: Record<string, Montador> = {
   numero_gigante: (x, c) => {
     const tn = c.t(x.numero, 0.2, 0.2);
     const n = [...(x.numero ?? '')].length + ([...(x.prefixo ?? '')].length + [...(x.unidade ?? '')].length) * 0.42;
-    const corpo = Math.round(Math.min(600, 920 / (Math.max(1.5, n) * Math.max(0.45, c.v.largura))));
+    // Acima da cabeça: o pé do número no topo do cabelo, do tamanho que o espaço livre deixa.
+    const base = c.p ? Math.max(560, Math.min(1000, c.p.cabeca.topo + Math.round((c.p.cabeca.base - c.p.cabeca.topo) * 0.12))) : 760;
+    const corpo = Math.round(Math.min(600, 920 / (Math.max(1.5, n) * Math.max(0.45, c.v.largura)), (base - 250) / 0.84));
     // Os medidores (como de áudio) nas laterais: o nível pula no ritmo, sem sorteio.
     const passo = 0.14;
     const inicio = r2(tn + 0.1);
     const nPassos = Math.max(0, Math.floor((c.D - 0.5 - inicio) / passo));
-    const topoDoNumero = c.p ? entre(c.p.cabeca.topo - 150, 250, 600) : 250;
+    const topoDoNumero = Math.max(250, Math.round(base - corpo * 0.84));
     return {
       html: `<div class="mg mg-quadro">${x.kicker ? `<div class="ng-k" style="top:${topoDoNumero - 36}px" data-in="sobe" data-t="${r2(Math.max(0, tn - 0.3))}">${esc(x.kicker)}</div>` : ''}<div class="mg-num ng-num" style="top:${topoDoNumero}px;font-size:${corpo}px" data-in="escala" data-t="${tn}">${x.prefixo ? `<span class="pre">${esc(x.prefixo)}</span>` : ''}${numero(x.numero, tn, 1.2)}${x.unidade ? `<span class="suf">${esc(x.unidade)}</span>` : ''}</div><div class="ng-mt ng-mt0" data-in="aparece" data-t="${inicio}"><i></i></div><div class="ng-mt ng-mt1" data-in="aparece" data-t="${inicio}"><i></i></div></div>`,
       css: `.ng-k { left: 0; right: 0; text-align: center; font-size: 40px; letter-spacing: .2em; text-transform: uppercase; color: var(--solto); text-shadow: 0 3px 14px rgba(0,0,0,.5); }
@@ -1831,7 +1881,8 @@ ${CSS_DOS_ASSETS}
 .mg.mg-anot { justify-content: center; align-items: flex-start; gap: 0; }
 .anot-ast { width: min(34cqw, 70cqh); margin-left: 34cqw; margin-top: -1cqh; }
 .anot-ast .ast { width: 100%; }
-.mg.mg-titulo { top: 230px; height: 760px; gap: 1.6cqh; }
+.mg.mg-titulo { top: 230px; height: 760px; gap: 1.6cqh; justify-content: flex-end; }
+.mg-titulo .mg-l { white-space: nowrap; }
 .mg.mg-chamada { top: 880px; height: 300px; gap: 1.4cqh; }
 .mg-titulo .mg-linhas { align-items: center; }
 .mg-titulo .t-xl { line-height: .96; }
