@@ -14337,15 +14337,34 @@ button.midia-cartao__previa:disabled {
   display: flex;
   flex-direction: column;
   gap: var(--e3);
+  /* A faixa de modelos não pode esticar o painel: a largura é a do painel. */
+  min-width: 0;
+  max-width: 100%;
+  contain: inline-size;
+}
+.editor-da-cena > section {
+  min-width: 0;
 }
 .modelos-da-cena {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 92px;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
   overflow-x: auto;
-  padding: 2px 2px 8px;
+  overscroll-behavior-x: contain;
+  padding: 2px 2px 10px;
   scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-forte) transparent;
+}
+.modelos-da-cena::-webkit-scrollbar {
+  height: 8px;
+}
+.modelos-da-cena::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: var(--border-forte);
 }
 .modelos-da-cena__item {
   position: relative;
@@ -14399,6 +14418,8 @@ button.midia-cartao__previa:disabled {
 }
 .grade-de-elementos {
   display: grid;
+  width: 100%;
+  min-width: 0;
   grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
   gap: 6px;
   max-height: 260px;

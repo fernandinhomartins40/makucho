@@ -294,8 +294,29 @@ export function EditorDaCena({
 /** As miniaturas dos modelos: cada uma é a cena de verdade (num iframe pequeno, carregado quando aparece). */
 function Modelos({ cena, atual, composicao, desabilitado, onEscolher }: { cena: CenaDeMotion; atual: string; composicao: ComposicaoHtml; desabilitado: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
   const lista = [...PRESETS_DE_MOTION.filter((p) => PRESETS_EM_VOLTA.has(p.chave)), ...PRESETS_DE_MOTION.filter((p) => !PRESETS_EM_VOLTA.has(p.chave) && (!p.interno || p.chave === cena.preset))];
+  const faixa = useRef<HTMLDivElement>(null);
+  // A roda do mouse comum rola a faixa para o lado (ouvinte nativo: precisa impedir a rolagem do painel).
+  useEffect(() => {
+    const el = faixa.current;
+    if (!el) return;
+    const rolar = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.ctrlKey) return;
+      const fim = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= fim - 1)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', rolar, { passive: false });
+    return () => el.removeEventListener('wheel', rolar);
+  }, []);
+  // A marcada fica à vista quando o painel abre.
+  useEffect(() => {
+    const el = faixa.current;
+    const marcada = el?.querySelector<HTMLElement>('[aria-checked="true"]');
+    if (el && marcada) el.scrollLeft = Math.max(0, marcada.offsetLeft - (el.clientWidth - marcada.offsetWidth) / 2);
+  }, [atual]);
   return (
-    <div className="modelos-da-cena" role="radiogroup" aria-label="Modelos">
+    <div ref={faixa} className="modelos-da-cena" role="radiogroup" aria-label="Modelos">
       {lista.map((p) => (
         <Miniatura key={p.chave} cena={cena} preset={p.chave} nome={p.nome} marcada={p.chave === atual} composicao={composicao} desabilitado={desabilitado} onEscolher={onEscolher} />
       ))}
