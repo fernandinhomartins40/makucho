@@ -81,6 +81,10 @@ import {
   type OlharDoVideo,
   type PessoaNoQuadro,
   variarCenas,
+  operacoesDeRiqueza,
+  cenasDoPlano,
+  intervalosDaFala,
+  type OpcoesDaRiqueza,
   ilustrarCenas,
   visualPorRodizio,
   lugarDoCartao,
@@ -436,8 +440,6 @@ const PRESETS_DO_SINAL: Record<string, string> = {
   enfase: 'cartaz, impacto, profundidade, frase, citacao, selo',
 };
 
-/** As cenas que desenham o espaço em volta de quem fala: levam o contorno de luz na pessoa. */
-const PRESETS_COM_CONTORNO = new Set(['hud', 'profundidade', 'selecao']);
 
 /** Os visuais que combinam com o tipo de conteúdo e a luz da imagem (o primeiro é o padrão). */
 const VISUAIS_DO_FORMATO: Record<FormatoDeConteudo, { claro: string[]; escuro: string[] }> = {
@@ -1785,6 +1787,8 @@ ${fala}${
     cobrem: ReadonlyArray<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>>,
     tema: ReturnType<typeof temaDaAnimacao>,
     relatorio: RelatorioDasAnimacoes,
+    /** Efeitos de tela, sons, transições e zoom amarrados às cenas (riqueza-do-video.ts). */
+    riqueza?: Omit<OpcoesDaRiqueza, 'cenas'>,
   ): Promise<string | null> {
     const agora = (await this.planos.atual(sistema, projectId)).document;
     // O zoom de um trecho coberto pela animação (tela cheia, pip) não
@@ -1798,6 +1802,15 @@ ${fala}${
     if (tema && !res.plan.captions.highlightColor && /^#[0-9a-fA-F]{6}$/.test(tema.destaque)) {
       const comLegenda = aplicarComando(res.plan, [{ op: 'configurar_legenda', highlightColor: tema.destaque }], {});
       if (comLegenda.aplicadas) res.plan = comLegenda.plan;
+    }
+    // O vídeo rico: o resto do Studio amarrado às cenas, por regra (sem tokens).
+    if (riqueza && process.env.STUDIO_RIQUEZA !== 'off') {
+      const extras = operacoesDeRiqueza(res.plan, { ...riqueza, cenas: cenasDoPlano(res.plan) });
+      const rico = extras.length ? aplicarComando(res.plan, extras, {}) : null;
+      if (rico?.aplicadas) {
+        res.plan = rico.plan;
+        relatorio.riqueza = { efeitos: extras.filter((x) => x.op === 'adicionar_efeito_de_tela').length, sons: extras.filter((x) => x.op === 'adicionar_efeito_sonoro').length, transicoes: extras.filter((x) => x.op === 'definir_transicao').length, zooms: extras.filter((x) => x.op === 'definir_efeito').length };
+      }
     }
     await this.planos.salvar(sistema, projectId, res.plan, 'ai');
     for (const o of ops) {
@@ -1854,7 +1867,6 @@ ${fala}${
       return { criadas: 0, nota: await registrar(nota) };
     }
     const ops: TimelineOperation[] = [];
-    const efeitos: TimelineOperation[] = [];
     const falhas: string[] = [];
     const cobrem: Array<Pick<Momento, 'inicioS' | 'fimS' | 'layout'>> = [];
     for (const c of direcao.cenas) {
@@ -1862,13 +1874,6 @@ ${fala}${
       try {
         const { composicao, duracaoMs } = this.montarCena(c, visual.chave, palavras, paleta, this.pessoaNoTrecho(projectId, plano, c.inicioS));
         ops.push({ op: 'adicionar_midia', assetId: 'html', kind: 'html', layout: 'tela_cheia', composicao, timelineStartMs: Math.round(c.inicioS * 1000), durationMs: duracaoMs });
-        // As cenas que desenham o espaço em volta de quem fala pedem a pessoa
-        // acesa: o contorno de luz no mesmo trecho (só com rosto; sem repetir).
-        const inicioMs = Math.round(c.inicioS * 1000);
-        const jaTem = (plano.screenEffects ?? []).some((e) => e.type === 'contorno_luz' && e.timelineStartMs < inicioMs + duracaoMs && e.timelineStartMs + e.durationMs > inicioMs);
-        if (PRESETS_COM_CONTORNO.has(c.cena.preset) && perfil?.olhar?.rosto !== 'sem_rosto' && !jaTem) {
-          efeitos.push({ op: 'adicionar_efeito_de_tela', type: 'contorno_luz', timelineStartMs: inicioMs, durationMs: duracaoMs, intensity: 0.8 });
-        }
         cobrem.push({ inicioS: c.inicioS, fimS: c.fimS, layout: composicao.layout });
         relatorio.escrita.push({ inicioS: c.inicioS, tipo: nome, ok: true });
       } catch (e) {
@@ -1879,8 +1884,13 @@ ${fala}${
     }
     if (!ops.length && !titulos.ops.length) return { criadas: 0, nota: await registrar(`Sem animações: ${falhas.join(' | ').slice(0, 380)}`) };
     const cenasDaFala = ops.length;
-    ops.push(...titulos.ops, ...efeitos);
-    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio);
+    ops.push(...titulos.ops);
+    const naoSalvo = await this.salvarAnimacoes(sistema, projectId, ops, cobrem, temaDaAnimacao(visual.chave, paleta), relatorio, {
+      fala: intervalosDaFala(palavras),
+      energia: perfil?.energia ?? 'media',
+      comRosto: perfil?.olhar ? perfil.olhar.rosto !== 'sem_rosto' : true,
+      calmo: perfil?.formato === 'historia' || perfil?.formato === 'depoimento',
+    });
     if (naoSalvo) return { criadas: 0, nota: await registrar(`Sem animações: ${naoSalvo.slice(0, 380)}`) };
     aoAvancar(100);
     const quando = ops

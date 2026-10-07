@@ -81,7 +81,10 @@ Pedido amplo ("melhora", "deixa profissional", "edita pra mim", "capricha"):
   frente) e aceitam `fundo` (escuro, xadrez = sem fundo, grade); em vídeo
   com rosto são as que mais dão cara de edição profissional. O efeito de
   tela `contorno_luz` acende a pessoa com uma borda de luz -- combina com
-  elas. Você escolhe o preset, o lugar
+  elas. A montagem já amarra às cenas, por regra, efeitos de tela (flash na
+  palavra grande, vinheta no número, fundo escuro atrás dos cards, contorno de
+  luz), sons de entrada, transições e zoom alternado: não tire sem motivo.
+  Você escolhe o preset, o lugar
   e os TEXTOS (só o que foi dito); cada elemento entra sozinho no instante da
   palavra. Sai em segundos, e trocar o visual, a paleta ou o lugar não chama
   a IA. É a ferramenta para EXPLICAR e dar impacto: um número dito, uma

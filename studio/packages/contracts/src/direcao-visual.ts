@@ -681,5 +681,7 @@ export interface RelatorioDasAnimacoes {
   /** A análise do vídeo enviado, em uma linha (resumoDoPerfil). */
   analise?: string;
   zoomsTirados?: number;
+  /** O que a regra da riqueza acrescentou, amarrado às cenas (riqueza-do-video.ts). */
+  riqueza?: { efeitos: number; sons: number; transicoes: number; zooms: number };
   erro?: string;
 }

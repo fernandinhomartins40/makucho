@@ -68,6 +68,8 @@ import {
   textoDosIcones,
   CHAVES_DOS_OBJETOS,
   CHAVES_DOS_RABISCOS,
+  operacoesDeRiqueza,
+  cenasDoPlano,
   FUNDOS_ATRAS,
   textoDoPerfil,
 } from '@makucho/studio-contracts';
@@ -566,6 +568,13 @@ export class AgenteService {
         parametros: objeto(),
         executar: async (c) => {
           c.plano = await this.acabamento.acabamentoDoPlano(c.tenant.workspaceId, c.plano);
+          // O acabamento da marca reescreve transições e sons: a riqueza
+          // amarrada às cenas volta por cima (só o que faltar).
+          if (process.env.STUDIO_RIQUEZA !== 'off') {
+            const extras = operacoesDeRiqueza(c.plano, { cenas: cenasDoPlano(c.plano), fala: [], energia: 'media', comRosto: true });
+            const rico = extras.length ? aplicarComando(c.plano, extras, {}) : null;
+            if (rico?.aplicadas) c.plano = rico.plan;
+          }
           c.mudancas += 1;
           return { ok: true, legenda: c.plano.captions.styleId, transicoes: c.plano.transitions.length, textos: c.plano.overlays.length, trilha: Boolean(c.plano.music) };
         },
