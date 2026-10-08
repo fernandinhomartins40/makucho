@@ -14301,28 +14301,36 @@ button.midia-cartao__previa:disabled {
   cursor: grabbing;
 }
 .palco__barra-da-peca {
+  /* Presa ao topo do quadro, na largura dele: nunca sai cortada numa prévia estreita. */
   position: absolute;
-  z-index: 6;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  z-index: 7;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 4px;
+  gap: 2px 8px;
   padding: 4px 6px;
   border-radius: 10px;
-  background: var(--bg-elevado, var(--bg-sidebar));
+  background: var(--bg-sidebar);
   border: 1px solid var(--border);
   color: var(--text-primary);
   box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
-  transform: translate(-50%, -100%);
-  white-space: nowrap;
+  font-size: 12px;
 }
 .palco__texto-da-peca {
   position: absolute;
-  z-index: 6;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  z-index: 8;
   display: flex;
   gap: 6px;
   padding: 6px;
   border-radius: 10px;
-  background: var(--bg-elevado, var(--bg-sidebar));
+  background: var(--bg-sidebar);
   border: 1px solid var(--border);
   color: var(--text-primary);
   box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
@@ -14475,19 +14483,24 @@ button.midia-cartao__previa:disabled {
 }
 
 .palco__aplicar-da-peca {
+  /* No pé do quadro, na largura dele: os dois botões dividem o espaço. */
   position: absolute;
-  left: 50%;
-  bottom: 4%;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
   z-index: 7;
   display: flex;
   gap: 6px;
-  padding: 6px;
+  padding: 5px;
   border-radius: 12px;
   background: var(--bg-sidebar);
   border: 1px solid var(--border);
   box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
-  transform: translateX(-50%);
-  white-space: nowrap;
+}
+.palco__aplicar-da-peca > .botao {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
 }
 
 /* Grupos (a animação inteira, o card com o fundo): moldura discreta até selecionar. */
@@ -14496,4 +14509,9 @@ button.midia-cartao__previa:disabled {
 }
 .palco__edicao-animacao:hover .palco__peca[data-grupo]:not([data-selecionado]) {
   border-color: rgb(255 255 255 / 22%);
+}
+
+.palco__barra-da-peca .botao-link {
+  font-size: 12px;
+  white-space: nowrap;
 }

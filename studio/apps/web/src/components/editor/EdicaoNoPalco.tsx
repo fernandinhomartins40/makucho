@@ -260,7 +260,7 @@ export function EdicaoNoPalco({
       })}
 
       {sel && !editando && (
-        <div className="palco__barra-da-peca" style={{ left: pct(caixa(sel).x + caixa(sel).w / 2, W), top: pct(Math.max(40, caixa(sel).y - 20), H) }}>
+        <div className="palco__barra-da-peca" role="toolbar" aria-label="Ajustar a peça">
           <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Diminuir" title="Diminuir" onClick={() => mudarTamanho(sel.chave, 1 / 1.15)}>
             A−
           </button>
@@ -269,29 +269,29 @@ export function EdicaoNoPalco({
           </button>
           {sel.campo && (
             <button type="button" className="botao-link" onClick={() => comecarTexto(sel)}>
-              Editar texto
+              Texto
             </button>
           )}
           {sel.pai && (
             <button type="button" className="botao-link" title="Seleciona o conjunto que contém esta peça" onClick={() => setSelecionada(sel.pai!)}>
-              {sel.pai === 'cena' ? 'Selecionar tudo' : 'Selecionar o grupo'}
+              {sel.pai === 'cena' ? 'Tudo' : 'Grupo'}
             </button>
           )}
           {mudou(sel.chave) && (
             <button type="button" className="botao-link" onClick={() => restaurar(sel.chave)}>
-              Tamanho original
+              Original
             </button>
           )}
         </div>
       )}
 
       {pendente && (
-        <div className="palco__aplicar-da-peca" role="group" aria-label="Aplicar o ajuste">
+        <div className="palco__aplicar-da-peca" role="group" aria-label="Aplicar o ajuste e refazer a animação">
           <button type="button" className="botao botao--secundario botao--pequeno" onClick={desfazer}>
             Desfazer
           </button>
           <button type="button" className="botao botao--primario botao--pequeno" onClick={aplicar}>
-            Aplicar e refazer a animação
+            Aplicar
           </button>
         </div>
       )}
@@ -299,7 +299,6 @@ export function EdicaoNoPalco({
       {sel && editando && (
         <form
           className="palco__texto-da-peca"
-          style={{ left: pct(caixa(sel).x, W), top: pct(caixa(sel).y, H), width: pct(Math.max(caixa(sel).w, 500), W) }}
           onSubmit={(e) => {
             e.preventDefault();
             onEditarTexto(editando.campo, editando.valor);
