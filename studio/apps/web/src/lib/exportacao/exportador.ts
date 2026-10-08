@@ -96,6 +96,8 @@ export interface ProgressoDaExportacao {
   restanteMs: number | null;
   /** Um aviso que não impede a exportação (ex.: usou o proxy). */
   aviso?: string;
+  /** O que está acontecendo, em palavras, quando a etapa não diz (a exportação no servidor). */
+  rotulo?: string;
 }
 
 export interface ResultadoDaExportacao {

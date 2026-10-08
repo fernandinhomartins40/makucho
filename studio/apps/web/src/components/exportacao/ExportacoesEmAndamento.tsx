@@ -9,7 +9,7 @@
 // ============================================================
 
 import { formatarBytes, formatarDuracao } from '../../lib/exportacao/opcoes';
-import { baixar, useExportacoes } from '../../lib/exportacao/tarefas';
+import { baixar, ehAparelhoApple, useExportacoes } from '../../lib/exportacao/tarefas';
 import { ROTULO_DA_ETAPA } from './DialogoDeExportacao';
 import { IconeAviso, IconeCheck, IconeExportar, IconeFechar } from '../icones';
 
@@ -47,7 +47,7 @@ export function ExportacoesEmAndamento() {
                 </div>
                 <div className="exportacao__rodape">
                   <span>
-                    {ROTULO_DA_ETAPA[t.progresso.etapa]}
+                    {t.progresso.rotulo ?? ROTULO_DA_ETAPA[t.progresso.etapa]}
                     {t.progresso.restanteMs ? ` · ~${formatarDuracao(t.progresso.restanteMs)}` : ''}
                   </span>
                   <button type="button" className="exportacao__cancelar" onClick={() => cancelar(t.id)}>
@@ -60,7 +60,7 @@ export function ExportacoesEmAndamento() {
               <div className="exportacao__rodape">
                 <span>{formatarBytes(t.resultado.bytes)}</span>
                 <button type="button" className="botao botao--primario botao--pequeno" onClick={() => baixar(t.resultado!.url, t.resultado!.nome)}>
-                  Baixar
+                  {ehAparelhoApple() ? 'Salvar no iPhone' : 'Baixar'}
                 </button>
               </div>
             )}

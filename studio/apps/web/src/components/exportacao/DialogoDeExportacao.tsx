@@ -27,7 +27,7 @@ import {
   faltaNoNavegador,
   type OpcoesDeExportacao,
 } from '../../lib/exportacao/opcoes';
-import { baixar, useExportacoes, type TarefaDeExportacao } from '../../lib/exportacao/tarefas';
+import { baixar, ehAparelhoApple, useExportacoes, type TarefaDeExportacao } from '../../lib/exportacao/tarefas';
 import { IconeAviso, IconeCheck, IconeExportar, IconeFechar } from '../icones';
 
 const CHAVE = 'studio:opcoes-de-exportacao';
@@ -80,6 +80,10 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
   const totalMs = duracaoMs + (opcoes.vinhetas ? vinhetasMs : 0);
   const quadro = tamanhoDoQuadro(plano.canvas, opcoes.resolucao);
   const falta = useMemo(() => (aberto ? faltaNoNavegador() : null), [aberto]);
+  // iPhone/iPad (ou navegador sem WebCodecs): o servidor monta o vídeo. No iPhone o
+  // aparelho até exporta nas versões novas, mas a memória do Safari costuma não dar.
+  const apple = useMemo(() => aberto && ehAparelhoApple(), [aberto]);
+  const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (opcoes.onde ?? (apple ? 'servidor' : 'aparelho'));
 
   if (!aberto) return null;
 
@@ -92,7 +96,7 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
       // Sem armazenamento, sem memória das opções.
     }
     setConfigurando(false);
-    aoExportar(opcoes);
+    aoExportar({ ...opcoes, onde });
   };
 
   return (
@@ -126,6 +130,24 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
             </div>
 
             <div className="exportar__corpo">
+              <fieldset className="exportar__grupo">
+                <legend>Onde montar o vídeo</legend>
+                <div className="exportar__opcoes">
+                  <label className="exportar__opcao" data-marcada={onde === 'servidor' || undefined}>
+                    <input type="radio" name="onde" checked={onde === 'servidor'} onChange={() => mudar({ onde: 'servidor' })} />
+                    <strong>No servidor{apple ? ' (recomendado no iPhone)' : ''}</strong>
+                    <span>O aparelho fica livre; 1080p, 30 fps. Pode fechar o app: o vídeo continua sendo montado.</span>
+                  </label>
+                  <label className="exportar__opcao" data-marcada={onde === 'aparelho' || undefined} aria-disabled={Boolean(falta) || undefined}>
+                    <input type="radio" name="onde" checked={onde === 'aparelho'} disabled={Boolean(falta)} onChange={() => mudar({ onde: 'aparelho' })} />
+                    <strong>Neste aparelho</strong>
+                    <span>{falta ? `Indisponível: ${falta}` : 'Mais rápido num computador; escolha a resolução e a qualidade abaixo.'}</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              {onde === 'aparelho' && (
+              <>
               <fieldset className="exportar__grupo">
                 <legend>Resolução</legend>
                 <div className="exportar__opcoes">
@@ -164,6 +186,10 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
                 <span className="exportar__ajuda">{opcoes.fps === 60 ? 'Movimento mais liso; exporta mais devagar.' : 'O padrão das redes.'}</span>
               </fieldset>
 
+              </>
+              )}
+
+              {onde === 'aparelho' && (
               <fieldset className="exportar__grupo">
                 <legend>O que entra</legend>
                 <label className="exportar__marcar">
@@ -182,6 +208,7 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
                 </label>
                 {opcoes.fonte !== 'original' && <span className="exportar__ajuda">Mais rápido, mas a imagem sai da versão de edição (720p).</span>}
               </fieldset>
+              )}
 
               <label className="exportar__grupo exportar__nome">
                 <span>Nome do arquivo</span>
@@ -198,8 +225,8 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
             </div>
 
             {falta && (
-              <p className="exportar__alerta">
-                <IconeAviso size={15} /> Não dá para exportar neste navegador: {falta}
+              <p className="exportar__ajuda">
+                Este navegador não monta o vídeo sozinho ({falta.replace(/\.$/, '')}): ele é montado no servidor.
               </p>
             )}
             {outraRodando && (
@@ -209,8 +236,8 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
             )}
 
             <footer className="exportar__rodape">
-              <span className="exportar__ajuda">Você pode continuar editando enquanto exporta. Não feche esta aba até terminar.</span>
-              <button type="button" className="botao botao--primario" disabled={Boolean(falta) || outraRodando || duracaoMs <= 0} onClick={exportar}>
+              <span className="exportar__ajuda">{onde === 'servidor' ? 'Você pode continuar editando enquanto o servidor monta o vídeo.' : 'Você pode continuar editando enquanto exporta. Não feche esta aba até terminar.'}</span>
+              <button type="button" className="botao botao--primario" disabled={outraRodando || duracaoMs <= 0} onClick={exportar}>
                 <IconeExportar size={16} />
                 Exportar
               </button>
@@ -238,8 +265,8 @@ function Andamento({ tarefa, aoFechar, aoRefazer }: { tarefa: TarefaDeExportacao
         </span>
         <h3>Vídeo pronto</h3>
         <p className="exportar__ajuda">
-          {r.largura}×{r.altura} · {formatarDuracao(r.duracaoMs)} · {formatarBytes(r.bytes)} · exportado em {formatarDuracao(r.levouMs)}. O download começou
-          sozinho; se não começou, use o botão.
+          {r.largura}×{r.altura} · {formatarDuracao(r.duracaoMs)} · {formatarBytes(r.bytes)} · exportado em {formatarDuracao(r.levouMs)}.{' '}
+          {ehAparelhoApple() ? 'Toque em “Salvar no iPhone” e escolha “Salvar vídeo”.' : 'O download começou sozinho; se não começou, use o botão.'}
         </p>
         {r.avisos.map((a) => (
           <p key={a} className="exportar__alerta">
@@ -248,7 +275,7 @@ function Andamento({ tarefa, aoFechar, aoRefazer }: { tarefa: TarefaDeExportacao
         ))}
         <div className="exportar__botoes">
           <button type="button" className="botao botao--primario" onClick={() => baixar(r.url, r.nome)}>
-            <IconeExportar size={16} /> Baixar de novo
+            <IconeExportar size={16} /> {ehAparelhoApple() ? 'Salvar no iPhone' : 'Baixar de novo'}
           </button>
           <button type="button" className="botao botao--secundario" onClick={aoRefazer}>
             Exportar com outras opções
@@ -287,9 +314,9 @@ function Andamento({ tarefa, aoFechar, aoRefazer }: { tarefa: TarefaDeExportacao
       <div className="exportar__barra" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Progresso da exportação">
         <span style={{ width: `${pct}%` }} />
       </div>
-      <p className="exportar__etapa">{ROTULO_DA_ETAPA[p.etapa] ?? 'Exportando'}</p>
+      <p className="exportar__etapa">{p.rotulo ?? ROTULO_DA_ETAPA[p.etapa] ?? 'Exportando'}</p>
       <p className="exportar__ajuda">
-        {p.etapa === 'video' && p.totalDeQuadros > 0 ? `Quadro ${p.quadro} de ${p.totalDeQuadros}` : 'Isso leva alguns segundos'}
+        {p.etapa === 'video' && p.totalDeQuadros > 0 ? `Quadro ${p.quadro} de ${p.totalDeQuadros}` : p.rotulo ? 'Isso leva alguns minutos' : 'Isso leva alguns segundos'}
         {p.restanteMs !== null && p.restanteMs > 0 ? ` · faltam ~${formatarDuracao(p.restanteMs)}` : ''}
       </p>
       <p className="exportar__ajuda">Pode fechar esta janela e continuar editando: o progresso fica no canto da tela.</p>

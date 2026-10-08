@@ -873,6 +873,11 @@ function Editor({ projectId }: { projectId: string }) {
   const exportar = useCallback(
     (opcoes: OpcoesDeExportacao) => {
       if (!plano) return;
+      // No servidor (o iPhone vai por aqui): a fila de render monta o plano salvo.
+      if (opcoes.onde === 'servidor') {
+        useExportacoes.getState().iniciarNoServidor(projectId, titulo || projeto?.title || 'Vídeo', [...desligados]);
+        return;
+      }
       iniciarExportacao(projectId, {
         titulo: titulo || projeto?.title || 'Vídeo',
         plano: planoVisivel ?? plano,

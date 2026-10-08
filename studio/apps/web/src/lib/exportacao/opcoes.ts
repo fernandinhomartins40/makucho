@@ -20,6 +20,8 @@ export interface OpcoesDeExportacao {
   vinhetas: boolean;
   fonte: Fonte;
   nomeDoArquivo: string;
+  /** Onde o vídeo é montado: neste aparelho (WebCodecs) ou no servidor (o iPhone vai por aqui). */
+  onde?: 'aparelho' | 'servidor';
 }
 
 export const OPCOES_PADRAO: Omit<OpcoesDeExportacao, 'nomeDoArquivo'> = {

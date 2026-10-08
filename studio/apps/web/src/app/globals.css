@@ -14515,3 +14515,28 @@ button.midia-cartao__previa:disabled {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* ---------- iPhone: o toque em fundos e véus chega ao React ----------
+   O Safari do iPhone não entrega o "clique" de um elemento que não é
+   botão/link quando os eventos são ouvidos na raiz (o React): sem
+   cursor: pointer, tocar fora de uma gaveta, de um diálogo ou da tela
+   cheia não fazia nada. */
+.editor__veu,
+.folha,
+.exportar,
+.atalhos__veu,
+.palco__cheia-fundo,
+.editor-icone__fundo,
+.timeline__menu {
+  cursor: pointer;
+}
+
+/* iPhone: campo com letra menor que 16 px faz o Safari dar zoom na página
+   ao tocar para digitar -- a gaveta e o vídeo saíam do lugar. */
+@media (max-width: 899px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}

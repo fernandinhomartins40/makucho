@@ -44,6 +44,8 @@ export function quadroDoOriginal(src: string, sourceMs: number, w: number, h: nu
     if (!video || video.src !== src) {
       video = document.createElement('video');
       video.muted = true;
+      // iPhone: sem playsinline o vídeo não entrega quadros fora da tela cheia.
+      video.playsInline = true;
       video.preload = 'auto';
       video.crossOrigin = 'anonymous';
       const carregou = esperar(video, 'loadeddata');

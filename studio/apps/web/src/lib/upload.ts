@@ -111,6 +111,8 @@ export function duracaoDe(arquivo: Blob): Promise<number | null> {
     const url = URL.createObjectURL(arquivo);
     const video = document.createElement('video');
     video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
 
     const encerrar = (ms: number | null) => {
       URL.revokeObjectURL(url);
