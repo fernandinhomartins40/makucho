@@ -2104,7 +2104,8 @@ export interface AjusteDaCena {
 export function lerAjuste(bruto: unknown): AjusteDaCena | undefined {
   const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
   const n = (v: unknown, min: number, max: number, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : padrao);
-  const a: AjusteDaCena = { x: Math.round(n(b.x, -500, 500, 0)), y: Math.round(n(b.y, -900, 900, 0)), escala: Math.round(n(b.escala, 0.4, 2, 1) * 100) / 100 };
+  // A cena inteira vai a qualquer lugar do quadro (o limite é o próprio quadro).
+  const a: AjusteDaCena = { x: Math.round(n(b.x, -1080, 1080, 0)), y: Math.round(n(b.y, -1920, 1920, 0)), escala: Math.round(n(b.escala, 0.3, 3, 1) * 100) / 100 };
   const els = b.elementos && typeof b.elementos === 'object' ? Object.entries(b.elementos as Record<string, unknown>) : [];
   const elementos: Record<string, { x: number; y: number; escala: number }> = {};
   for (const [chave, v] of els.slice(0, 40)) {
@@ -2125,8 +2126,14 @@ export function cssDoAjuste(a: AjusteDaCena | undefined): string {
   // !important: o GSAP grava "scale: none; translate: none" no estilo de cada elemento que ele
   // anima (a cena inteira, os objetos, os textos que entram) -- sem isso o ajuste não vale neles.
   const cena = a.x || a.y || a.escala !== 1 ? `.mg { translate: ${a.x}px ${a.y}px !important; scale: ${a.escala} !important; }` : '';
+  // A linha de título mora numa máscara (.mg-m, .cz-m) que corta o que sai dela -- ela só existe
+  // para a letra subir na entrada. Peça dentro de máscara: quem se move é a máscara, e nada é cortado.
+  const MASCARAS = ':is(.mg-m, .cz-m)';
   const els = Object.entries(a.elementos ?? {})
-    .map(([k, e]) => `[data-ed="${k}"] { translate: ${e.x}px ${e.y}px !important; scale: ${e.escala} !important; }`)
+    .map(([k, e]) => {
+      const regra = `translate: ${e.x}px ${e.y}px !important; scale: ${e.escala} !important;`;
+      return `[data-ed="${k}"]:not(${MASCARAS} > *) { ${regra} } ${MASCARAS}:has(> [data-ed="${k}"]) { ${regra} }`;
+    })
     .join(' ');
   return `\n${MARCA_DO_AJUSTE}${cena}${els ? ` ${els}` : ''}`;
 }
@@ -2203,6 +2210,9 @@ const EDITAVEIS: ReadonlyArray<readonly [string, string]> = [
   ['vs-a', 'a'], ['vs-b', 'b'], ['vs-meio', ''], ['selo', 'titulo'], ['busca', 'titulo'], ['notif', ''], ['bolha', ''], ['rot-caixa', ''],
   ['mg-lista', ''], ['mg-passos', ''], ['mg-rank', ''], ['mg-barras', ''], ['mg-linha', ''], ['anel', ''], ['ico-roda', ''], ['obj-roda', ''],
   ['anot-ast', ''], ['cit-aspas', ''], ['mg-linhas', 'titulo'], ['mg-k', 'kicker'], ['mg-d', 'detalhe'], ['mg-num', 'numero'], ['mg-t', 'titulo'],
+  // As figuras e as partes dos cards (o que não é texto também se move e muda de tamanho sozinho).
+  ['ld-tile', ''], ['jn-ic', ''], ['dm-app', ''], ['dm-doc', ''], ['cm-av', ''], ['cm-env', ''], ['notif-app', ''], ['pl-tubo', ''], ['ng-mt', ''],
+  ['mg-trilho', ''], ['barra', ''], ['tl-f', ''], ['sl-caixa', ''], ['hud', ''], ['dm-seta', ''], ['ast', ''], ['icd', ''], ['ic', ''],
 ];
 
 /** O html com `data-ed` (a chave da peça: classe.ordem) e `data-campo` nas peças editáveis. */
