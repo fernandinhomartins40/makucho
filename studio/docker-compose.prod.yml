@@ -142,6 +142,10 @@ services:
       # Subdominio proprio: a sessao do studio nao vale no portal.
       COOKIE_DOMAIN: ${STUDIO_DOMAIN}
       COOKIE_SECURE: 'true'
+      # A mesma senha do portal no Studio: quando a senha nao confere aqui, o
+      # Studio pergunta ao login do portal pela rede interna (makucho-net).
+      # Vazio desliga (senha-do-portal.ts).
+      PORTAL_API_URL: ${PORTAL_API_URL:-http://makucho-api:3001/api}
       CORS_ORIGINS: ${STUDIO_CORS_ORIGINS}
       # nginx do host + nginx do compose = 2 saltos ate o IP real.
       TRUST_PROXY_HOPS: '2'

@@ -11,6 +11,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
+import { conferirNoPortal, type ContaDoPortal } from './senha-do-portal';
+
+/** Os parâmetros do Argon2id do Studio (os mesmos em todo hash daqui). */
+const OPCOES_DO_HASH = { type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4 } as const;
 
 export interface TokenPair {
   accessToken: string;
@@ -181,34 +185,66 @@ export class AuthService {
   }
 
   async validateUser(email: string, senha: string) {
+    const emailNormal = email.trim().toLowerCase();
     const user = await this.prisma.studioUser.findUnique({
-      where: { email: email.trim().toLowerCase() },
+      where: { email: emailNormal },
       include: { memberships: { include: { workspace: true } } },
     });
 
-    // Mesmo sem usuario, gastamos o tempo de uma verificacao: responder
-    // mais rapido para e-mail inexistente revela quais estao cadastrados.
-    if (!user) {
+    if (user) {
+      const senhaConfere = await argon2.verify(user.passwordHash, senha).catch(() => false);
+      if (senhaConfere) {
+        // Sem workspace nao ha o que acessar: todo dado do produto e
+        // alcancado por workspaceId.
+        const membership = user.memberships[0];
+        if (!membership) {
+          throw new UnauthorizedException('usuario sem workspace associado');
+        }
+        return { user, membership };
+      }
+    } else {
+      // Mesmo sem usuario, gastamos o tempo de uma verificacao: responder
+      // mais rapido para e-mail inexistente revela quais estao cadastrados.
       await argon2.verify(
         '$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHR2YWx1ZQ$0000000000000000000000000000000000000000000',
         senha,
       ).catch(() => undefined);
+    }
+
+    // A senha nao confere no Studio: a do portal vale (senha-do-portal.ts).
+    const doPortal = await conferirNoPortal(emailNormal, senha);
+    if (!doPortal) {
       throw new UnauthorizedException('e-mail ou senha incorretos');
     }
+    return this.entrarPeloPortal(doPortal, senha);
+  }
 
-    const senhaConfere = await argon2.verify(user.passwordHash, senha).catch(() => false);
-    if (!senhaConfere) {
-      throw new UnauthorizedException('e-mail ou senha incorretos');
-    }
-
-    // Sem workspace nao ha o que acessar: todo dado do produto e
-    // alcancado por workspaceId.
-    const membership = user.memberships[0];
-    if (!membership) {
-      throw new UnauthorizedException('usuario sem workspace associado');
-    }
-
-    return { user, membership };
+  /**
+   * A conta do portal entra no Studio: a senha passa a ser a mesma aqui
+   * (o proximo login nem pergunta ao portal), e quem ainda nao tinha
+   * conta ganha uma no workspace do Studio, com o papel do portal.
+   */
+  private async entrarPeloPortal(conta: ContaDoPortal, senha: string) {
+    const passwordHash = await argon2.hash(senha, OPCOES_DO_HASH);
+    await this.prisma.$transaction(async (tx) => {
+      const existente = await tx.studioUser.findUnique({ where: { email: conta.email }, include: { memberships: true } });
+      const usuario = existente
+        ? await tx.studioUser.update({ where: { id: existente.id }, data: { passwordHash } })
+        : await tx.studioUser.create({ data: { email: conta.email, passwordHash, name: conta.nome } });
+      if (existente?.memberships.length) return;
+      // O workspace do Studio (e um cliente so); sem nenhum, o primeiro.
+      let espaco = await tx.workspace.findFirst({ orderBy: { createdAt: 'asc' } });
+      if (!espaco) {
+        espaco = await tx.workspace.create({ data: { name: 'Makucho', slug: 'makucho' } });
+        await tx.retentionSettings.upsert({ where: { workspaceId: espaco.id }, create: { workspaceId: espaco.id }, update: {} });
+      }
+      await tx.membership.create({ data: { userId: usuario.id, workspaceId: espaco.id, role: conta.papel } });
+    });
+    const user = await this.prisma.studioUser.findUniqueOrThrow({
+      where: { email: conta.email },
+      include: { memberships: { include: { workspace: true } } },
+    });
+    return { user, membership: user.memberships[0]! };
   }
 
   async issueTokens(tenant: TenantContext): Promise<TokenPair> {
