@@ -175,8 +175,8 @@ for (const v of VISUAIS_DE_MOTION) {
   t('campos do modelo, com os obrigatórios', camposDoPreset('placar').filter((c) => c.obrigatorio).map((c) => c.campo).join() === 'a,b,valores');
   const comp = composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Editor' }, layout: 'cartao' }, 'mg-soco', 5, []);
   const movida = comAjuste(comp, lerAjuste({ x: 40, y: -120, escala: 1.2 }));
-  t('posição e tamanho na hora: só o CSS do ajuste muda', movida.html === comp.html && movida.css.endsWith('.mg { translate: 40px -120px; scale: 1.2; }'));
-  t('o ajuste fica guardado na cena (remontar mantém)', cenaDaComposicao(movida)?.ajuste?.y === -120 && composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('translate: 40px -120px'));
+  t('posição e tamanho na hora: só o CSS do ajuste muda', movida.html === comp.html && movida.css.endsWith('.mg { translate: 40px -120px !important; scale: 1.2 !important; }'));
+  t('o ajuste fica guardado na cena (remontar mantém)', cenaDaComposicao(movida)?.ajuste?.y === -120 && composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('translate: 40px -120px !important'));
   t('ajustar de novo troca, não acumula', (comAjuste(movida, lerAjuste({ x: 0, y: 0, escala: 0.8 })).css.match(/ajuste-da-cena/g) ?? []).length === 1);
   t('voltar ao original tira o ajuste', !comAjuste(movida, undefined).css.includes('ajuste-da-cena') && !cenaDaComposicao(comAjuste(movida, undefined))?.ajuste);
   t('ajuste preso a limites (a cena não sai do quadro)', lerAjuste({ x: 9999, y: -9999, escala: 9 })?.x === 500 && lerAjuste({ x: 9999, y: -9999, escala: 9 })?.escala === 2);
@@ -188,7 +188,7 @@ for (const v of VISUAIS_DE_MOTION) {
   t('as peças editáveis levam data-ed e o campo do texto', c.html.includes('data-ed="cz.0" data-campo="titulo"') && c.html.includes('data-ed="cz-a.0" data-campo="kicker"'));
   t('a raiz da cena e as linhas soltas não são peças', !/class="mg mg-quadro"[^>]*data-ed|data-ed="[^"]*"[^>]*class="[^"]*mg-l/.test(c.html));
   const movida = comAjuste(c, lerAjuste({ x: 0, y: 0, escala: 1, elementos: { 'cz.0': { x: 100, y: 50, escala: 1.5 } } }));
-  t('ajuste de uma peça só', movida.css.includes('[data-ed="cz.0"] { translate: 100px 50px; scale: 1.5; }') && !movida.css.includes('.mg { translate'));
+  t('ajuste de uma peça só', movida.css.includes('[data-ed="cz.0"] { translate: 100px 50px !important; scale: 1.5 !important; }') && !movida.css.includes('.mg { translate'));
   t('o ajuste da peça fica guardado e volta ao remontar', composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('[data-ed="cz.0"]'));
   t('chave de peça estranha não entra', !lerAjuste({ elementos: { 'x"]{}': { x: 1, y: 1, escala: 1 } } }));
   t('modelo de amostra: a cena atual quando serve, o exemplo quando falta', amostraDoModelo({ preset: 'contador', textos: { numero: '87', titulo: 'x' }, layout: 'meio_a_meio' }, 'numero_gigante').faltam === null && amostraDoModelo({ preset: 'contador', textos: { numero: '87', titulo: 'x' }, layout: 'meio_a_meio' }, 'versus').faltam !== null);

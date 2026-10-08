@@ -361,11 +361,16 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
   var hfRelatar = function () {
     if (!hfEditando) return;
     var lista = [], els = document.querySelectorAll('[data-ed]');
+    // A cena inteira (a raiz .mg) também é uma peça: o grupo de tudo.
+    var raiz = document.querySelector('#area .mg');
+    if (raiz) { var rr = raiz.getBoundingClientRect(); lista.push({ chave: 'cena', campo: '', pai: null, x: rr.left, y: rr.top, w: rr.width, h: rr.height }); }
     for (var i = 0; i < els.length; i++) {
       var el = els[i], r = el.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) continue;
       if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
-      lista.push({ chave: el.getAttribute('data-ed'), campo: el.getAttribute('data-campo') || '', x: r.left, y: r.top, w: r.width, h: r.height });
+      // O grupo dela: a peça mais próxima que a contém (ou a cena).
+      var acima = el.parentElement && el.parentElement.closest('[data-ed]');
+      lista.push({ chave: el.getAttribute('data-ed'), campo: el.getAttribute('data-campo') || '', pai: acima ? acima.getAttribute('data-ed') : 'cena', x: r.left, y: r.top, w: r.width, h: r.height });
     }
     window.parent.postMessage({ hfEd: lista }, '*');
   };

@@ -2122,9 +2122,11 @@ const MARCA_DO_AJUSTE = '/*ajuste-da-cena*/';
 /** O CSS do ajuste: a cena inteira (não o fundo) deslocada e em outro tamanho. */
 export function cssDoAjuste(a: AjusteDaCena | undefined): string {
   if (!a) return '';
-  const cena = a.x || a.y || a.escala !== 1 ? `.mg { translate: ${a.x}px ${a.y}px; scale: ${a.escala}; }` : '';
+  // !important: o GSAP grava "scale: none; translate: none" no estilo de cada elemento que ele
+  // anima (a cena inteira, os objetos, os textos que entram) -- sem isso o ajuste não vale neles.
+  const cena = a.x || a.y || a.escala !== 1 ? `.mg { translate: ${a.x}px ${a.y}px !important; scale: ${a.escala} !important; }` : '';
   const els = Object.entries(a.elementos ?? {})
-    .map(([k, e]) => `[data-ed="${k}"] { translate: ${e.x}px ${e.y}px; scale: ${e.escala}; }`)
+    .map(([k, e]) => `[data-ed="${k}"] { translate: ${e.x}px ${e.y}px !important; scale: ${e.escala} !important; }`)
     .join(' ');
   return `\n${MARCA_DO_AJUSTE}${cena}${els ? ` ${els}` : ''}`;
 }
@@ -2192,6 +2194,8 @@ function cssForaDoRosto(p: PessoaNoQuadro | null | undefined): string {
  * que cada uma mostra ('' = sem texto editável direto).
  */
 const EDITAVEIS: ReadonlyArray<readonly [string, string]> = [
+  // Os grupos (mexer neles leva tudo o que está dentro): o card com o fundo, os blocos de texto.
+  ['mg-caixa', ''], ['ico-txt', ''], ['anel-txt', ''], ['alerta-topo', ''], ['mg-vs', ''],
   ['cz-a', 'kicker'], ['cz-b', 'detalhe'], ['cz', 'titulo'], ['hud-w', 'titulo'], ['pf-k', 'kicker'], ['pf', 'titulo'],
   ['ng-k', 'kicker'], ['ng-num', 'numero'], ['pl-cab', 'titulo'], ['pl-a', 'a'], ['pl-b', 'b'], ['mo-tit', 'titulo'], ['mo-card', ''],
   ['ld-k', 'kicker'], ['ld-a', 'a'], ['ld-b', 'b'], ['sl-tag', 'titulo'], ['jn', ''], ['tlp', ''], ['cm-chamada', 'detalhe'], ['cm', ''], ['dm', ''],

@@ -14489,3 +14489,11 @@ button.midia-cartao__previa:disabled {
   transform: translateX(-50%);
   white-space: nowrap;
 }
+
+/* Grupos (a animação inteira, o card com o fundo): moldura discreta até selecionar. */
+.palco__peca[data-grupo] {
+  border-style: dotted;
+}
+.palco__edicao-animacao:hover .palco__peca[data-grupo]:not([data-selecionado]) {
+  border-color: rgb(255 255 255 / 22%);
+}

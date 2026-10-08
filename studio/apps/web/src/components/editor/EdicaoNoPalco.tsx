@@ -21,8 +21,11 @@ import type { AjusteDaCena, ComposicaoHtml } from '@makucho/studio-contracts';
 import { cenaDaComposicao, comAjuste, cssDoAjuste, lerAjuste } from '@makucho/studio-contracts';
 
 export interface PecaDaAnimacao {
+  /** data-ed da peça; "cena" é a animação inteira. */
   chave: string;
   campo: string;
+  /** O grupo que a contém (outra peça, "cena", ou null na própria cena). */
+  pai?: string | null;
   /** Px no quadro de 1080x1920 (onde a peça está agora, já com o ajuste). */
   x: number;
   y: number;
@@ -85,9 +88,10 @@ export function EdicaoNoPalco({
   }, [pecas, selecionada]);
 
   if (!cena) return null;
-  const daPeca = (chave: string, a: AjusteDaCena = atual): AjusteDaPeca => a.elementos?.[chave] ?? NEUTRO;
+  // A cena inteira usa o ajuste de cima (x, y, escala); cada peça, o dela.
+  const daPeca = (chave: string, a: AjusteDaCena = atual): AjusteDaPeca => (chave === 'cena' ? { x: a.x, y: a.y, escala: a.escala } : (a.elementos?.[chave] ?? NEUTRO));
   // Cada mudança parte do que está na tela (o pendente), e não do salvo: as mudanças se somam.
-  const comPeca = (chave: string, p: AjusteDaPeca, a: AjusteDaCena = atual): AjusteDaCena => ({ ...a, elementos: { ...(a.elementos ?? {}), [chave]: p } });
+  const comPeca = (chave: string, p: AjusteDaPeca, a: AjusteDaCena = atual): AjusteDaCena => (chave === 'cena' ? { ...a, ...p } : { ...a, elementos: { ...(a.elementos ?? {}), [chave]: p } });
   const aoVivo = (a: AjusteDaCena) => {
     setPendente(a);
     onAoVivo(cssDoAjuste(lerAjuste(a)));
@@ -188,8 +192,13 @@ export function EdicaoNoPalco({
     aoVivo(comPeca(chave, { ...p, escala: Math.round(limitar(p.escala * fator, MINIMO, 4) * 100) / 100 }));
   };
   const restaurar = (chave: string) => {
+    if (chave === 'cena') return aoVivo({ ...atual, ...NEUTRO });
     const { [chave]: _fora, ...resto } = atual.elementos ?? {};
     aoVivo({ ...atual, elementos: resto });
+  };
+  const mudou = (chave: string) => {
+    const p = daPeca(chave);
+    return p.x !== 0 || p.y !== 0 || p.escala !== 1;
   };
   const comecarTexto = (p: PecaDaAnimacao) => {
     if (!p.campo) return;
@@ -223,7 +232,7 @@ export function EdicaoNoPalco({
       }}
       ref={raiz}
     >
-      {pecas.map((p) => {
+      {[...pecas].sort((a, b) => b.w * b.h - a.w * a.h).map((p) => {
         const c = caixa(p);
         const marcada = p.chave === selecionada;
         return (
@@ -233,7 +242,8 @@ export function EdicaoNoPalco({
             tabIndex={0}
             className="palco__peca"
             data-selecionado={marcada || undefined}
-            aria-label={p.campo ? `Selecionar: ${p.campo}` : 'Selecionar a peça'}
+            data-grupo={p.chave === 'cena' || pecas.some((o) => o.pai === p.chave) || undefined}
+            aria-label={p.chave === 'cena' ? 'Selecionar a animação inteira' : p.campo ? `Selecionar: ${p.campo}` : 'Selecionar o grupo'}
             title="Arraste para mover · canto ou pinça para o tamanho · toque duplo para editar o texto"
             style={{ left: pct(c.x, W), top: pct(c.y, H), width: pct(c.w, W), height: pct(c.h, H) }}
             onPointerDown={mover(p)}
@@ -262,7 +272,12 @@ export function EdicaoNoPalco({
               Editar texto
             </button>
           )}
-          {atual.elementos?.[sel.chave] && (
+          {sel.pai && (
+            <button type="button" className="botao-link" title="Seleciona o conjunto que contém esta peça" onClick={() => setSelecionada(sel.pai!)}>
+              {sel.pai === 'cena' ? 'Selecionar tudo' : 'Selecionar o grupo'}
+            </button>
+          )}
+          {mudou(sel.chave) && (
             <button type="button" className="botao-link" onClick={() => restaurar(sel.chave)}>
               Tamanho original
             </button>
