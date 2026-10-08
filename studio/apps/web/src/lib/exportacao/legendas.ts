@@ -11,12 +11,23 @@
 // Por isso: desenha, espera DOIS ciclos (margem para computadores mais
 // lentos) e copia. O ciclo é por mensagem, não por `setTimeout`, que o
 // navegador desacelera quando a aba está em segundo plano.
+//
+// Legenda TRAVADA na exportação: o JASSUB marca-se "ocupado" enquanto o
+// worker desenha e DESCARTA em silêncio os pedidos que chegam nesse meio
+// tempo. Se o worker não responde mais (o WASM sem memória numa
+// exportação longa, por exemplo), ele fica ocupado para sempre e cada
+// quadro devolvia o último desenho: a legenda parava num ponto. Agora
+// cada quadro tem prazo; ocupado demais ou sem resposta, o renderizador é
+// recriado com a mesma legenda e o quadro é desenhado de novo. E ele se
+// renova de tempos em tempos, antes que a memória acumule.
 // ============================================================
 
 import { FONTES, fontesDoAss } from '../../components/editor/CamadaDeLegendas';
 
 interface Jassub {
   ready: Promise<void>;
+  /** O worker está desenhando: o pedido que chega agora é descartado. */
+  busy?: boolean;
   manualRender(dados: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }, repaint?: boolean): Promise<void>;
   destroy(): Promise<void>;
 }
@@ -33,10 +44,34 @@ function ciclo(): Promise<void> {
   });
 }
 
+/** Quanto um quadro pode levar para ser desenhado antes de o renderizador ser recriado. */
+const PRAZO_DO_QUADRO_MS = 4000;
+/** A cada tantos quadros (50 s a 30 fps), o renderizador é renovado: a memória do WASM não acumula. */
+const QUADROS_POR_INSTANCIA = 1500;
+
+/** A promessa ou `null` se passar do prazo (por mensagens e relógio: vale com a aba em segundo plano). */
+function comPrazo<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((ok, falha) => {
+    const t = setTimeout(() => ok(null), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        ok(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        falha(e);
+      },
+    );
+  });
+}
+
 export class RenderizadorDeLegendas {
   private j: Jassub | null = null;
   private canvas: HTMLCanvasElement;
   private recipiente: HTMLDivElement;
+  private ass = '';
+  private quadrosNestaInstancia = 0;
 
   private constructor(
     private largura: number,
@@ -62,35 +97,70 @@ export class RenderizadorDeLegendas {
 
   static async criar(ass: string, largura: number, altura: number): Promise<RenderizadorDeLegendas> {
     const r = new RenderizadorDeLegendas(largura, altura);
+    r.ass = ass;
+    await r.iniciar();
+    return r;
+  }
+
+  /** Um JASSUB novo no mesmo canvas (no começo e sempre que o anterior travar ou envelhecer). */
+  private async iniciar(): Promise<void> {
+    const anterior = this.j;
+    this.j = null;
+    if (anterior) await comPrazo(anterior.destroy().catch(() => undefined), 2000);
+    // Canvas novo: o anterior pode ter ficado preso ao worker antigo (OffscreenCanvas transferido).
+    const canvas = document.createElement('canvas');
+    Object.assign(canvas.style, { width: `${this.largura}px`, height: `${this.altura}px`, display: 'block' });
+    this.canvas.replaceWith(canvas);
+    this.canvas = canvas;
     const { default: JASSUB } = await import('jassub');
-    r.j = new JASSUB({
-      canvas: r.canvas,
-      subContent: ass,
-      fonts: fontesDoAss(ass),
+    const j = new JASSUB({
+      canvas: this.canvas,
+      subContent: this.ass,
+      fonts: fontesDoAss(this.ass),
       availableFonts: FONTES,
       queryFonts: false,
     }) as unknown as Jassub;
-    await r.j.ready;
+    await j.ready;
+    this.j = j;
+    this.quadrosNestaInstancia = 0;
     // O `manualRender` com o tamanho do vídeo é o que configura o quadro
     // do libass (sem ele, nada é desenhado) -- o mesmo caminho da prévia.
-    await r.quadro(0);
-    return r;
+    await this.desenhar(0);
+  }
+
+  /** Desenha o instante; `false` se o worker não respondeu no prazo (ou descartou o pedido por estar ocupado). */
+  private async desenhar(ms: number): Promise<boolean> {
+    const j = this.j;
+    if (!j) return false;
+    // Ocupado com um desenho anterior: espera um pouco; preso nisso, o pedido seria descartado em silêncio.
+    for (let i = 0; j.busy && i < 40; i += 1) await new Promise((ok) => setTimeout(ok, 25));
+    if (j.busy) return false;
+    const feito = await comPrazo(
+      j.manualRender({ expectedDisplayTime: performance.now(), width: this.largura, height: this.altura, mediaTime: ms / 1000 }, true).then(() => true),
+      PRAZO_DO_QUADRO_MS,
+    );
+    if (!feito) return false;
+    await ciclo();
+    await ciclo();
+    return true;
   }
 
   /** A imagem das legendas e textos no instante `ms` (transparente onde não há texto). */
   async quadro(ms: number): Promise<CanvasImageSource | null> {
-    const j = this.j;
-    if (!j) return null;
-    await j.manualRender({ expectedDisplayTime: performance.now(), width: this.largura, height: this.altura, mediaTime: ms / 1000 }, true);
-    await ciclo();
-    await ciclo();
-    return this.canvas;
+    if (!this.j) return null;
+    // Renova de tempos em tempos: a memória do WASM não acumula numa exportação longa.
+    if (this.quadrosNestaInstancia >= QUADROS_POR_INSTANCIA) await this.iniciar();
+    this.quadrosNestaInstancia += 1;
+    if (await this.desenhar(ms).catch(() => false)) return this.canvas;
+    // Travou: um renderizador novo, com a mesma legenda, desenha o quadro de novo.
+    await this.iniciar();
+    return (await this.desenhar(ms).catch(() => false)) ? this.canvas : null;
   }
 
   async destruir(): Promise<void> {
     const j = this.j;
     this.j = null;
-    if (j) await j.destroy().catch(() => undefined);
+    if (j) await comPrazo(j.destroy().catch(() => undefined), 2000);
     this.recipiente.remove();
   }
 }
