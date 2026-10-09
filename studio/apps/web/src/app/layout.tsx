@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Moldura } from '../components/shell/Moldura';
 import { RegistrarServiceWorker } from '../components/pwa/RegistrarServiceWorker';
 import './globals.css';
+// Depois do globals: troca os tokens e a aparência das peças comuns.
+import './liquid-glass.css';
 
 /**
  * Telas de abertura do iOS, por aparelho (tamanho em pontos e densidade).
@@ -62,9 +64,10 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Studio',
-    // Conteúdo sob a barra de status, como um app nativo; o layout
-    // respeita a área segura (env(safe-area-inset-*)).
-    statusBarStyle: 'black-translucent',
+    // 'default' e não 'black-translucent': este último deixa o relógio e
+    // a bateria sempre BRANCOS, e sobre o fundo claro eles sumiam. O iOS
+    // lê isto na instalação: quem já tem o app precisa reinstalar.
+    statusBarStyle: 'default',
     startupImage: telasDeAbertura,
   },
   formatDetection: { telephone: false },
@@ -75,13 +78,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#06132d',
+  // A cor da barra do navegador acompanha o tema do aparelho.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#f2f2f7' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+  ],
   width: 'device-width',
   initialScale: 1,
   // `cover`: o app ocupa a tela inteira do iPhone (atrás do entalhe e da
   // barra de gestos), e as áreas seguras ficam por conta do CSS.
   viewportFit: 'cover',
-  colorScheme: 'dark',
+  colorScheme: 'light dark',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

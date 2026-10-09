@@ -2251,7 +2251,7 @@ function EscolherProjeto() {
         <h1 style={{ fontSize: 19 }}>Editor</h1>
       </header>
       <div className="conteudo">
-        <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gap: 'var(--e4)' }}>
+        <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--e4)' }}>
           <p className="texto-secundario">Escolha o vídeo que você quer editar.</p>
           {carregando && <span className="esqueleto" style={{ height: 64 }} />}
           {erro && (

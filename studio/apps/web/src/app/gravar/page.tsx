@@ -31,7 +31,7 @@ import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVert
 import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
 import type { TipoDeVideo } from '@makucho/studio-contracts';
 import { EscolhaDoEstilo } from '../../components/novo-video/EscolhaDoEstilo';
-import { RECEITAS, TIPOS_DE_VIDEO, estiloDeAnimacao } from '@makucho/studio-contracts';
+import { RECEITAS, TIPOS_DE_VIDEO } from '@makucho/studio-contracts';
 import {
   enviar,
   duracaoDe,
@@ -523,14 +523,15 @@ function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
   };
 }
 
-// Os quatro passos. Um de cada vez: a tela antiga mostrava tudo junto
-// (nome, tipo, resumo, estilo, envio, gravação, lista) e quem não é da
-// área não sabia por onde começar.
+// Os três passos, um de cada vez. Eram quatro: o último ("Revisar") só
+// repetia o que a pessoa tinha acabado de escolher, e a régua de cima já
+// deixa voltar a qualquer passo. O que é obrigatório vem primeiro (o
+// vídeo); o estilo tem um padrão bom (Automático) e os detalhes são
+// todos opcionais -- dá para terminar em três toques.
 const PASSOS = [
-  { titulo: 'Seu vídeo', pergunta: 'Envie ou grave o seu vídeo' },
-  { titulo: 'Sobre o vídeo', pergunta: 'Conte para a IA do que se trata' },
-  { titulo: 'Visual', pergunta: 'Escolha o visual das animações' },
-  { titulo: 'Revisar', pergunta: 'Tudo certo? A IA monta o resto' },
+  { titulo: 'Vídeo', pergunta: 'Envie ou grave o seu vídeo' },
+  { titulo: 'Estilo', pergunta: 'Escolha o estilo' },
+  { titulo: 'Detalhes', pergunta: 'Algum detalhe para a IA?' },
 ] as const;
 
 const ICONE_DO_TIPO: Record<TipoDeVideo, typeof IconeCamera> = {
@@ -681,9 +682,6 @@ function Composicao({
       </nav>
 
       <header className="assistente__cabeca">
-        <span className="assistente__contagem">
-          Passo {passo + 1} de {PASSOS.length}
-        </span>
         <h1>{PASSOS[passo]!.pergunta}</h1>
       </header>
 
@@ -708,7 +706,7 @@ function Composicao({
                   <IconeNuvem size={30} />
                 </span>
                 <span className="caminho__titulo">Enviar um vídeo pronto</span>
-                <span className="caminho__texto">Do computador ou do celular. Pode ser mais de um: eles viram um vídeo só.</span>
+                <span className="caminho__texto">Um ou vários: eles viram um vídeo só.</span>
                 <span className="caminho__acao">
                   <IconeEnviar size={16} /> Escolher vídeos
                 </span>
@@ -719,7 +717,7 @@ function Composicao({
                 </span>
                 <span className="caminho__titulo">Gravar agora</span>
                 <span className="caminho__texto">
-                  {temRoteiroProprio ? 'Com o seu roteiro ao lado da câmera.' : 'Com um teleprompter que guia o que falar.'}
+                  {temRoteiroProprio ? 'Com o seu roteiro na tela.' : 'Com o texto na tela para guiar.'}
                 </span>
                 <span className="caminho__acao">
                   <IconeCamera size={16} /> Abrir a câmera
@@ -788,18 +786,25 @@ function Composicao({
         </div>
       )}
 
-      {/* ---------- 2. Sobre o vídeo ---------- */}
+      {/* ---------- 2. Estilo ---------- */}
       {passo === 1 && (
+        <div className="assistente__corpo">
+          <EscolhaDoEstilo valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
+        </div>
+      )}
+
+      {/* ---------- 3. Detalhes (tudo opcional) ---------- */}
+      {passo === 2 && (
         <div className="assistente__corpo">
           <div className="campo" style={{ marginBottom: 0 }}>
             <span className="campo__rotulo" id="rotulo-do-tipo">
-              Que tipo de vídeo é?
+              Tipo de vídeo
             </span>
             <div className="tipos-em-cartoes" role="radiogroup" aria-labelledby="rotulo-do-tipo">
               <button type="button" role="radio" aria-checked={tipoDoVideo === null} onClick={() => onTipoDoVideo(null)}>
                 <IconeIA size={22} weight="fill" />
-                <strong>Não sei / Automático</strong>
-                <span>A IA descobre pelo vídeo</span>
+                <strong>Automático</strong>
+                <span>A IA descobre</span>
               </button>
               {TIPOS_DE_VIDEO.map((t) => {
                 const Icone = ICONE_DO_TIPO[t];
@@ -825,12 +830,11 @@ function Composicao({
               placeholder="Ex.: 3 erros no atendimento pelo WhatsApp"
               onChange={(e) => onTitulo(e.target.value)}
             />
-            <span className="campo__ajuda">Só para você achar depois. Sem nome, usamos o do arquivo.</span>
           </label>
 
           <label className="campo" style={{ marginBottom: 0 }}>
             <span className="campo__rotulo">
-              Algo que a IA precisa saber? <span className="texto-secundario">(opcional)</span>
+              O que a IA precisa saber <span className="texto-secundario">(opcional)</span>
             </span>
             <textarea
               className="campo__entrada"
@@ -841,57 +845,8 @@ function Composicao({
               onChange={(e) => onResumo(e.target.value)}
               style={{ resize: 'vertical', minHeight: 64 }}
             />
-            <span className="campo__ajuda">Preço, oferta, nome do produto. A IA usa isso nos textos da tela e nunca inventa o que não está aqui.</span>
+            <span className="campo__ajuda">Preço, oferta, nome do produto: a IA usa nos textos da tela.</span>
           </label>
-        </div>
-      )}
-
-      {/* ---------- 3. Visual ---------- */}
-      {passo === 2 && (
-        <div className="assistente__corpo">
-          <p className="texto-secundario" style={{ fontSize: 14, margin: 0 }}>
-            As animações são os títulos, números e gráficos que aparecem junto da sua fala. Toque num estilo para escolher, ou deixe no
-            Automático.
-          </p>
-          <EscolhaDoEstilo valor={estilo} onValor={onEstilo} paleta={paleta} onPaleta={onPaleta} />
-        </div>
-      )}
-
-      {/* ---------- 4. Revisar ---------- */}
-      {passo === 3 && (
-        <div className="assistente__corpo">
-          <dl className="revisao">
-            <LinhaDaRevisao
-              rotulo="Vídeo"
-              valor={
-                itens.length === 1
-                  ? itens[0]!.nome
-                  : `${itens.length} vídeos, juntados nesta ordem`
-              }
-              detalhe={pendentes ? `Enviando… ${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length} prontos` : comErro ? 'Algum envio falhou' : 'Enviado'}
-              onAlterar={() => irPara(0)}
-            />
-            <LinhaDaRevisao
-              rotulo="Tipo"
-              valor={tipoDoVideo ? RECEITAS[tipoDoVideo].rotulo : 'Automático'}
-              detalhe={[titulo.trim(), resumo.trim()].filter(Boolean).join(' · ') || undefined}
-              onAlterar={() => irPara(1)}
-            />
-            <LinhaDaRevisao
-              rotulo="Visual"
-              valor={estiloDeAnimacao(estilo)?.nome ?? 'Automático'}
-              detalhe={estiloDeAnimacao(estilo)?.carater ?? 'A IA escolhe pelo tom da fala'}
-              onAlterar={() => irPara(2)}
-            />
-          </dl>
-
-          <div className="aviso aviso--info" style={{ alignItems: 'flex-start' }}>
-            <IconeIA size={18} weight="fill" />
-            <span>
-              A IA transcreve, corta, põe legenda e cria as animações. Leva alguns minutos, e você acompanha tudo no editor, onde dá para
-              mudar o que quiser.
-            </span>
-          </div>
 
           {comErro && (
             <p className="campo__ajuda" style={{ color: 'var(--danger)' }} role="alert">
@@ -918,30 +873,15 @@ function Composicao({
               ? 'Abrindo a edição…'
               : pendentes
                 ? `Terminando o envio (${itens.filter((i) => i.estado === 'pronto').length} de ${itens.length})…`
-                : 'Criar meu vídeo com IA'}
+                : 'Criar vídeo com IA'}
           </button>
         ) : (
           <button type="button" className="botao" disabled={!podeAvancar} onClick={() => irPara(passo + 1)}>
-            {passo === 0 && !temItens ? 'Envie ou grave para continuar' : 'Continuar'}
+            Continuar
             <IconeAvancar size={16} />
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-function LinhaDaRevisao({ rotulo, valor, detalhe, onAlterar }: { rotulo: string; valor: string; detalhe?: string | undefined; onAlterar: () => void }) {
-  return (
-    <div className="revisao__linha">
-      <dt>{rotulo}</dt>
-      <dd>
-        <strong>{valor}</strong>
-        {detalhe && <span className="texto-secundario">{detalhe}</span>}
-      </dd>
-      <button type="button" className="botao botao--fantasma botao--pequeno" onClick={onAlterar}>
-        Alterar
-      </button>
     </div>
   );
 }

@@ -1,28 +1,27 @@
 'use client';
 
 // ============================================================
-// Criar vídeo: o caminho inteiro em uma sequência.
+// Criar vídeo: UMA pergunta, antes dos três passos.
 //
-// Antes eram duas páginas soltas na navegação (Roteiro e Gravar) e a
-// pessoa leiga não sabia por qual começar. Aqui são duas perguntas,
-// com respostas grandes: sobre o que é o vídeo (a IA escreve, um
-// roteiro seu, ou de improviso) e como gravar (com o texto na tela, ou
-// enviando um vídeo pronto). O terceiro passo -- a IA montar a edição
-// -- acontece sozinho depois do envio.
+// Antes eram duas perguntas aqui (assunto e gravação), com uma régua
+// de etapas própria, e logo depois o assistente de /gravar perguntava
+// de novo "enviar ou gravar?" com OUTRA régua de quatro passos. Duas
+// contagens para o mesmo caminho: ninguém sabia em que passo estava.
+//
+// Agora esta tela só decide por onde começar, numa lista de linhas
+// grandes (como as de Ajustes do iPhone). O caminho contado é um só,
+// o de /gravar: Vídeo, Estilo e Detalhes.
 // ============================================================
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Topbar } from '../../components/shell/Topbar';
 import { roteiros as apiRoteiros, type RoteiroNaLista } from '../../lib/api';
-import { IconeIA, IconeRoteiro, IconeMicrofone, IconeGravar, IconeEnviar, IconeVoltar, IconeAvancar } from '../../components/icones';
+import { IconeIA, IconeRoteiro, IconeGravar, IconeEnviar, IconeVoltar, IconeAvancar } from '../../components/icones';
 import type { Icon } from '@phosphor-icons/react';
 
-type Passo = 'assunto' | 'meus' | 'gravacao';
-
 export default function CriarVideo() {
-  const [passo, setPasso] = useState<Passo>('assunto');
-  const [roteiroId, setRoteiroId] = useState<string | null>(null);
+  const [escolhendoRoteiro, setEscolhendoRoteiro] = useState(false);
   const [lista, setLista] = useState<RoteiroNaLista[] | null>(null);
 
   useEffect(() => {
@@ -32,93 +31,47 @@ export default function CriarVideo() {
       .catch(() => setLista([]));
   }, []);
 
-  const comRoteiro = roteiroId ? `roteiro=${roteiroId}&` : '';
-  const numero = passo === 'gravacao' ? 2 : 1;
-
   return (
     <>
-      <Topbar titulo="Criar vídeo" />
+      <Topbar />
       <div className="conteudo">
         <div className="criar">
-          <ol className="criar__passos" aria-label="Etapas">
-            <li data-estado={numero === 1 ? 'atual' : 'feito'}>
-              <b>1</b> Assunto
-            </li>
-            <li data-estado={numero === 2 ? 'atual' : 'pendente'}>
-              <b>2</b> Gravação
-            </li>
-            <li data-estado="pendente">
-              <b>3</b> A IA edita
-            </li>
-          </ol>
-
-          {passo === 'assunto' && (
+          {!escolhendoRoteiro && (
             <>
-              <h1>Sobre o que é o seu vídeo?</h1>
+              <h1>Criar vídeo</h1>
+              <p className="criar__sub">Como você quer começar?</p>
               <div className="criar__opcoes">
-                <Opcao
-                  Icone={IconeIA}
-                  titulo="A IA escreve o roteiro"
-                  texto="Você diz o assunto em uma frase."
-                  href="/roteiros?novo=1"
-                  destaque
-                />
+                <Opcao Icone={IconeGravar} titulo="Gravar agora" texto="Pela câmera, com o texto na tela." href="/gravar?modo=camera" destaque />
+                <Opcao Icone={IconeEnviar} titulo="Enviar um vídeo pronto" texto="Da galeria ou dos arquivos." href="/gravar?modo=enviar" />
+                <Opcao Icone={IconeIA} titulo="Escrever o roteiro com IA" texto="Você diz o assunto em uma frase." href="/roteiros?novo=1" />
                 {lista && lista.length > 0 && (
-                  <Opcao Icone={IconeRoteiro} titulo="Usar um roteiro meu" texto={`${lista.length} salvo${lista.length === 1 ? '' : 's'}`} onClick={() => setPasso('meus')} />
+                  <Opcao
+                    Icone={IconeRoteiro}
+                    titulo="Gravar com um roteiro meu"
+                    texto={`${lista.length} salvo${lista.length === 1 ? '' : 's'}`}
+                    onClick={() => setEscolhendoRoteiro(true)}
+                  />
                 )}
-                <Opcao
-                  Icone={IconeMicrofone}
-                  titulo="Vou falar do meu jeito"
-                  texto="Sem roteiro, de improviso."
-                  onClick={() => {
-                    setRoteiroId(null);
-                    setPasso('gravacao');
-                  }}
-                />
               </div>
+              <p className="campo__ajuda">Depois são três passos: vídeo, estilo e detalhes. A IA monta a edição.</p>
             </>
           )}
 
-          {passo === 'meus' && (
+          {escolhendoRoteiro && (
             <>
               <h1>Qual roteiro?</h1>
               <ul className="criar__lista">
                 {(lista ?? []).map((r) => (
                   <li key={r.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRoteiroId(r.id);
-                        setPasso('gravacao');
-                      }}
-                    >
+                    <Link href={`/gravar?roteiro=${r.id}&modo=camera`}>
                       <strong>{r.title}</strong>
                       <span>{new Date(r.updatedAt).toLocaleDateString('pt-BR')}</span>
                       <IconeAvancar size={16} />
-                    </button>
+                    </Link>
                   </li>
                 ))}
               </ul>
-              <button type="button" className="botao botao--fantasma" onClick={() => setPasso('assunto')}>
-                <IconeVoltar size={16} /> Voltar
-              </button>
-            </>
-          )}
-
-          {passo === 'gravacao' && (
-            <>
-              <h1>Como você vai gravar?</h1>
-              <div className="criar__opcoes">
-                <Opcao
-                  Icone={IconeGravar}
-                  titulo="Gravar agora"
-                  texto={roteiroId ? 'O roteiro rola na tela enquanto você fala.' : 'Pela câmera do aparelho.'}
-                  href={`/gravar?${comRoteiro}modo=camera`}
-                  destaque
-                />
-                <Opcao Icone={IconeEnviar} titulo="Enviar um vídeo pronto" texto="Do celular ou do computador." href={`/gravar?${comRoteiro}modo=enviar`} />
-              </div>
-              <button type="button" className="botao botao--fantasma" onClick={() => setPasso('assunto')}>
+              <button type="button" className="botao botao--fantasma" onClick={() => setEscolhendoRoteiro(false)}>
                 <IconeVoltar size={16} /> Voltar
               </button>
             </>
@@ -133,10 +86,13 @@ function Opcao({ Icone, titulo, texto, href, onClick, destaque }: { Icone: Icon;
   const conteudo = (
     <>
       <span className="criar__icone" aria-hidden>
-        <Icone size={26} weight={destaque ? 'fill' : 'regular'} />
+        <Icone size={24} weight={destaque ? 'fill' : 'regular'} />
       </span>
       <strong>{titulo}</strong>
       <span>{texto}</span>
+      <span className="criar__seta" aria-hidden>
+        <IconeAvancar size={18} />
+      </span>
     </>
   );
   return href ? (

@@ -4,10 +4,11 @@
 // Navegação do celular: barra fixa no rodapé, como nos apps nativos.
 //
 // Abaixo de 900px a sidebar de 232px some (comeria 60% da tela) e a
-// navegação desce para onde o polegar alcança. Cinco lugares, o
-// padrão de iOS e Android: Projetos, Roteiro, Gravar em destaque no
-// centro (a ação que começa tudo), Marca e "Mais" -- que abre uma
-// folha com o que é menos frequente: Configurações, Ajuda,
+// navegação desce para onde o polegar alcança, no desenho do iOS 26:
+// uma cápsula de vidro com os lugares (Vídeos, Roteiros, Marca e
+// "Mais") e, separado à direita, o botão redondo de Criar -- a ação
+// que começa tudo não disputa espaço com a navegação. O "Mais" abre
+// uma folha com o que é menos frequente: Configurações, Ajuda,
 // armazenamento, instalar o app e sair.
 // ============================================================
 
@@ -18,7 +19,7 @@ import type { Icon } from '@phosphor-icons/react';
 import {
   IconeProjetos,
   IconeRoteiro,
-  IconeGravar,
+  IconeMais,
   IconeMarca,
   IconeMaisOpcoes,
   IconeConfiguracoes,
@@ -29,13 +30,14 @@ import { Folha } from './Folha';
 import { Armazenamento, Sair, itemAtivo } from './Sidebar';
 import { PassoAPasso, useGuiaDeInstalacao } from '../pwa/GuiaDeInstalacao';
 
-const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; destaque?: boolean; tambem?: string[] }> = [
-  // Cinco lugares, com Criar no meio (o "Mais" é o quinto, depois destes).
+const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; tambem?: string[] }> = [
+  // Três lugares na cápsula (o "Mais" é o quarto, depois destes).
   { href: '/', rotulo: 'Vídeos', Icone: IconeProjetos },
   { href: '/roteiros', rotulo: 'Roteiros', Icone: IconeRoteiro },
-  { href: '/novo', rotulo: 'Criar', Icone: IconeGravar, destaque: true, tambem: ['/gravar'] },
   { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
+
+const CRIAR = { href: '/novo', tambem: ['/gravar'] };
 
 export function BarraInferior() {
   const caminho = usePathname();
@@ -45,37 +47,43 @@ export function BarraInferior() {
 
   return (
     <>
-      <nav className="barra-inferior" aria-label="Navegação principal">
-        {ITENS.map((item) => {
-          const { href, rotulo, Icone, destaque } = item;
-          const ativo = itemAtivo(caminho, item);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`barra-inferior__item${destaque ? ' barra-inferior__item--destaque' : ''}`}
-              aria-current={ativo ? 'page' : undefined}
-            >
-              <span className="barra-inferior__icone" aria-hidden>
-                <Icone size={destaque ? 26 : 23} weight={ativo || destaque ? 'fill' : 'regular'} />
-              </span>
-              <span className="barra-inferior__rotulo">{rotulo}</span>
-            </Link>
-          );
-        })}
-        <button
-          type="button"
-          className="barra-inferior__item"
-          aria-current={noMais ? 'page' : undefined}
-          aria-expanded={mais}
-          onClick={() => setMais(true)}
+      <div className="barra-inferior">
+        <nav className="barra-inferior__abas" aria-label="Navegação principal">
+          {ITENS.map((item) => {
+            const { href, rotulo, Icone } = item;
+            const ativo = itemAtivo(caminho, item);
+            return (
+              <Link key={href} href={href} className="barra-inferior__item" aria-current={ativo ? 'page' : undefined}>
+                <span className="barra-inferior__icone" aria-hidden>
+                  <Icone size={24} weight={ativo ? 'fill' : 'regular'} />
+                </span>
+                <span className="barra-inferior__rotulo">{rotulo}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            className="barra-inferior__item"
+            aria-current={noMais ? 'page' : undefined}
+            aria-expanded={mais}
+            onClick={() => setMais(true)}
+          >
+            <span className="barra-inferior__icone" aria-hidden>
+              <IconeMaisOpcoes size={24} weight={noMais ? 'fill' : 'regular'} />
+            </span>
+            <span className="barra-inferior__rotulo">Mais</span>
+          </button>
+        </nav>
+
+        <Link
+          href={CRIAR.href}
+          className="barra-inferior__criar"
+          aria-label="Criar vídeo"
+          aria-current={itemAtivo(caminho, CRIAR) ? 'page' : undefined}
         >
-          <span className="barra-inferior__icone" aria-hidden>
-            <IconeMaisOpcoes size={23} weight={noMais ? 'fill' : 'regular'} />
-          </span>
-          <span className="barra-inferior__rotulo">Mais</span>
-        </button>
-      </nav>
+          <IconeMais size={28} weight="bold" />
+        </Link>
+      </div>
 
       <Folha aberta={mais} aoFechar={fechar} titulo="Mais">
         <div className="pilha" style={{ gap: 'var(--e1)' }} onClick={(e) => (e.target as HTMLElement).closest('a') && fechar()}>

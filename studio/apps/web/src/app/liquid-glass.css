@@ -1,0 +1,1118 @@
+/* ============================================================
+   MAKUCHO Studio — camada Liquid Glass
+
+   Carregada DEPOIS do globals.css. Não reescreve as telas: troca os
+   tokens e a aparência das peças comuns, então tudo o que já usa
+   var(--surface-1), .botao, .campo__entrada etc. muda junto.
+
+   As regras vêm da diretriz da Apple (Human Interface Guidelines,
+   "Materials" e "Adopting Liquid Glass"), não do gosto:
+
+   - o VIDRO é só da camada de navegação e controles (barra de abas,
+     barra lateral, folhas, menus), que flutua sobre o conteúdo.
+     "Don't use Liquid Glass in the content layer";
+   - o CONTEÚDO fica em superfícies comuns: fundo agrupado cinza-claro
+     e cartões opacos, como em Ajustes do iPhone;
+   - o vidro é o "regular": desfoca e ajusta a luminosidade do que
+     passa por baixo, para o texto continuar legível. Sem aro colorido
+     nem reflexo em bolha;
+   - as formas são cápsulas e cantos generosos, concêntricos aos do
+     aparelho; os títulos de seção não vão em maiúsculas;
+   - a aparência segue o aparelho (claro ou escuro). O editor e a
+     câmera ficam sempre escuros, como Fotos e Câmera fazem ao editar:
+     o vídeo é o que importa ali.
+
+   O que a web não faz: a refração de verdade (a lente que entorta o
+   fundo) depende de filtro SVG no backdrop, que o Safari não aplica.
+   Aqui o vidro é desfoque + saturação + aro de luz, que é o que o
+   iPhone do cliente consegue desenhar.
+   ============================================================ */
+
+/* ---------- 1. Tokens: claro (padrão) ---------- */
+
+:root {
+  --bg-canvas: #f2f2f7;
+  --bg-sidebar: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #ececf1;
+  --border: #dcdce1;
+  --border-forte: #c4c4cc;
+
+  --primary: #007aff;
+  --primary-hover: #0066d6;
+  --accent: #0068d9;
+  --success: #1d8a43;
+  --warning: #a86200;
+  --danger: #d92d20;
+
+  --text-primary: #1c1c1e;
+  --text-secondary: #636369;
+
+  --campo-fundo: #ffffff;
+  --campo-borda: #c2c2c9;
+
+  --vidro: rgb(255 255 255 / 68%);
+  --vidro-forte: rgb(255 255 255 / 86%);
+  --vidro-aro: inset 0 0 0 0.5px rgb(255 255 255 / 75%), inset 0 1px 0 rgb(255 255 255 / 95%);
+  --vidro-sombra: 0 10px 36px rgb(20 24 40 / 12%), 0 1px 2px rgb(20 24 40 / 8%);
+  --vidro-contorno: rgb(0 0 0 / 7%);
+  --selecao: rgb(118 118 128 / 16%);
+  --veu: rgb(0 0 0 / 28%);
+
+  /* Cantos: controle, cartão e destaque. Maiores que antes, para
+     acompanhar a curvatura da tela do iPhone. */
+  --r-controle: 12px;
+  --r-cartao: 20px;
+  --r-destaque: 26px;
+}
+
+/* ---------- 1b. Tokens: escuro (segue o aparelho) ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-canvas: #000000;
+    --bg-sidebar: #1c1c1e;
+    --surface-1: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --border: #38383a;
+    --border-forte: #545458;
+
+    --primary: #0a84ff;
+    --primary-hover: #3d9bff;
+    --accent: #5eb1ff;
+    --success: #30d158;
+    --warning: #ffd60a;
+    --danger: #ff453a;
+
+    --text-primary: #f5f5f7;
+    --text-secondary: #a1a1aa;
+
+    --campo-fundo: #2c2c2e;
+    --campo-borda: #545458;
+
+    --vidro: rgb(44 44 48 / 64%);
+    --vidro-forte: rgb(38 38 42 / 86%);
+    --vidro-aro: inset 0 0 0 0.5px rgb(255 255 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 22%);
+    --vidro-sombra: 0 12px 40px rgb(0 0 0 / 55%), 0 1px 2px rgb(0 0 0 / 40%);
+    --vidro-contorno: rgb(0 0 0 / 40%);
+    --selecao: rgb(255 255 255 / 14%);
+    --veu: rgb(0 0 0 / 50%);
+  }
+}
+
+/* ---------- 1c. Sempre escuro: o editor e a câmera ----------
+   Os mesmos valores do bloco acima (o CSS não tem como reaproveitar
+   um bloco). Cinza neutro no lugar do azul-marinho: nada colore o
+   vídeo que a pessoa está avaliando. */
+
+.principal--foco,
+.estudio,
+.estudio--prompter {
+  --bg-canvas: #000000;
+  --bg-sidebar: #161618;
+  --surface-1: #1c1c1e;
+  --surface-2: #2c2c2e;
+  --border: #38383a;
+  --border-forte: #545458;
+
+  --primary: #0a84ff;
+  --primary-hover: #3d9bff;
+  --accent: #5eb1ff;
+  --success: #30d158;
+  --warning: #ffd60a;
+  --danger: #ff453a;
+
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1aa;
+
+  --campo-fundo: #2c2c2e;
+  --campo-borda: #545458;
+
+  --vidro: rgb(44 44 48 / 64%);
+  --vidro-forte: rgb(38 38 42 / 86%);
+  --vidro-aro: inset 0 0 0 0.5px rgb(255 255 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 22%);
+  --vidro-sombra: 0 12px 40px rgb(0 0 0 / 55%), 0 1px 2px rgb(0 0 0 / 40%);
+  --vidro-contorno: rgb(0 0 0 / 40%);
+  --selecao: rgb(255 255 255 / 14%);
+  --veu: rgb(0 0 0 / 50%);
+
+  /* O editor é denso: cantos menores, senão os painéis estreitos
+     perdem área útil. */
+  --r-controle: 10px;
+  --r-cartao: 14px;
+  --r-destaque: 18px;
+
+  color: var(--text-primary);
+  color-scheme: dark;
+}
+
+.principal--foco {
+  background: var(--bg-canvas);
+}
+
+/* Atrás do editor (áreas seguras do iPhone, elástico da rolagem). */
+body:has(.principal--foco) {
+  background: #000000;
+}
+
+@media (min-width: 900px) {
+  .estudio {
+    padding: var(--e4);
+    border-radius: 24px;
+    background: var(--bg-canvas);
+  }
+}
+
+/* ---------- 2. Tokens derivados ----------
+   Uma variável que usa outra é resolvida ONDE foi declarada. Por isso
+   as derivadas são declaradas de novo em cada escopo: sem isto, a
+   sombra do editor sairia com as cores do tema claro. */
+
+:root,
+.principal--foco,
+.estudio,
+.estudio--prompter {
+  /* O fim do degradê antigo dos botões: agora é a própria cor, chapada. */
+  --primary-2: var(--primary);
+
+  --sombra-1: 0 1px 2px rgb(20 24 40 / 6%);
+  --sombra-2: 0 1px 2px rgb(20 24 40 / 5%), 0 6px 20px rgb(20 24 40 / 5%);
+  --sombra-3: 0 12px 40px rgb(20 24 40 / 16%), 0 2px 6px rgb(20 24 40 / 8%);
+
+  /* Sem brilho colorido vazando: a seleção é um anel nítido. */
+  --brilho-primario: 0 0 0 1.5px var(--primary);
+  --brilho-accent: 0 0 0 1.5px var(--accent);
+  --luz-topo: 0 0 0 0 transparent;
+
+  --anel-de-foco: 0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);
+  --desfoque: blur(28px) saturate(180%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sombra-1: 0 1px 2px rgb(0 0 0 / 40%);
+    --sombra-2: 0 4px 16px rgb(0 0 0 / 45%);
+    --sombra-3: 0 12px 36px rgb(0 0 0 / 60%);
+  }
+}
+
+.principal--foco,
+.estudio,
+.estudio--prompter {
+  --sombra-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --sombra-2: 0 4px 16px rgb(0 0 0 / 45%);
+  --sombra-3: 0 12px 36px rgb(0 0 0 / 60%);
+}
+
+/* ---------- 3. Base ---------- */
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  /* No iPhone isto é a San Francisco, a letra do sistema. Inter fica
+     de reserva para Android e Windows. */
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-canvas);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Títulos grandes, como os do iOS. `:where` zera o peso do seletor:
+   vale para os títulos soltos e não briga com os de cada tela. */
+:where(.app) h1 {
+  font-size: 34px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+:where(.app) h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+:where(.app) h3 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+/* Rótulo de seção: sem maiúsculas (a convenção mudou no iOS 26). */
+.rotulo-secao {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ---------- 4. Navegação: a camada de vidro ---------- */
+
+/* Barra lateral (computador e iPad deitado): um painel que flutua,
+   afastado das bordas, como a do iPadOS. */
+.sidebar {
+  margin: 12px 0 12px 12px;
+  border: 0;
+  border-radius: var(--r-destaque);
+  background: var(--vidro);
+  -webkit-backdrop-filter: var(--desfoque);
+  backdrop-filter: var(--desfoque);
+  box-shadow: var(--vidro-aro), var(--vidro-sombra), 0 0 0 0.5px var(--vidro-contorno);
+  overflow: hidden;
+}
+
+.sidebar__sub {
+  color: var(--text-secondary);
+}
+
+.sidebar__sigla {
+  background: var(--primary);
+  border-radius: 11px;
+}
+
+.nav-item {
+  border-radius: var(--r-controle);
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.nav-item .nav-item__icone {
+  color: var(--primary);
+}
+
+.nav-item:hover {
+  background: var(--selecao);
+}
+
+/* Selecionado: fundo, cor e peso (nunca só a cor). */
+.nav-item[aria-current='page'] {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.sidebar__armazenamento {
+  background: var(--selecao);
+  border: 0;
+}
+
+/* Topo das telas de navegação: sem faixa nem linha, o título é o topo. */
+.app .topbar {
+  background: transparent;
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+/* A busca do topo: cápsula preenchida, como o campo de busca do iOS. */
+.topbar__busca .campo__entrada {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--selecao);
+}
+
+.topbar__busca .campo__entrada:hover {
+  border-color: transparent;
+}
+
+/* Menus suspensos: vidro, porque flutuam sobre o conteúdo. */
+.menu {
+  padding: 6px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--vidro-forte);
+  -webkit-backdrop-filter: var(--desfoque);
+  backdrop-filter: var(--desfoque);
+  box-shadow: var(--vidro-aro), var(--sombra-3), 0 0 0 0.5px var(--vidro-contorno);
+}
+
+.menu__item {
+  border-radius: 10px;
+}
+
+/* Folha: afastada das bordas e com canto grande, para o conteúdo de
+   trás aparecer em volta (como as meias-folhas do iOS 26). */
+.folha {
+  background: var(--veu);
+}
+
+.folha__caixa {
+  border: 0;
+  border-radius: 28px;
+  background: var(--vidro-forte);
+  -webkit-backdrop-filter: var(--desfoque);
+  backdrop-filter: var(--desfoque);
+  box-shadow: var(--vidro-aro), var(--sombra-3);
+}
+
+@media (max-width: 899px) {
+  .folha {
+    padding: 0 8px max(8px, var(--seguro-baixo));
+  }
+
+  .folha__caixa {
+    border-radius: 32px;
+    padding: 0 var(--e4) var(--e4);
+  }
+}
+
+.folha__alca {
+  background: transparent;
+  padding-top: 10px;
+}
+
+.folha__puxador {
+  width: 36px;
+  background: color-mix(in srgb, var(--text-secondary) 45%, transparent);
+}
+
+/* Abas de página (Marca, Configurações): uma faixa de vidro presa no topo. */
+.abas-da-pagina,
+.kit-de-marca__abas {
+  border: 0;
+  border-radius: 22px;
+  background: var(--vidro);
+  -webkit-backdrop-filter: var(--desfoque);
+  backdrop-filter: var(--desfoque);
+  box-shadow: var(--vidro-aro), var(--vidro-sombra), 0 0 0 0.5px var(--vidro-contorno);
+}
+
+.abas-da-pagina__aba,
+.kit-de-marca__aba {
+  border-radius: 16px;
+}
+
+.abas-da-pagina__aba:hover,
+.kit-de-marca__aba:hover {
+  background: var(--selecao);
+}
+
+.abas-da-pagina__aba[aria-selected='true'],
+.kit-de-marca__aba[aria-selected='true'] {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+/* ---------- 4b. Barra de abas do celular ----------
+   Uma cápsula de vidro com os lugares, e o "Criar" num botão redondo
+   à parte, à direita: a ação que começa tudo não disputa espaço com a
+   navegação. O conteúdo passa por baixo das duas. */
+
+@media (max-width: 899px) {
+  .barra-inferior {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, calc(var(--seguro-baixo) - 10px));
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    /* O vão entre a cápsula e o botão não pode roubar o toque. */
+    pointer-events: none;
+  }
+
+  .barra-inferior > * {
+    pointer-events: auto;
+  }
+
+  .barra-inferior__abas {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--vidro);
+    -webkit-backdrop-filter: var(--desfoque);
+    backdrop-filter: var(--desfoque);
+    box-shadow: var(--vidro-aro), var(--vidro-sombra), 0 0 0 0.5px var(--vidro-contorno);
+  }
+
+  .barra-inferior__item {
+    height: 54px;
+    padding: 0;
+    gap: 1px;
+    border-radius: 999px;
+    color: var(--text-primary);
+    transition: background var(--transicao), color var(--transicao);
+  }
+
+  .barra-inferior__icone,
+  .barra-inferior__item[aria-current='page'] .barra-inferior__icone {
+    width: auto;
+    height: 26px;
+    background: none;
+    color: inherit;
+  }
+
+  .barra-inferior__rotulo {
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+
+  .barra-inferior__item[aria-current='page'] {
+    background: var(--selecao);
+    color: var(--primary);
+  }
+
+  .barra-inferior__criar {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 35%), 0 8px 24px color-mix(in srgb, var(--primary) 40%, transparent),
+      0 1px 2px rgb(0 0 0 / 12%);
+    transition: transform var(--transicao);
+  }
+
+  .barra-inferior__criar:active {
+    transform: scale(0.94);
+  }
+
+  /* O conteúdo rola por baixo da barra: é isso que dá sentido ao vidro. */
+  .app .principal {
+    padding-bottom: 0;
+  }
+
+  .app .conteudo {
+    padding-bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + var(--e6));
+    scroll-padding-bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + var(--e4));
+  }
+}
+
+/* ---------- 5. Controles ---------- */
+
+/* Botões em cápsula, cor chapada. A ordem importa: a base primeiro,
+   as variações depois (têm o mesmo peso de seletor). */
+.botao {
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: none;
+}
+
+/* Maior só nas telas de navegação: as barras do editor são apertadas. */
+:where(.app) .botao {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.botao:hover:not(:disabled) {
+  background: var(--primary-hover);
+  box-shadow: none;
+}
+
+.botao:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.botao:disabled {
+  background: var(--selecao);
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  box-shadow: none;
+}
+
+/* Secundário: o "tinted" do iOS, a cor da marca bem diluída. */
+.botao--secundario {
+  border: 0;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  box-shadow: none;
+}
+
+.botao--secundario:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.botao--fantasma {
+  background: transparent;
+  color: var(--primary);
+}
+
+.botao--fantasma:hover:not(:disabled) {
+  background: var(--selecao);
+  color: var(--primary);
+}
+
+.botao--perigo {
+  border: 0;
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  color: var(--danger);
+}
+
+.botao--perigo:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 21%, transparent);
+}
+
+.botao--tracejado {
+  background: transparent;
+  color: var(--primary);
+}
+
+.botao--pequeno {
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.botao-icone {
+  border-radius: 50%;
+}
+
+.botao-icone:hover:not(:disabled) {
+  background: var(--selecao);
+}
+
+/* Selos de ESTADO: fundo diluído na cor do estado, sem contorno. Os
+   selos da timeline (transição, efeito, legenda) têm cores próprias. */
+.selo--neutro,
+.selo--sucesso,
+.selo--info,
+.selo--aviso {
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.selo--neutro {
+  background: var(--selecao);
+  color: var(--text-secondary);
+}
+
+.selo--sucesso {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--success);
+}
+
+.selo--info {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.selo--aviso {
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+}
+
+/* Sobre a miniatura do vídeo o selo precisa de fundo próprio. */
+.projeto__midia .selo {
+  background: var(--vidro-forte);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.aviso {
+  border-radius: 14px;
+  border-color: transparent;
+}
+
+.segmentado {
+  border: 0;
+  border-radius: 999px;
+  background: var(--selecao);
+}
+
+.segmentado__item {
+  border-radius: 999px;
+}
+
+/* ---------- 6. Campos: bem definidos ----------
+   Três sinais, sempre juntos: fundo próprio, contorno visível e
+   rótulo forte em cima. No foco o contorno vira a cor da marca e
+   ganha um anel, então dá para ver onde se está digitando. */
+
+.campo__rotulo {
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.campo__entrada,
+.campo__area,
+.campo__selecao,
+.roteiro-novo__pedido,
+.configurar-ia__sobre textarea,
+.criar-com-ia textarea,
+.tipo-do-video textarea {
+  border: 1px solid var(--campo-borda);
+  border-radius: var(--r-controle);
+  background: var(--campo-fundo);
+  color: var(--text-primary);
+  font-size: 16px;
+  box-shadow: inset 0 1px 1px rgb(0 0 0 / 3%);
+  transition: border-color var(--transicao), box-shadow var(--transicao);
+}
+
+:where(.app) .campo__entrada,
+:where(.app) .campo__selecao {
+  min-height: 50px;
+  padding: 13px 14px;
+}
+
+.campo__entrada::placeholder,
+.campo__area::placeholder,
+.roteiro-novo__pedido::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 72%, transparent);
+}
+
+.campo__entrada:hover,
+.campo__area:hover,
+.campo__selecao:hover {
+  border-color: var(--border-forte);
+}
+
+.campo__entrada:focus,
+.campo__area:focus,
+.campo__selecao:focus,
+.roteiro-novo__pedido:focus,
+.configurar-ia__sobre textarea:focus,
+.criar-com-ia textarea:focus,
+.tipo-do-video textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco);
+}
+
+.campo__entrada[aria-invalid='true'],
+.campo__area[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.campo__ajuda {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ---------- 7. Conteúdo: superfícies comuns, sem vidro ---------- */
+
+.cartao,
+.painel {
+  border-color: transparent;
+  box-shadow: var(--sombra-2);
+}
+
+.principal--foco .cartao,
+.principal--foco .painel,
+.estudio .cartao {
+  border-color: var(--border);
+}
+
+.cartao--clicavel:hover,
+.projeto:hover {
+  border-color: transparent;
+  box-shadow: var(--sombra-3);
+}
+
+.cartao--selecionado {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.projeto__midia {
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+/* No iPhone, dois vídeos por linha: com um só, cada cartão 9:16
+   ocupava a tela inteira e a lista virava uma rolagem sem fim. */
+@media (max-width: 599px) {
+  .projetos__cartoes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .projetos__cartoes > .cartao {
+    padding: 8px !important;
+  }
+}
+
+/* Primeiros passos: um cartão comum, sem contorno colorido. */
+.guia-compacto {
+  padding: 14px 16px;
+  border: 0;
+  box-shadow: var(--sombra-2);
+}
+
+.guia-compacto__linha strong {
+  font-size: 16px;
+}
+
+.guia-compacto__linha span {
+  font-size: 13px;
+}
+
+/* ---------- 7b. Criar vídeo: uma pergunta, linhas grandes ---------- */
+
+.criar {
+  max-width: 560px;
+  gap: var(--e4);
+}
+
+.criar h1 {
+  font-size: 34px;
+  text-align: left;
+}
+
+.criar__sub {
+  margin-top: -8px;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+/* As opções viram uma lista agrupada (como as de Ajustes): ícone,
+   título, uma linha de apoio e a seta. Lê-se de cima para baixo. */
+.criar__opcoes {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  box-shadow: var(--sombra-2);
+  overflow: hidden;
+}
+
+.criar__opcao,
+.criar__opcao[data-destaque] {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-items: start;
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 2px;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.criar__opcao + .criar__opcao {
+  border-top: 1px solid var(--border);
+}
+
+.criar__opcao:hover {
+  transform: none;
+  background: var(--selecao);
+}
+
+.criar__icone {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.criar__opcao[data-destaque] .criar__icone {
+  background: var(--primary);
+  color: #fff;
+}
+
+.criar__opcao strong {
+  grid-column: 2;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.criar__opcao > span:not(.criar__icone):not(.criar__seta) {
+  grid-column: 2;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.criar__seta {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+}
+
+.criar__lista {
+  gap: 0;
+  border-radius: var(--r-cartao);
+  background: var(--surface-1);
+  box-shadow: var(--sombra-2);
+  overflow: hidden;
+}
+
+.criar__lista a {
+  display: flex;
+  align-items: center;
+  gap: var(--e3);
+  min-height: 60px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  font-size: 17px;
+  text-decoration: none;
+}
+
+.criar__lista a:hover {
+  background: var(--selecao);
+}
+
+.criar__lista a strong {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.criar__lista a span {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.criar__lista a svg {
+  color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+}
+
+.criar__lista li + li a {
+  border-top: 1px solid var(--border);
+}
+
+.criar > .botao--fantasma {
+  justify-self: start;
+}
+
+/* ---------- 7c. Os três passos (Vídeo, Estilo, Detalhes) ---------- */
+
+.assistente {
+  max-width: 720px;
+  gap: var(--e5);
+}
+
+.assistente__passos ol {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.assistente__passos button {
+  padding: 12px 0 0;
+  border-top: 4px solid var(--selecao);
+  border-radius: 2px;
+  font-size: 14px;
+}
+
+.assistente__passos li[data-estado='feito'] button {
+  border-top-color: var(--primary);
+}
+
+.assistente__passos li[data-estado='atual'] button {
+  border-top-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.assistente__bola {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: var(--selecao);
+  font-size: 13px;
+}
+
+.assistente__passos li[data-estado='atual'] .assistente__bola {
+  background: var(--primary);
+  color: #fff;
+}
+
+.assistente__contagem {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.assistente__cabeca h1 {
+  font-size: clamp(26px, 6vw, 34px);
+}
+
+.assistente__rodape {
+  border-top: 0;
+}
+
+.caminho {
+  gap: 6px;
+  padding: var(--e5);
+  border: 0;
+  border-radius: var(--r-cartao);
+  box-shadow: var(--sombra-2);
+}
+
+.caminho--principal {
+  border: 0;
+  box-shadow: var(--sombra-2), 0 0 0 1.5px var(--primary);
+}
+
+.caminho:hover,
+.caminho:focus-visible {
+  box-shadow: var(--sombra-3), 0 0 0 1.5px var(--primary);
+}
+
+.caminho__icone {
+  width: 50px;
+  height: 50px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.caminho__titulo {
+  font-size: 20px;
+}
+
+.caminho__texto {
+  font-size: 15px;
+}
+
+.caminho__acao {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-size: 15px;
+}
+
+.caminho--principal .caminho__acao {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tipos-em-cartoes button,
+.cartao-de-estilo,
+.cores-do-estilo {
+  border-color: var(--border);
+  border-radius: 16px;
+}
+
+.tipos-em-cartoes button {
+  min-height: 60px;
+}
+
+.tipos-em-cartoes button[aria-checked='true'],
+.cartao-de-estilo[aria-checked='true'] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface-1));
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+
+.cartao-de-estilo__amostra {
+  border-radius: 11px;
+}
+
+.cartao-de-estilo__marca {
+  background: var(--primary);
+  color: #fff;
+}
+
+.cartao-de-estilo--exclusivo {
+  border-color: var(--border);
+}
+
+.escolha-do-estilo__filtros button {
+  min-height: 36px;
+  border: 0;
+  background: var(--selecao);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.escolha-do-estilo__filtros button[aria-selected='true'] {
+  background: var(--primary);
+  color: #fff;
+}
+
+@media (max-width: 620px) {
+  /* Com três passos os nomes cabem: número sozinho não diz nada. */
+  .assistente__nome-do-passo {
+    display: inline;
+  }
+
+  .assistente__passos button {
+    justify-content: flex-start;
+  }
+
+  /* Voltar e Continuar: uma faixa de vidro presa acima da barra de abas. */
+  .assistente__rodape {
+    bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + 20px);
+    margin: 0;
+    padding: 8px;
+    border-radius: 999px;
+    background: var(--vidro);
+    -webkit-backdrop-filter: var(--desfoque);
+    backdrop-filter: var(--desfoque);
+    box-shadow: var(--vidro-aro), var(--vidro-sombra), 0 0 0 0.5px var(--vidro-contorno);
+  }
+}
+
+/* ---------- 8. Acessibilidade e aparelhos sem o efeito ---------- */
+
+/* Sem desfoque de fundo (navegador antigo): o vidro vira opaco, senão
+   o texto ficaria sobre o que passa por trás. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root,
+  .principal--foco,
+  .estudio,
+  .estudio--prompter {
+    --vidro: var(--surface-1);
+    --vidro-forte: var(--surface-1);
+  }
+}
+
+/* Ajustes > Acessibilidade > Reduzir Transparência. */
+@media (prefers-reduced-transparency: reduce) {
+  :root,
+  .principal--foco,
+  .estudio,
+  .estudio--prompter {
+    --vidro: var(--surface-1);
+    --vidro-forte: var(--surface-1);
+    --desfoque: none;
+  }
+}
+
+/* Ajustes > Acessibilidade > Aumentar Contraste. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: #8e8e93;
+    --border-forte: #636366;
+    --campo-borda: #636366;
+    --text-secondary: #3a3a3c;
+    --vidro: var(--surface-1);
+    --vidro-forte: var(--surface-1);
+    --vidro-contorno: var(--text-primary);
+  }
+
+  .cartao,
+  .painel {
+    border-color: var(--border-forte);
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --text-secondary: #d1d1d6;
+    --border: #8e8e93;
+    --border-forte: #aeaeb2;
+    --campo-borda: #aeaeb2;
+  }
+}

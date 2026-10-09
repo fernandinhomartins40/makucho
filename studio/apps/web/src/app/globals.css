@@ -1895,12 +1895,12 @@ body {
 
 .nav-item[aria-current='page'],
 .ferramenta[aria-pressed='true'] {
-  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
   box-shadow: var(--brilho-primario);
 }
 
 .botao {
-  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
   box-shadow: var(--sombra-1);
 }
 
@@ -1926,7 +1926,7 @@ body {
 }
 
 .chave[aria-checked='true'] {
-  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
   box-shadow: 0 0 12px color-mix(in srgb, var(--primary) 45%, transparent);
 }
 
@@ -2362,7 +2362,7 @@ body {
   place-items: center;
   border: none;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
   color: #fff;
   cursor: pointer;
   box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 40%, transparent);
@@ -11436,7 +11436,7 @@ button.momento-midia__tempo:hover {
 
   .palco-lateral__botao[aria-pressed='true'] {
     border-color: transparent;
-    background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
     box-shadow: var(--brilho-primario);
     color: #fff;
   }
@@ -12695,7 +12695,7 @@ html:not([data-dicas]) :is(
     height: 44px;
     border: 0;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%);
     color: #fff;
     box-shadow: var(--brilho-primario);
     cursor: pointer;
@@ -14087,7 +14087,7 @@ button.midia-cartao__previa:disabled {
   background: var(--surface-2);
   border: 1px solid var(--border-forte);
 }
-.caminho--principal .caminho__acao { background: linear-gradient(135deg, var(--primary) 0%, #2354e0 100%); border-color: transparent; color: #fff; }
+.caminho--principal .caminho__acao { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2, #2354e0) 100%); border-color: transparent; color: #fff; }
 .link-botao { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* Tipo do vídeo em cartões (ícone, nome e para que serve). */

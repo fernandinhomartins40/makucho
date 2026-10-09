@@ -136,7 +136,7 @@ export default function ProjetosPage() {
           <div className="inicio__acoes">
             <Link href="/gravar?modo=enviar" className="botao botao--secundario">
               <IconeEnviar size={16} />
-              Enviar<span className="so-largo">&nbsp;vídeo pronto</span>
+              Enviar<span className="so-largo">vídeo pronto</span>
             </Link>
             <Link href="/novo" className="botao">
               <IconeMais size={18} weight="bold" />
@@ -373,8 +373,9 @@ function CartaoDeProjeto({
               bottom: 8,
               left: 8,
               padding: '2px 7px',
-              borderRadius: 5,
-              background: 'rgb(4 23 53 / 85%)',
+              borderRadius: 999,
+              background: 'rgb(0 0 0 / 60%)',
+              color: '#fff',
               fontSize: 11,
               fontWeight: 600,
             }}
