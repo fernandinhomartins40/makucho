@@ -5,17 +5,16 @@
    tokens e a aparência das peças comuns, então tudo o que já usa
    var(--surface-1), .botao, .campo__entrada etc. muda junto.
 
-   As regras vêm da diretriz da Apple (Human Interface Guidelines,
-   "Materials" e "Adopting Liquid Glass"), não do gosto:
+   A referência é a proposta "DigiUrban Liquid Glass" do cliente
+   (a seção 9, no fim, traz a receita dela):
 
-   - o VIDRO é só da camada de navegação e controles (barra de abas,
-     barra lateral, folhas, menus), que flutua sobre o conteúdo.
-     "Don't use Liquid Glass in the content layer";
-   - o CONTEÚDO fica em superfícies comuns: fundo agrupado cinza-claro
-     e cartões opacos, como em Ajustes do iPhone;
-   - o vidro é o "regular": desfoca e ajusta a luminosidade do que
-     passa por baixo, para o texto continuar legível. Sem aro colorido
-     nem reflexo em bolha;
+   - atrás de tudo, três manchas de cor desfocadas (azul, rosa,
+     verde). Sem elas o vidro não tem o que mostrar e vira cinza chapado;
+   - a NAVEGAÇÃO (barra lateral, barra de abas, menus, folhas) é vidro
+     de verdade: desfoque leve, aro em degradê e reflexo no alto;
+   - o CONTEÚDO fica em cartões translúcidos e desfocados, para a cor
+     do fundo aparecer por trás sem atrapalhar a leitura;
+   - os botões cheios têm volume (degradê da própria cor e brilho);
    - as formas são cápsulas e cantos generosos, concêntricos aos do
      aparelho; os títulos de seção não vão em maiúsculas;
    - a aparência segue o aparelho (claro ou escuro). O editor e a
@@ -31,14 +30,14 @@
 /* ---------- 1. Tokens: claro (padrão) ---------- */
 
 :root {
-  --bg-canvas: #f2f2f7;
-  --bg-sidebar: #ffffff;
-  --surface-1: #ffffff;
-  --surface-2: #ececf1;
-  --border: #dcdce1;
-  --border-forte: #c4c4cc;
+  --bg-canvas: #e9ecf1;
+  --bg-sidebar: transparent;
+  --surface-1: rgb(255 255 255 / 74%);
+  --surface-2: rgb(120 120 128 / 16%);
+  --border: rgb(60 60 67 / 13%);
+  --border-forte: rgb(60 60 67 / 26%);
 
-  --primary: #007aff;
+  --primary: #0a7cff;
   --primary-hover: #0066d6;
   --accent: #0068d9;
   --success: #1d8a43;
@@ -48,8 +47,8 @@
   --text-primary: #1c1c1e;
   --text-secondary: #636369;
 
-  --campo-fundo: #ffffff;
-  --campo-borda: #c2c2c9;
+  --campo-fundo: rgb(255 255 255 / 82%);
+  --campo-borda: rgb(60 60 67 / 26%);
 
   --vidro: rgb(255 255 255 / 68%);
   --vidro-forte: rgb(255 255 255 / 86%);
@@ -70,15 +69,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-canvas: #000000;
-    --bg-sidebar: #1c1c1e;
-    --surface-1: #1c1c1e;
-    --surface-2: #2c2c2e;
-    --border: #38383a;
-    --border-forte: #545458;
+    --bg-canvas: #0b0b0f;
+    --bg-sidebar: transparent;
+    --surface-1: rgb(30 30 34 / 74%);
+    --surface-2: rgb(118 118 128 / 28%);
+    --border: rgb(84 84 88 / 55%);
+    --border-forte: rgb(120 120 128 / 70%);
 
-    --primary: #0a84ff;
-    --primary-hover: #3d9bff;
+    --primary: #2b8cff;
+    --primary-hover: #4a9dff;
     --accent: #5eb1ff;
     --success: #30d158;
     --warning: #ffd60a;
@@ -87,8 +86,8 @@
     --text-primary: #f5f5f7;
     --text-secondary: #a1a1aa;
 
-    --campo-fundo: #2c2c2e;
-    --campo-borda: #545458;
+    --campo-fundo: rgb(44 44 50 / 72%);
+    --campo-borda: rgb(120 120 128 / 55%);
 
     --vidro: rgb(44 44 48 / 64%);
     --vidro-forte: rgb(38 38 42 / 86%);
@@ -1064,6 +1063,351 @@ body {
   }
 }
 
+/* ---------- 9. O vidro da proposta ----------
+   A receita do arquivo "DigiUrban Liquid Glass", aplicada às peças
+   do Studio. Vem depois das seções acima e prevalece sobre elas. */
+
+/* 9a. As manchas de cor atrás de tudo. Degradês radiais em vez de
+   filter: blur(), que no iPhone pesa a cada quadro de rolagem. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle 38vmax at -4% -8%, rgb(59 155 255 / 55%), transparent 100%),
+    radial-gradient(circle 32vmax at 106% 42%, rgb(255 95 168 / 45%), transparent 100%),
+    radial-gradient(circle 34vmax at 30% 110%, rgb(61 220 132 / 45%), transparent 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  body::before {
+    opacity: 0.6;
+  }
+}
+
+/* No editor o fundo é preto: cor nenhuma por trás do vídeo. */
+body:has(.principal--foco)::before {
+  display: none;
+}
+
+/* 9b. Vidro da navegação: transparente, desfoque leve (a cor de trás
+   aparece), aro de luz por dentro e sombra que o descola do fundo. */
+.sidebar,
+.barra-inferior__abas,
+.abas-da-pagina,
+.kit-de-marca__abas,
+.menu,
+.folha__caixa,
+.assistente__rodape {
+  --ta: 150, 205, 255;
+  --tb: 255, 160, 215;
+  border: 0;
+  background: linear-gradient(180deg, rgb(255 255 255 / 30%), rgb(255 255 255 / 12%));
+  -webkit-backdrop-filter: blur(10px) saturate(185%) brightness(1.06);
+  backdrop-filter: blur(10px) saturate(185%) brightness(1.06);
+  box-shadow:
+    0 14px 30px -12px rgb(20 28 48 / 32%),
+    0 2px 6px rgb(20 28 48 / 8%),
+    inset 0 1px 1px rgb(255 255 255 / 95%),
+    inset 0 -1px 1px rgb(255 255 255 / 50%),
+    inset 0 12px 16px -14px rgb(255 255 255 / 95%),
+    inset 0 -14px 18px -14px rgb(30 40 70 / 26%),
+    inset 8px 0 12px -12px rgb(255 255 255 / 75%),
+    inset -8px 0 12px -12px rgb(30 40 70 / 16%);
+}
+
+/* Menus e folhas ficam por cima de texto: vidro mais grosso. */
+.menu,
+.folha__caixa {
+  background: linear-gradient(180deg, rgb(255 255 255 / 78%), rgb(255 255 255 / 62%));
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+}
+
+.sidebar,
+.barra-inferior__abas,
+.abas-da-pagina,
+.kit-de-marca__abas {
+  position: relative;
+}
+
+/* O aro em degradê: branco, azul e rosa correndo pela borda. */
+:is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.6px;
+  background: linear-gradient(
+    155deg,
+    rgb(255 255 255 / 100%) 0%,
+    rgb(255 255 255 / 60%) 10%,
+    rgb(var(--ta) / 75%) 22%,
+    rgb(255 255 255 / 0%) 40%,
+    rgb(255 255 255 / 0%) 58%,
+    rgb(var(--tb) / 70%) 80%,
+    rgb(255 255 255 / 95%) 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* O reflexo no alto, só nas peças em cápsula (na barra lateral ele
+   lavaria a lista inteira). */
+:is(.barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape)::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 2px;
+  height: 42%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(255 255 255 / 42%), rgb(255 255 255 / 0%));
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+:is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas) > * {
+  position: relative;
+  z-index: 3;
+}
+
+/* Item escolhido: uma "gota" de vidro mais clara, com o texto azul. */
+.nav-item[aria-current='page'],
+.barra-inferior__item[aria-current='page'],
+.abas-da-pagina__aba[aria-selected='true'],
+.kit-de-marca__aba[aria-selected='true'] {
+  background: linear-gradient(180deg, rgb(255 255 255 / 60%), rgb(255 255 255 / 24%));
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 100%),
+    inset 0 -6px 10px -8px rgb(30 40 70 / 25%),
+    0 6px 14px -6px rgb(20 28 48 / 30%);
+}
+
+.nav-item:hover:not([aria-current='page']) {
+  background: rgb(255 255 255 / 30%);
+}
+
+/* 9c. Botões cheios com volume: degradê da própria cor e brilho. */
+.botao:not(.botao--secundario):not(.botao--fantasma):not(.botao--perigo):not(.botao--tracejado),
+.barra-inferior__criar,
+.caminho--principal .caminho__acao {
+  --tint: var(--primary);
+  color: #fff;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tint) 72%, white),
+    color-mix(in srgb, var(--tint) 92%, transparent) 55%,
+    color-mix(in srgb, var(--tint) 88%, black)
+  );
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 75%),
+    inset 0 -2px 4px rgb(0 0 0 / 18%),
+    inset 0 10px 14px -12px rgb(255 255 255 / 70%),
+    0 10px 22px -8px color-mix(in srgb, var(--tint) 65%, transparent);
+}
+
+.botao:not(.botao--secundario):not(.botao--fantasma):not(.botao--perigo):not(.botao--tracejado):hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tint) 62%, white),
+    var(--tint) 55%,
+    color-mix(in srgb, var(--tint) 82%, black)
+  );
+}
+
+.botao:disabled {
+  background: var(--surface-2) !important;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent) !important;
+  box-shadow: none !important;
+}
+
+/* Secundário: uma bolha de vidro com o texto na cor da marca. */
+.botao--secundario {
+  background: linear-gradient(180deg, rgb(255 255 255 / 55%), rgb(255 255 255 / 22%));
+  -webkit-backdrop-filter: blur(6px) saturate(180%);
+  backdrop-filter: blur(6px) saturate(180%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 100%), inset 0 -6px 10px -8px rgb(30 40 70 / 25%),
+    0 6px 14px -6px rgb(20 28 48 / 25%);
+}
+
+.botao--secundario:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgb(255 255 255 / 75%), rgb(255 255 255 / 35%));
+}
+
+/* 9d. Cartões do conteúdo: translúcidos, desfocados, borda clara. */
+.cartao,
+.painel,
+.guia-compacto,
+.criar__opcoes,
+.criar__lista,
+.caminho,
+.roteiro-novo__form,
+.lista-roteiros,
+.roteiro-bloco {
+  border: 1px solid rgb(255 255 255 / 90%);
+  background: var(--surface-1);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 10px 30px -14px rgb(28 36 58 / 22%), 0 1px 3px rgb(28 36 58 / 6%);
+}
+
+.cartao,
+.painel,
+.criar__opcoes,
+.criar__lista,
+.caminho,
+.roteiro-novo__form,
+.lista-roteiros {
+  border-radius: 22px;
+}
+
+.roteiro-novo__form:focus-within {
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco), 0 10px 30px -14px rgb(28 36 58 / 22%);
+}
+
+/* O pedido já está dentro do cartão, que é o contorno dele. */
+.roteiro-novo__pedido,
+.roteiro-novo__pedido:focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cartao--clicavel:hover,
+.projeto:hover,
+.caminho:hover {
+  border-color: rgb(255 255 255 / 100%);
+  box-shadow: 0 16px 44px -14px rgb(28 36 58 / 30%), 0 3px 10px rgb(28 36 58 / 8%);
+}
+
+.cartao--selecionado,
+.caminho--principal {
+  border-color: var(--primary);
+}
+
+/* Fichas (durações, exemplos, filtros): preenchidas, sem contorno. */
+.roteiro-novo__duracoes button,
+.roteiro-novo__exemplos button,
+.roteiro-ia__rapidos button,
+.escolha-do-estilo__filtros button {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.roteiro-novo__exemplos button {
+  border-radius: 14px;
+  background: rgb(255 255 255 / 50%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 80%);
+}
+
+.roteiro-novo__duracoes button[aria-checked='true'],
+.escolha-do-estilo__filtros button[aria-selected='true'] {
+  background: linear-gradient(180deg, rgb(255 255 255 / 85%), rgb(255 255 255 / 45%));
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: inset 0 1px 1px #fff, inset 0 -6px 10px -8px rgb(30 40 70 / 25%), 0 4px 10px -4px rgb(20 28 48 / 25%);
+}
+
+/* Os ícones das opções: quadrado colorido com volume, como no iOS. */
+.criar__icone,
+.caminho__icone,
+.roteiro-novo__icone {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 70%, white), var(--primary));
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 5px 12px rgb(0 0 0 / 14%);
+}
+
+/* 9e. Escuro: as mesmas peças, com vidro fumê. Vale para o tema
+   escuro do aparelho e para o editor, que é sempre escuro. */
+@media (prefers-color-scheme: dark) {
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape) {
+    background: linear-gradient(180deg, rgb(60 60 68 / 42%), rgb(30 30 36 / 30%));
+    box-shadow:
+      0 14px 30px -10px rgb(0 0 0 / 70%),
+      0 2px 6px rgb(0 0 0 / 40%),
+      inset 0 1px 1px rgb(255 255 255 / 42%),
+      inset 0 -1px 1px rgb(255 255 255 / 10%),
+      inset 0 12px 16px -14px rgb(255 255 255 / 35%),
+      inset 0 -14px 18px -14px rgb(0 0 0 / 55%);
+  }
+
+  :is(.menu, .folha__caixa) {
+    background: linear-gradient(180deg, rgb(52 52 60 / 86%), rgb(34 34 40 / 82%));
+    box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
+  }
+
+  :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .lista-roteiros, .roteiro-bloco) {
+    border-color: rgb(255 255 255 / 8%);
+    box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
+  }
+
+  .nav-item[aria-current='page'],
+  .barra-inferior__item[aria-current='page'],
+  .abas-da-pagina__aba[aria-selected='true'],
+  .kit-de-marca__aba[aria-selected='true'],
+  .roteiro-novo__duracoes button[aria-checked='true'],
+  .escolha-do-estilo__filtros button[aria-selected='true'],
+  .botao--secundario {
+    background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 7%));
+    color: #7dbbff;
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 40%), inset 0 -6px 10px -8px rgb(0 0 0 / 50%),
+      0 6px 14px -6px rgb(0 0 0 / 60%);
+  }
+
+  .nav-item:hover:not([aria-current='page']) {
+    background: rgb(255 255 255 / 8%);
+  }
+
+  .roteiro-novo__exemplos button {
+    background: rgb(255 255 255 / 6%);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+  }
+
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::before {
+    opacity: 0.6;
+  }
+
+  :is(.barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape)::after {
+    opacity: 0.18;
+  }
+}
+
+/* O editor e a câmera são sempre escuros, mesmo com o aparelho claro. */
+:is(.principal--foco, .estudio, .estudio--prompter) :is(.menu, .folha__caixa) {
+  background: linear-gradient(180deg, rgb(52 52 60 / 92%), rgb(34 34 40 / 90%));
+  box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
+}
+
+:is(.principal--foco, .estudio, .estudio--prompter) :is(.menu, .folha__caixa)::before {
+  opacity: 0.4;
+}
+
+:is(.principal--foco, .estudio, .estudio--prompter) :is(.cartao, .painel) {
+  border-color: var(--border);
+  background: var(--surface-1);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--sombra-2);
+}
+
+:is(.principal--foco, .estudio, .estudio--prompter) .botao--secundario {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--accent);
+  box-shadow: none;
+}
+
 /* ---------- 8. Acessibilidade e aparelhos sem o efeito ---------- */
 
 /* Sem desfoque de fundo (navegador antigo): o vidro vira opaco, senão
@@ -1087,6 +1431,29 @@ body {
     --vidro: var(--surface-1);
     --vidro-forte: var(--surface-1);
     --desfoque: none;
+    --surface-1: #ffffff;
+  }
+
+  body::before,
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::before,
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::after {
+    display: none;
+  }
+
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape) {
+    background: #ffffff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) and (prefers-color-scheme: dark) {
+  :root {
+    --surface-1: #1c1c1e;
+  }
+
+  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape) {
+    background: #1c1c1e;
   }
 }
 
