@@ -27,7 +27,7 @@ import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
 import { Folha } from '../../components/shell/Folha';
 import { useGravacao } from '../../lib/useGravacao';
-import { PASSOS_DE_CRIAR, TELAS_DE_GRAVAR } from '../../lib/passosDoVideo';
+import { PASSOS_DE_CRIAR, PASSO_DE_GRAVAR, TELAS_DE_GRAVAR } from '../../lib/passosDoVideo';
 import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVertical';
 import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
 import type { TipoDeVideo } from '@makucho/studio-contracts';
@@ -525,7 +525,7 @@ function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
 }
 
 // As telas daqui (vídeo, estilo, detalhes). A régua de cima mostra os
-// três passos que /novo apresenta: Roteiro, Vídeo e Edição.
+// três passos que /novo apresenta: Roteiro, Gravar e Publicar.
 const PASSOS = TELAS_DE_GRAVAR;
 
 const ICONE_DO_TIPO: Record<TipoDeVideo, typeof IconeCamera> = {
@@ -660,21 +660,14 @@ function Composicao({
       <nav className="assistente__passos" aria-label="Passos">
         <ol>
           {PASSOS_DE_CRIAR.map((p, i) => {
-            const atual = PASSOS[passo]!.passo;
-            // O roteiro ficou para trás (feito em /roteiros, ou pulado por
-            // quem já tinha o vídeo): aparece na conta, mas não leva a
-            // lugar nenhum daqui -- sair perderia os vídeos enviados.
-            const roteiro = i === 0;
-            const feito = roteiro ? temRoteiroProprio : i < atual;
+            // A régua só situa: daqui não se sai para o roteiro nem para
+            // publicar (sair perderia os vídeos enviados). Entre as telas
+            // deste passo anda-se por Voltar e Continuar, embaixo.
+            const atual = i === PASSO_DE_GRAVAR;
+            const feito = i === 0 && temRoteiroProprio;
             return (
-              <li key={p.titulo} data-estado={feito ? 'feito' : i === atual ? 'atual' : 'depois'}>
-                <button
-                  type="button"
-                  disabled={roteiro || (i > atual && !podeAvancar)}
-                  aria-current={i === atual ? 'step' : undefined}
-                  // A Edição abre no estilo, a primeira das duas telas dela.
-                  onClick={() => irPara(i === 1 ? 0 : 1)}
-                >
+              <li key={p.titulo} data-estado={feito ? 'feito' : atual ? 'atual' : 'depois'}>
+                <button type="button" disabled={!atual} aria-current={atual ? 'step' : undefined} onClick={() => irPara(0)}>
                   <span className="assistente__bola">{feito ? <IconeCheck size={13} weight="bold" /> : i + 1}</span>
                   <span className="assistente__nome-do-passo">{p.titulo}</span>
                 </button>

@@ -1,25 +1,26 @@
 // ============================================================
-// Os três passos de criar um vídeo: Roteiro, Vídeo e Edição.
+// Os três passos de criar um vídeo: Roteiro, Gravar e Publicar.
 //
-// Ficam aqui porque três telas contam a mesma história: /novo mostra o
-// caminho inteiro antes de começar, /roteiros é o passo 1 e /gravar
-// anda pelos passos 2 e 3. Com os nomes num lugar só, elas não divergem.
+// Ficam aqui porque três telas contam a mesma história: /novo mostra
+// os três como cartões, /roteiros é o passo 1 e /gravar é o passo 2.
+// Com os nomes num lugar só, elas não divergem.
 //
 // O roteiro vem primeiro: sem saber o que falar não há o que gravar.
-// (Quem já tem o vídeo pronto pula o passo 1, mas ele continua na
-// contagem: a régua é a mesma para todo mundo.)
+// Publicar leva a "Meus vídeos": é de lá que o vídeo pronto é aberto e
+// exportado (o Studio não posta nas redes).
 // ============================================================
 
 export const PASSOS_DE_CRIAR = [
-  { titulo: 'Roteiro', explicacao: 'O texto que você vai falar. Você diz o assunto e a IA escreve.' },
-  { titulo: 'Vídeo', explicacao: 'Grave lendo o roteiro na tela, ou envie um vídeo que você já tem.' },
-  { titulo: 'Edição', explicacao: 'Escolha o estilo e a IA monta a edição.' },
+  { titulo: 'Roteiro', href: '/roteiros?novo=1' },
+  { titulo: 'Gravar', href: '/gravar' },
+  { titulo: 'Publicar', href: '/' },
 ] as const;
 
+/** Em /gravar, qual dos três passos acima está em curso. */
+export const PASSO_DE_GRAVAR = 1;
+
 /**
- * As telas de /gravar, uma de cada vez. `passo` diz a qual dos três
- * passos acima cada uma pertence (o estilo e os detalhes são as duas
- * telas da Edição).
+ * As telas de /gravar, uma de cada vez (todas dentro do passo Gravar).
  *
  * Eram quatro telas: a última ("Revisar") só repetia o que a pessoa
  * tinha acabado de escolher. O que é obrigatório vem primeiro (o
@@ -28,17 +29,14 @@ export const PASSOS_DE_CRIAR = [
  */
 export const TELAS_DE_GRAVAR = [
   {
-    passo: 1,
     pergunta: 'Envie ou grave o seu vídeo',
     explicacao: 'Grave pela câmera ou envie um vídeo que você já tem.',
   },
   {
-    passo: 2,
     pergunta: 'Escolha o estilo',
     explicacao: 'É a cara do vídeo: cores, letras e animações. Na dúvida, deixe no Automático.',
   },
   {
-    passo: 2,
     pergunta: 'Algum detalhe para a IA?',
     explicacao: 'Tudo opcional: nome do vídeo, preço ou oferta. Depois a IA monta a edição.',
   },
