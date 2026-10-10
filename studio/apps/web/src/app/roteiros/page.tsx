@@ -296,7 +296,9 @@ function Roteiros() {
         }
         estado={estado ? salvamento : undefined}
       >
-        <button type="button" className="botao botao--fantasma botao--pequeno so-celular" onClick={() => setListaAberta(true)}>
+        {/* A lista de roteiros salvos abre daqui, em qualquer tela: fixa ao
+            lado, ela disputava a atenção com o pedido. */}
+        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setListaAberta(true)}>
           <IconeRoteiro size={15} /> Meus roteiros
         </button>
         {estado && (
@@ -309,8 +311,6 @@ function Roteiros() {
       </Topbar>
 
       <div className="conteudo roteiros">
-        <aside className="roteiros__lista so-largo">{listaDeRoteiros}</aside>
-
         <main className="roteiros__area">
           {aviso && (
             <p className="roteiros__aviso" role="alert">

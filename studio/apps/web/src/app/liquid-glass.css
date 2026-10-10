@@ -1354,7 +1354,6 @@ body:has(.principal--foco)::before {
 .criar__lista,
 .caminho,
 .roteiro-novo__form,
-.lista-roteiros,
 .roteiro-bloco {
   border: 1px solid rgb(255 255 255 / 90%);
   background: var(--surface-1);
@@ -1368,8 +1367,7 @@ body:has(.principal--foco)::before {
 .criar__opcoes,
 .criar__lista,
 .caminho,
-.roteiro-novo__form,
-.lista-roteiros {
+.roteiro-novo__form {
   border-radius: 22px;
 }
 
@@ -1522,10 +1520,60 @@ body:has(.principal--foco)::before {
   }
 }
 
+/* Meus roteiros: saiu da lateral e abre pelo botão do topo, numa
+   folha. A tela fica com uma coluna só, a do roteiro. */
+.roteiros {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 900px) {
+  .folha:has(.lista-roteiros) {
+    align-items: center;
+  }
+}
+
+.lista-roteiros {
+  gap: var(--e3);
+}
+
+/* A folha já diz "Meus roteiros" no topo. */
 .lista-roteiros__titulo {
+  display: none;
+}
+
+.lista-roteiros ul {
+  gap: 0;
+}
+
+.lista-roteiros li {
+  border-radius: 14px;
+}
+
+.lista-roteiros li + li {
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.lista-roteiros li:hover {
+  background: var(--selecao);
+}
+
+.lista-roteiros li[data-atual] {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.lista-roteiros__item {
+  gap: 2px;
+  padding: 12px;
+}
+
+.lista-roteiros__item strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.lista-roteiros__item span {
   font-size: 13px;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .cartao--clicavel:hover,
@@ -1596,7 +1644,7 @@ body:has(.principal--foco)::before {
   box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
 }
 
-:where([data-tema='escuro']) :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .lista-roteiros, .roteiro-bloco) {
+:where([data-tema='escuro']) :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .roteiro-bloco) {
   border-color: rgb(255 255 255 / 8%);
   box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
 }
