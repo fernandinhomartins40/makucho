@@ -92,6 +92,8 @@ import {
   ArrowsLeftRight,
   MusicNote,
   SpeakerSimpleHigh,
+  Sun,
+  Moon,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -108,6 +110,8 @@ export const IconeGravar = Record;
 export const IconeEditor = Scissors;
 export const IconeMarca = Diamond;
 export const IconeAjuda = Question;
+export const IconeTemaClaro = Sun;
+export const IconeTemaEscuro = Moon;
 
 // ---------- Painéis do editor ----------
 export const IconeMidia = ImagemPh;

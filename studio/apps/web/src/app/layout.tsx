@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Moldura } from '../components/shell/Moldura';
 import { RegistrarServiceWorker } from '../components/pwa/RegistrarServiceWorker';
+import { SCRIPT_DO_TEMA } from '../lib/tema';
 import './globals.css';
 // Depois do globals: troca os tokens e a aparência das peças comuns.
 import './liquid-glass.css';
@@ -93,7 +94,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
+    // O script abaixo põe `data-tema` no <html> antes de o React assumir.
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_DO_TEMA }} />
+      </head>
       <body>
         <RegistrarServiceWorker />
         <Moldura>{children}</Moldura>

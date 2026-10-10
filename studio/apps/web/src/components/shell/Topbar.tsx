@@ -12,6 +12,7 @@
 // ============================================================
 
 import { BotaoDeDicas } from './BotaoDeDicas';
+import { BotaoDeTema } from './BotaoDeTema';
 import Link from 'next/link';
 import { IconeBusca, IconeSalvo, IconeSalvando, IconeAviso } from '../icones';
 
@@ -122,6 +123,7 @@ export function Topbar({
 
       <div className="linha auto topbar__acoes" style={{ gap: 'var(--e2)' }}>
         {children}
+        <BotaoDeTema />
         <BotaoDeDicas />
       </div>
     </header>

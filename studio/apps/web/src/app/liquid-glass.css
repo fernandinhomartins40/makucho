@@ -17,9 +17,10 @@
    - os botões cheios têm volume (degradê da própria cor e brilho);
    - as formas são cápsulas e cantos generosos, concêntricos aos do
      aparelho; os títulos de seção não vão em maiúsculas;
-   - a aparência segue o aparelho (claro ou escuro). O editor e a
-     câmera ficam sempre escuros, como Fotos e Câmera fazem ao editar:
-     o vídeo é o que importa ali.
+   - a aparência segue o aparelho (claro ou escuro), e o botão do topo
+     troca de um para o outro. O editor e a câmera ficam sempre
+     escuros, como Fotos e Câmera fazem ao editar: o vídeo é o que
+     importa ali.
 
    O que a web não faz: a refração de verdade (a lente que entorta o
    fundo) depende de filtro SVG no backdrop, que o Safari não aplica.
@@ -65,38 +66,39 @@
   --r-destaque: 26px;
 }
 
-/* ---------- 1b. Tokens: escuro (segue o aparelho) ---------- */
+/* ---------- 1b. Tokens: escuro ----------
+   O tema vale como `data-tema` no <html> (lib/tema.ts): o do aparelho,
+   ou o que a pessoa fixou no botão do topo. `:where` zera o peso do
+   atributo, para o escuro não passar a ganhar das regras do editor. */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-canvas: #0b0b0f;
-    --bg-sidebar: transparent;
-    --surface-1: rgb(30 30 34 / 74%);
-    --surface-2: rgb(118 118 128 / 28%);
-    --border: rgb(84 84 88 / 55%);
-    --border-forte: rgb(120 120 128 / 70%);
+:root:where([data-tema='escuro']) {
+  --bg-canvas: #0b0b0f;
+  --bg-sidebar: transparent;
+  --surface-1: rgb(30 30 34 / 74%);
+  --surface-2: rgb(118 118 128 / 28%);
+  --border: rgb(84 84 88 / 55%);
+  --border-forte: rgb(120 120 128 / 70%);
 
-    --primary: #2b8cff;
-    --primary-hover: #4a9dff;
-    --accent: #5eb1ff;
-    --success: #30d158;
-    --warning: #ffd60a;
-    --danger: #ff453a;
+  --primary: #2b8cff;
+  --primary-hover: #4a9dff;
+  --accent: #5eb1ff;
+  --success: #30d158;
+  --warning: #ffd60a;
+  --danger: #ff453a;
 
-    --text-primary: #f5f5f7;
-    --text-secondary: #a1a1aa;
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1aa;
 
-    --campo-fundo: rgb(44 44 50 / 72%);
-    --campo-borda: rgb(120 120 128 / 55%);
+  --campo-fundo: rgb(44 44 50 / 72%);
+  --campo-borda: rgb(120 120 128 / 55%);
 
-    --vidro: rgb(44 44 48 / 64%);
-    --vidro-forte: rgb(38 38 42 / 86%);
-    --vidro-aro: inset 0 0 0 0.5px rgb(255 255 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 22%);
-    --vidro-sombra: 0 12px 40px rgb(0 0 0 / 55%), 0 1px 2px rgb(0 0 0 / 40%);
-    --vidro-contorno: rgb(0 0 0 / 40%);
-    --selecao: rgb(255 255 255 / 14%);
-    --veu: rgb(0 0 0 / 50%);
-  }
+  --vidro: rgb(44 44 48 / 64%);
+  --vidro-forte: rgb(38 38 42 / 86%);
+  --vidro-aro: inset 0 0 0 0.5px rgb(255 255 255 / 14%), inset 0 1px 0 rgb(255 255 255 / 22%);
+  --vidro-sombra: 0 12px 40px rgb(0 0 0 / 55%), 0 1px 2px rgb(0 0 0 / 40%);
+  --vidro-contorno: rgb(0 0 0 / 40%);
+  --selecao: rgb(255 255 255 / 14%);
+  --veu: rgb(0 0 0 / 50%);
 }
 
 /* ---------- 1c. Sempre escuro: o editor e a câmera ----------
@@ -187,14 +189,7 @@ body:has(.principal--foco) {
   --desfoque: blur(28px) saturate(180%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --sombra-1: 0 1px 2px rgb(0 0 0 / 40%);
-    --sombra-2: 0 4px 16px rgb(0 0 0 / 45%);
-    --sombra-3: 0 12px 36px rgb(0 0 0 / 60%);
-  }
-}
-
+:root:where([data-tema='escuro']),
 .principal--foco,
 .estudio,
 .estudio--prompter {
@@ -206,7 +201,11 @@ body:has(.principal--foco) {
 /* ---------- 3. Base ---------- */
 
 html {
-  color-scheme: light dark;
+  color-scheme: light;
+}
+
+html:where([data-tema='escuro']) {
+  color-scheme: dark;
 }
 
 body {
@@ -1081,10 +1080,8 @@ body::before {
     radial-gradient(circle 34vmax at 30% 110%, rgb(61 220 132 / 45%), transparent 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  body::before {
-    opacity: 0.6;
-  }
+:where([data-tema='escuro']) body::before {
+  opacity: 0.6;
 }
 
 /* No editor o fundo é preto: cor nenhuma por trás do vídeo. */
@@ -1329,59 +1326,78 @@ body:has(.principal--foco)::before {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 5px 12px rgb(0 0 0 / 14%);
 }
 
-/* 9e. Escuro: as mesmas peças, com vidro fumê. Vale para o tema
-   escuro do aparelho e para o editor, que é sempre escuro. */
-@media (prefers-color-scheme: dark) {
-  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape) {
-    background: linear-gradient(180deg, rgb(60 60 68 / 42%), rgb(30 30 36 / 30%));
-    box-shadow:
-      0 14px 30px -10px rgb(0 0 0 / 70%),
-      0 2px 6px rgb(0 0 0 / 40%),
-      inset 0 1px 1px rgb(255 255 255 / 42%),
-      inset 0 -1px 1px rgb(255 255 255 / 10%),
-      inset 0 12px 16px -14px rgb(255 255 255 / 35%),
-      inset 0 -14px 18px -14px rgb(0 0 0 / 55%);
-  }
+/* 9e. Escuro: as mesmas peças, com vidro fumê. */
+:where([data-tema='escuro']) :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape) {
+  background: linear-gradient(180deg, rgb(60 60 68 / 42%), rgb(30 30 36 / 30%));
+  -webkit-backdrop-filter: blur(10px) saturate(170%);
+  backdrop-filter: blur(10px) saturate(170%);
+  box-shadow:
+    0 14px 30px -10px rgb(0 0 0 / 70%),
+    0 2px 6px rgb(0 0 0 / 40%),
+    inset 0 1px 1px rgb(255 255 255 / 42%),
+    inset 0 -1px 1px rgb(255 255 255 / 10%),
+    inset 0 12px 16px -14px rgb(255 255 255 / 35%),
+    inset 0 -14px 18px -14px rgb(0 0 0 / 55%);
+}
 
-  :is(.menu, .folha__caixa) {
-    background: linear-gradient(180deg, rgb(52 52 60 / 86%), rgb(34 34 40 / 82%));
-    box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
-  }
+:where([data-tema='escuro']) :is(.menu, .folha__caixa) {
+  background: linear-gradient(180deg, rgb(52 52 60 / 86%), rgb(34 34 40 / 82%));
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
+}
 
-  :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .lista-roteiros, .roteiro-bloco) {
-    border-color: rgb(255 255 255 / 8%);
-    box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
-  }
+:where([data-tema='escuro']) :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .lista-roteiros, .roteiro-bloco) {
+  border-color: rgb(255 255 255 / 8%);
+  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
+}
 
-  .nav-item[aria-current='page'],
-  .barra-inferior__item[aria-current='page'],
-  .abas-da-pagina__aba[aria-selected='true'],
-  .kit-de-marca__aba[aria-selected='true'],
-  .roteiro-novo__duracoes button[aria-checked='true'],
-  .escolha-do-estilo__filtros button[aria-selected='true'],
-  .botao--secundario {
-    background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 7%));
-    color: #7dbbff;
-    box-shadow: inset 0 1px 1px rgb(255 255 255 / 40%), inset 0 -6px 10px -8px rgb(0 0 0 / 50%),
-      0 6px 14px -6px rgb(0 0 0 / 60%);
-  }
+/* Ao passar o mouse: sem isto valeria a borda branca do tema claro. */
+:where([data-tema='escuro']) :is(.cartao--clicavel, .projeto, .caminho):hover {
+  border-color: rgb(255 255 255 / 18%);
+  box-shadow: 0 20px 48px -14px rgb(0 0 0 / 75%);
+}
 
-  .nav-item:hover:not([aria-current='page']) {
-    background: rgb(255 255 255 / 8%);
-  }
+:where([data-tema='escuro']) :is(.cartao--selecionado, .caminho--principal),
+:where([data-tema='escuro']) :is(.cartao--selecionado, .caminho--principal):hover {
+  border-color: var(--primary);
+}
 
-  .roteiro-novo__exemplos button {
-    background: rgb(255 255 255 / 6%);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
-  }
+/* Um seletor por linha, sem `:is`: ele daria a todos o peso do mais
+   forte, e o botão secundário passaria a ganhar da regra do editor. */
+:where([data-tema='escuro']) .nav-item[aria-current='page'],
+:where([data-tema='escuro']) .barra-inferior__item[aria-current='page'],
+:where([data-tema='escuro']) .abas-da-pagina__aba[aria-selected='true'],
+:where([data-tema='escuro']) .kit-de-marca__aba[aria-selected='true'],
+:where([data-tema='escuro']) .roteiro-novo__duracoes button[aria-checked='true'],
+:where([data-tema='escuro']) .escolha-do-estilo__filtros button[aria-selected='true'],
+:where([data-tema='escuro']) .botao--secundario {
+  background: linear-gradient(180deg, rgb(255 255 255 / 20%), rgb(255 255 255 / 7%));
+  color: #7dbbff;
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 40%), inset 0 -6px 10px -8px rgb(0 0 0 / 50%),
+    0 6px 14px -6px rgb(0 0 0 / 60%);
+}
 
-  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::before {
-    opacity: 0.6;
-  }
+/* O mesmo: o claro deixaria o botão branco com letra azul-clara. */
+:where([data-tema='escuro']) .botao--secundario:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgb(255 255 255 / 28%), rgb(255 255 255 / 12%));
+}
 
-  :is(.barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape)::after {
-    opacity: 0.18;
-  }
+:where([data-tema='escuro']) .nav-item:hover:not([aria-current='page']) {
+  background: rgb(255 255 255 / 8%);
+}
+
+:where([data-tema='escuro']) .roteiro-novo__exemplos button {
+  background: rgb(255 255 255 / 6%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 10%);
+}
+
+:where([data-tema='escuro']) :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape)::before {
+  opacity: 0.6;
+}
+
+:where([data-tema='escuro']) :is(.barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .assistente__rodape)::after {
+  opacity: 0.18;
 }
 
 /* O editor e a câmera são sempre escuros, mesmo com o aparelho claro. */
@@ -1406,6 +1422,10 @@ body:has(.principal--foco)::before {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   color: var(--accent);
   box-shadow: none;
+}
+
+:is(.principal--foco, .estudio, .estudio--prompter) .botao--secundario:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 26%, transparent);
 }
 
 /* ---------- 8. Acessibilidade e aparelhos sem o efeito ---------- */
@@ -1447,12 +1467,15 @@ body:has(.principal--foco)::before {
   }
 }
 
-@media (prefers-reduced-transparency: reduce) and (prefers-color-scheme: dark) {
-  :root {
+@media (prefers-reduced-transparency: reduce) {
+  :root:where([data-tema='escuro']),
+  .principal--foco,
+  .estudio,
+  .estudio--prompter {
     --surface-1: #1c1c1e;
   }
 
-  :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape) {
+  :where([data-tema='escuro']) :is(.sidebar, .barra-inferior__abas, .abas-da-pagina, .kit-de-marca__abas, .menu, .folha__caixa, .assistente__rodape) {
     background: #1c1c1e;
   }
 }
@@ -1475,8 +1498,8 @@ body:has(.principal--foco)::before {
   }
 }
 
-@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root {
+@media (prefers-contrast: more) {
+  :root:where([data-tema='escuro']) {
     --text-secondary: #d1d1d6;
     --border: #8e8e93;
     --border-forte: #aeaeb2;
