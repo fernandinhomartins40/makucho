@@ -35,7 +35,8 @@ export const VERSAO_DO_PROMPT = {
   // v6: julgamento no lugar do protocolo -- a estrutura sai do conteúdo
   // (história, tutorial, opinião, oferta...), e título e chamada de tela só
   // quando ajudam; as regras de corte e o contrato são os mesmos.
-  selecionar_trechos: 'selecao-v6',
+  // v7: a legenda do post e as hashtags, em `analysis`, para publicar.
+  selecionar_trechos: 'selecao-v7',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',

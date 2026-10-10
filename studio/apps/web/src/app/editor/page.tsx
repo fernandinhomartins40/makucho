@@ -27,6 +27,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { EditPlanV1, MarcaDoVideo, ProjectState, TimelineOperation } from '@makucho/studio-contracts';
 import {
   aplicarOperacao,
+  textoDoPost,
   comIdsNovos,
   comKeyframe,
   comKeyframeDaMidia,
@@ -1295,6 +1296,7 @@ function Editor({ projectId }: { projectId: string }) {
           plano={planoVisivel ?? plano}
           desligados={desligados}
           aoExportar={exportar}
+          legendaDoPost={textoDoPost(projeto?.entendimentoDaIa)}
         />
       )}
 

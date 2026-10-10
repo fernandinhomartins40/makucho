@@ -9,7 +9,9 @@
 // Durante: barra, etapa em palavras, quadro X de Y e tempo restante. A
 // janela pode ser fechada: a exportação continua e o cartão no canto da
 // tela acompanha.
-// Depois: baixar de novo, avisos e "exportar outra vez".
+// Depois: a legenda do post (a IA escreve na montagem; a pessoa ajusta),
+// o Compartilhar do aparelho para publicar pelo app da rede, baixar de
+// novo, avisos e "exportar outra vez".
 // ============================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -27,8 +29,8 @@ import {
   faltaNoNavegador,
   type OpcoesDeExportacao,
 } from '../../lib/exportacao/opcoes';
-import { baixar, ehAparelhoApple, useExportacoes, type TarefaDeExportacao } from '../../lib/exportacao/tarefas';
-import { IconeAviso, IconeCheck, IconeExportar, IconeFechar } from '../icones';
+import { baixar, compartilhar, ehAparelhoApple, podeCompartilhar, useExportacoes, type TarefaDeExportacao } from '../../lib/exportacao/tarefas';
+import { IconeAviso, IconeCheck, IconeCopiar, IconeExportar, IconeFechar } from '../icones';
 
 const CHAVE = 'studio:opcoes-de-exportacao';
 
@@ -41,6 +43,8 @@ interface Props {
   desligados: ReadonlySet<string>;
   /** Monta o pedido completo e começa (quem sabe das URLs e da transcrição é o editor). */
   aoExportar: (opcoes: OpcoesDeExportacao) => void;
+  /** A legenda e as hashtags que a IA escreveu na montagem (vazio se não escreveu). */
+  legendaDoPost?: string;
 }
 
 export const ROTULO_DA_ETAPA: Record<string, string> = {
@@ -50,7 +54,7 @@ export const ROTULO_DA_ETAPA: Record<string, string> = {
   finalizando: 'Finalizando o arquivo',
 };
 
-export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar }: Props) {
+export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar, legendaDoPost = '' }: Props) {
   const tarefa = useExportacoes((s) => [...s.tarefas].reverse().find((t) => t.projectId === projectId));
   const outraRodando = useExportacoes((s) => s.tarefas.some((t) => t.estado === 'rodando' && t.projectId !== projectId));
   const [configurando, setConfigurando] = useState(true);
@@ -244,20 +248,49 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
             </footer>
           </>
         ) : (
-          <Andamento tarefa={tarefa} aoFechar={aoFechar} aoRefazer={() => setConfigurando(true)} />
+          <Andamento tarefa={tarefa} aoFechar={aoFechar} aoRefazer={() => setConfigurando(true)} legendaDoPost={legendaDoPost} />
         )}
       </div>
     </div>
   );
 }
 
-function Andamento({ tarefa, aoFechar, aoRefazer }: { tarefa: TarefaDeExportacao; aoFechar: () => void; aoRefazer: () => void }) {
+/** A legenda que a pessoa ajustou, por vídeo: reabrir a janela não perde o que ela escreveu. */
+const chaveDaLegenda = (projectId: string) => `studio:legenda-do-post:${projectId}`;
+
+function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: TarefaDeExportacao; aoFechar: () => void; aoRefazer: () => void; legendaDoPost: string }) {
   const cancelar = useExportacoes((s) => s.cancelar);
+  const [legenda, setLegenda] = useState(() => {
+    try {
+      return localStorage.getItem(chaveDaLegenda(tarefa.projectId)) ?? legendaDoPost;
+    } catch {
+      return legendaDoPost;
+    }
+  });
+  const [aviso, setAviso] = useState<'copiada' | 'compartilhada' | null>(null);
+  const mudarLegenda = (texto: string) => {
+    setLegenda(texto);
+    setAviso(null);
+    try {
+      localStorage.setItem(chaveDaLegenda(tarefa.projectId), texto);
+    } catch {
+      // Vale só enquanto a janela estiver aberta.
+    }
+  };
+  const copiarLegenda = () => {
+    void navigator.clipboard
+      ?.writeText(legenda.trim())
+      .then(() => setAviso('copiada'))
+      .catch(() => undefined);
+  };
   const pct = Math.round(Math.min(1, tarefa.progresso.fracao) * 100);
   const p = tarefa.progresso;
 
   if (tarefa.estado === 'pronta' && tarefa.resultado) {
     const r = tarefa.resultado;
+    const apple = ehAparelhoApple();
+    // No iPhone, salvar e publicar saem pelo mesmo Compartilhar do sistema.
+    const compartilha = podeCompartilhar(r.url, r.nome);
     return (
       <div className="exportar__andamento">
         <span className="exportar__icone exportar__icone--ok" aria-hidden>
@@ -266,17 +299,50 @@ function Andamento({ tarefa, aoFechar, aoRefazer }: { tarefa: TarefaDeExportacao
         <h3>Vídeo pronto</h3>
         <p className="exportar__ajuda">
           {r.largura}×{r.altura} · {formatarDuracao(r.duracaoMs)} · {formatarBytes(r.bytes)} · exportado em {formatarDuracao(r.levouMs)}.{' '}
-          {ehAparelhoApple() ? 'Toque em “Salvar no iPhone” e escolha “Salvar vídeo”.' : 'O download começou sozinho; se não começou, use o botão.'}
+          {apple ? 'Para guardar na galeria, toque em “Publicar ou salvar” e escolha “Salvar vídeo”.' : 'O download começou sozinho; se não começou, use o botão.'}
         </p>
         {r.avisos.map((a) => (
           <p key={a} className="exportar__alerta">
             <IconeAviso size={15} /> {a}
           </p>
         ))}
-        <div className="exportar__botoes">
-          <button type="button" className="botao botao--primario" onClick={() => baixar(r.url, r.nome)}>
-            <IconeExportar size={16} /> {ehAparelhoApple() ? 'Salvar no iPhone' : 'Baixar de novo'}
+
+        <div className="exportar__post">
+          <label htmlFor="legenda-do-post">Legenda do post</label>
+          <textarea id="legenda-do-post" className="campo__area" rows={5} maxLength={2200} value={legenda} onChange={(e) => mudarLegenda(e.target.value)} />
+          <button type="button" className="botao botao--secundario botao--pequeno" disabled={!legenda.trim()} onClick={copiarLegenda}>
+            <IconeCopiar size={15} /> {aviso === 'copiada' ? 'Legenda copiada' : 'Copiar legenda'}
           </button>
+          {aviso === 'compartilhada' && legenda.trim() && (
+            <p className="exportar__copiada" role="status">
+              A legenda foi copiada. No app da rede, toque no campo da legenda e escolha Colar.
+            </p>
+          )}
+        </div>
+
+        <div className="exportar__botoes">
+          {compartilha && (
+            <button
+              type="button"
+              className="botao botao--primario"
+              onClick={() => {
+                // Direto do toque, sem esperar nada: o iPhone exige.
+                if (compartilhar(r.url, r.nome, legenda)) setAviso('compartilhada');
+              }}
+            >
+              <IconeExportar size={16} /> {apple ? 'Publicar ou salvar' : 'Publicar nas redes'}
+            </button>
+          )}
+          {!apple && (
+            <button type="button" className={`botao ${compartilha ? 'botao--secundario' : 'botao--primario'}`} onClick={() => baixar(r.url, r.nome)}>
+              Baixar de novo
+            </button>
+          )}
+          {apple && !compartilha && (
+            <button type="button" className="botao botao--primario" onClick={() => baixar(r.url, r.nome)}>
+              <IconeExportar size={16} /> Salvar no iPhone
+            </button>
+          )}
           <button type="button" className="botao botao--secundario" onClick={aoRefazer}>
             Exportar com outras opções
           </button>

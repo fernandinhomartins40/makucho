@@ -4,6 +4,8 @@ import {
   validateSemanticSafety,
   hasBlockingIssues,
   overallRisk,
+  analiseDaIaSchema,
+  textoDoPost,
 } from '../src/index';
 import type { ProposedSegment, SegmentText } from '../src/index';
 
@@ -187,6 +189,21 @@ t('risco geral baixo', overallRisk(limpa) === 'low');
 const omitida = estiloPropostoSchema.safeParse({ hookTitle: 'Três erros', cta: '', emphasis: [] });
 t('chamada vazia vale como omitida, não derruba a proposta', omitida.success && omitida.data.cta === undefined && omitida.data.hookTitle === 'Três erros');
 t('chamada nula também', estiloPropostoSchema.safeParse({ cta: null }).success);
+
+// --- Legenda do post e hashtags (para publicar) ---
+const base = { topic: 'Café coado', promise: 'um café melhor em casa', structure: 'tutorial', hookType: 'promessa' } as const;
+t('entendimento sem legenda nem hashtags continua válido', analiseDaIaSchema.safeParse(base).success);
+const comPost = analiseDaIaSchema.safeParse({ ...base, postCaption: '  Seu café pode ficar melhor. Veja como.  ', hashtags: ['#Café', 'cafe da manha', 'café', 'x', 42] });
+t(
+  'hashtags são arrumadas (sem #, sem espaço, sem repetida), não recusadas',
+  comPost.success && comPost.data.postCaption === 'Seu café pode ficar melhor. Veja como.' && JSON.stringify(comPost.data.hashtags) === JSON.stringify(['Café', 'cafedamanha']),
+);
+const emTexto = analiseDaIaSchema.safeParse({ ...base, hashtags: '#cafe #barista, #receita' });
+t('hashtags vindas num texto só viram lista', emTexto.success && emTexto.data.hashtags?.length === 3);
+const lixo = analiseDaIaSchema.safeParse({ ...base, postCaption: 12, hashtags: { a: 1 } });
+t('legenda e hashtags fora do formato são ignoradas, não derrubam a proposta', lixo.success && lixo.data.postCaption === undefined && lixo.data.hashtags === undefined);
+t('texto do post junta a legenda e as hashtags', textoDoPost({ postCaption: 'Oi.', hashtags: ['cafe', 'barista'] }) === 'Oi.\n\n#cafe #barista');
+t('texto do post vazio quando a IA não escreveu', textoDoPost(null) === '');
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail > 0) process.exit(1);

@@ -271,6 +271,8 @@ ${pedido.usuario}`);
         promise: 'vender mais respondendo rápido',
         structure: 'problema_solucao' as const,
         hookType: 'dor' as const,
+        postCaption: 'Demorar para responder no WhatsApp custa venda. Veja como resolver hoje.',
+        hashtags: ['whatsapp', 'vendas', 'pequenosnegocios'],
       },
       framework: 'authority_education' as const,
       targetDurationMs: Math.max(5_000, Math.min(duracaoMs, 60_000)),

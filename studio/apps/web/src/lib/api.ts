@@ -263,6 +263,9 @@ export interface ProjetoDetalhado {
     promise: string;
     structure: string;
     hookType: string;
+    /** A legenda do post e as hashtags (sem "#"), para publicar. */
+    postCaption?: string;
+    hashtags?: string[];
   } | null;
 }
 

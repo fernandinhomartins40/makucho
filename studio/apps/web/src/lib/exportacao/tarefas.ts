@@ -68,6 +68,43 @@ function guardar(blob: Blob): string {
   return url;
 }
 
+/** O vídeo pronto como arquivo, se este aparelho consegue entregá-lo a outro app. */
+function arquivoParaCompartilhar(url: string, nome: string): File | null {
+  const blob = arquivos.get(url);
+  if (!blob || typeof navigator === 'undefined' || typeof navigator.share !== 'function') return null;
+  const arquivo = new File([blob], nome, { type: blob.type || 'video/mp4' });
+  if (navigator.canShare && !navigator.canShare({ files: [arquivo] })) return null;
+  return arquivo;
+}
+
+/** Dá para abrir o Compartilhar do aparelho com este vídeo? */
+export function podeCompartilhar(url: string, nome: string): boolean {
+  return arquivoParaCompartilhar(url, nome) !== null;
+}
+
+/**
+ * Abre o Compartilhar do aparelho com o vídeo: a pessoa escolhe o app
+ * (Instagram, TikTok, WhatsApp...) e publica por lá, com a conta dela.
+ * O Studio não posta em nome de ninguém nem guarda senha de rede.
+ *
+ * A legenda vai para a área de transferência, porque junto do arquivo o
+ * texto se perde: cada app decide o que aproveita, e no iPhone mandar os
+ * dois faz o Safari largar um deles. Só no Android o texto vai junto.
+ *
+ * Tem de ser chamada direto do toque, sem `await` antes: o iPhone
+ * recusa o Compartilhar que não nasce de um gesto.
+ */
+export function compartilhar(url: string, nome: string, legenda = ''): boolean {
+  const arquivo = arquivoParaCompartilhar(url, nome);
+  if (!arquivo) return false;
+  const texto = legenda.trim();
+  if (texto) void navigator.clipboard?.writeText(texto).catch(() => undefined);
+  const dados: ShareData = { files: [arquivo] };
+  if (texto && !ehAparelhoApple()) dados.text = texto;
+  void navigator.share(dados).catch(() => undefined);
+  return true;
+}
+
 /**
  * Entrega o arquivo. No computador e no Android, o download vai para a
  * pasta; no iPhone/iPad, abre o Compartilhar do sistema ("Salvar vídeo"
@@ -76,14 +113,7 @@ function guardar(blob: Blob): string {
  * sem ele).
  */
 export function baixar(url: string, nome: string) {
-  const blob = arquivos.get(url);
-  if (blob && ehAparelhoApple() && typeof navigator.share === 'function') {
-    const arquivo = new File([blob], nome, { type: blob.type || 'video/mp4' });
-    if (!navigator.canShare || navigator.canShare({ files: [arquivo] })) {
-      void navigator.share({ files: [arquivo], title: nome }).catch(() => undefined);
-      return;
-    }
-  }
+  if (ehAparelhoApple() && compartilhar(url, nome)) return;
   const a = document.createElement('a');
   a.href = url;
   a.download = nome;

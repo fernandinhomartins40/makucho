@@ -91,6 +91,30 @@ export const TIPOS_DE_GANCHO = ['curiosidade', 'dor', 'promessa', 'polemica', 'p
 
 const cortar = (max: number) => (v: unknown) => (typeof v === 'string' && v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v);
 
+/**
+ * As hashtags como a tela usa: sem "#", sem espaço, sem repetição, no
+ * máximo dez. A IA devolve de todo jeito ("#Café", "café da manhã", uma
+ * frase só com várias): aqui se ARRUMA em vez de recusar, pelo mesmo
+ * motivo do `cortar` -- recusar a proposta inteira por causa de uma
+ * hashtag pagaria uma segunda chamada.
+ */
+const arrumarHashtags = (v: unknown): unknown => {
+  const lista = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[\s,]+/) : null;
+  if (!lista) return undefined;
+  const vistas = new Set<string>();
+  const saida: string[] = [];
+  for (const item of lista) {
+    if (typeof item !== 'string') continue;
+    const limpa = item.replace(/[^\p{L}\p{N}_]/gu, '').slice(0, 40);
+    const chave = limpa.toLocaleLowerCase('pt-BR');
+    if (limpa.length < 2 || vistas.has(chave)) continue;
+    vistas.add(chave);
+    saida.push(limpa);
+    if (saida.length === 10) break;
+  }
+  return saida.length ? saida : undefined;
+};
+
 export const analiseDaIaSchema = z
   .object({
     // Texto de entendimento longo demais é CORTADO, não recusado: visto em
@@ -104,8 +128,21 @@ export const analiseDaIaSchema = z
     promise: z.preprocess(cortar(160), z.string().min(2).max(160)),
     structure: z.enum(ESTRUTURAS_VIRAIS),
     hookType: z.enum(TIPOS_DE_GANCHO),
+    // Para publicar: a pessoa cola na rede. Ausentes nas propostas
+    // antigas e na montagem sem IA; nunca derrubam a proposta.
+    /** A legenda do post, pronta para colar (sem as hashtags). */
+    postCaption: z.preprocess((v) => (typeof v === 'string' && v.trim().length >= 2 ? cortar(700)(v.trim()) : undefined), z.string().max(700).optional()),
+    /** As hashtags do post, sem o "#". */
+    hashtags: z.preprocess(arrumarHashtags, z.array(z.string().min(2).max(40)).max(10).optional()),
   })
   .strict();
+
+/** A legenda e as hashtags num texto só, como vão para a rede. */
+export function textoDoPost(analise: { postCaption?: string; hashtags?: readonly string[] } | null | undefined): string {
+  const legenda = analise?.postCaption?.trim() ?? '';
+  const tags = (analise?.hashtags ?? []).map((h) => `#${h}`).join(' ');
+  return [legenda, tags].filter(Boolean).join('\n\n');
+}
 
 export type AnaliseDaIa = z.infer<typeof analiseDaIaSchema>;
 
