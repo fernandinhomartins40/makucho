@@ -6,14 +6,15 @@
 // Com os nomes num lugar só, elas não divergem.
 //
 // O roteiro vem primeiro: sem saber o que falar não há o que gravar.
-// Publicar leva a "Meus vídeos": é de lá que o vídeo pronto é aberto e
-// exportado (o Studio não posta nas redes).
+// Publicar leva à escolha do vídeo e, dali, direto à exportação: o
+// arquivo só existe depois de exportado, e é ele que o Compartilhar do
+// aparelho entrega ao app da rede (o Studio não posta em nome de ninguém).
 // ============================================================
 
 export const PASSOS_DE_CRIAR = [
   { titulo: 'Roteiro', href: '/roteiros?novo=1' },
   { titulo: 'Gravar', href: '/gravar' },
-  { titulo: 'Publicar', href: '/' },
+  { titulo: 'Publicar', href: '/editor?publicar=1' },
 ] as const;
 
 /** Em /gravar, qual dos três passos acima está em curso. */

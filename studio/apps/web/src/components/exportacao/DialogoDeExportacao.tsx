@@ -14,7 +14,7 @@
 // novo, avisos e "exportar outra vez".
 // ============================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
 import { agendaDoPlano } from '@makucho/studio-contracts';
 import {
@@ -45,6 +45,8 @@ interface Props {
   aoExportar: (opcoes: OpcoesDeExportacao) => void;
   /** A legenda e as hashtags que a IA escreveu na montagem (vazio se não escreveu). */
   legendaDoPost?: string;
+  /** Veio de "Publicar": ao abrir, já exporta com as opções lembradas. */
+  iniciarAoAbrir?: boolean;
 }
 
 export const ROTULO_DA_ETAPA: Record<string, string> = {
@@ -54,7 +56,7 @@ export const ROTULO_DA_ETAPA: Record<string, string> = {
   finalizando: 'Finalizando o arquivo',
 };
 
-export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar, legendaDoPost = '' }: Props) {
+export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar, legendaDoPost = '', iniciarAoAbrir = false }: Props) {
   const tarefa = useExportacoes((s) => [...s.tarefas].reverse().find((t) => t.projectId === projectId));
   const outraRodando = useExportacoes((s) => s.tarefas.some((t) => t.estado === 'rodando' && t.projectId !== projectId));
   const [configurando, setConfigurando] = useState(true);
@@ -89,8 +91,6 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
   const apple = useMemo(() => aberto && ehAparelhoApple(), [aberto]);
   const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (opcoes.onde ?? (apple ? 'servidor' : 'aparelho'));
 
-  if (!aberto) return null;
-
   const mudar = (m: Partial<OpcoesDeExportacao>) => setOpcoes((o) => ({ ...o, ...m }));
   const exportar = () => {
     try {
@@ -103,13 +103,26 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
     aoExportar({ ...opcoes, onde });
   };
 
+  // "Publicar": uma vez só, e só se não há um vídeo deste projeto pronto
+  // ou sendo montado (aí a janela mostra o que já existe).
+  const jaIniciou = useRef(false);
+  useEffect(() => {
+    if (!aberto || !iniciarAoAbrir || jaIniciou.current) return;
+    jaIniciou.current = true;
+    const temVideo = tarefa && (tarefa.estado === 'rodando' || tarefa.estado === 'pronta');
+    if (!temVideo && !outraRodando && duracaoMs > 0) exportar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto, iniciarAoAbrir]);
+
+  if (!aberto) return null;
+
   return (
     <div className="exportar" onClick={aoFechar}>
       <div className="exportar__caixa" role="dialog" aria-modal="true" aria-labelledby="exportar-titulo" onClick={(e) => e.stopPropagation()}>
         <header className="exportar__topo">
           <div>
             <h2 id="exportar-titulo">Exportar vídeo</h2>
-            <p>O vídeo é montado aqui mesmo, no seu computador: mais rápido e sem fila.</p>
+            <p>{onde === 'servidor' ? 'O vídeo é montado no servidor: o aparelho fica livre.' : 'O vídeo é montado aqui mesmo, neste aparelho: mais rápido e sem fila.'}</p>
           </div>
           <button type="button" className="botao-icone" aria-label="Fechar" onClick={aoFechar}>
             <IconeFechar size={20} />

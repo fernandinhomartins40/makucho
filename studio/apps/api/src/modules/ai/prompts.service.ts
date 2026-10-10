@@ -60,7 +60,8 @@ export const VERSAO_DO_PROMPT = {
   // descontraído e nunca emoji (infantilizava os vídeos de negócio).
   sugerir_midias: 'midias-v3',
   // Vídeo sem narração, montado pelas cenas (montagem-visual.ts).
-  montar_por_cenas: 'montagem-visual-v1',
+  // v2: a legenda do post e as hashtags, em `analysis`, para publicar.
+  montar_por_cenas: 'montagem-visual-v2',
   // Uma mídia escolhida na busca: a IA diz onde e como ela entra.
   posicionar_midia: 'posicionar-midia-v1',
   // O "Peça à IA" com ferramentas (agente.service.ts).

@@ -12,7 +12,7 @@
 
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { cancelarProjeto } from '../../common/cancelamento';
-import { analiseDaIaSchema, canTransition } from '@makucho/studio-contracts';
+import { analiseDaIaSchema, postDaIaSchema, canTransition } from '@makucho/studio-contracts';
 import type { ProjectInput, ProjectPatch, ProjectState } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import { FilaService } from '../../common/fila.service';
@@ -104,7 +104,8 @@ export class ProjectsService {
     // Confere a posse ANTES de devolver: sem isto, conhecer o id de um
     // projeto de outro workspace bastaria para lê-lo.
     assertOwnership(tenant, projeto, 'projeto');
-    return { ...projeto, entendimentoDaIa: await this.entendimentoDaIa(id) };
+    const [entendimentoDaIa, postDaIa] = await Promise.all([this.entendimentoDaIa(id), this.postDaIa(id)]);
+    return { ...projeto, entendimentoDaIa, postDaIa };
   }
 
   /** Onde o preparo está agora (etapa, %, frases ouvidas). */
@@ -119,6 +120,29 @@ export class ProjectsService {
    * assunto, promessa, estrutura. Mostrado no editor, para a pessoa
    * ver se a IA pegou o ponto antes de revisar os cortes.
    */
+  /**
+   * A legenda do post e as hashtags que a IA escreveu na última montagem
+   * que deu certo -- a da fala ou a das cenas (vídeo sem narração). Lida
+   * à parte do entendimento porque a montagem das cenas não segue o
+   * formato rígido dele.
+   */
+  private async postDaIa(projectId: string) {
+    const ultima = await this.prisma.aiAnalysis.findFirst({
+      where: { projectId, parsedOk: true, OR: [{ promptVersion: { startsWith: 'selecao' } }, { promptVersion: { startsWith: 'montagem-visual' } }] },
+      orderBy: { createdAt: 'desc' },
+      select: { rawOutput: true },
+    });
+    const texto = (ultima?.rawOutput as { texto?: string } | null)?.texto;
+    if (!texto) return null;
+    try {
+      const json = JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1));
+      const lido = postDaIaSchema.safeParse(json?.analysis ?? {});
+      return lido.success && (lido.data.postCaption || lido.data.hashtags?.length) ? lido.data : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async entendimentoDaIa(projectId: string) {
     const ultima = await this.prisma.aiAnalysis.findFirst({
       where: { projectId, parsedOk: true, promptVersion: { startsWith: 'selecao' } },

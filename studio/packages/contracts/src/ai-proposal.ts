@@ -115,6 +115,13 @@ const arrumarHashtags = (v: unknown): unknown => {
   return saida.length ? saida : undefined;
 };
 
+const camposDoPost = {
+  /** A legenda do post, pronta para colar (sem as hashtags). */
+  postCaption: z.preprocess((v) => (typeof v === 'string' && v.trim().length >= 2 ? cortar(700)(v.trim()) : undefined), z.string().max(700).optional()),
+  /** As hashtags do post, sem o "#". */
+  hashtags: z.preprocess(arrumarHashtags, z.array(z.string().min(2).max(40)).max(10).optional()),
+};
+
 export const analiseDaIaSchema = z
   .object({
     // Texto de entendimento longo demais é CORTADO, não recusado: visto em
@@ -130,12 +137,18 @@ export const analiseDaIaSchema = z
     hookType: z.enum(TIPOS_DE_GANCHO),
     // Para publicar: a pessoa cola na rede. Ausentes nas propostas
     // antigas e na montagem sem IA; nunca derrubam a proposta.
-    /** A legenda do post, pronta para colar (sem as hashtags). */
-    postCaption: z.preprocess((v) => (typeof v === 'string' && v.trim().length >= 2 ? cortar(700)(v.trim()) : undefined), z.string().max(700).optional()),
-    /** As hashtags do post, sem o "#". */
-    hashtags: z.preprocess(arrumarHashtags, z.array(z.string().min(2).max(40)).max(10).optional()),
+    ...camposDoPost,
   })
   .strict();
+
+/**
+ * Só a legenda e as hashtags, lidas do `analysis` de qualquer montagem:
+ * a da fala (acima, rígida) e a das cenas, que tem um entendimento de
+ * formato livre. Chaves a mais são ignoradas.
+ */
+export const postDaIaSchema = z.object(camposDoPost);
+
+export type PostDaIa = z.infer<typeof postDaIaSchema>;
 
 /** A legenda e as hashtags num texto só, como vão para a rede. */
 export function textoDoPost(analise: { postCaption?: string; hashtags?: readonly string[] } | null | undefined): string {
