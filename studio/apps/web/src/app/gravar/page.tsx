@@ -855,7 +855,7 @@ function Composicao({
       )}
 
       {/* ---------- Navegação ---------- */}
-      <div className="assistente__rodape">
+      <div className="assistente__rodape" data-vazio={passo === 0 && !podeAvancar ? '' : undefined}>
         {passo > 0 ? (
           <button type="button" className="botao botao--fantasma" onClick={() => irPara(passo - 1)}>
             <IconeVoltar size={16} />

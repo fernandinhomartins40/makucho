@@ -202,6 +202,11 @@ body:has(.principal--foco) {
 
 html {
   color-scheme: light;
+  /* Toque duplo não amplia a página (dois toques rápidos num botão
+     bastavam), e o Safari não infla a letra com o iPhone deitado. */
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html:where([data-tema='escuro']) {
@@ -1157,8 +1162,24 @@ body {
   }
 
   /* Voltar e Continuar: uma faixa de vidro presa acima da barra de abas. */
+  /* Sem nada para tocar (primeira tela, sem vídeo ainda), a faixa some. */
+  .assistente__rodape[data-vazio] {
+    display: none;
+  }
+
+  /* Espaço para a última linha do conteúdo não ficar sob a faixa. */
+  .assistente {
+    padding-bottom: 76px;
+  }
+
+  /* Presa à tela, encostada na barra de abas. Como "sticky" ela parava
+     no meio da tela, por cima dos cartões. */
   .assistente__rodape {
-    bottom: calc(var(--barra-inferior) + var(--seguro-baixo) + 20px);
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(max(12px, calc(var(--seguro-baixo) - 10px)) + 72px);
+    z-index: 40;
     margin: 0;
     padding: 8px;
     border-radius: 999px;
@@ -1220,6 +1241,14 @@ body:has(.principal--foco)::before {
     inset 0 -14px 18px -14px rgb(30 40 70 / 26%),
     inset 8px 0 12px -12px rgb(255 255 255 / 75%),
     inset -8px 0 12px -12px rgb(30 40 70 / 16%);
+}
+
+/* A barra de abas do celular fica sobre o conteúdo que rola: com o
+   desfoque leve, o texto de baixo se misturava com os rótulos. */
+.barra-inferior__abas {
+  background: linear-gradient(180deg, rgb(255 255 255 / 86%), rgb(255 255 255 / 76%));
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
 }
 
 /* Menus e folhas ficam por cima de texto: vidro mais grosso. */
@@ -1445,6 +1474,9 @@ body:has(.principal--foco)::before {
 
 /* A caixa: o campo e a barra de baixo dentro do mesmo contorno. */
 .roteiro-novo__form {
+  /* minmax(0, ...): sem isto a barra de baixo alargava a coluna e o
+     campo e o botão saíam cortados no celular. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
   margin-top: 0;
   padding: 0;
@@ -1474,6 +1506,7 @@ body:has(.principal--foco)::before {
 
 .roteiro-novo__barra {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--e3);
@@ -1481,6 +1514,7 @@ body:has(.principal--foco)::before {
 }
 
 .roteiro-novo__duracao {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1635,6 +1669,12 @@ body:has(.principal--foco)::before {
     inset 0 -1px 1px rgb(255 255 255 / 10%),
     inset 0 12px 16px -14px rgb(255 255 255 / 35%),
     inset 0 -14px 18px -14px rgb(0 0 0 / 55%);
+}
+
+:where([data-tema='escuro']) .barra-inferior__abas {
+  background: linear-gradient(180deg, rgb(52 52 60 / 90%), rgb(34 34 40 / 86%));
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
 }
 
 :where([data-tema='escuro']) :is(.menu, .folha__caixa) {
@@ -1801,5 +1841,30 @@ body:has(.principal--foco)::before {
     --border: #8e8e93;
     --border-forte: #aeaeb2;
     --campo-borda: #aeaeb2;
+  }
+}
+
+/* ---------- 10. Editor com o celular deitado ----------
+   Em pé, o editor empilha vídeo, timeline e barra. Deitado, a tela tem
+   pouco mais de 300 px de altura: a timeline (mínimo de 210 px) e a
+   barra ficavam com tudo e o vídeo sumia. Aqui o vídeo vai para a
+   esquerda e a timeline para a direita, com a barra embaixo das duas. */
+@media (max-width: 899px) and (orientation: landscape) and (max-height: 520px) {
+  .editor,
+  .editor[data-modo] {
+    grid-template-columns: minmax(0, 36%) minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      'palco timeline'
+      'barra barra' !important;
+  }
+
+  /* Os botões flutuantes sobem para não cobrir a barra, mais baixa aqui. */
+  .botao-da-ia {
+    bottom: calc(72px + var(--seguro-baixo, 0px));
+  }
+
+  .botao-de-animacoes {
+    bottom: calc(130px + var(--seguro-baixo, 0px));
   }
 }

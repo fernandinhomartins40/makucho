@@ -86,6 +86,11 @@ export const viewport: Viewport = {
   ],
   width: 'device-width',
   initialScale: 1,
+  // O iPhone ampliava a tela sozinho (toque duplo, campo em foco) e ela
+  // ficava cortada até a pessoa fechar com a pinça; as gavetas, presas
+  // à tela, saíam do lugar junto. No app instalado isto trava o zoom;
+  // no Safari a pinça continua valendo (ele ignora o limite de propósito).
+  maximumScale: 1,
   // `cover`: o app ocupa a tela inteira do iPhone (atrás do entalhe e da
   // barra de gestos), e as áreas seguras ficam por conta do CSS.
   viewportFit: 'cover',

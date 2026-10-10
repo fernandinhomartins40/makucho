@@ -14540,7 +14540,7 @@ button.midia-cartao__previa:disabled {
 
 /* iPhone: campo com letra menor que 16 px faz o Safari dar zoom na página
    ao tocar para digitar -- a gaveta e o vídeo saíam do lugar. */
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) {
   input:not([type='checkbox']):not([type='radio']):not([type='range']),
   textarea,
   select {
