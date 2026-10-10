@@ -116,14 +116,11 @@ const DURACOES: ReadonlyArray<{ s: number | null; rotulo: string }> = [
   { s: 90, rotulo: '1 min 30' },
 ];
 
-// Não são campos do servidor: entram escritos no fim do pedido.
-const TONS = ['Direto', 'Descontraído', 'Emocionante', 'Profissional', 'Divertido'];
-const OBJETIVOS = ['Vender', 'Ganhar seguidores', 'Ensinar algo', 'Contar uma história', 'Chamar no WhatsApp'];
-
-const EXEMPLOS = [
-  'Um Reels de 30s mostrando 3 erros que fazem uma loja perder vendas no WhatsApp, tom direto',
-  'Vídeo para o TikTok contando como eu comecei minha confeitaria em casa, emocionante e com final inspirador',
-  'Vender minha consultoria de finanças para autônomos, com uma chamada para chamar no direct',
+// O que um bom pedido conta. Aparece no diálogo do "i", nunca dentro do campo.
+const GUIA_DO_PEDIDO = [
+  { titulo: 'O assunto', exemplo: 'Ex.: três erros que fazem uma loja perder vendas no WhatsApp.' },
+  { titulo: 'Para quem é', exemplo: 'Ex.: donos de loja pequena.' },
+  { titulo: 'O que pedir no final', exemplo: 'Ex.: seguir o perfil ou chamar no WhatsApp.' },
 ];
 
 const RAPIDOS = ['Gancho mais forte', 'Deixa mais curto', 'Mais informal', 'Mais vendedor', 'Conta como história', 'Outra chamada no final'];
@@ -428,21 +425,15 @@ function NovoRoteiro({
 }) {
   const [pedido, setPedido] = useState('');
   const [duracaoS, setDuracaoS] = useState<number | null>(null);
-  const [tom, setTom] = useState<string | null>(null);
-  const [objetivo, setObjetivo] = useState<string | null>(null);
-  const [ajudaAberta, setAjudaAberta] = useState(false);
   const [gerando, setGerando] = useState(false);
-  const campoRef = useRef<HTMLTextAreaElement>(null);
+  const [ajudaAberta, setAjudaAberta] = useState(false);
 
   const gerar = async () => {
     if (pedido.trim().length < 3 || gerando) return;
     setGerando(true);
     onAviso(null);
-    // O servidor recebe o pedido e a duração. Tom e objetivo vão escritos
-    // no fim do pedido, como a pessoa escreveria à mão.
-    const escolhas = [tom && `Tom: ${tom.toLowerCase()}.`, objetivo && `Objetivo do vídeo: ${objetivo.toLowerCase()}.`].filter(Boolean).join(' ');
     try {
-      const r = await ia.roteiroLivre({ pedido: escolhas ? `${pedido.trim()}\n\n${escolhas}` : pedido.trim(), duracaoS });
+      const r = await ia.roteiroLivre({ pedido: pedido.trim(), duracaoS });
       onPronto(daIa(r.roteiro), r.tecnicas);
     } catch (e) {
       onAviso(e instanceof Error ? e.message : 'não foi possível criar o roteiro.');
@@ -451,52 +442,17 @@ function NovoRoteiro({
     }
   };
 
-  const usarExemplo = (texto: string) => {
-    setPedido(texto);
-    setAjudaAberta(false);
-    campoRef.current?.focus();
-  };
-
   return (
     <section className="roteiro-novo">
-      {/* O mesmo caminho que /novo apresenta: Roteiro, Vídeo e Edição. */}
+      {/* O mesmo caminho que /novo apresenta: Roteiro, Gravar e Publicar. */}
       <p className="roteiro-novo__passo">Passo 1 de 3 · Roteiro</p>
       <header className="roteiro-novo__cabeca">
         <h1 id="titulo-do-pedido">Sobre o que é o seu vídeo?</h1>
-        {/* O campo fica vazio: o "como pedir" e os exemplos moram aqui. */}
-        <button
-          type="button"
-          className="botao-icone roteiro-novo__info"
-          aria-expanded={ajudaAberta}
-          aria-controls="como-pedir"
-          aria-label={ajudaAberta ? 'Esconder a explicação' : 'Como pedir o roteiro'}
-          title="Como pedir o roteiro"
-          onClick={() => setAjudaAberta((v) => !v)}
-        >
-          <IconeInfo size={22} weight={ajudaAberta ? 'fill' : 'regular'} />
+        {/* O campo nasce vazio; o "como pedir" abre num diálogo, por cima da tela. */}
+        <button type="button" className="botao-icone roteiro-novo__info" aria-label="Como pedir o roteiro" title="Como pedir o roteiro" onClick={() => setAjudaAberta(true)}>
+          <IconeInfo size={24} />
         </button>
       </header>
-
-      {ajudaAberta && (
-        <div className="roteiro-novo__dicas" id="como-pedir">
-          <p>
-            <strong>Escreva como se explicasse para um amigo.</strong> A IA monta o roteiro inteiro a partir disso.
-          </p>
-          <ul>
-            <li>O assunto do vídeo.</li>
-            <li>Para quem ele é (seus clientes, quem ainda não conhece você).</li>
-            <li>O que a pessoa deve fazer no final (seguir, chamar no WhatsApp, comprar).</li>
-          </ul>
-          <div className="roteiro-novo__exemplos">
-            <span>Exemplos. Toque em um para usar e mudar do seu jeito:</span>
-            {EXEMPLOS.map((e) => (
-              <button key={e} type="button" onClick={() => usarExemplo(e)}>
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <form
         className="roteiro-novo__form"
@@ -506,11 +462,9 @@ function NovoRoteiro({
         }}
       >
         <textarea
-          ref={campoRef}
           className="roteiro-novo__pedido"
           value={pedido}
-          // Sobra espaço para o tom e o objetivo, que vão no mesmo texto (limite de 3000).
-          maxLength={2800}
+          maxLength={3000}
           rows={6}
           autoFocus
           aria-labelledby="titulo-do-pedido"
@@ -519,62 +473,47 @@ function NovoRoteiro({
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void gerar();
           }}
         />
-
-        <section className="roteiro-novo__config" aria-labelledby="titulo-das-opcoes">
-          <h2 id="titulo-das-opcoes">
-            Opções <span>(se não mexer, a IA decide)</span>
-          </h2>
-          <Escolha rotulo="Duração" Icone={IconeRelogio} opcoes={DURACOES.map((d) => ({ valor: d.s, rotulo: d.rotulo }))} valor={duracaoS} onValor={setDuracaoS} />
-          <Escolha rotulo="Tom" opcoes={[{ valor: null, rotulo: 'A IA decide' }, ...TONS.map((t) => ({ valor: t, rotulo: t }))]} valor={tom} onValor={setTom} />
-          <Escolha
-            rotulo="Objetivo"
-            opcoes={[{ valor: null, rotulo: 'A IA decide' }, ...OBJETIVOS.map((o) => ({ valor: o, rotulo: o }))]}
-            valor={objetivo}
-            onValor={setObjetivo}
-          />
-        </section>
-
-        <button type="submit" className="botao roteiro-novo__enviar" disabled={gerando || pedido.trim().length < 3}>
-          <IconeIA size={18} weight="fill" />
-          {gerando ? 'Escrevendo o roteiro…' : 'Criar roteiro'}
-        </button>
+        <div className="roteiro-novo__barra">
+          <label className="roteiro-novo__duracao">
+            <IconeRelogio size={16} aria-hidden />
+            Duração
+            <select value={duracaoS ?? ''} onChange={(e) => setDuracaoS(e.target.value ? Number(e.target.value) : null)}>
+              {DURACOES.map((d) => (
+                <option key={d.rotulo} value={d.s ?? ''}>
+                  {d.rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="botao" disabled={gerando || pedido.trim().length < 3}>
+            <IconeIA size={18} weight="fill" />
+            {gerando ? 'Escrevendo…' : 'Criar roteiro'}
+          </button>
+        </div>
       </form>
 
       <button type="button" className="roteiro-novo__branco" onClick={onEmBranco}>
         ou escrever do zero, sem IA
       </button>
-    </section>
-  );
-}
 
-/** Uma linha de opções: o nome à esquerda, as escolhas em fichas. */
-function Escolha<T extends string | number>({
-  rotulo,
-  Icone,
-  opcoes,
-  valor,
-  onValor,
-}: {
-  rotulo: string;
-  Icone?: typeof IconeRelogio;
-  opcoes: ReadonlyArray<{ valor: T | null; rotulo: string }>;
-  valor: T | null;
-  onValor: (v: T | null) => void;
-}) {
-  return (
-    <div className="roteiro-novo__opcao">
-      <span className="roteiro-novo__rotulo">
-        {Icone && <Icone size={16} aria-hidden />}
-        {rotulo}
-      </span>
-      <div className="roteiro-novo__duracoes" role="radiogroup" aria-label={rotulo}>
-        {opcoes.map((o) => (
-          <button key={o.rotulo} type="button" role="radio" aria-checked={valor === o.valor} onClick={() => onValor(o.valor)}>
-            {o.rotulo}
+      <Folha aberta={ajudaAberta} aoFechar={() => setAjudaAberta(false)} titulo="Como pedir o roteiro">
+        <div className="roteiro-novo__ajuda-do-pedido">
+          <p>Escreva com as suas palavras, como se explicasse para um amigo. Conte três coisas:</p>
+          <ol>
+            {GUIA_DO_PEDIDO.map((g) => (
+              <li key={g.titulo}>
+                <strong>{g.titulo}</strong>
+                <span>{g.exemplo}</span>
+              </li>
+            ))}
+          </ol>
+          <p>A IA escreve o roteiro inteiro a partir disso, e você pode mudar depois.</p>
+          <button type="button" className="botao" onClick={() => setAjudaAberta(false)}>
+            Entendi
           </button>
-        ))}
-      </div>
-    </div>
+        </div>
+      </Folha>
+    </section>
   );
 }
 

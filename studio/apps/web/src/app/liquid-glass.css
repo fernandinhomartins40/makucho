@@ -1353,7 +1353,7 @@ body:has(.principal--foco)::before {
 .criar__opcoes,
 .criar__lista,
 .caminho,
-.roteiro-novo__config,
+.roteiro-novo__form,
 .lista-roteiros,
 .roteiro-bloco {
   border: 1px solid rgb(255 255 255 / 90%);
@@ -1368,28 +1368,35 @@ body:has(.principal--foco)::before {
 .criar__opcoes,
 .criar__lista,
 .caminho,
-.roteiro-novo__config,
+.roteiro-novo__form,
 .lista-roteiros {
   border-radius: 22px;
 }
 
 /* ---------- 9d-2. Novo roteiro: o pedido clássico à IA ----------
-   De cima para baixo: a pergunta (com o "i" que abre o como pedir), um
-   campo grande e VAZIO, as opções numa caixa só, e o botão. Antes o
-   campo, as durações e o botão dividiam um cartão, e o exemplo dentro
-   do campo parecia texto já escrito. */
+   Uma pergunta (com o "i" que abre o como pedir num diálogo) e uma
+   caixa só: o campo
+   grande e VAZIO em cima, a duração e o botão na barra de baixo. Nada
+   de exemplo dentro do campo (parecia texto já escrito) nem de fichas
+   de opção: o que a pessoa escreve é o que vale. */
 .roteiro-novo {
   justify-items: stretch;
   gap: var(--e4);
-  padding: 0 0 var(--e5);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--e4) 0 var(--e5);
   text-align: left;
 }
 
 .roteiro-novo__passo {
-  margin: 0 0 calc(var(--e2) * -1);
+  margin: 0 0 calc(var(--e3) * -1);
   color: var(--primary);
   font-size: 14px;
   font-weight: 600;
+}
+
+.roteiro-novo h1 {
+  font-size: clamp(26px, 6vw, 34px);
 }
 
 .roteiro-novo__cabeca {
@@ -1398,119 +1405,102 @@ body:has(.principal--foco)::before {
   gap: var(--e2);
 }
 
-.roteiro-novo h1 {
-  font-size: clamp(26px, 6vw, 34px);
-}
-
 .roteiro-novo__info {
   flex-shrink: 0;
   color: var(--primary);
 }
 
-.roteiro-novo__info[aria-expanded='true'] {
-  background: color-mix(in srgb, var(--primary) 14%, transparent);
+/* O diálogo do "i": três itens, cada um com um exemplo curto. No
+   computador ele abre no meio da tela, não colado embaixo. */
+@media (min-width: 900px) {
+  .folha:has(.roteiro-novo__ajuda-do-pedido) {
+    align-items: center;
+  }
 }
 
-.roteiro-novo__dicas {
+.roteiro-novo__ajuda-do-pedido {
   display: grid;
-  gap: var(--e3);
-  padding: var(--e4);
-  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
-  border-radius: 20px;
-  background: color-mix(in srgb, var(--primary) 9%, var(--surface-1));
-  font-size: 15px;
+  gap: var(--e4);
+  font-size: 16px;
   line-height: 1.5;
 }
 
-.roteiro-novo__dicas p {
+.roteiro-novo__ajuda-do-pedido p {
   margin: 0;
 }
 
-.roteiro-novo__dicas ul {
+.roteiro-novo__ajuda-do-pedido ol {
   display: grid;
-  gap: 4px;
+  gap: var(--e3);
   margin: 0;
-  padding-left: 20px;
+  padding-left: 22px;
 }
 
-.roteiro-novo__dicas .roteiro-novo__exemplos {
-  margin-top: 0;
+.roteiro-novo__ajuda-do-pedido li strong {
+  display: block;
 }
 
-.roteiro-novo__exemplos > span {
+.roteiro-novo__ajuda-do-pedido li span {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 15px;
 }
 
-.roteiro-novo__exemplos button {
-  font-size: 14px;
-}
-
-/* O formulário deixa de ser o cartão: quem tem contorno é o campo. */
+/* A caixa: o campo e a barra de baixo dentro do mesmo contorno. */
 .roteiro-novo__form {
-  gap: var(--e4);
+  gap: 0;
   margin-top: 0;
   padding: 0;
-  border: 0;
-  background: none;
-  box-shadow: none;
+  border-radius: 24px;
+  overflow: hidden;
 }
 
-.roteiro-novo__pedido {
+.roteiro-novo__form:focus-within {
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco), 0 10px 30px -14px rgb(28 36 58 / 22%);
+}
+
+.roteiro-novo__pedido,
+.roteiro-novo__pedido:hover,
+.roteiro-novo__pedido:focus {
   display: block;
-  min-height: 200px;
-  padding: 18px 20px;
-  border-radius: 20px;
-  font-size: 17px;
+  min-height: 220px;
+  padding: 20px 22px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 18px;
+  line-height: 1.5;
+  resize: none;
 }
 
-.roteiro-novo__config {
-  display: grid;
-  gap: var(--e4);
-  padding: var(--e4);
-}
-
-.roteiro-novo__config h2 {
-  font-size: 17px;
-  font-weight: 600;
-}
-
-.roteiro-novo__config h2 span {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 400;
-}
-
-.roteiro-novo__opcao {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+.roteiro-novo__barra {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--e3);
-  padding-top: var(--e4);
-  border-top: 1px solid var(--border);
+  padding: 10px 12px 12px 18px;
 }
 
-.roteiro-novo__rotulo {
+.roteiro-novo__duracao {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.roteiro-novo__duracoes {
-  gap: 6px;
-}
-
-.roteiro-novo__duracoes button {
-  min-height: 36px;
-  padding: 0 14px;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
-.roteiro-novo__enviar {
-  justify-self: end;
-  min-width: 220px;
+.roteiro-novo__duracao select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--selecao);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .roteiro-novo__branco {
@@ -1519,13 +1509,16 @@ body:has(.principal--foco)::before {
 }
 
 @media (max-width: 599px) {
-  .roteiro-novo__opcao {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--e2);
+  .roteiro-novo__pedido,
+  .roteiro-novo__pedido:hover,
+  .roteiro-novo__pedido:focus {
+    min-height: 180px;
+    padding: 16px 16px 8px;
+    font-size: 17px;
   }
 
-  .roteiro-novo__enviar {
-    justify-self: stretch;
+  .roteiro-novo__barra {
+    padding-left: 12px;
   }
 }
 
@@ -1603,7 +1596,7 @@ body:has(.principal--foco)::before {
   box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
 }
 
-:where([data-tema='escuro']) :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__config, .lista-roteiros, .roteiro-bloco) {
+:where([data-tema='escuro']) :is(.cartao, .painel, .guia-compacto, .criar__opcoes, .criar__lista, .caminho, .roteiro-novo__form, .lista-roteiros, .roteiro-bloco) {
   border-color: rgb(255 255 255 / 8%);
   box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
 }
