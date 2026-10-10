@@ -39,6 +39,7 @@ import {
   IconeFechar,
   IconeCheck,
   IconeBusca,
+  IconeInfo,
 } from '../../components/icones';
 
 // ---------- Vocabulário ----------
@@ -114,6 +115,10 @@ const DURACOES: ReadonlyArray<{ s: number | null; rotulo: string }> = [
   { s: 60, rotulo: '1 min' },
   { s: 90, rotulo: '1 min 30' },
 ];
+
+// Não são campos do servidor: entram escritos no fim do pedido.
+const TONS = ['Direto', 'Descontraído', 'Emocionante', 'Profissional', 'Divertido'];
+const OBJETIVOS = ['Vender', 'Ganhar seguidores', 'Ensinar algo', 'Contar uma história', 'Chamar no WhatsApp'];
 
 const EXEMPLOS = [
   'Um Reels de 30s mostrando 3 erros que fazem uma loja perder vendas no WhatsApp, tom direto',
@@ -373,7 +378,7 @@ function ListaDeRoteiros({
   const filtrados = (lista ?? []).filter((r) => !termo || r.title.toLocaleLowerCase('pt-BR').includes(termo));
   return (
     <div className="lista-roteiros">
-      <button type="button" className="botao botao--primario" onClick={() => onAbrir(null)}>
+      <button type="button" className="botao botao--secundario" onClick={() => onAbrir(null)}>
         <IconeMais size={16} /> Novo roteiro
       </button>
       {(lista?.length ?? 0) > 4 && (
@@ -423,14 +428,21 @@ function NovoRoteiro({
 }) {
   const [pedido, setPedido] = useState('');
   const [duracaoS, setDuracaoS] = useState<number | null>(null);
+  const [tom, setTom] = useState<string | null>(null);
+  const [objetivo, setObjetivo] = useState<string | null>(null);
+  const [ajudaAberta, setAjudaAberta] = useState(false);
   const [gerando, setGerando] = useState(false);
+  const campoRef = useRef<HTMLTextAreaElement>(null);
 
   const gerar = async () => {
     if (pedido.trim().length < 3 || gerando) return;
     setGerando(true);
     onAviso(null);
+    // O servidor recebe o pedido e a duração. Tom e objetivo vão escritos
+    // no fim do pedido, como a pessoa escreveria à mão.
+    const escolhas = [tom && `Tom: ${tom.toLowerCase()}.`, objetivo && `Objetivo do vídeo: ${objetivo.toLowerCase()}.`].filter(Boolean).join(' ');
     try {
-      const r = await ia.roteiroLivre({ pedido: pedido.trim(), duracaoS });
+      const r = await ia.roteiroLivre({ pedido: escolhas ? `${pedido.trim()}\n\n${escolhas}` : pedido.trim(), duracaoS });
       onPronto(daIa(r.roteiro), r.tecnicas);
     } catch (e) {
       onAviso(e instanceof Error ? e.message : 'não foi possível criar o roteiro.');
@@ -439,15 +451,53 @@ function NovoRoteiro({
     }
   };
 
+  const usarExemplo = (texto: string) => {
+    setPedido(texto);
+    setAjudaAberta(false);
+    campoRef.current?.focus();
+  };
+
   return (
     <section className="roteiro-novo">
-      <span className="roteiro-novo__icone" aria-hidden>
-        <IconeIA size={26} weight="fill" />
-      </span>
-      <h1>Sobre o que é o seu vídeo?</h1>
-      <p className="roteiro-novo__ajuda">
-        O assunto, para quem é e o tom. Quanto mais contexto, melhor.
-      </p>
+      {/* O mesmo caminho que /novo apresenta: Roteiro, Vídeo e Edição. */}
+      <p className="roteiro-novo__passo">Passo 1 de 3 · Roteiro</p>
+      <header className="roteiro-novo__cabeca">
+        <h1 id="titulo-do-pedido">Sobre o que é o seu vídeo?</h1>
+        {/* O campo fica vazio: o "como pedir" e os exemplos moram aqui. */}
+        <button
+          type="button"
+          className="botao-icone roteiro-novo__info"
+          aria-expanded={ajudaAberta}
+          aria-controls="como-pedir"
+          aria-label={ajudaAberta ? 'Esconder a explicação' : 'Como pedir o roteiro'}
+          title="Como pedir o roteiro"
+          onClick={() => setAjudaAberta((v) => !v)}
+        >
+          <IconeInfo size={22} weight={ajudaAberta ? 'fill' : 'regular'} />
+        </button>
+      </header>
+
+      {ajudaAberta && (
+        <div className="roteiro-novo__dicas" id="como-pedir">
+          <p>
+            <strong>Escreva como se explicasse para um amigo.</strong> A IA monta o roteiro inteiro a partir disso.
+          </p>
+          <ul>
+            <li>O assunto do vídeo.</li>
+            <li>Para quem ele é (seus clientes, quem ainda não conhece você).</li>
+            <li>O que a pessoa deve fazer no final (seguir, chamar no WhatsApp, comprar).</li>
+          </ul>
+          <div className="roteiro-novo__exemplos">
+            <span>Exemplos. Toque em um para usar e mudar do seu jeito:</span>
+            {EXEMPLOS.map((e) => (
+              <button key={e} type="button" onClick={() => usarExemplo(e)}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <form
         className="roteiro-novo__form"
         onSubmit={(e) => {
@@ -456,45 +506,75 @@ function NovoRoteiro({
         }}
       >
         <textarea
+          ref={campoRef}
           className="roteiro-novo__pedido"
           value={pedido}
-          maxLength={3000}
-          rows={4}
+          // Sobra espaço para o tom e o objetivo, que vão no mesmo texto (limite de 3000).
+          maxLength={2800}
+          rows={6}
           autoFocus
-          placeholder="Ex.: Um Reels de 30s para donos de restaurante mostrando por que responder rápido no WhatsApp aumenta as vendas. Tom direto, termina pedindo para seguir o perfil."
+          aria-labelledby="titulo-do-pedido"
           onChange={(e) => setPedido(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void gerar();
           }}
         />
-        <div className="roteiro-novo__linha">
-          <div className="roteiro-novo__duracoes" role="radiogroup" aria-label="Duração">
-            <IconeRelogio size={14} aria-hidden />
-            {DURACOES.map((d) => (
-              <button key={d.rotulo} type="button" role="radio" aria-checked={duracaoS === d.s} onClick={() => setDuracaoS(d.s)}>
-                {d.rotulo}
-              </button>
-            ))}
-          </div>
-          <button type="submit" className="botao botao--primario" disabled={gerando || pedido.trim().length < 3}>
-            <IconeIA size={16} weight="fill" />
-            {gerando ? 'Escrevendo o roteiro…' : 'Criar roteiro'}
-          </button>
-        </div>
+
+        <section className="roteiro-novo__config" aria-labelledby="titulo-das-opcoes">
+          <h2 id="titulo-das-opcoes">
+            Opções <span>(se não mexer, a IA decide)</span>
+          </h2>
+          <Escolha rotulo="Duração" Icone={IconeRelogio} opcoes={DURACOES.map((d) => ({ valor: d.s, rotulo: d.rotulo }))} valor={duracaoS} onValor={setDuracaoS} />
+          <Escolha rotulo="Tom" opcoes={[{ valor: null, rotulo: 'A IA decide' }, ...TONS.map((t) => ({ valor: t, rotulo: t }))]} valor={tom} onValor={setTom} />
+          <Escolha
+            rotulo="Objetivo"
+            opcoes={[{ valor: null, rotulo: 'A IA decide' }, ...OBJETIVOS.map((o) => ({ valor: o, rotulo: o }))]}
+            valor={objetivo}
+            onValor={setObjetivo}
+          />
+        </section>
+
+        <button type="submit" className="botao roteiro-novo__enviar" disabled={gerando || pedido.trim().length < 3}>
+          <IconeIA size={18} weight="fill" />
+          {gerando ? 'Escrevendo o roteiro…' : 'Criar roteiro'}
+        </button>
       </form>
 
-      <div className="roteiro-novo__exemplos">
-        <span>Ideias para começar:</span>
-        {EXEMPLOS.map((e) => (
-          <button key={e} type="button" onClick={() => setPedido(e)}>
-            {e}
-          </button>
-        ))}
-      </div>
       <button type="button" className="roteiro-novo__branco" onClick={onEmBranco}>
         ou escrever do zero, sem IA
       </button>
     </section>
+  );
+}
+
+/** Uma linha de opções: o nome à esquerda, as escolhas em fichas. */
+function Escolha<T extends string | number>({
+  rotulo,
+  Icone,
+  opcoes,
+  valor,
+  onValor,
+}: {
+  rotulo: string;
+  Icone?: typeof IconeRelogio;
+  opcoes: ReadonlyArray<{ valor: T | null; rotulo: string }>;
+  valor: T | null;
+  onValor: (v: T | null) => void;
+}) {
+  return (
+    <div className="roteiro-novo__opcao">
+      <span className="roteiro-novo__rotulo">
+        {Icone && <Icone size={16} aria-hidden />}
+        {rotulo}
+      </span>
+      <div className="roteiro-novo__duracoes" role="radiogroup" aria-label={rotulo}>
+        {opcoes.map((o) => (
+          <button key={o.rotulo} type="button" role="radio" aria-checked={valor === o.valor} onClick={() => onValor(o.valor)}>
+            {o.rotulo}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

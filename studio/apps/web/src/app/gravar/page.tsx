@@ -27,6 +27,7 @@ import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
 import { Folha } from '../../components/shell/Folha';
 import { useGravacao } from '../../lib/useGravacao';
+import { PASSOS_DE_CRIAR, TELAS_DE_GRAVAR } from '../../lib/passosDoVideo';
 import { useFluxoVertical, type FormatoDaGravacao } from '../../lib/useFluxoVertical';
 import { Teleprompter, type ControleDoTeleprompter } from '../../components/gravar/Teleprompter';
 import type { TipoDeVideo } from '@makucho/studio-contracts';
@@ -523,16 +524,9 @@ function itemDaParte(p: ParteDoProjeto): ItemDoVideo {
   };
 }
 
-// Os três passos, um de cada vez. Eram quatro: o último ("Revisar") só
-// repetia o que a pessoa tinha acabado de escolher, e a régua de cima já
-// deixa voltar a qualquer passo. O que é obrigatório vem primeiro (o
-// vídeo); o estilo tem um padrão bom (Automático) e os detalhes são
-// todos opcionais -- dá para terminar em três toques.
-const PASSOS = [
-  { titulo: 'Vídeo', pergunta: 'Envie ou grave o seu vídeo' },
-  { titulo: 'Estilo', pergunta: 'Escolha o estilo' },
-  { titulo: 'Detalhes', pergunta: 'Algum detalhe para a IA?' },
-] as const;
+// As telas daqui (vídeo, estilo, detalhes). A régua de cima mostra os
+// três passos que /novo apresenta: Roteiro, Vídeo e Edição.
+const PASSOS = TELAS_DE_GRAVAR;
 
 const ICONE_DO_TIPO: Record<TipoDeVideo, typeof IconeCamera> = {
   fala_camera: IconeCamera,
@@ -665,24 +659,35 @@ function Composicao({
       {/* ---------- Onde estou ---------- */}
       <nav className="assistente__passos" aria-label="Passos">
         <ol>
-          {PASSOS.map((p, i) => (
-            <li key={p.titulo} data-estado={i < passo ? 'feito' : i === passo ? 'atual' : 'depois'}>
-              <button
-                type="button"
-                disabled={i > passo && !(i === passo + 1 && podeAvancar)}
-                aria-current={i === passo ? 'step' : undefined}
-                onClick={() => irPara(i)}
-              >
-                <span className="assistente__bola">{i < passo ? <IconeCheck size={13} weight="bold" /> : i + 1}</span>
-                <span className="assistente__nome-do-passo">{p.titulo}</span>
-              </button>
-            </li>
-          ))}
+          {PASSOS_DE_CRIAR.map((p, i) => {
+            const atual = PASSOS[passo]!.passo;
+            // O roteiro ficou para trás (feito em /roteiros, ou pulado por
+            // quem já tinha o vídeo): aparece na conta, mas não leva a
+            // lugar nenhum daqui -- sair perderia os vídeos enviados.
+            const roteiro = i === 0;
+            const feito = roteiro ? temRoteiroProprio : i < atual;
+            return (
+              <li key={p.titulo} data-estado={feito ? 'feito' : i === atual ? 'atual' : 'depois'}>
+                <button
+                  type="button"
+                  disabled={roteiro || (i > atual && !podeAvancar)}
+                  aria-current={i === atual ? 'step' : undefined}
+                  // A Edição abre no estilo, a primeira das duas telas dela.
+                  onClick={() => irPara(i === 1 ? 0 : 1)}
+                >
+                  <span className="assistente__bola">{feito ? <IconeCheck size={13} weight="bold" /> : i + 1}</span>
+                  <span className="assistente__nome-do-passo">{p.titulo}</span>
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </nav>
 
       <header className="assistente__cabeca">
         <h1>{PASSOS[passo]!.pergunta}</h1>
+        {/* Sempre à vista (não depende do "?"): é o que orienta quem nunca fez. */}
+        <p className="assistente__apoio">{PASSOS[passo]!.explicacao}</p>
       </header>
 
       {/* ---------- 1. O vídeo ---------- */}
@@ -850,7 +855,7 @@ function Composicao({
 
           {comErro && (
             <p className="campo__ajuda" style={{ color: 'var(--danger)' }} role="alert">
-              Algum envio falhou. Volte ao passo 1 para tentar de novo ou tirar o vídeo.
+              Algum envio falhou. Volte ao passo do vídeo para tentar de novo ou tirar o vídeo.
             </p>
           )}
         </div>

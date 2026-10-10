@@ -94,6 +94,7 @@ import {
   SpeakerSimpleHigh,
   Sun,
   Moon,
+  Info,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -110,6 +111,7 @@ export const IconeGravar = Record;
 export const IconeEditor = Scissors;
 export const IconeMarca = Diamond;
 export const IconeAjuda = Question;
+export const IconeInfo = Info;
 export const IconeTemaClaro = Sun;
 export const IconeTemaEscuro = Moon;
 
