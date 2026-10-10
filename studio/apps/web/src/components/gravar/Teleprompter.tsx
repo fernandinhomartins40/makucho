@@ -138,7 +138,8 @@ export const Teleprompter = forwardRef<ControleDoTeleprompter, Props>(function T
       ref={caixa}
       className={`teleprompter ${className ?? ''}`}
       data-espelhado={espelhado || undefined}
-      style={{ ['--linha-de-leitura' as string]: `${linha * 100}%` }}
+      // O tamanho vai como variável: no celular o CSS o reduz (ver globals.css).
+      style={{ ['--linha-de-leitura' as string]: `${linha * 100}%`, ['--tamanho-do-texto' as string]: `${tamanho}px` }}
       onWheel={(e) => {
         deslocamento.current += e.deltaY * 0.6;
         aplicar();
@@ -156,7 +157,7 @@ export const Teleprompter = forwardRef<ControleDoTeleprompter, Props>(function T
       onPointerCancel={() => (arraste.current = null)}
     >
       <span className="teleprompter__linha" aria-hidden />
-      <div ref={texto} className="teleprompter__texto" style={{ fontSize: tamanho }}>
+      <div ref={texto} className="teleprompter__texto">
         {blocos.map((b, i) => (
           <section key={i} data-bloco={i} className="teleprompter__bloco">
             <span className="teleprompter__rotulo">{b.rotulo}</span>

@@ -4157,9 +4157,9 @@ button {
     right: var(--e3);
     z-index: 3;
     max-height: 38dvh;
-    padding: var(--e3);
+    padding: 6px var(--e3);
     border: 0;
-    background: rgb(0 0 0 / 55%) !important;
+    background: rgb(0 0 0 / 38%) !important;
     box-shadow: none !important;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
@@ -8381,6 +8381,7 @@ body[data-redimensionando] * {
   left: 0;
   right: 0;
   padding: 0 clamp(16px, 4%, 48px);
+  font-size: var(--tamanho-do-texto, 34px);
   font-weight: 650;
   line-height: 1.45;
   color: var(--text-primary);
@@ -8490,13 +8491,19 @@ body[data-redimensionando] * {
   .estudio__roteiro {
     gap: 0;
   }
+  /* Sobre a câmera o texto é uma faixa baixa, colada no alto (perto da
+     lente, para o olhar não descer). Com um terço da tela e a letra do
+     computador, ele cobria o rosto de quem grava. */
   .estudio__roteiro .teleprompter {
-    height: 32dvh;
+    height: 19dvh;
     min-height: 0;
     flex: none;
     background: transparent;
   }
   .estudio__roteiro .teleprompter__texto {
+    padding: 0 4px;
+    font-size: max(16px, calc(var(--tamanho-do-texto, 34px) * 0.6));
+    line-height: 1.35;
     color: #fff;
     text-shadow: 0 1px 6px rgb(0 0 0 / 85%);
   }
