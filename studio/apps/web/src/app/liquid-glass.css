@@ -18,9 +18,8 @@
    - as formas são cápsulas e cantos generosos, concêntricos aos do
      aparelho; os títulos de seção não vão em maiúsculas;
    - a aparência segue o aparelho (claro ou escuro), e o botão do topo
-     troca de um para o outro. O editor e a câmera ficam sempre
-     escuros, como Fotos e Câmera fazem ao editar: o vídeo é o que
-     importa ali.
+     troca de um para o outro, em todas as telas, o editor inclusive.
+     Só a câmera fica sempre escura: o texto vai por cima da imagem.
 
    O que a web não faz: a refração de verdade (a lente que entorta o
    fundo) depende de filtro SVG no backdrop, que o Safari não aplica.
@@ -101,12 +100,12 @@
   --veu: rgb(0 0 0 / 50%);
 }
 
-/* ---------- 1c. Sempre escuro: o editor e a câmera ----------
+/* ---------- 1c. Sempre escuro: a câmera e o teleprompter ----------
+   (O editor já foi sempre escuro; hoje segue o tema, como o resto.)
    Os mesmos valores do bloco acima (o CSS não tem como reaproveitar
    um bloco). Cinza neutro no lugar do azul-marinho: nada colore o
    vídeo que a pessoa está avaliando. */
 
-.principal--foco,
 .estudio,
 .estudio--prompter {
   --bg-canvas: #000000;
@@ -147,13 +146,16 @@
   color-scheme: dark;
 }
 
+/* O editor segue o tema do app (claro ou escuro), com as mesmas manchas
+   de cor ao fundo. Só os cantos são menores: ele é denso, e canto grande
+   tiraria área útil dos painéis estreitos. O vídeo em si fica sempre
+   sobre preto (.palco__quadro), para a cor do tema não mudar a leitura
+   da imagem. */
 .principal--foco {
-  background: var(--bg-canvas);
-}
-
-/* Atrás do editor (áreas seguras do iPhone, elástico da rolagem). */
-body:has(.principal--foco) {
-  background: #000000;
+  --r-controle: 10px;
+  --r-cartao: 14px;
+  --r-destaque: 18px;
+  background: transparent;
 }
 
 @media (min-width: 900px) {
@@ -170,7 +172,6 @@ body:has(.principal--foco) {
    sombra do editor sairia com as cores do tema claro. */
 
 :root,
-.principal--foco,
 .estudio,
 .estudio--prompter {
   /* O fim do degradê antigo dos botões: agora é a própria cor, chapada. */
@@ -190,7 +191,6 @@ body:has(.principal--foco) {
 }
 
 :root:where([data-tema='escuro']),
-.principal--foco,
 .estudio,
 .estudio--prompter {
   --sombra-1: 0 1px 2px rgb(0 0 0 / 40%);
@@ -1212,10 +1212,6 @@ body::before {
   opacity: 0.6;
 }
 
-/* No editor o fundo é preto: cor nenhuma por trás do vídeo. */
-body:has(.principal--foco)::before {
-  display: none;
-}
 
 /* 9b. Vidro da navegação: transparente, desfoque leve (a cor de trás
    aparece), aro de luz por dentro e sombra que o descola do fundo. */
@@ -1738,12 +1734,12 @@ body:has(.principal--foco)::before {
 }
 
 /* O editor e a câmera são sempre escuros, mesmo com o aparelho claro. */
-:is(.principal--foco, .estudio, .estudio--prompter) :is(.menu, .folha__caixa) {
+:is(.estudio, .estudio--prompter) :is(.menu, .folha__caixa) {
   background: linear-gradient(180deg, rgb(52 52 60 / 92%), rgb(34 34 40 / 90%));
   box-shadow: 0 14px 30px -10px rgb(0 0 0 / 70%), inset 0 1px 1px rgb(255 255 255 / 30%);
 }
 
-:is(.principal--foco, .estudio, .estudio--prompter) :is(.menu, .folha__caixa)::before {
+:is(.estudio, .estudio--prompter) :is(.menu, .folha__caixa)::before {
   opacity: 0.4;
 }
 
@@ -1755,13 +1751,13 @@ body:has(.principal--foco)::before {
   box-shadow: var(--sombra-2);
 }
 
-:is(.principal--foco, .estudio, .estudio--prompter) .botao--secundario {
+:is(.estudio, .estudio--prompter) .botao--secundario {
   background: color-mix(in srgb, var(--primary) 16%, transparent);
   color: var(--accent);
   box-shadow: none;
 }
 
-:is(.principal--foco, .estudio, .estudio--prompter) .botao--secundario:hover:not(:disabled) {
+:is(.estudio, .estudio--prompter) .botao--secundario:hover:not(:disabled) {
   background: color-mix(in srgb, var(--primary) 26%, transparent);
 }
 
@@ -1771,7 +1767,6 @@ body:has(.principal--foco)::before {
    o texto ficaria sobre o que passa por trás. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root,
-  .principal--foco,
   .estudio,
   .estudio--prompter {
     --vidro: var(--surface-1);
@@ -1782,7 +1777,6 @@ body:has(.principal--foco)::before {
 /* Ajustes > Acessibilidade > Reduzir Transparência. */
 @media (prefers-reduced-transparency: reduce) {
   :root,
-  .principal--foco,
   .estudio,
   .estudio--prompter {
     --vidro: var(--surface-1);
@@ -1806,7 +1800,6 @@ body:has(.principal--foco)::before {
 
 @media (prefers-reduced-transparency: reduce) {
   :root:where([data-tema='escuro']),
-  .principal--foco,
   .estudio,
   .estudio--prompter {
     --surface-1: #1c1c1e;
@@ -1904,4 +1897,79 @@ body:has(.principal--foco)::before {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.4;
+}
+
+/* ---------- 12. Publicar: a lista dos vídeos ----------
+   As mesmas linhas de "Criar vídeo", com a capa do vídeo na frente. */
+.publicar__lista a {
+  min-height: 76px;
+}
+
+.publicar__capa {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.publicar__capa img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---------- 13. Editor: vidro e tema ----------
+   O editor herda o tema do app. Aqui ficam só os acertos de quem tinha
+   o escuro como única hipótese. */
+
+/* O fundo dos painéis soltos (gavetas, menus do palco, barra das peças).
+   No app `--bg-sidebar` é transparente, porque a barra lateral é vidro;
+   no editor essas peças ficam por cima do vídeo e da timeline e
+   precisam de fundo próprio. */
+.principal--foco {
+  --bg-sidebar: #f7f8fa;
+}
+
+:where([data-tema='escuro']) .principal--foco {
+  --bg-sidebar: #1c1c1e;
+}
+
+/* As manchas de cor do app aparecem atrás do editor também. */
+.principal--foco .editor,
+.principal--foco .topbar {
+  background: transparent;
+}
+
+/* A coluna de ferramentas e as gavetas: vidro, como a navegação. */
+.principal--foco .editor__rail {
+  background: var(--vidro);
+  -webkit-backdrop-filter: var(--desfoque);
+  backdrop-filter: var(--desfoque);
+}
+
+/* A agulha da timeline no celular era branca: sumia no tema claro. */
+@media (max-width: 899px) {
+  .principal--foco .timeline__agulha {
+    background: var(--text-primary);
+  }
+}
+
+/* O véu das gavetas acompanha o tema. */
+.principal--foco .editor__veu {
+  background: var(--veu);
+}
+
+/* As gavetas do editor ficam por cima do vídeo e da timeline: fundo
+   quase opaco e desfocado, senão o que está embaixo aparece por trás do
+   texto (o fundo translúcido dos painéis vale só para os fixos). */
+.principal--foco .editor[data-folha='painel'] .editor__ia,
+.principal--foco .editor[data-folha='inspector'] .editor__inspector {
+  background: var(--bg-sidebar);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
 }

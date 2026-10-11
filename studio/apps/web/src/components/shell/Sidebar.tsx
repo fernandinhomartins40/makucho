@@ -40,7 +40,7 @@ interface ItemDeNavegacao {
 // passos de "Criar vídeo"; o editor abre de um vídeo (não é destino).
 export const ITENS_DA_NAVEGACAO: Array<ItemDeNavegacao & { tambem?: string[] }> = [
   { href: '/', rotulo: 'Meus vídeos', Icone: IconeProjetos },
-  { href: '/novo', rotulo: 'Criar vídeo', Icone: IconeGravar, tambem: ['/gravar', '/roteiros'] },
+  { href: '/novo', rotulo: 'Criar vídeo', Icone: IconeGravar, tambem: ['/gravar', '/roteiros', '/publicar'] },
   { href: '/marca', rotulo: 'Minha marca', Icone: IconeMarca },
 ];
 

@@ -1,8 +1,9 @@
 // ============================================================
 // Os três passos de criar um vídeo: Roteiro, Gravar e Publicar.
 //
-// Ficam aqui porque três telas contam a mesma história: /novo mostra
-// os três como cartões, /roteiros é o passo 1 e /gravar é o passo 2.
+// Ficam aqui porque quatro telas contam a mesma história: /novo mostra
+// os três como cartões, /roteiros é o passo 1, /gravar é o passo 2 e
+// /publicar é o passo 3.
 // Com os nomes num lugar só, elas não divergem.
 //
 // O roteiro vem primeiro: sem saber o que falar não há o que gravar.
@@ -14,7 +15,7 @@
 export const PASSOS_DE_CRIAR = [
   { titulo: 'Roteiro', href: '/roteiros?novo=1' },
   { titulo: 'Gravar', href: '/gravar' },
-  { titulo: 'Publicar', href: '/editor?publicar=1' },
+  { titulo: 'Publicar', href: '/publicar' },
 ] as const;
 
 /** Em /gravar, qual dos três passos acima está em curso. */

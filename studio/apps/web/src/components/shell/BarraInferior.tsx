@@ -37,7 +37,7 @@ const ITENS: Array<{ href: string; rotulo: string; Icone: Icon; tambem?: string[
   { href: '/marca', rotulo: 'Marca', Icone: IconeMarca },
 ];
 
-const CRIAR = { href: '/novo', tambem: ['/gravar'] };
+const CRIAR = { href: '/novo', tambem: ['/gravar', '/publicar'] };
 
 export function BarraInferior() {
   const caminho = usePathname();

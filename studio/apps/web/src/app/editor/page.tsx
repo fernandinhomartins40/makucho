@@ -127,7 +127,7 @@ function EntradaDoEditor() {
   const projectId = parametros.get('projeto');
   // "Publicar" (passo 3 de Criar vídeo): escolhe o vídeo e já exporta.
   const publicar = parametros.get('publicar') === '1';
-  return projectId ? <Editor key={projectId} projectId={projectId} publicar={publicar} /> : <EscolherProjeto publicar={publicar} />;
+  return projectId ? <Editor key={projectId} projectId={projectId} publicar={publicar} /> : <EscolherProjeto />;
 }
 
 type EstadoDoSalvamento = 'salvo' | 'salvando' | 'erro';
@@ -2253,10 +2253,9 @@ function PainelDeMidia({ projeto }: { projeto: ProjetoDetalhado }) {
 // Sem projeto na URL
 // ============================================================
 
-function EscolherProjeto({ publicar = false }: { publicar?: boolean }) {
+function EscolherProjeto() {
   const { dados, carregando, erro } = useDados<Projeto[]>(() => apiProjetos.listar());
-  // Para publicar, só os vídeos que já têm edição: os outros não exportam.
-  const lista = (dados ?? []).filter((p) => !publicar || podeEditar(p.state as ProjectState));
+  const lista = dados ?? [];
 
   return (
     <>
@@ -2264,11 +2263,11 @@ function EscolherProjeto({ publicar = false }: { publicar?: boolean }) {
         <Link href="/" className="botao-icone" aria-label="Voltar para Projetos">
           <IconeVoltar size={20} />
         </Link>
-        <h1 style={{ fontSize: 19 }}>{publicar ? 'Publicar' : 'Editor'}</h1>
+        <h1 style={{ fontSize: 19 }}>Editor</h1>
       </header>
       <div className="conteudo">
         <div style={{ maxWidth: 760, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 'var(--e4)' }}>
-          <p className="texto-secundario">{publicar ? 'Escolha o vídeo que você quer publicar.' : 'Escolha o vídeo que você quer editar.'}</p>
+          <p className="texto-secundario">Escolha o vídeo que você quer editar.</p>
           {carregando && <span className="esqueleto" style={{ height: 64 }} />}
           {erro && (
             <div className="aviso aviso--erro" role="alert">
@@ -2284,7 +2283,7 @@ function EscolherProjeto({ publicar = false }: { publicar?: boolean }) {
               <div>
                 <h3 style={{ marginBottom: 4 }}>Nenhum vídeo ainda</h3>
                 <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
-                  {publicar ? 'Nenhum vídeo pronto para publicar. Grave ou envie um vídeo primeiro.' : 'Grave ou envie um vídeo; a proposta de edição aparece aqui.'}
+                  Grave ou envie um vídeo; a proposta de edição aparece aqui.
                 </p>
                 <Link href="/gravar" className="botao">
                   Novo vídeo
@@ -2295,7 +2294,7 @@ function EscolherProjeto({ publicar = false }: { publicar?: boolean }) {
           {lista.map((p) => {
             const estado = ROTULO_DE_ESTADO[p.state as ProjectState];
             return (
-              <Link key={p.id} href={`/editor?projeto=${p.id}${publicar ? '&publicar=1' : ''}`} className="cartao cartao--clicavel linha" style={{ gap: 'var(--e4)' }}>
+              <Link key={p.id} href={`/editor?projeto=${p.id}`} className="cartao cartao--clicavel linha" style={{ gap: 'var(--e4)' }}>
                 <span
                   style={{ width: 44, aspectRatio: '9 / 16', borderRadius: 6, overflow: 'hidden', background: 'var(--surface-2)', flexShrink: 0, display: 'grid', placeItems: 'center' }}
                 >
