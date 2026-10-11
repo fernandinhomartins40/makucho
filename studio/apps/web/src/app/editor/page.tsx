@@ -69,6 +69,7 @@ import { Palco } from '../../components/editor/Palco';
 import { Timeline } from '../../components/timeline/Timeline';
 import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
+import { BotaoDeTema } from '../../components/shell/BotaoDeTema';
 import { useExportacoes } from '../../lib/exportacao/tarefas';
 import { esconderCamadas, ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
 import type { OpcoesDeExportacao } from '../../lib/exportacao/opcoes';
@@ -1235,6 +1236,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           <button type="button" className="botao-icone" onClick={refazer} disabled={futuro.length === 0} aria-label="Refazer" title="Refazer (Ctrl+Shift+Z)">
             <IconeRefazer size={19} />
           </button>
+
+          {/* Claro ou escuro, como nas outras telas (o editor não usa a Topbar comum). */}
+          <BotaoDeTema />
 
 
 
