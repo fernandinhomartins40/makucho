@@ -2434,3 +2434,24 @@ body::before {
     padding: 0 !important;
   }
 }
+
+/* ---------- 21. Timeline no computador: rolagem na vertical ----------
+   A janela da timeline não tinha altura limitada no computador: crescia
+   com as faixas e a seção cortava o que passava, sem barra de rolagem.
+   Agora ela ocupa o que sobra da seção e as faixas rolam dentro dela. */
+@media (min-width: 900px) {
+  .timeline__janela {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .timeline__janela > .timeline__rolagem {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    /* A barra sempre à vista quando há o que rolar, não só ao passar o mouse. */
+    scrollbar-gutter: stable;
+  }
+}
