@@ -59,6 +59,9 @@ export const Teleprompter = forwardRef<ControleDoTeleprompter, Props>(function T
   const caixa = useRef<HTMLDivElement>(null);
   const texto = useRef<HTMLDivElement>(null);
   const deslocamento = useRef(0);
+  // Ajuste manual (roda do mouse e arraste com o dedo): onde o toque
+  // começou e onde o texto estava.
+  const arraste = useRef<{ y: number; d: number } | null>(null);
   const palavras = useMemo(() => blocos.reduce((t, b) => t + b.texto.trim().split(/\s+/).filter(Boolean).length, 0), [blocos]);
 
   /** O quanto o texto pode subir: até a última linha passar pela linha de leitura. */
@@ -108,7 +111,9 @@ export const Teleprompter = forwardRef<ControleDoTeleprompter, Props>(function T
       anterior = agora;
       const max = limite();
       const segundosDeFala = Math.max(5, palavras / PALAVRAS_POR_SEGUNDO);
-      deslocamento.current += (max / segundosDeFala) * velocidade * dt;
+      // Com o dedo no texto, quem manda é o dedo: a rolagem espera. Sem
+      // isto, puxar o texto de volta brigava com o avanço automático.
+      if (!arraste.current) deslocamento.current += (max / segundosDeFala) * velocidade * dt;
       aplicar();
       if (deslocamento.current >= max && !avisouFim) {
         avisouFim = true;
@@ -130,8 +135,6 @@ export const Teleprompter = forwardRef<ControleDoTeleprompter, Props>(function T
     return () => obs.disconnect();
   }, [aplicar, tamanho, blocos]);
 
-  // ---------- Ajuste manual: roda do mouse e arraste ----------
-  const arraste = useRef<{ y: number; d: number } | null>(null);
 
   return (
     <div

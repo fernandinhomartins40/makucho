@@ -2366,3 +2366,71 @@ body::before {
   border-color: var(--primary);
   box-shadow: var(--anel-de-foco);
 }
+
+/* ---------- 20. Câmera: testar e ajustar o texto sem sair da tela ----------
+   Só no celular (no computador os controles já ficam sob o texto):
+   Testar/Parar, velocidade − e +, e voltar ao começo. */
+.prompter-rapido {
+  display: none;
+}
+
+@media (max-width: 899px) {
+  .prompter-rapido {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 6px;
+  }
+
+  .prompter-rapido button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 44px;
+    height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 18%);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .prompter-rapido__testar[aria-pressed='true'] {
+    background: #fff;
+    color: #111;
+  }
+
+  .prompter-rapido__velocidade {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 12%);
+    color: #fff;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .prompter-rapido__velocidade button {
+    padding: 0;
+    background: transparent;
+    font-size: 22px;
+  }
+
+  .prompter-rapido__velocidade > span {
+    min-width: 44px;
+    text-align: center;
+    font-size: 15px;
+  }
+
+  .prompter-rapido__inicio {
+    padding: 0 !important;
+  }
+}

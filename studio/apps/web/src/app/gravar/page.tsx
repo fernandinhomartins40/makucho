@@ -1377,6 +1377,35 @@ function EstudioDeGravacao({
     </div>
   );
 
+  // No celular os controles do texto moravam só na folha de ajustes, que
+  // cobre o próprio texto: não dava para testar a velocidade olhando para
+  // ele. Esta faixa fica logo abaixo do texto, sobre a câmera.
+  const mudarVelocidade = (passo: number) => mudarPreferencia({ velocidade: Math.min(2.5, Math.max(0.4, Math.round((velocidade + passo) * 10) / 10)) });
+  const controlesRapidos = (
+    <div className="prompter-rapido">
+      {!gravando && (
+        <button type="button" className="prompter-rapido__testar" onClick={() => setEnsaiando((v) => !v)} aria-pressed={ensaiando}>
+          {ensaiando ? <IconePausar size={16} weight="fill" /> : <IconeTocar size={16} weight="fill" />}
+          {ensaiando ? 'Parar' : 'Testar'}
+        </button>
+      )}
+      <span className="prompter-rapido__velocidade">
+        <button type="button" aria-label="Texto mais devagar" onClick={() => mudarVelocidade(-0.1)}>
+          −
+        </button>
+        <span aria-live="polite" aria-label={`Velocidade ${velocidade.toFixed(1).replace('.', ',')} vezes`}>
+          {velocidade.toFixed(1).replace('.', ',')}×
+        </span>
+        <button type="button" aria-label="Texto mais rápido" onClick={() => mudarVelocidade(0.1)}>
+          +
+        </button>
+      </span>
+      <button type="button" className="prompter-rapido__inicio" aria-label="Voltar o texto ao começo" onClick={() => prompterRef.current?.reiniciar()}>
+        <IconeDesfazer size={18} />
+      </button>
+    </div>
+  );
+
   const teleprompter = (
     <Teleprompter
       ref={prompterRef}
@@ -1552,6 +1581,7 @@ function EstudioDeGravacao({
               <span className="texto-secundario">{Math.round(progresso * 100)}%</span>
             </div>
             {teleprompter}
+            {controlesRapidos}
             <div className="so-largo">{controlesDoTexto}</div>
           </section>
         )}
