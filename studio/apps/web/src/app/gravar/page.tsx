@@ -47,6 +47,7 @@ import {
   roteiros as apiRoteiros,
   type ParteDoProjeto,
   type ProjetoDetalhado,
+  type RoteiroNaLista,
 } from '../../lib/api';
 import {
   IconeCamera,
@@ -159,6 +160,20 @@ function NovoVideo() {
   const [roteiro, setRoteiro] = useState<BlocoDoRoteiro[]>(ROTEIRO_PADRAO);
   const [temRoteiroProprio, setTemRoteiroProprio] = useState(false);
   const [scriptId, setScriptId] = useState<string | null>(roteiroDaUrl);
+  // Qual roteiro está no teleprompter, pelo nome, e a folha para trocar.
+  // Sem escolher, a tela mostra as dicas do que falar: quem chegava pelo
+  // "Passo 2 · Gravar" via um texto que não era o dele e não tinha como
+  // trocar nem criar um.
+  const [nomeDoRoteiro, setNomeDoRoteiro] = useState<string | null>(null);
+  const [trocandoRoteiro, setTrocandoRoteiro] = useState(false);
+  const [salvos, setSalvos] = useState<RoteiroNaLista[] | null>(null);
+  useEffect(() => {
+    if (!trocandoRoteiro) return;
+    void apiRoteiros
+      .listar()
+      .then(setSalvos)
+      .catch(() => setSalvos([]));
+  }, [trocandoRoteiro]);
 
   const [itens, setItens] = useState<ItemDoVideo[]>([]);
   const [erro, setErro] = useState<string | null>(null);
@@ -178,8 +193,17 @@ function NovoVideo() {
       );
       setTemRoteiroProprio(true);
       setScriptId(id);
+      setNomeDoRoteiro(doProjeto.title);
       setTitulo((t) => t || doProjeto.title);
     }
+  }, []);
+
+  /** Gravar sem roteiro: voltam as dicas do que falar. */
+  const semRoteiro = useCallback(() => {
+    setRoteiro(ROTEIRO_PADRAO);
+    setTemRoteiroProprio(false);
+    setScriptId(null);
+    setNomeDoRoteiro(null);
   }, []);
 
   useEffect(() => {
@@ -468,6 +492,8 @@ function NovoVideo() {
             onGravar={() => setEtapa('camera')}
             onArquivos={(a) => void adicionarArquivos(a)}
             temRoteiroProprio={temRoteiroProprio}
+            nomeDoRoteiro={nomeDoRoteiro}
+            onTrocarRoteiro={() => setTrocandoRoteiro(true)}
             focoNoEnvio={parametros.get('modo') === 'enviar'}
             itens={itens}
             onRemover={(i) => void remover(i)}
@@ -481,11 +507,53 @@ function NovoVideo() {
         ) : (
           <EstudioDeGravacao
             roteiro={roteiro}
+            nomeDoRoteiro={nomeDoRoteiro}
+            onTrocarRoteiro={() => setTrocandoRoteiro(true)}
             onEnviar={(blob, mime, segundos) => void adicionarGravacao(blob, mime, segundos)}
             onSair={() => setEtapa('escolher')}
           />
         )}
       </div>
+
+      {/* Qual roteiro vai para o teleprompter: um salvo, nenhum, ou um novo. */}
+      <Folha aberta={trocandoRoteiro} aoFechar={() => setTrocandoRoteiro(false)} titulo="Qual roteiro você vai ler?">
+        <div className="escolha-de-roteiro">
+          {salvos === null && <span className="esqueleto" style={{ height: 64 }} />}
+          {salvos?.length === 0 && <p className="texto-secundario">Você ainda não tem roteiro salvo.</p>}
+          {salvos && salvos.length > 0 && (
+            <ul>
+              {salvos.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    aria-pressed={r.id === scriptId}
+                    onClick={() => {
+                      setTrocandoRoteiro(false);
+                      void carregarRoteiro(r.id).catch(() => setErro('Não foi possível abrir esse roteiro. Tente de novo.'));
+                    }}
+                  >
+                    <strong>{r.title}</strong>
+                    <span>{new Date(r.updatedAt).toLocaleDateString('pt-BR')}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href="/roteiros?novo=1" className="botao">
+            <IconeMais size={16} /> Criar um roteiro novo
+          </Link>
+          <button
+            type="button"
+            className="botao botao--secundario"
+            onClick={() => {
+              semRoteiro();
+              setTrocandoRoteiro(false);
+            }}
+          >
+            Gravar sem roteiro
+          </button>
+        </div>
+      </Folha>
     </>
   );
 }
@@ -553,6 +621,8 @@ function Composicao({
   onGravar,
   onArquivos,
   temRoteiroProprio,
+  nomeDoRoteiro,
+  onTrocarRoteiro,
   focoNoEnvio,
   itens,
   onRemover,
@@ -578,6 +648,8 @@ function Composicao({
   onGravar: () => void;
   onArquivos: (arquivos: File[]) => void;
   temRoteiroProprio: boolean;
+  nomeDoRoteiro: string | null;
+  onTrocarRoteiro: () => void;
   focoNoEnvio: boolean;
   itens: ItemDoVideo[];
   onRemover: (i: ItemDoVideo) => void;
@@ -686,6 +758,17 @@ function Composicao({
       {/* ---------- 1. O vídeo ---------- */}
       {passo === 0 && (
         <div className="assistente__corpo">
+          {/* O texto que aparece na tela ao gravar: dá para escolher antes de abrir a câmera. */}
+          <div className="roteiro-da-gravacao">
+            <IconeRoteiro size={20} aria-hidden />
+            <span>
+              <strong>{nomeDoRoteiro ?? 'Sem roteiro'}</strong>
+              <span>{nomeDoRoteiro ? 'É este texto que aparece na tela ao gravar.' : 'Ao gravar, aparecem dicas do que falar.'}</span>
+            </span>
+            <button type="button" className="botao botao--secundario botao--pequeno" onClick={onTrocarRoteiro}>
+              {nomeDoRoteiro ? 'Trocar' : 'Escolher roteiro'}
+            </button>
+          </div>
           {!temItens ? (
             <div className="assistente__caminhos">
               <button
@@ -774,11 +857,6 @@ function Composicao({
                   </button>
                 </>
               )}
-            </p>
-          )}
-          {!temItens && !temRoteiroProprio && (
-            <p className="campo__ajuda">
-              Quer escrever o que vai falar antes? <Link href="/roteiros">Criar um roteiro</Link>
             </p>
           )}
         </div>
@@ -1111,9 +1189,14 @@ function lerPreferencias(): { velocidade: number; tamanho: number; espelhado: bo
  */
 function EstudioDeGravacao({
   roteiro,
+  nomeDoRoteiro,
+  onTrocarRoteiro,
   onEnviar,
   onSair,
 }: {
+  /** O nome do roteiro na tela (nulo: as dicas do que falar). */
+  nomeDoRoteiro: string | null;
+  onTrocarRoteiro: () => void;
   roteiro: BlocoDoRoteiro[];
   onEnviar: (blob: Blob, mime: string, segundos: number) => void;
   onSair: () => void;
@@ -1381,6 +1464,23 @@ function EstudioDeGravacao({
   // cobre o próprio texto: não dava para testar a velocidade olhando para
   // ele. Esta faixa fica logo abaixo do texto, sobre a câmera.
   const mudarVelocidade = (passo: number) => mudarPreferencia({ velocidade: Math.min(2.5, Math.max(0.4, Math.round((velocidade + passo) * 10) / 10)) });
+  // Qual texto está na tela e o caminho para trocar (antes de gravar).
+  const escolhaDoRoteiro = !gravando && (
+    <button
+      type="button"
+      className="prompter-roteiro"
+      onClick={() => {
+        setAjustesAbertos(false);
+        setEnsaiando(false);
+        onTrocarRoteiro();
+      }}
+    >
+      <IconeRoteiro size={16} aria-hidden />
+      <span>{nomeDoRoteiro ?? 'Sem roteiro (dicas do que falar)'}</span>
+      <strong>Trocar</strong>
+    </button>
+  );
+
   const controlesRapidos = (
     <div className="prompter-rapido">
       {!gravando && (
@@ -1580,6 +1680,7 @@ function EstudioDeGravacao({
               </span>
               <span className="texto-secundario">{Math.round(progresso * 100)}%</span>
             </div>
+            {escolhaDoRoteiro}
             {teleprompter}
             {controlesRapidos}
             <div className="so-largo">{controlesDoTexto}</div>

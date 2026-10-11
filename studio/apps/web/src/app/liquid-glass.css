@@ -2568,3 +2568,139 @@ body::before {
     bottom: calc(16px + var(--seguro-baixo, 0px));
   }
 }
+
+/* ---------- 23. Gravar: qual roteiro vai para o teleprompter ---------- */
+
+/* Na tela "Envie ou grave": o roteiro escolhido e o botão de trocar. */
+.roteiro-da-gravacao {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 18px;
+  background: var(--surface-1);
+  color: var(--primary);
+}
+
+:where([data-tema='escuro']) .roteiro-da-gravacao {
+  border-color: rgb(255 255 255 / 8%);
+}
+
+.roteiro-da-gravacao > span {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  color: var(--text-primary);
+}
+
+.roteiro-da-gravacao > span strong {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roteiro-da-gravacao > span span {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Na câmera: uma linha acima do texto, com o nome e "Trocar". */
+.prompter-roteiro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.prompter-roteiro span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompter-roteiro strong {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+@media (max-width: 899px) {
+  .prompter-roteiro {
+    color: rgb(255 255 255 / 85%);
+  }
+
+  .prompter-roteiro strong {
+    background: rgb(255 255 255 / 20%);
+    color: #fff;
+  }
+}
+
+/* A folha: os roteiros salvos, criar um novo, ou gravar sem. */
+.escolha-de-roteiro {
+  display: grid;
+  gap: var(--e3);
+}
+
+.escolha-de-roteiro ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.escolha-de-roteiro li + li {
+  border-top: 1px solid var(--border);
+}
+
+.escolha-de-roteiro li button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.escolha-de-roteiro li button:hover {
+  background: var(--selecao);
+}
+
+.escolha-de-roteiro li button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.escolha-de-roteiro li strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.escolha-de-roteiro li span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.escolha-de-roteiro .botao {
+  justify-content: center;
+}
