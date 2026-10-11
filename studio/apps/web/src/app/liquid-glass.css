@@ -1973,3 +1973,41 @@ body::before {
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   backdrop-filter: blur(22px) saturate(160%);
 }
+
+/* ---------- 14. Timeline: blocos maiores ----------
+   As faixas cresceram (Timeline.tsx); aqui a letra e as pegas dos blocos
+   acompanham, e no celular a timeline ganha mais altura da tela. */
+.clipe__chip {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.clipe--item,
+.clipe--legenda {
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.timeline__linha[data-vazia] .timeline__vazio {
+  top: 4px;
+  bottom: 4px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+@media (max-width: 899px) {
+  /* Em pé: a timeline fica com quase metade da tela (era 38%). */
+  .editor,
+  .editor[data-modo] {
+    grid-template-rows: minmax(0, 1fr) minmax(250px, 46dvh) auto !important;
+  }
+}
+
+@media (max-width: 899px) and (orientation: landscape) and (max-height: 520px) {
+  .editor,
+  .editor[data-modo] {
+    grid-template-rows: minmax(0, 1fr) auto !important;
+  }
+}

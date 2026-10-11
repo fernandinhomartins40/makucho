@@ -91,21 +91,23 @@ type Faixa = 'video' | 'midia' | 'audio' | 'narracao' | 'legendas' | 'textos' | 
 // e a escala do Windows: 520 a 730 px úteis). Com as normais, só a faixa
 // de vídeo cabia; com estas, três a quatro faixas ficam à vista.
 const FAIXAS: Array<{ id: Faixa; rotulo: string; Icone: Icon; altura: number; compacta: number }> = [
-  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 64, compacta: 52 },
-  { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia, altura: 36, compacta: 28 },
-  { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 52, compacta: 38 },
-  { id: 'narracao', rotulo: 'Narração', Icone: IconeMicrofone, altura: 40, compacta: 30 },
-  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 40, compacta: 30 },
-  { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 40, compacta: 30 },
-  { id: 'elementos', rotulo: 'Enfeites', Icone: IconeMidia, altura: 36, compacta: 28 },
-  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 56, compacta: 42 },
-  { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 36, compacta: 28 },
-  { id: 'trilha', rotulo: 'Música', Icone: IconeTrilha, altura: 40, compacta: 30 },
+  // Nenhuma faixa com conteúdo fica abaixo de 44 px (o mínimo confortável
+  // para o dedo): com 28 a 40 px os blocos eram difíceis de ver e de tocar.
+  { id: 'video', rotulo: 'Vídeo', Icone: IconeVideo, altura: 88, compacta: 68 },
+  { id: 'midia', rotulo: 'Imagens', Icone: IconeMidia, altura: 52, compacta: 44 },
+  { id: 'audio', rotulo: 'Áudio', Icone: IconeOnda, altura: 60, compacta: 48 },
+  { id: 'narracao', rotulo: 'Narração', Icone: IconeMicrofone, altura: 52, compacta: 44 },
+  { id: 'legendas', rotulo: 'Legendas', Icone: IconeLegenda, altura: 52, compacta: 44 },
+  { id: 'textos', rotulo: 'Textos', Icone: IconeTexto, altura: 52, compacta: 44 },
+  { id: 'elementos', rotulo: 'Enfeites', Icone: IconeMidia, altura: 52, compacta: 44 },
+  { id: 'efeitos', rotulo: 'Efeitos', Icone: IconeEfeito, altura: 60, compacta: 48 },
+  { id: 'sons', rotulo: 'Sons', Icone: IconeSom, altura: 52, compacta: 44 },
+  { id: 'trilha', rotulo: 'Música', Icone: IconeTrilha, altura: 52, compacta: 44 },
 ];
 
 const ALTURA_REGUA = 28;
-const ALTURA_VAZIA = 30;
-const ALTURA_VAZIA_COMPACTA = 26;
+const ALTURA_VAZIA = 44;
+const ALTURA_VAZIA_COMPACTA = 36;
 const ALTURA_REGUA_COMPACTA = 22;
 
 /** Tela baixa (mesma regra do CSS): faixas e régua mais baixas. */
