@@ -27,6 +27,7 @@ import {
   tamanhoDoQuadro,
   tamanhoEstimado,
   faltaNoNavegador,
+  gravaNoFormatoDasRedes,
   type OpcoesDeExportacao,
 } from '../../lib/exportacao/opcoes';
 import { baixar, compartilhar, ehAparelhoApple, podeCompartilhar, useExportacoes, type TarefaDeExportacao } from '../../lib/exportacao/tarefas';
@@ -89,7 +90,20 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
   // iPhone/iPad (ou navegador sem WebCodecs): o servidor monta o vídeo. No iPhone o
   // aparelho até exporta nas versões novas, mas a memória do Safari costuma não dar.
   const apple = useMemo(() => aberto && ehAparelhoApple(), [aberto]);
-  const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (opcoes.onde ?? (apple ? 'servidor' : 'aparelho'));
+  // O aparelho grava no formato das redes (H.264 com AAC)? Muitos Android
+  // não: aí o padrão é o servidor, mesmo que a pessoa já tenha exportado
+  // "neste aparelho" antes -- só vale o aparelho se ela escolher agora.
+  const [formatoDasRedes, setFormatoDasRedes] = useState<boolean | null>(null);
+  const [escolheuOnde, setEscolheuOnde] = useState<'aparelho' | 'servidor' | null>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    void gravaNoFormatoDasRedes().then((ok) => vivo && setFormatoDasRedes(ok));
+    return () => {
+      vivo = false;
+    };
+  }, [aberto]);
+  const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (escolheuOnde ?? (formatoDasRedes === false ? 'servidor' : (opcoes.onde ?? (apple ? 'servidor' : 'aparelho'))));
 
   const mudar = (m: Partial<OpcoesDeExportacao>) => setOpcoes((o) => ({ ...o, ...m }));
   const exportar = () => {
@@ -107,12 +121,13 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
   // ou sendo montado (aí a janela mostra o que já existe).
   const jaIniciou = useRef(false);
   useEffect(() => {
-    if (!aberto || !iniciarAoAbrir || jaIniciou.current) return;
+    // Espera saber se o aparelho grava no formato das redes: é o que decide onde montar.
+    if (!aberto || !iniciarAoAbrir || jaIniciou.current || formatoDasRedes === null) return;
     jaIniciou.current = true;
     const temVideo = tarefa && (tarefa.estado === 'rodando' || tarefa.estado === 'pronta');
     if (!temVideo && !outraRodando && duracaoMs > 0) exportar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aberto, iniciarAoAbrir]);
+  }, [aberto, iniciarAoAbrir, formatoDasRedes]);
 
   if (!aberto) return null;
 
@@ -151,14 +166,37 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
                 <legend>Onde montar o vídeo</legend>
                 <div className="exportar__opcoes">
                   <label className="exportar__opcao" data-marcada={onde === 'servidor' || undefined}>
-                    <input type="radio" name="onde" checked={onde === 'servidor'} onChange={() => mudar({ onde: 'servidor' })} />
-                    <strong>No servidor{apple ? ' (recomendado no iPhone)' : ''}</strong>
+                    <input
+                      type="radio"
+                      name="onde"
+                      checked={onde === 'servidor'}
+                      onChange={() => {
+                        setEscolheuOnde('servidor');
+                        mudar({ onde: 'servidor' });
+                      }}
+                    />
+                    <strong>No servidor{apple ? ' (recomendado no iPhone)' : formatoDasRedes === false ? ' (recomendado neste aparelho)' : ''}</strong>
                     <span>O aparelho fica livre; 1080p, 30 fps. Pode fechar o app: o vídeo continua sendo montado.</span>
                   </label>
                   <label className="exportar__opcao" data-marcada={onde === 'aparelho' || undefined} aria-disabled={Boolean(falta) || undefined}>
-                    <input type="radio" name="onde" checked={onde === 'aparelho'} disabled={Boolean(falta)} onChange={() => mudar({ onde: 'aparelho' })} />
+                    <input
+                      type="radio"
+                      name="onde"
+                      checked={onde === 'aparelho'}
+                      disabled={Boolean(falta)}
+                      onChange={() => {
+                        setEscolheuOnde('aparelho');
+                        mudar({ onde: 'aparelho' });
+                      }}
+                    />
                     <strong>Neste aparelho</strong>
-                    <span>{falta ? `Indisponível: ${falta}` : 'Mais rápido num computador; escolha a resolução e a qualidade abaixo.'}</span>
+                    <span>
+                      {falta
+                        ? `Indisponível: ${falta}`
+                        : formatoDasRedes === false
+                          ? 'Este aparelho não grava no formato das redes: o vídeo sai, mas Instagram, TikTok e WhatsApp podem recusar.'
+                          : 'Mais rápido num computador; escolha a resolução e a qualidade abaixo.'}
+                    </span>
                   </label>
                 </div>
               </fieldset>
@@ -303,7 +341,9 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
     const r = tarefa.resultado;
     const apple = ehAparelhoApple();
     // No iPhone, salvar e publicar saem pelo mesmo Compartilhar do sistema.
-    const compartilha = podeCompartilhar(r.url, r.nome);
+    // Arquivo fora do formato das redes: publicar levaria a pessoa a um
+    // app que recusa o vídeo. O caminho é exportar de novo no servidor.
+    const compartilha = r.paraRedes && podeCompartilhar(r.url, r.nome);
     return (
       <div className="exportar__andamento">
         <span className="exportar__icone exportar__icone--ok" aria-hidden>
@@ -334,6 +374,11 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
         </div>
 
         <div className="exportar__botoes">
+          {!r.paraRedes && (
+            <button type="button" className="botao botao--primario" onClick={aoRefazer}>
+              <IconeExportar size={16} /> Exportar no servidor para publicar
+            </button>
+          )}
           {compartilha && (
             <button
               type="button"
@@ -347,7 +392,7 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
             </button>
           )}
           {!apple && (
-            <button type="button" className={`botao ${compartilha ? 'botao--secundario' : 'botao--primario'}`} onClick={() => baixar(r.url, r.nome)}>
+            <button type="button" className={`botao ${compartilha || !r.paraRedes ? 'botao--secundario' : 'botao--primario'}`} onClick={() => baixar(r.url, r.nome)}>
               Baixar de novo
             </button>
           )}

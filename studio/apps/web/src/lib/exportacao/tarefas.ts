@@ -25,7 +25,18 @@ export interface TarefaDeExportacao {
   estado: EstadoDaTarefa;
   progresso: ProgressoDaExportacao;
   iniciadaEm: number;
-  resultado?: { url: string; nome: string; bytes: number; duracaoMs: number; largura: number; altura: number; avisos: string[]; levouMs: number };
+  resultado?: {
+    url: string;
+    nome: string;
+    bytes: number;
+    duracaoMs: number;
+    largura: number;
+    altura: number;
+    avisos: string[];
+    levouMs: number;
+    /** O arquivo está no formato que as redes aceitam (H.264 com AAC). */
+    paraRedes: boolean;
+  };
   erro?: string;
 }
 
@@ -72,7 +83,9 @@ function guardar(blob: Blob): string {
 function arquivoParaCompartilhar(url: string, nome: string): File | null {
   const blob = arquivos.get(url);
   if (!blob || typeof navigator === 'undefined' || typeof navigator.share !== 'function') return null;
-  const arquivo = new File([blob], nome, { type: blob.type || 'video/mp4' });
+  // Sempre "video/mp4" puro: com o tipo vazio, genérico ou com parâmetros
+  // de codec, o Android recusa ou entrega ao app um arquivo sem tipo.
+  const arquivo = new File([blob], nome, { type: 'video/mp4' });
   if (navigator.canShare && !navigator.canShare({ files: [arquivo] })) return null;
   return arquivo;
 }
@@ -87,9 +100,10 @@ export function podeCompartilhar(url: string, nome: string): boolean {
  * (Instagram, TikTok, WhatsApp...) e publica por lá, com a conta dela.
  * O Studio não posta em nome de ninguém nem guarda senha de rede.
  *
- * A legenda vai para a área de transferência, porque junto do arquivo o
- * texto se perde: cada app decide o que aproveita, e no iPhone mandar os
- * dois faz o Safari largar um deles. Só no Android o texto vai junto.
+ * A legenda vai para a área de transferência e SÓ o arquivo vai para o
+ * app: mandar texto junto muda o que o app recebe (no iPhone o Safari
+ * larga um dos dois; no Android há apps que ficam só com o texto e
+ * descartam o vídeo).
  *
  * Tem de ser chamada direto do toque, sem `await` antes: o iPhone
  * recusa o Compartilhar que não nasce de um gesto.
@@ -99,9 +113,7 @@ export function compartilhar(url: string, nome: string, legenda = ''): boolean {
   if (!arquivo) return false;
   const texto = legenda.trim();
   if (texto) void navigator.clipboard?.writeText(texto).catch(() => undefined);
-  const dados: ShareData = { files: [arquivo] };
-  if (texto && !ehAparelhoApple()) dados.text = texto;
-  void navigator.share(dados).catch(() => undefined);
+  void navigator.share({ files: [arquivo] }).catch(() => undefined);
   return true;
 }
 
@@ -201,6 +213,7 @@ export const useExportacoes = create<Loja>((set, get) => {
               altura: r.altura,
               avisos: r.avisos,
               levouMs: Date.now() - iniciadaEm,
+              paraRedes: r.paraRedes,
             },
           });
           // No iPhone o Compartilhar precisa de um toque: o botão "Salvar" aparece pronto.
@@ -267,7 +280,8 @@ export const useExportacoes = create<Loja>((set, get) => {
         atualizar(id, {
           estado: 'pronta',
           progresso: { etapa: 'finalizando', fracao: 1, quadro: 0, totalDeQuadros: 0, restanteMs: 0 },
-          resultado: { url, nome, bytes: blob.size, duracaoMs, largura: 1080, altura: 1920, avisos: [], levouMs: Date.now() - iniciadaEm },
+          // O servidor monta com o ffmpeg, sempre em H.264 com AAC.
+          resultado: { url, nome, bytes: blob.size, duracaoMs, largura: 1080, altura: 1920, avisos: [], levouMs: Date.now() - iniciadaEm, paraRedes: true },
         });
         if (!ehAparelhoApple()) baixar(url, nome);
       })()

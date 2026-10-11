@@ -95,6 +95,26 @@ export function nomeSeguro(titulo: string): string {
   return base || 'video';
 }
 
+/**
+ * Este aparelho grava H.264 com AAC? É o MP4 que as redes aceitam. O
+ * Chrome do Android muitas vezes não tem o codificador de AAC (o áudio
+ * sairia em Opus) ou o de H.264 nesse tamanho: aí a exportação "neste
+ * aparelho" gera um arquivo que não publica, e o certo é o servidor.
+ * Pergunta ao próprio navegador, sem carregar o exportador.
+ */
+export async function gravaNoFormatoDasRedes(): Promise<boolean> {
+  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined') return false;
+  try {
+    const [video, audio] = await Promise.all([
+      VideoEncoder.isConfigSupported({ codec: 'avc1.640028', width: 1080, height: 1920, bitrate: 8_000_000, framerate: 30 }),
+      AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48_000, numberOfChannels: 2, bitrate: BITRATE_DO_AUDIO }),
+    ]);
+    return Boolean(video.supported && audio.supported);
+  } catch {
+    return false;
+  }
+}
+
 /** O que falta no navegador para exportar, ou null se dá. */
 export function faltaNoNavegador(): string | null {
   if (typeof window === 'undefined') return 'indisponível fora do navegador';

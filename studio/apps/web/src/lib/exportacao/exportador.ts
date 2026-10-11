@@ -108,6 +108,13 @@ export interface ResultadoDaExportacao {
   largura: number;
   altura: number;
   avisos: string[];
+  /**
+   * H.264 com AAC: o MP4 que Instagram, TikTok e WhatsApp aceitam. Sem
+   * um dos dois (vídeo VP9/AV1 ou áudio Opus, o que o Chrome do Android
+   * faz quando não tem o codificador), o arquivo toca no aparelho mas as
+   * redes recusam -- muitas vezes sem dizer nada.
+   */
+  paraRedes: boolean;
 }
 
 const cancelado = () => new DOMException('Exportação cancelada', 'AbortError');
@@ -223,8 +230,13 @@ export async function exportarNoNavegador(
   const bitrate = bitrateDoVideo(opcoes, plano.canvas);
   const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1'], { width: W, height: H, bitrate });
   if (!codec) throw new Error('este navegador não consegue codificar vídeo nesse tamanho. Tente uma resolução menor.');
-  if (codec !== 'avc') avisos.push('O navegador não codifica H.264; o vídeo saiu em outro formato de vídeo dentro do MP4.');
   const audioCodec = (await canEncodeAudio('aac', { numberOfChannels: 2, sampleRate: TAXA, bitrate: BITRATE_DO_AUDIO })) ? 'aac' : 'opus';
+  const paraRedes = codec === 'avc' && audioCodec === 'aac';
+  if (!paraRedes) {
+    avisos.push(
+      'Este aparelho não grava o vídeo no formato das redes (H.264 com áudio AAC): o arquivo toca aqui, mas Instagram, TikTok e WhatsApp podem recusar. Para publicar, exporte de novo escolhendo "No servidor".',
+    );
+  }
 
   const saida = document.createElement('canvas');
   saida.width = W;
@@ -677,6 +689,7 @@ export async function exportarNoNavegador(
       largura: W,
       altura: H,
       avisos,
+      paraRedes,
     };
   } catch (e) {
     await output.cancel().catch(() => undefined);
