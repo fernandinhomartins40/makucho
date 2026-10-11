@@ -9,7 +9,7 @@
 // sai no vídeo.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CenaAnimada, ComposicaoHtml, EstiloDeAnimacao } from '@makucho/studio-contracts';
 import type { CurvaDeKeyframe, EditPlanV1, KeyframeDaMidia, KeyframeDoTexto, MarcaDoVideo, TimelineOperation } from '@makucho/studio-contracts';
 import {
@@ -64,7 +64,7 @@ import { AmostraDeTexto } from './AmostraDeTexto';
 import { EscolhaDeFonte } from './EscolhaDeFonte';
 import { EstilosDeTexto } from './EstilosDeTexto';
 import { NOME_DO_ELEMENTO } from '../timeline/camadas';
-import { IconeLixeira, IconeTocar, IconeMudo } from '../icones';
+import { IconeLixeira, IconeTocar, IconeMudo, IconeCheck, IconeAviso } from '../icones';
 import { assets as apiAssets } from '../../lib/api';
 import { NOME_DA_TRANSICAO, NOME_DO_SOM, SONS, TRANSICOES } from '../biblioteca/catalogo';
 import { useAnimacoesDaIa, type OpcoesDeRefazerAnimacao } from './animacoesDaIa';
@@ -870,11 +870,41 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
     setPaletaEscolhida(null);
     setTrocando(false);
   };
+  // O que aconteceu com o último pedido: aplicando, aplicado ou não deu.
+  // O aviso flutua preso à tela (ou à gaveta, no celular): à vista em
+  // qualquer rolagem do painel. Preso ao topo do painel ele não ficava --
+  // o painel tem caixas com rolagem própria no meio do caminho.
+  const [resultado, setResultado] = useState<'ok' | 'erro' | null>(null);
+  const estavaOcupada = useRef(false);
+  useEffect(() => {
+    if (ocupada) {
+      estavaOcupada.current = true;
+      setResultado(null);
+      return;
+    }
+    if (!estavaOcupada.current) return;
+    estavaOcupada.current = false;
+    setResultado(ia?.falha ? 'erro' : 'ok');
+    if (ia?.falha) return;
+    const t = setTimeout(() => setResultado(null), 4000);
+    return () => clearTimeout(t);
+  }, [ocupada, ia?.falha]);
   return (
     <div className="pilha" style={{ gap: 'var(--e4)' }}>
       {ocupada && (
-        <p className="aviso aviso--info" role="status" style={{ margin: 0, fontSize: 12 }}>
-          {atual?.familia === 'motion' ? 'Remontando as animações… (segundos)' : 'A IA está redesenhando as animações… (1-2 min)'}
+        <p className="animacao-estado animacao-estado--fixa" data-estado="aplicando" role="status">
+          <span className="animacao-estado__roda" aria-hidden />
+          {atual?.familia === 'motion' ? 'Aplicando… leva alguns segundos.' : 'A IA está redesenhando… leva de 1 a 2 minutos.'}
+        </p>
+      )}
+      {!ocupada && resultado === 'ok' && (
+        <p className="animacao-estado animacao-estado--fixa" data-estado="ok" role="status">
+          <IconeCheck size={16} /> Aplicado. A animação foi atualizada no vídeo.
+        </p>
+      )}
+      {!ocupada && resultado === 'erro' && (
+        <p className="animacao-estado animacao-estado--fixa" data-estado="erro" role="alert">
+          <IconeAviso size={16} /> {ia?.falha ?? 'Não deu para aplicar. Tente de novo.'}
         </p>
       )}
 

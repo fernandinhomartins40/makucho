@@ -101,6 +101,13 @@ export function EditorDaCena({
   const [pendente, setPendente] = useState<{ preset: string; faltam: string } | null>(null);
   const [erro, setErro] = useState('');
   const [aba, setAba] = useState<'objetos' | 'icones' | 'rabiscos'>('objetos');
+  // A opção que a pessoa acabou de tocar: ela gira até o servidor
+  // devolver a cena (as outras ficam apagadas, esperando).
+  const [tocada, setTocada] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ocupada) setTocada(null);
+  }, [ocupada]);
+  const aplicando = (chave: string) => (ocupada && tocada === chave ? '' : undefined);
   useEffect(() => {
     setForm(paraFormulario(cena?.textos));
     setPendente(null);
@@ -116,13 +123,14 @@ export function EditorDaCena({
   const preset = pendente?.preset ?? cena.preset;
   const campos = camposDoPreset(preset);
   const usa = (campo: string) => campos.some((c) => c.campo === campo);
-  const aplicar = (edicao: { preset?: string; textos?: Record<string, unknown>; atras?: boolean }) => {
+  const aplicar = (edicao: { preset?: string; textos?: Record<string, unknown>; atras?: boolean }, chave: string) => {
     const r = aplicarEdicaoDaCena(cena, edicao);
     if ('erro' in r) {
       setErro(r.erro);
       return false;
     }
     setErro('');
+    setTocada(chave);
     refazer([id], { cena: edicao });
     return true;
   };
@@ -130,14 +138,15 @@ export function EditorDaCena({
     if (chave === cena.preset) return;
     if (!faltam) {
       setPendente(null);
-      aplicar({ preset: chave });
+      aplicar({ preset: chave }, `modelo:${chave}`);
       return;
     }
     // Faltam textos que esta cena não tem: os campos abrem para preencher.
     setPendente({ preset: chave, faltam });
     setErro('');
   };
-  const elemento = (campo: string, valor: string | string[]) => aplicar({ ...(pendente ? { preset: pendente.preset } : {}), textos: { [campo]: valor } });
+  const elemento = (campo: string, valor: string | string[]) =>
+    aplicar({ ...(pendente ? { preset: pendente.preset } : {}), textos: { [campo]: valor } }, `${campo}:${Array.isArray(valor) ? valor[valor.length - 1] : valor}`);
   const ajuste = cena.ajuste ?? { x: 0, y: 0, escala: 1 };
 
   const camposDeTexto = campos.filter((c) => !DAS_GRADES.has(c.campo));
@@ -149,9 +158,16 @@ export function EditorDaCena({
         Toque nos textos e peças da animação no vídeo para mover, aumentar (pinça ou canto) e editar.
       </p>
 
+      {/* O motivo de uma opção não valer aparece no alto, não no fim do painel. */}
+      {erro && (
+        <p className="animacao-estado" data-estado="erro" role="alert">
+          {erro}
+        </p>
+      )}
+
       <section aria-label="Modelos da animação">
         <span className="campo__rotulo">Modelo da animação</span>
-        <Modelos cena={cena} atual={preset} composicao={composicao} desabilitado={ocupada} onEscolher={trocarModelo} />
+        <Modelos cena={cena} atual={preset} composicao={composicao} desabilitado={ocupada} aplicando={ocupada && tocada?.startsWith('modelo:') ? tocada.slice(7) : null} onEscolher={trocarModelo} />
       </section>
 
       {pendente && (
@@ -188,7 +204,8 @@ export function EditorDaCena({
                     aria-pressed={cena.textos.objeto === a.chave}
                     title={`${a.nome}: ${a.quando}`}
                     disabled={ocupada}
-                    onClick={() => (usa('objeto') ? elemento('objeto', a.chave) : aplicar({ preset: 'objeto', textos: { objeto: a.chave, titulo: cena.textos.titulo ?? cena.textos.a ?? cena.textos.depois ?? a.nome } }))}
+                    data-aplicando={aplicando(`objeto:${a.chave}`)}
+                    onClick={() => (usa('objeto') ? elemento('objeto', a.chave) : aplicar({ preset: 'objeto', textos: { objeto: a.chave, titulo: cena.textos.titulo ?? cena.textos.a ?? cena.textos.depois ?? a.nome } }, `objeto:${a.chave}`))}
                   >
                     <Desenho chave={a.chave} />
                     <span>{a.nome}</span>
@@ -197,15 +214,24 @@ export function EditorDaCena({
               </div>
             </>
           )}
-          {aba === 'icones' && <Icones cena={cena} usaIcone={usa('icone')} usaIcones={usa('icones')} desabilitado={ocupada} onEscolher={(v) => (usa('icones') ? elemento('icones', v) : usa('icone') ? elemento('icone', v[0]!) : aplicar({ preset: 'icone', textos: { icone: v[0]!, titulo: cena.textos.titulo ?? 'Título' } }))} />}
+          {aba === 'icones' && (
+            <Icones
+              cena={cena}
+              usaIcone={usa('icone')}
+              usaIcones={usa('icones')}
+              desabilitado={ocupada}
+              aplicando={ocupada && tocada ? (/^icones?:(.+)$/.exec(tocada)?.[1] ?? null) : null}
+              onEscolher={(v) => (usa('icones') ? elemento('icones', v) : usa('icone') ? elemento('icone', v[0]!) : aplicar({ preset: 'icone', textos: { icone: v[0]!, titulo: cena.textos.titulo ?? 'Título' } }, `icone:${v[0]}`))}
+            />
+          )}
           {aba === 'rabiscos' && (
             <div className="grade-de-elementos">
-              <button type="button" className="grade-de-elementos__item" aria-pressed={cena.textos.rabisco === 'nenhum'} disabled={ocupada} onClick={() => elemento('rabisco', 'nenhum')}>
+              <button type="button" className="grade-de-elementos__item" aria-pressed={cena.textos.rabisco === 'nenhum'} disabled={ocupada} data-aplicando={aplicando('rabisco:nenhum')} onClick={() => elemento('rabisco', 'nenhum')}>
                 <span className="grade-de-elementos__vazio">∅</span>
                 <span>Nenhum</span>
               </button>
               {ASSETS_DE_MOTION.filter((a) => a.tipo === 'rabisco').map((a) => (
-                <button key={a.chave} type="button" className="grade-de-elementos__item" aria-pressed={cena.textos.rabisco === a.chave} title={a.quando} disabled={ocupada} onClick={() => elemento('rabisco', a.chave)}>
+                <button key={a.chave} type="button" className="grade-de-elementos__item" aria-pressed={cena.textos.rabisco === a.chave} title={a.quando} disabled={ocupada} data-aplicando={aplicando(`rabisco:${a.chave}`)} onClick={() => elemento('rabisco', a.chave)}>
                   <Desenho chave={a.chave} />
                   <span>{a.nome}</span>
                 </button>
@@ -222,7 +248,7 @@ export function EditorDaCena({
               [false, 'Na frente da pessoa'],
               [true, 'Atrás da pessoa'],
             ].map(([v, n]) => (
-              <button key={String(v)} type="button" role="radio" aria-checked={!!composicao.atras === v} className="biblioteca__chip" disabled={ocupada} onClick={() => !!composicao.atras !== v && aplicar({ atras: v as boolean })}>
+              <button key={String(v)} type="button" role="radio" aria-checked={!!composicao.atras === v} className="biblioteca__chip" disabled={ocupada} data-aplicando={aplicando(`atras:${v}`)} onClick={() => !!composicao.atras !== v && aplicar({ atras: v as boolean }, `atras:${v}`)}>
                 {n as string}
               </button>
             ))}
@@ -230,7 +256,7 @@ export function EditorDaCena({
           {composicao.atras && usa('fundo') && (
             <div className="biblioteca__chips" role="radiogroup" aria-label="Fundo atrás da pessoa">
               {['', ...FUNDOS_ATRAS].map((f) => (
-                <button key={f || 'nenhum'} type="button" role="radio" aria-checked={(cena.textos.fundo ?? '') === f} className="biblioteca__chip" disabled={ocupada} onClick={() => elemento('fundo', f)}>
+                <button key={f || 'nenhum'} type="button" role="radio" aria-checked={(cena.textos.fundo ?? '') === f} className="biblioteca__chip" disabled={ocupada} data-aplicando={aplicando(`fundo:${f}`)} onClick={() => elemento('fundo', f)}>
                   {f ? NOME_DO_FUNDO[f] : 'O do vídeo'}
                 </button>
               ))}
@@ -260,19 +286,13 @@ export function EditorDaCena({
             className="botao botao--primario botao--pequeno"
             disabled={ocupada}
             onClick={() => {
-              if (aplicar({ ...(pendente ? { preset: pendente.preset } : {}), textos: doFormulario(form) })) setPendente(null);
+              if (aplicar({ ...(pendente ? { preset: pendente.preset } : {}), textos: doFormulario(form) }, 'textos')) setPendente(null);
             }}
           >
-            {pendente ? `Usar “${presetDeMotion(pendente.preset)?.nome}”` : 'Salvar os textos'}
+            {ocupada && tocada === 'textos' ? 'Aplicando…' : pendente ? `Usar “${presetDeMotion(pendente.preset)?.nome}”` : 'Salvar os textos'}
           </button>
         </div>
       </details>
-
-      {erro && (
-        <p className="aviso aviso--erro" role="alert" style={{ margin: 0, fontSize: 12 }}>
-          {erro}
-        </p>
-      )}
 
       <details className="editor-da-cena__mais">
         <summary>Cena inteira: posição e tamanho</summary>
@@ -292,7 +312,7 @@ export function EditorDaCena({
 }
 
 /** As miniaturas dos modelos: cada uma é a cena de verdade (num iframe pequeno, carregado quando aparece). */
-function Modelos({ cena, atual, composicao, desabilitado, onEscolher }: { cena: CenaDeMotion; atual: string; composicao: ComposicaoHtml; desabilitado: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
+function Modelos({ cena, atual, composicao, desabilitado, aplicando, onEscolher }: { cena: CenaDeMotion; atual: string; composicao: ComposicaoHtml; desabilitado: boolean; aplicando: string | null; onEscolher: (preset: string, faltam: string | null) => void }) {
   const lista = [...PRESETS_DE_MOTION.filter((p) => PRESETS_EM_VOLTA.has(p.chave)), ...PRESETS_DE_MOTION.filter((p) => !PRESETS_EM_VOLTA.has(p.chave) && (!p.interno || p.chave === cena.preset))];
   const faixa = useRef<HTMLDivElement>(null);
   // A roda do mouse comum rola a faixa para o lado (ouvinte nativo: precisa impedir a rolagem do painel).
@@ -318,13 +338,13 @@ function Modelos({ cena, atual, composicao, desabilitado, onEscolher }: { cena: 
   return (
     <div ref={faixa} className="modelos-da-cena" role="radiogroup" aria-label="Modelos">
       {lista.map((p) => (
-        <Miniatura key={p.chave} cena={cena} preset={p.chave} nome={p.nome} marcada={p.chave === atual} composicao={composicao} desabilitado={desabilitado} onEscolher={onEscolher} />
+        <Miniatura key={p.chave} cena={cena} preset={p.chave} nome={p.nome} marcada={p.chave === atual} composicao={composicao} desabilitado={desabilitado} aplicando={aplicando === p.chave} onEscolher={onEscolher} />
       ))}
     </div>
   );
 }
 
-function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, onEscolher }: { cena: CenaDeMotion; preset: string; nome: string; marcada: boolean; composicao: ComposicaoHtml; desabilitado: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
+function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, aplicando, onEscolher }: { cena: CenaDeMotion; preset: string; nome: string; marcada: boolean; composicao: ComposicaoHtml; desabilitado: boolean; aplicando: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const quadro = useRef<HTMLIFrameElement>(null);
   const [visivel, setVisivel] = useState(false);
@@ -352,6 +372,7 @@ function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, onEs
       className="modelos-da-cena__item"
       title={`${nome}${amostra.faltam ? ` (precisa de: ${amostra.faltam.replace(/^.* sem /, '')})` : ''}`}
       disabled={desabilitado}
+      data-aplicando={aplicando ? '' : undefined}
       onClick={() => onEscolher(preset, amostra.faltam)}
     >
       <span className="modelos-da-cena__quadro" aria-hidden>
@@ -370,7 +391,7 @@ function Desenho({ chave }: { chave: string }) {
 }
 
 /** A grade dos ícones (duotone, nas cores do vídeo). Nos modelos com um ícone por item, toque na ordem dos itens. */
-function Icones({ cena, usaIcone, usaIcones, desabilitado, onEscolher }: { cena: CenaDeMotion; usaIcone: boolean; usaIcones: boolean; desabilitado: boolean; onEscolher: (v: string[]) => void }) {
+function Icones({ cena, usaIcone, usaIcones, desabilitado, aplicando, onEscolher }: { cena: CenaDeMotion; usaIcone: boolean; usaIcones: boolean; desabilitado: boolean; aplicando: string | null; onEscolher: (v: string[]) => void }) {
   const [catalogo, setCatalogo] = useState<Record<string, readonly [string, string]> | null>(null);
   const [fila, setFila] = useState<string[]>([]);
   useEffect(() => {
@@ -407,6 +428,7 @@ function Icones({ cena, usaIcone, usaIcones, desabilitado, onEscolher }: { cena:
               aria-pressed={marcado}
               title={n}
               disabled={desabilitado}
+              data-aplicando={aplicando === n ? '' : undefined}
               onClick={() => {
                 if (!usaIcones) return onEscolher([n]);
                 const nova = [...fila, n];

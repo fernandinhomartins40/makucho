@@ -2455,3 +2455,116 @@ body::before {
     scrollbar-gutter: stable;
   }
 }
+
+/* ---------- 22. Animações: o que está acontecendo, sempre à vista ----------
+   O aviso de estado flutua preso à tela; a opção tocada gira
+   até a cena voltar do servidor, e as outras esperam apagadas. */
+.animacao-estado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 8px 20px -10px rgb(0 0 0 / 35%);
+}
+
+.animacao-estado[data-estado='aplicando'] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.animacao-estado[data-estado='ok'] {
+  background: var(--success);
+  color: #fff;
+}
+
+.animacao-estado[data-estado='erro'] {
+  background: var(--danger);
+  color: #fff;
+}
+
+.animacao-estado__roda {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgb(255 255 255 / 35%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ditado-girar 0.8s linear infinite;
+}
+
+/* A opção que está sendo aplicada: contorno, véu e a roda no meio. */
+.editor-da-cena [data-aplicando] {
+  position: relative;
+  opacity: 1 !important;
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.editor-da-cena [data-aplicando]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: rgb(0 0 0 / 50%);
+}
+
+.editor-da-cena [data-aplicando]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border: 3px solid rgb(255 255 255 / 40%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ditado-girar 0.8s linear infinite;
+}
+
+/* As demais, enquanto uma é aplicada: claramente em espera. */
+.editor-da-cena :is(.grade-de-elementos__item, .modelos-da-cena__item, .biblioteca__chip):disabled:not([data-aplicando]) {
+  opacity: 0.45;
+  cursor: progress;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animacao-estado__roda,
+  .editor-da-cena [data-aplicando]::after {
+    animation-duration: 2.4s;
+  }
+}
+
+/* O aviso do pedido em curso: preso à tela, embaixo, no meio. */
+.animacao-estado--fixa {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 80;
+  width: max-content;
+  max-width: min(92vw, 520px);
+  transform: translateX(-50%);
+  box-shadow: 0 14px 34px -10px rgb(0 0 0 / 55%);
+  animation: aviso-subir 200ms ease-out;
+}
+
+@keyframes aviso-subir {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+}
+
+@media (max-width: 899px) {
+  /* Na gaveta do celular, acima da área do gesto de início. */
+  .animacao-estado--fixa {
+    bottom: calc(16px + var(--seguro-baixo, 0px));
+  }
+}

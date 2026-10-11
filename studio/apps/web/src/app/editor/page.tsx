@@ -301,18 +301,29 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       setProjeto((p) => (p ? { ...p, animationNote: `Sem animações: ${e instanceof Error ? e.message : 'o pedido falhou'}` } : p));
     }
   }, [projectId]);
+  // Do clique até o servidor responder: sem isto a tela ficava parada por
+  // um instante, sem sinal de que o toque valeu, e dava para tocar em
+  // outra opção por cima do pedido que já estava indo.
+  const [pedindoAnimacoes, setPedindoAnimacoes] = useState(false);
   const refazerAnimacoes = useCallback(
     async (camadas: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => {
+      setPedindoAnimacoes(true);
       try {
         const r = await apiIa.refazerAnimacoes(projectId, { ...(camadas === 'todas' ? {} : { camadas }), ...o });
         setProjeto((p) => (p ? { ...p, animationNote: r.nota } : p));
       } catch (e) {
         setProjeto((p) => (p ? { ...p, animationNote: `Não deu para refazer: ${e instanceof Error ? e.message : 'o pedido falhou'}` } : p));
+      } finally {
+        setPedindoAnimacoes(false);
       }
     },
     [projectId],
   );
-  const animacoesDaIa = useMemo(() => ({ trabalhando: criandoAnimacoes, refazer: (c: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => void refazerAnimacoes(c, o) }), [criandoAnimacoes, refazerAnimacoes]);
+  const falhaDasAnimacoes = projeto?.animationNote?.startsWith('Não deu para refazer') ? projeto.animationNote : null;
+  const animacoesDaIa = useMemo(
+    () => ({ trabalhando: criandoAnimacoes || pedindoAnimacoes, falha: falhaDasAnimacoes, refazer: (c: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => void refazerAnimacoes(c, o) }),
+    [criandoAnimacoes, pedindoAnimacoes, falhaDasAnimacoes, refazerAnimacoes],
+  );
   useEffect(() => {
     if (!criandoAnimacoes) return;
     const id = setInterval(() => {
@@ -324,7 +335,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           void carregarPlano();
         })
         .catch(() => undefined);
-    }, 5000);
+      // A cada 2 s: remontar uma cena leva segundos, e com 5 s a pessoa
+      // esperava mais pela conferência do que pelo trabalho.
+    }, 2000);
     return () => clearInterval(id);
   }, [criandoAnimacoes, projectId, carregarPlano]);
 

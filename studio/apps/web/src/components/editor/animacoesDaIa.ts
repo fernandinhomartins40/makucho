@@ -22,8 +22,10 @@ export interface OpcoesDeRefazerAnimacao {
 }
 
 export interface AnimacoesDaIa {
-  /** A IA está criando ou refazendo animações agora. */
+  /** Criando ou refazendo animações agora -- vale desde o clique, antes de o servidor responder. */
   trabalhando: boolean;
+  /** Por que o último pedido não deu certo (nulo se deu, ou se ainda roda). */
+  falha: string | null;
   refazer: (camadas: string[] | 'todas', o: OpcoesDeRefazerAnimacao) => void;
 }
 
