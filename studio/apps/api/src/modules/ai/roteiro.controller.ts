@@ -9,10 +9,15 @@
 // muda quando o prompt muda é este arquivo — não o CRUD de roteiro.
 // ============================================================
 
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, NotFoundException, Param, Post, Req, ServiceUnavailableException } from '@nestjs/common';
+import type { Request } from 'express';
+import { randomUUID } from 'node:crypto';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { frameworkSchema, pedidoDeEdicaoDeRoteiroSchema, pedidoDeRoteiroLivreSchema, scriptModeSchema } from '@makucho/studio-contracts';
+import { DITADO_MAXIMO_BYTES, frameworkSchema, pedidoDeEdicaoDeRoteiroSchema, pedidoDeRoteiroLivreSchema, scriptModeSchema } from '@makucho/studio-contracts';
+import { FilaService } from '../../common/fila.service';
+import { StorageService } from '../../common/storage.service';
+import { lerCorpoLimitado } from '../assets/assets.controller';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { assertCanWrite } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
@@ -28,10 +33,67 @@ const gerarSchema = z.object({
   targetDurationMs: z.number().int().min(15_000).max(180_000).optional(),
 });
 
+/** O que o gravador do navegador entrega, e a extensão com que o arquivo é guardado. */
+const EXTENSAO_DO_DITADO: Record<string, string> = {
+  'audio/webm': 'webm',
+  'video/webm': 'webm',
+  'audio/mp4': 'mp4',
+  'video/mp4': 'mp4',
+  'audio/x-m4a': 'm4a',
+  'audio/aac': 'aac',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+};
+
 @ApiTags('ai')
 @Controller('scripts')
 export class RoteiroController {
-  constructor(private readonly roteiro: RoteiroService) {}
+  constructor(
+    private readonly roteiro: RoteiroService,
+    private readonly filas: FilaService,
+    private readonly storage: StorageService,
+  ) {}
+
+  /**
+   * Ditado: a pessoa fala o pedido do roteiro e recebe o texto.
+   *
+   * Quem transcreve é o faster-whisper que já roda aqui para os vídeos
+   * (código aberto, no próprio servidor): não há chamada de IA paga nem
+   * serviço de fora ouvindo a voz de ninguém.
+   *
+   * Em duas idas: esta recebe o áudio e devolve um id; a de baixo diz
+   * quando o texto ficou pronto. Numa ida só, um áudio de dois minutos
+   * passaria do tempo que o nginx espera por uma resposta.
+   */
+  @Post('ai/ditado')
+  async ditar(@CurrentTenant() tenant: TenantContext, @Headers('content-type') mime: string | undefined, @Req() req: Request) {
+    assertCanWrite(tenant);
+    const tipo = (mime ?? '').split(';')[0]!.trim().toLowerCase();
+    // O iPhone grava em audio/mp4; o Chrome, em audio/webm (às vezes dito video/webm).
+    const extensao = EXTENSAO_DO_DITADO[tipo];
+    if (!extensao) throw new BadRequestException('envie o áudio gravado pelo navegador (webm, mp4 ou ogg)');
+
+    const audio = await lerCorpoLimitado(req, DITADO_MAXIMO_BYTES);
+    if (audio.length < 1024) throw new BadRequestException('o áudio veio vazio; grave de novo');
+
+    const id = `ditado-${tenant.workspaceId}-${randomUUID()}`;
+    // Em _tmp, fora da pasta do workspace: não conta na cota, e o worker apaga ao terminar.
+    const chave = `_tmp/ditados/${id}.${extensao}`;
+    await this.storage.gravar(chave, audio);
+    if (!(await this.filas.ditar(id, chave))) {
+      await this.storage.remover(chave).catch(() => undefined);
+      throw new ServiceUnavailableException('a transcrição está indisponível agora; digite o pedido ou tente daqui a pouco');
+    }
+    return { id };
+  }
+
+  /** O texto do ditado, quando ficar pronto. */
+  @Get('ai/ditado/:id')
+  async ditado(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    // O id carrega o workspace: ninguém lê o ditado de outra conta.
+    if (!id.startsWith(`ditado-${tenant.workspaceId}-`)) throw new NotFoundException('ditado não encontrado');
+    return this.filas.estadoDoDitado(id);
+  }
 
   /**
    * #1 — gera um rascunho a partir do tema.

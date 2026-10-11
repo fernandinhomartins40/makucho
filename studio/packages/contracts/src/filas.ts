@@ -14,6 +14,18 @@
 
 export const FILA_MIDIA = 'studio-media';
 export const FILA_TRANSCRICAO = 'studio-transcription';
+
+/**
+ * Ditado: um áudio curto (a pessoa falando o pedido do roteiro) que vira
+ * texto. Entra na MESMA fila da transcrição, com este nome de job: é o
+ * mesmo faster-whisper, e um de cada vez -- dois modelos na memória do
+ * contêiner ao mesmo tempo não cabem.
+ */
+export const JOB_DE_DITADO = 'ditar';
+
+/** O áudio do ditado tem teto: é um pedido falado, não uma gravação. */
+export const DITADO_MAXIMO_MS = 120_000;
+export const DITADO_MAXIMO_BYTES = 12 * 1024 * 1024;
 export const FILA_RENDER = 'studio-render';
 /**
  * Análise automática: a transcrição termina e a proposta de edição

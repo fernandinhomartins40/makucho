@@ -23,6 +23,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Topbar } from '../../components/shell/Topbar';
 import { Folha } from '../../components/shell/Folha';
+import { BotaoDeDitado } from '../../components/roteiro/BotaoDeDitado';
 import { ia, roteiros as apiRoteiros, type RoteiroNaLista, type RoteiroParaSalvar } from '../../lib/api';
 import { alinharBlocos, diferencaDeTexto, type Par } from '../../lib/diffDeRoteiro';
 import {
@@ -40,6 +41,7 @@ import {
   IconeCheck,
   IconeBusca,
   IconeInfo,
+  IconeRenomear,
 } from '../../components/icones';
 
 // ---------- Vocabulário ----------
@@ -474,6 +476,15 @@ function NovoRoteiro({
           }}
         />
         <div className="roteiro-novo__barra">
+          {/* Falar em vez de digitar: o texto entra no campo para conferir antes de enviar. */}
+          <BotaoDeDitado
+            desabilitado={gerando}
+            aoTranscrever={(texto) => {
+              onAviso(null);
+              setPedido((atual) => (atual.trim() ? `${atual.trimEnd()} ${texto}` : texto).slice(0, 3000));
+            }}
+            aoFalhar={onAviso}
+          />
           <label className="roteiro-novo__duracao">
             <IconeRelogio size={16} aria-hidden />
             Duração
@@ -541,6 +552,13 @@ function EditorDeRoteiro({
   onNovo: () => void;
 }) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  // O bloco aberto para edição à mão (lápis) e o rascunho dele. Só vale
+  // depois de "Salvar": cancelar devolve o texto como estava. Um roteiro
+  // que nasce em branco já abre com o primeiro bloco em edição.
+  const [editando, setEditando] = useState<{ id: string; texto: string } | null>(() => {
+    const vazio = estado.blocos.length === 1 && !estado.blocos[0]!.texto.trim() ? estado.blocos[0]! : null;
+    return vazio ? { id: vazio.id, texto: '' } : null;
+  });
   const [pedido, setPedido] = useState('');
   const [pedindo, setPedindo] = useState(false);
   const [resposta, setResposta] = useState<string | null>(null);
@@ -582,6 +600,15 @@ function EditorDeRoteiro({
     blocos.splice(i, 0, bloco);
     onMudar({ ...estado, blocos });
     setSelecionado(bloco.id);
+    // Um bloco novo nasce vazio: já abre para escrever.
+    setEditando({ id: bloco.id, texto: '' });
+  };
+
+  const salvarEdicao = () => {
+    if (!editando) return;
+    digitando.current = null;
+    onMudar({ ...estado, blocos: estado.blocos.map((b) => (b.id === editando.id ? { ...b, texto: editando.texto.trim() } : b)) });
+    setEditando(null);
   };
 
   const pedirIa = async (texto: string) => {
@@ -734,6 +761,7 @@ function EditorDeRoteiro({
             key={b.id}
             className="roteiro-bloco"
             data-selecionado={b.id === selecionado || undefined}
+            data-editando={editando?.id === b.id || undefined}
             style={{ ['--cor-papel' as string]: COR[b.papel] }}
             onClick={() => setSelecionado(b.id)}
           >
@@ -752,6 +780,16 @@ function EditorDeRoteiro({
               </select>
               <span className="roteiro-bloco__tempo">~{Math.max(1, Math.round(palavrasDe(b.texto) / PALAVRAS_POR_SEGUNDO))} s</span>
               <span className="roteiro-bloco__ferramentas">
+                <button
+                  type="button"
+                  className="botao-icone botao-icone--pequeno roteiro-bloco__lapis"
+                  aria-label={`Editar o texto do bloco ${i + 1}`}
+                  title="Editar este trecho"
+                  disabled={editando?.id === b.id}
+                  onClick={() => setEditando({ id: b.id, texto: b.texto })}
+                >
+                  <IconeRenomear size={15} />
+                </button>
                 <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Subir bloco" disabled={i === 0} onClick={() => mover(i, -1)}>
                   <IconeSubir size={14} />
                 </button>
@@ -764,7 +802,21 @@ function EditorDeRoteiro({
               </span>
             </div>
             {b.intencao && <p className="roteiro-bloco__intencao">{b.intencao}</p>}
-            <TextoAutoAjustavel valor={b.texto} aoMudar={(t) => mudarBloco(b.id, { texto: t })} rotulo={`Texto do bloco ${i + 1}`} />
+            {editando?.id === b.id ? (
+              <>
+                <TextoAutoAjustavel valor={editando.texto} aoMudar={(t) => setEditando({ id: b.id, texto: t })} rotulo={`Texto do bloco ${i + 1}`} focar />
+                <div className="roteiro-bloco__edicao">
+                  <button type="button" className="botao botao--pequeno" onClick={salvarEdicao}>
+                    <IconeCheck size={15} /> Salvar
+                  </button>
+                  <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setEditando(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="roteiro-bloco__leitura">{b.texto || <em>Trecho vazio. Toque no lápis para escrever.</em>}</p>
+            )}
           </li>
         ))}
       </ol>
@@ -1002,8 +1054,16 @@ function RevisaoDaIa({
 }
 
 /** Caixa de texto que cresce com o conteúdo (o texto do bloco lido de uma vez). */
-function TextoAutoAjustavel({ valor, aoMudar, rotulo }: { valor: string; aoMudar: (t: string) => void; rotulo: string }) {
+function TextoAutoAjustavel({ valor, aoMudar, rotulo, focar = false }: { valor: string; aoMudar: (t: string) => void; rotulo: string; focar?: boolean }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Aberto pelo lápis: o cursor já vai para o fim do texto.
+  useEffect(() => {
+    const el = ref.current;
+    if (!focar || !el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -1018,7 +1078,6 @@ function TextoAutoAjustavel({ valor, aoMudar, rotulo }: { valor: string; aoMudar
       rows={1}
       maxLength={2000}
       aria-label={rotulo}
-      placeholder="O que você vai falar neste momento do vídeo…"
       onChange={(e) => aoMudar(e.target.value)}
     />
   );

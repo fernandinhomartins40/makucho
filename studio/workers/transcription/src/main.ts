@@ -21,6 +21,7 @@ import { PrismaClient } from '@makucho/studio-database';
 import {
   FILA_ANALISE,
   FILA_TRANSCRICAO,
+  JOB_DE_DITADO,
   PREFIXO_DAS_FILAS,
   SILENCIO_MINIMO_MS,
   classificarAudio,
@@ -29,7 +30,7 @@ import {
 } from '@makucho/studio-contracts';
 import { comLockGlobal, publicarProgresso } from '@makucho/studio-worker-core';
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 
@@ -333,6 +334,34 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   await job.updateProgress(100);
 }
 
+/**
+ * Ditado: o áudio de alguém falando o pedido do roteiro vira texto.
+ *
+ * Nada vai para o banco e não há projeto: o texto volta como resultado
+ * do job, e a API o entrega a quem ditou. O arquivo é apagado ao fim,
+ * tenha dado certo ou não -- é a voz da pessoa, não fica guardada.
+ *
+ * Sem o lock global dos processamentos pesados: são no máximo dois
+ * minutos de áudio, e esperar um render de vídeo terminar deixaria quem
+ * ditou olhando para a tela por minutos.
+ */
+async function ditar(job: Job<{ storageKey: string }>): Promise<string> {
+  const arquivo = caminhoDe(job.data.storageKey);
+  try {
+    const bruto = await rodarWhisper(arquivo, bater);
+    if ((bruto as { semFala?: boolean } | null)?.semFala === true) return '';
+    const conferido = transcriptionResultSchema.safeParse(bruto);
+    if (!conferido.success) throw new Error(`ditado fora do contrato: ${conferido.error.issues[0]?.message}`);
+    return conferido.data.segments
+      .filter((s) => !ehAlucinacaoDoWhisper(s.text))
+      .map((s) => s.text.trim())
+      .filter(Boolean)
+      .join(' ');
+  } finally {
+    await rm(arquivo, { force: true }).catch(() => undefined);
+  }
+}
+
 /** Lê as cenas que o worker de mídia deixou ao lado do áudio. */
 async function lerCenas(prefixo: string): Promise<Array<{ inicioMs: number; fimMs: number; quadro: string }>> {
   try {
@@ -370,11 +399,15 @@ async function lerSilencios(prefixo: string): Promise<Array<{ inicioMs: number; 
 
 // ============================================================
 
-const worker = new Worker<DadosDoJob>(FILA_TRANSCRICAO, processar, {
-  connection: redis,
-  prefix: PREFIXO_DAS_FILAS,
-  concurrency: 1,
-});
+const worker = new Worker<DadosDoJob>(
+  FILA_TRANSCRICAO,
+  (job) => (job.name === JOB_DE_DITADO ? ditar(job as unknown as Job<{ storageKey: string }>) : processar(job)),
+  {
+    connection: redis,
+    prefix: PREFIXO_DAS_FILAS,
+    concurrency: 1,
+  },
+);
 
 worker.on('failed', (job, erro) => {
   const dados = job?.data;
@@ -399,7 +432,7 @@ worker.on('failed', (job, erro) => {
 });
 
 worker.on('completed', (job) => {
-  console.log(`[transcricao] job ${job.id} concluído (projeto ${job.data.projectId})`);
+  console.log(`[transcricao] job ${job.id} concluído (${job.name === JOB_DE_DITADO ? 'ditado' : `projeto ${job.data.projectId}`})`);
 });
 
 // ---------- Heartbeat ----------

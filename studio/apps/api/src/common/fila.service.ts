@@ -23,6 +23,7 @@ import {
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
+  JOB_DE_DITADO,
   FILAS,
   PREFIXO_DAS_FILAS,
   VALIDADE_DO_PROGRESSO_S,
@@ -163,6 +164,39 @@ export class FilaService implements OnModuleDestroy {
     } catch (e) {
       this.log.error(`falha ao enfileirar transcrição do projeto ${projectId}`, e as Error);
       return false;
+    }
+  }
+
+  /**
+   * Ditado: enfileira o áudio para virar texto (mesma fila e mesmo
+   * whisper da transcrição). `false` quando não há worker ouvindo --
+   * melhor dizer já que não dá do que deixar a pessoa esperando.
+   */
+  async ditar(id: string, storageKey: string): Promise<boolean> {
+    try {
+      const fila = this.fila(FILA_TRANSCRICAO);
+      if ((await fila.getWorkersCount()) === 0) return false;
+      // Uma tentativa só: quem ditou está esperando, e repetir daqui a
+      // 30 s não ajuda. O resultado some em dez minutos.
+      await fila.add(JOB_DE_DITADO, { storageKey }, { jobId: id, attempts: 1, removeOnComplete: { age: 600 }, removeOnFail: { age: 600 } });
+      return true;
+    } catch (e) {
+      this.log.error('falha ao enfileirar o ditado', e as Error);
+      return false;
+    }
+  }
+
+  /** Onde o ditado está: esperando o whisper, pronto (com o texto) ou perdido. */
+  async estadoDoDitado(id: string): Promise<{ estado: 'esperando' | 'pronto' | 'erro'; texto?: string }> {
+    try {
+      const job = await this.fila(FILA_TRANSCRICAO).getJob(id);
+      if (!job) return { estado: 'erro' };
+      const estado = await job.getState();
+      if (estado === 'completed') return { estado: 'pronto', texto: typeof job.returnvalue === 'string' ? job.returnvalue : '' };
+      if (estado === 'failed') return { estado: 'erro' };
+      return { estado: 'esperando' };
+    } catch {
+      return { estado: 'erro' };
     }
   }
 

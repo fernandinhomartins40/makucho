@@ -757,6 +757,21 @@ export const ia = {
   /** Roteiro por pedido livre ("um vídeo de 30s pro Instagram sobre..."). Não salva. */
   roteiroLivre: (dados: { pedido: string; duracaoS?: number | null }) =>
     api<RoteiroDaIaNaTela>('/scripts/ai/gerar', { metodo: 'POST', corpo: dados }),
+  /**
+   * A fala vira texto: o áudio vai para o whisper do próprio servidor
+   * (sem IA paga) e esta chamada espera o texto ficar pronto.
+   */
+  async ditar(audio: Blob): Promise<string> {
+    const { id } = await enviarImagem<{ id: string }>('/scripts/ai/ditado', audio);
+    // Até quatro minutos: o whisper pode estar ocupado com um vídeo.
+    for (let i = 0; i < 160; i += 1) {
+      await new Promise((ok) => setTimeout(ok, 1500));
+      const r = await api<{ estado: 'esperando' | 'pronto' | 'erro'; texto?: string }>(`/scripts/ai/ditado/${id}`);
+      if (r.estado === 'pronto') return r.texto ?? '';
+      if (r.estado === 'erro') throw new Error('Não foi possível passar o áudio para texto. Tente de novo.');
+    }
+    throw new Error('A transcrição está demorando demais. Tente de novo daqui a pouco ou digite o pedido.');
+  },
   /** Revisa o roteiro da tela por um pedido livre ("gancho mais forte", "encurta"). */
   editarRoteiro: (dados: {
     pedido: string;

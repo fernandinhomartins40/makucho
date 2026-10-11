@@ -2011,3 +2011,105 @@ body::before {
     grid-template-rows: minmax(0, 1fr) auto !important;
   }
 }
+
+/* ---------- 15. Roteiro: falar o pedido e editar cada trecho ---------- */
+
+/* O microfone do pedido: uma cápsula que muda de cara enquanto grava. */
+.ditado {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--selecao);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ditado__icone {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+}
+
+.ditado[data-estado='gravando'] {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.ditado[data-estado='gravando'] .ditado__icone {
+  background: var(--danger);
+  animation: ditado-pulso 1.2s ease-in-out infinite;
+}
+
+.ditado:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+@keyframes ditado-pulso {
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--danger) 22%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ditado[data-estado='gravando'] .ditado__icone {
+    animation: none;
+  }
+}
+
+/* O trecho do roteiro é texto de leitura; o lápis abre o campo, e só o
+   "Salvar" grava. Antes todo trecho era um campo sempre aberto, sem
+   dizer que dava para escrever ali. */
+.roteiro-bloco__ferramentas {
+  opacity: 1;
+}
+
+.roteiro-bloco__lapis {
+  color: var(--primary);
+}
+
+.roteiro-bloco__leitura {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.roteiro-bloco__leitura em {
+  color: var(--text-secondary);
+}
+
+.roteiro-bloco[data-editando] {
+  border-color: var(--primary);
+}
+
+.roteiro-bloco[data-editando] .roteiro-bloco__texto {
+  min-height: 88px;
+  padding: 10px 12px;
+  border: 1px solid var(--campo-borda);
+  border-radius: 12px;
+  background: var(--campo-fundo);
+}
+
+.roteiro-bloco[data-editando] .roteiro-bloco__texto:focus {
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco);
+}
+
+.roteiro-bloco__edicao {
+  display: flex;
+  gap: var(--e2);
+  margin-top: var(--e2);
+}
