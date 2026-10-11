@@ -2335,3 +2335,34 @@ body::before {
   font-size: 14px;
   line-height: 1.45;
 }
+
+/* ---------- 19. Roteiro à mão: campos abertos ----------
+   Cada trecho é o nome da técnica, a dica e o campo, já pronto para
+   digitar. Sem lápis, sem setas, sem "Salvar": menos coisa para entender. */
+.roteiro-bloco[data-manual] {
+  gap: 8px;
+}
+
+.roteiro-bloco[data-manual] .roteiro-bloco__papel {
+  padding: 4px 12px;
+  font-size: 15px;
+  cursor: default;
+}
+
+.roteiro-bloco[data-manual] .roteiro-bloco__intencao {
+  font-style: normal;
+  font-size: 15px;
+}
+
+.roteiro-bloco[data-manual] .roteiro-bloco__texto {
+  min-height: 96px;
+  padding: 12px 14px;
+  border: 1px solid var(--campo-borda);
+  border-radius: 14px;
+  background: var(--campo-fundo);
+}
+
+.roteiro-bloco[data-manual] .roteiro-bloco__texto:focus {
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco);
+}

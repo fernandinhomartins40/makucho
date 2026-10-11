@@ -129,16 +129,19 @@ const GUIA_DO_PEDIDO = [
  * O roteiro escrito à mão nasce com cinco trechos vazios, um para cada
  * técnica dos vídeos que seguram quem assiste -- as mesmas que a IA
  * aplica (o protocolo do prompt de seleção): gancho, promessa, entrega,
- * recompensa e chamada. A linha de orientação de cada um diz o que
- * escrever; ela cabe nos 120 caracteres que o servidor guarda.
+ * recompensa e chamada. Na tela, cada trecho mostra o nome da técnica,
+ * a dica do que escrever e o campo JÁ ABERTO: é só digitar, sem lápis e
+ * sem "Salvar" (salva sozinho). O que vai para o servidor como intenção
+ * do trecho é "NOME: dica", que cabe nos 120 caracteres guardados.
  */
-const TRECHOS_DO_ROTEIRO_MANUAL: ReadonlyArray<{ papel: Papel; intencao: string }> = [
-  { papel: 'hook', intencao: 'GANCHO: a primeira frase, que faz a pessoa parar de rolar. Um problema, uma pergunta ou um resultado.' },
-  { papel: 'curiosity_gap', intencao: 'PROMESSA: diga o que a pessoa ganha se assistir até o fim.' },
-  { papel: 'insight', intencao: 'ENTREGA: o conteúdo. Explique o que você prometeu, em dois ou três pontos.' },
-  { papel: 'payoff', intencao: 'RECOMPENSA: a frase que fecha a ideia, com o resultado ou a conclusão.' },
-  { papel: 'cta', intencao: 'CHAMADA: peça uma coisa só. Seguir, comentar ou chamar no WhatsApp.' },
+const TRECHOS_DO_ROTEIRO_MANUAL: ReadonlyArray<{ papel: Papel; nome: string; dica: string }> = [
+  { papel: 'hook', nome: 'Gancho', dica: 'A primeira frase, que faz a pessoa parar de rolar. Um problema, uma pergunta ou um resultado.' },
+  { papel: 'curiosity_gap', nome: 'Promessa', dica: 'Diga o que a pessoa ganha se assistir até o fim.' },
+  { papel: 'insight', nome: 'Entrega', dica: 'O conteúdo. Explique o que você prometeu, em dois ou três pontos.' },
+  { papel: 'payoff', nome: 'Recompensa', dica: 'A frase que fecha a ideia, com o resultado ou a conclusão.' },
+  { papel: 'cta', nome: 'Chamada', dica: 'Peça uma coisa só. Seguir, comentar ou chamar no WhatsApp.' },
 ];
+const intencaoDoTrecho = (t: { nome: string; dica: string }) => `${t.nome.toUpperCase()}: ${t.dica}`;
 
 const RAPIDOS = ['Gancho mais forte', 'Deixa mais curto', 'Mais informal', 'Mais vendedor', 'Conta como história', 'Outra chamada no final'];
 
@@ -190,6 +193,8 @@ function Roteiros() {
   const [salvamento, setSalvamento] = useState<'salvo' | 'salvando' | 'erro'>('salvo');
   const [aviso, setAviso] = useState<string | null>(null);
   const [listaAberta, setListaAberta] = useState(false);
+  // Escrevendo à mão (sem IA): os campos ficam abertos, sem lápis.
+  const [manual, setManual] = useState(false);
 
   const carregarLista = useCallback(() => {
     void apiRoteiros
@@ -205,6 +210,7 @@ function Roteiros() {
     setAviso(null);
     setHistorico([]);
     setTecnicas([]);
+    setManual(false);
     setRoteiroId(id);
     window.history.replaceState(null, '', id ? `/roteiros?id=${id}` : '/roteiros');
     if (!id) {
@@ -348,6 +354,7 @@ function Roteiros() {
               onTecnicas={setTecnicas}
               onAviso={setAviso}
               onNovo={() => abrir(null)}
+              manual={manual}
             />
           ) : (
             <NovoRoteiro
@@ -355,16 +362,18 @@ function Roteiros() {
                 setRoteiroId(null);
                 setHistorico([]);
                 setTecnicas(t);
+                setManual(false);
                 setEstado(e);
               }}
-              onEmBranco={() =>
+              onEmBranco={() => {
+                setManual(true);
                 setEstado({
                   titulo: 'Novo roteiro',
                   duracaoMs: 45_000,
                   framework: 'authority_education',
-                  blocos: TRECHOS_DO_ROTEIRO_MANUAL.map((t) => ({ id: novoId(), papel: t.papel, intencao: t.intencao, texto: '' })),
-                })
-              }
+                  blocos: TRECHOS_DO_ROTEIRO_MANUAL.map((t) => ({ id: novoId(), papel: t.papel, intencao: intencaoDoTrecho(t), texto: '' })),
+                });
+              }}
               onAviso={setAviso}
             />
           )}
@@ -563,7 +572,10 @@ function EditorDeRoteiro({
   onTecnicas,
   onAviso,
   onNovo,
+  manual,
 }: {
+  /** Roteiro sendo escrito à mão: campos abertos, sem lápis nem "Salvar". */
+  manual: boolean;
   estado: Estado;
   tecnicas: Array<{ nome: string; onde: string }>;
   podeDesfazer: boolean;
@@ -574,13 +586,11 @@ function EditorDeRoteiro({
   onNovo: () => void;
 }) {
   const [selecionado, setSelecionado] = useState<string | null>(null);
-  // O bloco aberto para edição à mão (lápis) e o rascunho dele. Só vale
-  // depois de "Salvar": cancelar devolve o texto como estava. Um roteiro
-  // escrito à mão nasce com os trechos vazios e já abre no primeiro.
-  const [editando, setEditando] = useState<{ id: string; texto: string } | null>(() => {
-    const vazio = estado.blocos.find((b) => !b.texto.trim());
-    return vazio ? { id: vazio.id, texto: '' } : null;
-  });
+  // O bloco aberto para edição pelo lápis e o rascunho dele (roteiro que
+  // a IA escreveu ou que já estava salvo). Só vale depois de "Salvar":
+  // cancelar devolve o texto como estava. Escrevendo à mão não há lápis:
+  // todos os campos já estão abertos.
+  const [editando, setEditando] = useState<{ id: string; texto: string } | null>(null);
   const [pedido, setPedido] = useState('');
   const [pedindo, setPedindo] = useState(false);
   const [resposta, setResposta] = useState<string | null>(null);
@@ -622,8 +632,8 @@ function EditorDeRoteiro({
     blocos.splice(i, 0, bloco);
     onMudar({ ...estado, blocos });
     setSelecionado(bloco.id);
-    // Um bloco novo nasce vazio: já abre para escrever.
-    setEditando({ id: bloco.id, texto: '' });
+    // Um bloco novo nasce vazio: já abre para escrever (à mão ele já nasce aberto).
+    if (!manual) setEditando({ id: bloco.id, texto: '' });
   };
 
   const salvarEdicao = () => {
@@ -631,10 +641,7 @@ function EditorDeRoteiro({
     digitando.current = null;
     const blocos = estado.blocos.map((b) => (b.id === editando.id ? { ...b, texto: editando.texto.trim() } : b));
     onMudar({ ...estado, blocos });
-    // Preenchendo à mão: ao salvar um trecho, o próximo vazio já abre.
-    const i = blocos.findIndex((b) => b.id === editando.id);
-    const proximo = editando.texto.trim() ? blocos.slice(i + 1).find((b) => !b.texto.trim()) : undefined;
-    setEditando(proximo ? { id: proximo.id, texto: '' } : null);
+    setEditando(null);
   };
 
   const vazios = estado.blocos.filter((b) => !b.texto.trim()).length;
@@ -783,11 +790,9 @@ function EditorDeRoteiro({
         />
       ) : (
         <>
-      {vazios > 0 && (
+      {manual && (
         <p className="roteiro__guia" role="status">
-          {vazios === estado.blocos.length
-            ? `Preencha os ${vazios} trechos, um de cada vez. A linha em itálico diz o que escrever em cada um.`
-            : `Faltam ${vazios} ${vazios === 1 ? 'trecho' : 'trechos'}. Trecho vazio não entra no roteiro.`}
+          {vazios === 0 ? 'Roteiro completo. Ele salva sozinho.' : `Escreva em cada campo. Ele salva sozinho${vazios < estado.blocos.length ? ` · ${vazios === 1 ? 'falta 1' : `faltam ${vazios}`}` : ''}.`}
         </p>
       )}
       <ol className="roteiro__blocos">
@@ -797,9 +802,35 @@ function EditorDeRoteiro({
             className="roteiro-bloco"
             data-selecionado={b.id === selecionado || undefined}
             data-editando={editando?.id === b.id || undefined}
+            data-manual={manual || undefined}
             style={{ ['--cor-papel' as string]: COR[b.papel] }}
             onClick={() => setSelecionado(b.id)}
           >
+            {manual ? (
+              // À mão: só o nome da técnica, a dica e o campo aberto.
+              (() => {
+                const trecho = TRECHOS_DO_ROTEIRO_MANUAL.find((t) => intencaoDoTrecho(t) === b.intencao);
+                return (
+                  <>
+                    <div className="roteiro-bloco__cabeca">
+                      <label className="roteiro-bloco__papel" htmlFor={`trecho-${b.id}`}>
+                        {i + 1}. {trecho?.nome ?? ROTULO[b.papel]}
+                      </label>
+                      {!trecho && (
+                        <span className="roteiro-bloco__ferramentas">
+                          <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Remover bloco" onClick={() => remover(b.id)}>
+                            <IconeLixeira size={14} />
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                    {trecho && <p className="roteiro-bloco__intencao">{trecho.dica}</p>}
+                    <TextoAutoAjustavel id={`trecho-${b.id}`} valor={b.texto} aoMudar={(texto) => mudarBloco(b.id, { texto })} rotulo={`Texto do trecho ${i + 1}`} />
+                  </>
+                );
+              })()
+            ) : (
+              <>
             <div className="roteiro-bloco__cabeca">
               <select
                 className="roteiro-bloco__papel"
@@ -851,6 +882,8 @@ function EditorDeRoteiro({
               </>
             ) : (
               <p className="roteiro-bloco__leitura">{b.texto || <em>Trecho vazio. Toque no lápis para escrever.</em>}</p>
+            )}
+              </>
             )}
           </li>
         ))}
@@ -1092,7 +1125,7 @@ function RevisaoDaIa({
 }
 
 /** Caixa de texto que cresce com o conteúdo (o texto do bloco lido de uma vez). */
-function TextoAutoAjustavel({ valor, aoMudar, rotulo, focar = false }: { valor: string; aoMudar: (t: string) => void; rotulo: string; focar?: boolean }) {
+function TextoAutoAjustavel({ valor, aoMudar, rotulo, focar = false, id }: { valor: string; aoMudar: (t: string) => void; rotulo: string; focar?: boolean; id?: string }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Aberto pelo lápis: o cursor já vai para o fim do texto.
   useEffect(() => {
@@ -1111,6 +1144,7 @@ function TextoAutoAjustavel({ valor, aoMudar, rotulo, focar = false }: { valor: 
   return (
     <textarea
       ref={ref}
+      id={id}
       className="roteiro-bloco__texto"
       value={valor}
       rows={1}
