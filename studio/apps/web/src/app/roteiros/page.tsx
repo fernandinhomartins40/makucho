@@ -125,6 +125,21 @@ const GUIA_DO_PEDIDO = [
   { titulo: 'O que pedir no final', exemplo: 'Ex.: seguir o perfil ou chamar no WhatsApp.' },
 ];
 
+/**
+ * O roteiro escrito à mão nasce com cinco trechos vazios, um para cada
+ * técnica dos vídeos que seguram quem assiste -- as mesmas que a IA
+ * aplica (o protocolo do prompt de seleção): gancho, promessa, entrega,
+ * recompensa e chamada. A linha de orientação de cada um diz o que
+ * escrever; ela cabe nos 120 caracteres que o servidor guarda.
+ */
+const TRECHOS_DO_ROTEIRO_MANUAL: ReadonlyArray<{ papel: Papel; intencao: string }> = [
+  { papel: 'hook', intencao: 'GANCHO: a primeira frase, que faz a pessoa parar de rolar. Um problema, uma pergunta ou um resultado.' },
+  { papel: 'curiosity_gap', intencao: 'PROMESSA: diga o que a pessoa ganha se assistir até o fim.' },
+  { papel: 'insight', intencao: 'ENTREGA: o conteúdo. Explique o que você prometeu, em dois ou três pontos.' },
+  { papel: 'payoff', intencao: 'RECOMPENSA: a frase que fecha a ideia, com o resultado ou a conclusão.' },
+  { papel: 'cta', intencao: 'CHAMADA: peça uma coisa só. Seguir, comentar ou chamar no WhatsApp.' },
+];
+
 const RAPIDOS = ['Gancho mais forte', 'Deixa mais curto', 'Mais informal', 'Mais vendedor', 'Conta como história', 'Outra chamada no final'];
 
 // ---------- Estado da tela ----------
@@ -294,7 +309,8 @@ function Roteiros() {
     <>
       <Topbar
         titulo={
-          <strong style={{ fontSize: 15 }}>Roteiro</strong>
+          // No celular, com um roteiro aberto, o título dava lugar ao selo "Salvo" (um ficava sobre o outro).
+          <strong className={estado ? 'so-largo' : undefined} style={{ fontSize: 15 }}>Roteiro</strong>
         }
         estado={estado ? salvamento : undefined}
       >
@@ -342,7 +358,12 @@ function Roteiros() {
                 setEstado(e);
               }}
               onEmBranco={() =>
-                setEstado({ titulo: 'Novo roteiro', duracaoMs: 45_000, framework: 'authority_education', blocos: [{ id: novoId(), papel: 'hook', intencao: '', texto: '' }] })
+                setEstado({
+                  titulo: 'Novo roteiro',
+                  duracaoMs: 45_000,
+                  framework: 'authority_education',
+                  blocos: TRECHOS_DO_ROTEIRO_MANUAL.map((t) => ({ id: novoId(), papel: t.papel, intencao: t.intencao, texto: '' })),
+                })
               }
               onAviso={setAviso}
             />
@@ -503,8 +524,9 @@ function NovoRoteiro({
         </div>
       </form>
 
-      <button type="button" className="roteiro-novo__branco" onClick={onEmBranco}>
-        ou escrever do zero, sem IA
+      {/* Sem IA: os cinco trechos vazios, cada um com a orientação do que escrever. */}
+      <button type="button" className="botao botao--secundario roteiro-novo__branco" onClick={onEmBranco}>
+        <IconeRenomear size={16} /> Escrever eu mesmo, sem IA
       </button>
 
       <Folha aberta={ajudaAberta} aoFechar={() => setAjudaAberta(false)} titulo="Como pedir o roteiro">
@@ -554,9 +576,9 @@ function EditorDeRoteiro({
   const [selecionado, setSelecionado] = useState<string | null>(null);
   // O bloco aberto para edição à mão (lápis) e o rascunho dele. Só vale
   // depois de "Salvar": cancelar devolve o texto como estava. Um roteiro
-  // que nasce em branco já abre com o primeiro bloco em edição.
+  // escrito à mão nasce com os trechos vazios e já abre no primeiro.
   const [editando, setEditando] = useState<{ id: string; texto: string } | null>(() => {
-    const vazio = estado.blocos.length === 1 && !estado.blocos[0]!.texto.trim() ? estado.blocos[0]! : null;
+    const vazio = estado.blocos.find((b) => !b.texto.trim());
     return vazio ? { id: vazio.id, texto: '' } : null;
   });
   const [pedido, setPedido] = useState('');
@@ -607,9 +629,15 @@ function EditorDeRoteiro({
   const salvarEdicao = () => {
     if (!editando) return;
     digitando.current = null;
-    onMudar({ ...estado, blocos: estado.blocos.map((b) => (b.id === editando.id ? { ...b, texto: editando.texto.trim() } : b)) });
-    setEditando(null);
+    const blocos = estado.blocos.map((b) => (b.id === editando.id ? { ...b, texto: editando.texto.trim() } : b));
+    onMudar({ ...estado, blocos });
+    // Preenchendo à mão: ao salvar um trecho, o próximo vazio já abre.
+    const i = blocos.findIndex((b) => b.id === editando.id);
+    const proximo = editando.texto.trim() ? blocos.slice(i + 1).find((b) => !b.texto.trim()) : undefined;
+    setEditando(proximo ? { id: proximo.id, texto: '' } : null);
   };
+
+  const vazios = estado.blocos.filter((b) => !b.texto.trim()).length;
 
   const pedirIa = async (texto: string) => {
     const limpo = texto.trim();
@@ -755,6 +783,13 @@ function EditorDeRoteiro({
         />
       ) : (
         <>
+      {vazios > 0 && (
+        <p className="roteiro__guia" role="status">
+          {vazios === estado.blocos.length
+            ? `Preencha os ${vazios} trechos, um de cada vez. A linha em itálico diz o que escrever em cada um.`
+            : `Faltam ${vazios} ${vazios === 1 ? 'trecho' : 'trechos'}. Trecho vazio não entra no roteiro.`}
+        </p>
+      )}
       <ol className="roteiro__blocos">
         {estado.blocos.map((b, i) => (
           <li
@@ -826,8 +861,13 @@ function EditorDeRoteiro({
         </>
       )}
 
-      {/* ---------- Peça à IA ---------- */}
+      {/* ---------- Peça à IA ----------
+          No fim do roteiro, no fluxo da página. Já foi uma caixa presa ao
+          pé da tela: ficava boiando por cima dos trechos e parecia defeito. */}
       <div className="roteiro-ia">
+        <h2 className="roteiro-ia__titulo" id="titulo-do-ajuste">
+          <IconeIA size={18} weight="fill" aria-hidden /> Quer mudar algo? Peça à IA
+        </h2>
         {resposta && (
           <p className="roteiro-ia__resposta" role="status">
             <IconeCheck size={14} /> {resposta}
@@ -850,14 +890,12 @@ function EditorDeRoteiro({
             void pedirIa(pedido);
           }}
         >
-          <IconeIA size={18} weight="fill" aria-hidden />
           <input
             value={pedido}
             maxLength={2000}
-            placeholder={proposta ? 'Quer mudar algo nesta proposta? Peça aqui' : 'Peça à IA: "deixa o gancho mais forte", "encurta pra 30s", "fala do preço no bloco 3"...'}
             onChange={(e) => setPedido(e.target.value)}
             disabled={pedindo}
-            aria-label="Pedido para a IA ajustar o roteiro"
+            aria-labelledby="titulo-do-ajuste"
           />
           <button type="submit" className="botao botao--primario botao--pequeno" disabled={pedindo || pedido.trim().length < 2}>
             {pedindo ? 'Ajustando…' : 'Ajustar'}

@@ -2113,3 +2113,225 @@ body::before {
   gap: var(--e2);
   margin-top: var(--e2);
 }
+
+/* ---------- 16. Ditado: a espera que se mexe ----------
+   Gravando, as barras seguem o volume da voz; passando para texto, uma
+   roda gira no lugar do microfone, uma faixa corre e a frase muda. */
+.ditado-caixa {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Na espera, a caixa ocupa a linha toda da barra do pedido. */
+.ditado-caixa[data-estado='transcrevendo'] {
+  flex: 1 1 100%;
+}
+
+.ditado-caixa .ditado {
+  justify-self: start;
+  max-width: 100%;
+}
+
+.ditado[data-estado='transcrevendo'] {
+  opacity: 1;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ditado[data-estado='gravando'] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* As barras do volume: a altura vem do microfone (BotaoDeDitado). */
+.ditado__barras {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+}
+
+.ditado__barras span {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform: scaleY(0.18);
+  transform-origin: center;
+  transition: transform 70ms linear;
+}
+
+/* Sem acesso ao volume (navegador antigo), elas pulsam sozinhas. */
+.ditado__barras[data-sem-medidor] span {
+  animation: ditado-onda 0.9s ease-in-out infinite;
+  transition: none;
+}
+
+.ditado__barras[data-sem-medidor] span:nth-child(3n + 1) {
+  animation-delay: -0.3s;
+}
+
+.ditado__barras[data-sem-medidor] span:nth-child(3n + 2) {
+  animation-delay: -0.6s;
+}
+
+@keyframes ditado-onda {
+  50% {
+    transform: scaleY(0.9);
+  }
+}
+
+.ditado__girando {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid rgb(255 255 255 / 35%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ditado-girar 0.8s linear infinite;
+}
+
+@keyframes ditado-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ditado__espera {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.ditado__faixa {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.ditado__faixa::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--primary);
+  animation: ditado-correr 1.4s ease-in-out infinite;
+}
+
+@keyframes ditado-correr {
+  to {
+    left: 100%;
+  }
+}
+
+/* Quem pediu menos movimento ainda precisa saber que está andando:
+   o relógio e a frase continuam; só o vaivém fica mais calmo. */
+@media (prefers-reduced-motion: reduce) {
+  .ditado__barras span,
+  .ditado__barras[data-sem-medidor] span {
+    animation: none;
+    transition: none;
+  }
+
+  .ditado__faixa::after {
+    left: 0;
+    width: 100%;
+    animation: ditado-respirar 2s ease-in-out infinite;
+  }
+
+  .ditado__girando {
+    animation-duration: 2.4s;
+  }
+}
+
+@keyframes ditado-respirar {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- 17. Roteiro: o "Peça à IA" no fim, sem flutuar ----------
+   Um cartão comum depois dos trechos, com título, campo e atalhos. */
+.roteiro-ia {
+  position: static;
+  margin-top: var(--e4);
+  padding: var(--e4);
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 22px;
+  background: var(--surface-1);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 10px 30px -14px rgb(28 36 58 / 22%), 0 1px 3px rgb(28 36 58 / 6%);
+}
+
+:where([data-tema='escuro']) .roteiro-ia {
+  border-color: rgb(255 255 255 / 8%);
+  box-shadow: 0 16px 44px -14px rgb(0 0 0 / 60%);
+}
+
+.roteiro-ia__titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.roteiro-ia__titulo svg {
+  color: var(--primary);
+}
+
+/* O campo com contorno próprio: antes era uma linha solta dentro da caixa. */
+.roteiro-ia__linha input {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--campo-borda);
+  border-radius: 14px;
+  background: var(--campo-fundo);
+}
+
+.roteiro-ia__linha input:focus {
+  border-color: var(--primary);
+  box-shadow: var(--anel-de-foco);
+}
+
+.roteiro-ia__linha .botao {
+  min-height: 48px;
+}
+
+@media (max-width: 899px) {
+  .roteiro-ia {
+    position: static;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+/* ---------- 18. Roteiro escrito à mão ---------- */
+.roteiro-novo__branco {
+  justify-self: center;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.roteiro__guia {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+/* A orientação de cada trecho: legível, é ela que guia quem escreve. */
+.roteiro-bloco__intencao {
+  font-size: 14px;
+  line-height: 1.45;
+}
