@@ -36,8 +36,13 @@ export const GRADE = {
   margemX: 64,
   /** Abaixo disto: fora do cabeçalho do app e do logo. */
   topo: 192,
-  /** Acima disto: fora do nome, da legenda do post e dos botões do app. */
-  base: 1600,
+  /**
+   * Acima disto: fora do nome, da legenda do post e dos botões do app.
+   * 1440 (480 px livres embaixo): a maior faixa entre as redes -- o
+   * TikTok cobre ~480 px, o Instagram ~380, o Shorts e o Facebook um
+   * pouco menos. Com 1600 o texto ficava atrás da legenda no TikTok.
+   */
+  base: 1440,
   /** A coluna de botões do app (curtir, comentar...) na metade de baixo. */
   colunaDoApp: { x: 944, y: 1000 },
   /** O logo da marca: canto superior direito, dentro do cabeçalho. */
@@ -169,7 +174,9 @@ export function gradeDaComposicao(c: Pick<ComposicaoHtml, 'layout' | 'lado' | 'd
     };
   }
 
-  return { layout: 'tela cheia', util, utilExtra: rodape, legenda, baseDaLegenda: GRADE.legendaBase / H, reservadas: reservadasComuns };
+  // A faixa sob a legenda só existe se sobrar altura útil antes da interface
+  // do app (com a base em 1440, o TikTok cobre essa faixa: ela some).
+  return { layout: 'tela cheia', util, ...(rodape.h >= 80 ? { utilExtra: rodape } : {}), legenda, baseDaLegenda: GRADE.legendaBase / H, reservadas: reservadasComuns };
 }
 
 const px = (r: Retangulo) => `left ${Math.round(r.x)}, top ${Math.round(r.y)}, ${Math.round(r.w)}x${Math.round(r.h)} (até y ${Math.round(r.y + r.h)})`;

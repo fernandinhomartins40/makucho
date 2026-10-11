@@ -272,6 +272,7 @@ ${pedido.usuario}`);
         structure: 'problema_solucao' as const,
         hookType: 'dor' as const,
         postCaption: 'Demorar para responder no WhatsApp custa venda. Veja como resolver hoje.',
+        postTitle: 'Demorar no WhatsApp custa venda',
         hashtags: ['whatsapp', 'vendas', 'pequenosnegocios'],
       },
       framework: 'authority_education' as const,

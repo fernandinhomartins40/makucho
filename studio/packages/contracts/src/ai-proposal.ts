@@ -120,6 +120,8 @@ const camposDoPost = {
   postCaption: z.preprocess((v) => (typeof v === 'string' && v.trim().length >= 2 ? cortar(700)(v.trim()) : undefined), z.string().max(700).optional()),
   /** As hashtags do post, sem o "#". */
   hashtags: z.preprocess(arrumarHashtags, z.array(z.string().min(2).max(40)).max(10).optional()),
+  /** O título curto do post (o YouTube Shorts tem campo próprio, até 100). */
+  postTitle: z.preprocess((v) => (typeof v === 'string' && v.trim().length >= 2 ? cortar(100)(v.trim()) : undefined), z.string().max(100).optional()),
 };
 
 export const analiseDaIaSchema = z

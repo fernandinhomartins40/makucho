@@ -10,6 +10,7 @@
 export * from './vocabulary';
 export * from './edit-plan';
 export * from './ai-proposal';
+export * from './redes-sociais';
 export * from './ai-roteiro';
 export * from './ai-refino';
 export * from './semantic-safety';

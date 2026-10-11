@@ -36,7 +36,9 @@ export const VERSAO_DO_PROMPT = {
   // (história, tutorial, opinião, oferta...), e título e chamada de tela só
   // quando ajudam; as regras de corte e o contrato são os mesmos.
   // v7: a legenda do post e as hashtags, em `analysis`, para publicar.
-  selecionar_trechos: 'selecao-v7',
+  // v8: título do Shorts, 3 a 5 hashtags e o essencial nos 125 primeiros
+  // caracteres (o que as redes mostram antes do "mais").
+  selecionar_trechos: 'selecao-v8',
   gerar_roteiro: 'roteiro-v1',
   sugerir_melhorias: 'sugestoes-v1',
   propor_candidatos: 'candidatos-v1',
@@ -61,7 +63,8 @@ export const VERSAO_DO_PROMPT = {
   sugerir_midias: 'midias-v3',
   // Vídeo sem narração, montado pelas cenas (montagem-visual.ts).
   // v2: a legenda do post e as hashtags, em `analysis`, para publicar.
-  montar_por_cenas: 'montagem-visual-v2',
+  // v3: título do Shorts, 3 a 5 hashtags e o essencial nos 125 primeiros caracteres.
+  montar_por_cenas: 'montagem-visual-v3',
   // Uma mídia escolhida na busca: a IA diz onde e como ela entra.
   posicionar_midia: 'posicionar-midia-v1',
   // O "Peça à IA" com ferramentas (agente.service.ts).

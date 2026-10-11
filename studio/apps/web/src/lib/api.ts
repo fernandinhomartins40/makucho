@@ -268,7 +268,7 @@ export interface ProjetoDetalhado {
     hashtags?: string[];
   } | null;
   /** A legenda e as hashtags da última montagem com IA (da fala ou das cenas). */
-  postDaIa?: { postCaption?: string; hashtags?: string[] } | null;
+  postDaIa?: { postCaption?: string; hashtags?: string[]; postTitle?: string } | null;
 }
 
 export interface ParteDoProjeto {

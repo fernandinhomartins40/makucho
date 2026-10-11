@@ -1326,6 +1326,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           desligados={desligados}
           aoExportar={exportar}
           legendaDoPost={textoDoPost(projeto?.postDaIa ?? projeto?.entendimentoDaIa)}
+          postDaIa={projeto?.postDaIa ?? projeto?.entendimentoDaIa ?? null}
           iniciarAoAbrir={publicando}
         />
       )}

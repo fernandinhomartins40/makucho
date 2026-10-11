@@ -16,7 +16,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1 } from '@makucho/studio-contracts';
-import { agendaDoPlano } from '@makucho/studio-contracts';
+import { REDES_SOCIAIS, REGRAS_DAS_REDES, agendaDoPlano, avisoDeDuracao, legendaParaRede, tituloParaRede, type RedeSocial } from '@makucho/studio-contracts';
 import {
   OPCOES_PADRAO,
   QUALIDADES,
@@ -46,6 +46,8 @@ interface Props {
   aoExportar: (opcoes: OpcoesDeExportacao) => void;
   /** A legenda e as hashtags que a IA escreveu na montagem (vazio se não escreveu). */
   legendaDoPost?: string;
+  /** A legenda, as hashtags e o título que a IA escreveu (para ajustar a cada rede). */
+  postDaIa?: { postCaption?: string; hashtags?: readonly string[]; postTitle?: string } | null;
   /** Veio de "Publicar": ao abrir, já exporta com as opções lembradas. */
   iniciarAoAbrir?: boolean;
 }
@@ -57,7 +59,7 @@ export const ROTULO_DA_ETAPA: Record<string, string> = {
   finalizando: 'Finalizando o arquivo',
 };
 
-export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar, legendaDoPost = '', iniciarAoAbrir = false }: Props) {
+export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano, desligados, aoExportar, legendaDoPost = '', postDaIa = null, iniciarAoAbrir = false }: Props) {
   const tarefa = useExportacoes((s) => [...s.tarefas].reverse().find((t) => t.projectId === projectId));
   const outraRodando = useExportacoes((s) => s.tarefas.some((t) => t.estado === 'rodando' && t.projectId !== projectId));
   const [configurando, setConfigurando] = useState(true);
@@ -299,7 +301,7 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
             </footer>
           </>
         ) : (
-          <Andamento tarefa={tarefa} aoFechar={aoFechar} aoRefazer={() => setConfigurando(true)} legendaDoPost={legendaDoPost} />
+          <Andamento tarefa={tarefa} aoFechar={aoFechar} aoRefazer={() => setConfigurando(true)} legendaDoPost={legendaDoPost} postDaIa={postDaIa} />
         )}
       </div>
     </div>
@@ -309,8 +311,45 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
 /** A legenda que a pessoa ajustou, por vídeo: reabrir a janela não perde o que ela escreveu. */
 const chaveDaLegenda = (projectId: string) => `studio:legenda-do-post:${projectId}`;
 
-function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: TarefaDeExportacao; aoFechar: () => void; aoRefazer: () => void; legendaDoPost: string }) {
+/** A última rede escolhida: quem publica sempre no mesmo lugar não escolhe de novo. */
+const CHAVE_DA_REDE = 'studio:rede-do-post';
+
+function Andamento({
+  tarefa,
+  aoFechar,
+  aoRefazer,
+  legendaDoPost,
+  postDaIa,
+}: {
+  tarefa: TarefaDeExportacao;
+  aoFechar: () => void;
+  aoRefazer: () => void;
+  legendaDoPost: string;
+  postDaIa: { postCaption?: string; hashtags?: readonly string[]; postTitle?: string } | null;
+}) {
   const cancelar = useExportacoes((s) => s.cancelar);
+  // Cada rede tem limite de legenda, de hashtags e de duração; o YouTube
+  // tem título. O texto da caixa é a base; o que vai para a rede é ele
+  // ajustado às regras dela (contracts/redes-sociais.ts).
+  const [rede, setRede] = useState<RedeSocial>(() => {
+    try {
+      const salva = localStorage.getItem(CHAVE_DA_REDE) as RedeSocial | null;
+      return salva && REDES_SOCIAIS.includes(salva) ? salva : 'instagram';
+    } catch {
+      return 'instagram';
+    }
+  });
+  const escolherRede = (r: RedeSocial) => {
+    setRede(r);
+    setAviso(null);
+    try {
+      localStorage.setItem(CHAVE_DA_REDE, r);
+    } catch {
+      // Vale só nesta visita.
+    }
+  };
+  const [titulo, setTitulo] = useState(() => tituloParaRede('youtube', postDaIa) ?? '');
+  const [tituloCopiado, setTituloCopiado] = useState(false);
   const [legenda, setLegenda] = useState(() => {
     try {
       return localStorage.getItem(chaveDaLegenda(tarefa.projectId)) ?? legendaDoPost;
@@ -328,9 +367,11 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
       // Vale só enquanto a janela estiver aberta.
     }
   };
+  const regras = REGRAS_DAS_REDES[rede];
+  const textoDaRede = legendaParaRede(rede, postDaIa, legenda);
   const copiarLegenda = () => {
     void navigator.clipboard
-      ?.writeText(legenda.trim())
+      ?.writeText(textoDaRede)
       .then(() => setAviso('copiada'))
       .catch(() => undefined);
   };
@@ -361,14 +402,59 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
         ))}
 
         <div className="exportar__post">
-          <label htmlFor="legenda-do-post">Legenda do post</label>
+          <span className="exportar__post-rotulo" id="rotulo-da-rede">
+            Onde você vai publicar?
+          </span>
+          <div className="exportar__redes" role="radiogroup" aria-labelledby="rotulo-da-rede">
+            {REDES_SOCIAIS.map((id) => (
+              <button key={id} type="button" role="radio" aria-checked={rede === id} onClick={() => escolherRede(id)}>
+                {REGRAS_DAS_REDES[id].nome}
+              </button>
+            ))}
+          </div>
+          <p className="exportar__dica-da-rede">{regras.dica}</p>
+          {avisoDeDuracao(rede, r.duracaoMs) && (
+            <p className="exportar__alerta">
+              <IconeAviso size={15} /> {avisoDeDuracao(rede, r.duracaoMs)}
+            </p>
+          )}
+
+          {regras.titulo && (
+            <>
+              <label htmlFor="titulo-do-post">Título</label>
+              <input id="titulo-do-post" className="campo__entrada" maxLength={regras.titulo.maximo} value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+              <span className="exportar__contagem">
+                {titulo.length} de {regras.titulo.maximo} · aparecem cerca de {regras.titulo.visivel}
+              </span>
+              <button
+                type="button"
+                className="botao botao--secundario botao--pequeno"
+                disabled={!titulo.trim()}
+                onClick={() =>
+                  void navigator.clipboard
+                    ?.writeText(titulo.trim())
+                    .then(() => setTituloCopiado(true))
+                    .catch(() => undefined)
+                }
+              >
+                <IconeCopiar size={15} /> {tituloCopiado ? 'Título copiado' : 'Copiar título'}
+              </button>
+            </>
+          )}
+
+          <label htmlFor="legenda-do-post">{regras.titulo ? 'Descrição' : 'Legenda do post'}</label>
           <textarea id="legenda-do-post" className="campo__area" rows={5} maxLength={2200} value={legenda} onChange={(e) => mudarLegenda(e.target.value)} />
-          <button type="button" className="botao botao--secundario botao--pequeno" disabled={!legenda.trim()} onClick={copiarLegenda}>
-            <IconeCopiar size={15} /> {aviso === 'copiada' ? 'Legenda copiada' : 'Copiar legenda'}
+          <span className="exportar__contagem">
+            {regras.hashtags === 0 ? 'Sem hashtags no ' + regras.nome : `Vai com até ${regras.hashtags} hashtags`} · {textoDaRede.length} de {regras.legendaMaxima} caracteres
+          </span>
+          <button type="button" className="botao botao--secundario botao--pequeno" disabled={!textoDaRede.trim()} onClick={copiarLegenda}>
+            <IconeCopiar size={15} /> {aviso === 'copiada' ? 'Legenda copiada' : regras.titulo ? 'Copiar descrição' : 'Copiar legenda'}
           </button>
           {aviso === 'compartilhada' && legenda.trim() && (
             <p className="exportar__copiada" role="status">
-              A legenda foi copiada. No app da rede, toque no campo da legenda e escolha Colar.
+              {regras.titulo
+                ? 'A descrição foi copiada. No YouTube, cole o título no campo do título e a descrição no campo da descrição.'
+                : `A legenda foi copiada. No ${regras.nome}, toque no campo da legenda e escolha Colar.`}
             </p>
           )}
         </div>
@@ -385,7 +471,7 @@ function Andamento({ tarefa, aoFechar, aoRefazer, legendaDoPost }: { tarefa: Tar
               className="botao botao--primario"
               onClick={() => {
                 // Direto do toque, sem esperar nada: o iPhone exige.
-                if (compartilhar(r.url, r.nome, legenda)) setAviso('compartilhada');
+                if (compartilhar(r.url, r.nome, textoDaRede)) setAviso('compartilhada');
               }}
             >
               <IconeExportar size={16} /> {apple ? 'Publicar ou salvar' : 'Publicar nas redes'}

@@ -2704,3 +2704,61 @@ body::before {
 .escolha-de-roteiro .botao {
   justify-content: center;
 }
+
+/* ---------- 24. Vídeo pronto: a rede escolhida ---------- */
+.exportar__post-rotulo {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.exportar__redes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.exportar__redes button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--selecao);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.exportar__redes button[aria-checked='true'] {
+  background: var(--primary);
+  color: #fff;
+}
+
+.exportar__dica-da-rede,
+.exportar__contagem {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.exportar__post .exportar__alerta {
+  margin: 0;
+  text-align: left;
+}
+
+/* A janela de exportação fica por cima do editor: fundo opaco do tema.
+   Com o --surface-1 translúcido do vidro, a timeline aparecia através. */
+.exportar__caixa {
+  background: var(--bg-sidebar, #f7f8fa);
+}
+
+:where(:not(.principal--foco)) > .exportar .exportar__caixa,
+body > .exportar .exportar__caixa {
+  background: #f7f8fa;
+}
+
+:where([data-tema='escuro']) .exportar__caixa {
+  background: #1c1c1e;
+}
