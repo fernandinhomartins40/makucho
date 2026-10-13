@@ -66,7 +66,7 @@ import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import { cenaDaComposicao, comPecasEditaveis } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
-import { MotorDecodificado, estadoDoMotor } from './motorDecodificado';
+import { MotorDecodificado, estadoDoMotor, relatarPrevia } from './motorDecodificado';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
@@ -1008,6 +1008,41 @@ export function Palco({
   }, [cheia, tocando, controlesDaCheia]);
 
   useEffect(() => onTocando?.(tocando), [tocando, onTocando]);
+
+  // ---------- Relatório da prévia no aparelho ----------
+  // 4 s depois de dar o play (e ao pausar), o que a prévia fez: o motor
+  // decodificou e mostrou quadros? Qual caminho está ativo? O editor estava
+  // no modo de edição? Vai para o log do servidor (relatarPrevia).
+  const tocouAntes = useRef(false);
+  useEffect(() => {
+    const situacao = () => {
+      const editor = document.querySelector('.editor');
+      const v = players[0].current;
+      return {
+        caminho: comMotorRef.current ? 'motor' : usarPlayers ? 'players <video>' : 'esperando o motor',
+        decodificado,
+        comGl,
+        glAoVivo: glAoVivoRef.current,
+        toque: telaDeToque,
+        modo: editor?.getAttribute('data-modo'),
+        editando: editor?.hasAttribute('data-editando') ?? false,
+        gaveta: editor?.getAttribute('data-folha') ?? null,
+        player0: v ? { src: !!v.getAttribute('src'), rs: v.readyState, t: Math.round(v.currentTime * 10) / 10, quadros: v.getVideoPlaybackQuality?.().totalVideoFrames ?? null } : null,
+        relogioMs: Math.round(relogioRef.current.ms),
+      };
+    };
+    if (tocando) {
+      tocouAntes.current = true;
+      const d0 = estadoDoMotor.decodificados;
+      const m0 = estadoDoMotor.mostrados;
+      const t = setTimeout(() => {
+        relatarPrevia({ momento: 'tocando há 4 s', decodificadosPorS: (estadoDoMotor.decodificados - d0) / 4, mostradosPorS: (estadoDoMotor.mostrados - m0) / 4, ...situacao() });
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+    if (tocouAntes.current) relatarPrevia({ momento: 'pausou', ...situacao() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tocando]);
 
   // Gravação de narração: começa a tocar (mudo) do ponto dela e para junto.
   const gravavaRef = useRef(false);

@@ -2,7 +2,7 @@
 // Healthcheck consumido pelo Docker, pelo nginx e pelo deploy.
 // ============================================================
 
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/prisma.service';
@@ -35,5 +35,26 @@ export class HealthController {
       uptime: Math.round(process.uptime()),
       services: { database },
     };
+  }
+
+  private readonly logger = new Logger('PreviaNoAparelho');
+
+  /**
+   * O relatório da prévia no aparelho de quem edita (o editor manda
+   * sozinho, com a sessão): o que o motor de vídeo fez -- quadros
+   * decodificados e mostrados, erros, decodificador, som. Vai só para o
+   * log do container, para entender defeitos de um celular que a gente não
+   * tem na mão. Nada é gravado no banco.
+   */
+  @Post('previa')
+  @HttpCode(204)
+  previa(@Body() corpo: unknown): void {
+    let texto = '';
+    try {
+      texto = JSON.stringify(corpo ?? {});
+    } catch {
+      texto = '"(ilegível)"';
+    }
+    this.logger.log(texto.slice(0, 3000));
   }
 }

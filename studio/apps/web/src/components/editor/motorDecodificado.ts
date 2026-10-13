@@ -31,14 +31,15 @@ import { trechoNoInstante } from './motorDaPrevia';
 const QUADROS_A_FRENTE = 6;
 
 /**
- * No Android, decodificação por SOFTWARE. O decodificador de hardware tem
- * um conjunto pequeno e fixo de quadros de saída; cheio, ele para sem dar
- * erro (discussão do W3C, w3c/webcodecs#680) -- a imagem congelava tocando
- * e aparecia ao pausar. A prévia é pequena (408x720): o software dá conta.
+ * O tipo de decodificador. Começa no que o navegador escolher; se ele não
+ * entregar quadro (o de hardware do Android tem poucos quadros de saída e,
+ * cheio, para sem erro -- w3c/webcodecs#680), o motor troca pelo outro que
+ * o aparelho suportar. Forçar software no Android não serve: o Chrome de
+ * Android não traz decodificador H.264 por software.
  */
-const DECODIFICADOR = {
-  hardwareAcceleration: typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) ? ('prefer-software' as const) : ('no-preference' as const),
-};
+type Aceleracao = 'no-preference' | 'prefer-hardware' | 'prefer-software';
+/** Sem nenhum quadro decodificado neste tempo, o leitor é dado como travado. */
+const TRAVOU_MS = 2500;
 /** Quanto som fica agendado à frente do relógio. */
 const SOM_A_FRENTE_S = 1;
 
@@ -57,8 +58,29 @@ export const estadoDoMotor = {
   leitores: 0,
   som: '-',
   decodificador: '',
+  codec: '',
+  opcoes: '',
+  trocas: 0,
   erro: '',
 };
+
+/**
+ * Manda ao servidor (só para o log do container) o que a prévia fez neste
+ * aparelho: é como enxergar o defeito de um celular que não está na mão.
+ */
+export function relatarPrevia(dados: Record<string, unknown>): void {
+  try {
+    void fetch('/api/health/previa', {
+      method: 'POST',
+      credentials: 'include',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...dados, motor: { ...estadoDoMotor }, ua: navigator.userAgent, em: new Date().toISOString() }),
+    }).catch(() => undefined);
+  } catch {
+    // Sem relatório: a prévia segue.
+  }
+}
 
 /** Os quadros de UM trecho, em sequência, a partir de um ponto do original. */
 class LeitorDoTrecho {
@@ -70,16 +92,21 @@ class LeitorDoTrecho {
   private puxando = false;
   private acabou = false;
   private fechado = false;
+  /** Quando foi criado e quantos quadros já decodificou (para notar o decodificador travado). */
+  readonly criadoEm = performance.now();
+  decodificados = 0;
+  falhou = false;
 
   constructor(
     faixa: InputVideoTrack,
     readonly inicioS: number,
+    aceleracao: Aceleracao,
   ) {
     // Um sink por leitor: os canvas do conjunto (pool) circulam só entre a
     // fila deste leitor e o quadro na tela. Sem fim: o mesmo leitor segue
     // para o trecho seguinte quando ele vem logo depois no original (o
     // corte de uma pausa), sem recomeçar o decodificador.
-    const sink = new CanvasSink(faixa, { poolSize: QUADROS_A_FRENTE + 2, decoderOptions: DECODIFICADOR });
+    const sink = new CanvasSink(faixa, { poolSize: QUADROS_A_FRENTE + 2, decoderOptions: { hardwareAcceleration: aceleracao } });
     this.iterador = sink.canvases(inicioS);
     void this.encher();
   }
@@ -95,10 +122,12 @@ class LeitorDoTrecho {
           break;
         }
         this.fila.push(r.value);
+        this.decodificados += 1;
         estadoDoMotor.decodificados += 1;
       }
     } catch (e) {
       this.acabou = true;
+      this.falhou = true;
       estadoDoMotor.erro = `leitor: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
       console.warn('[prévia] leitor de quadros parou:', e);
     } finally {
@@ -119,6 +148,11 @@ class LeitorDoTrecho {
     }
     void this.encher();
     return Boolean(escolhido);
+  }
+
+  /** Tocando há um tempo e nenhum quadro saiu (ou deu erro): o decodificador não serve neste aparelho. */
+  travado(): boolean {
+    return !this.fechado && (this.falhou || (this.decodificados === 0 && performance.now() - this.criadoEm > TRAVOU_MS));
   }
 
   /** O leitor serve para `s`? (Fora disso, um salto: começa outro.) */
@@ -156,6 +190,9 @@ export class MotorDecodificado {
   private ativo = false;
 
   private readonly leitores = new Map<number, LeitorDoTrecho>();
+  /** O decodificador em uso, e os que ainda dá para tentar se ele travar. */
+  private aceleracao: Aceleracao = 'no-preference';
+  private alternativas: Aceleracao[] = [];
   private readonly parados = new Map<number, { quadro: QuadroExterno; canvas: HTMLCanvasElement; s: number; emCurso: boolean; proximo: number | null }>();
   private destruido = false;
   private readonly desbloquear = () => {
@@ -183,6 +220,21 @@ export class MotorDecodificado {
           estadoDoMotor.erro = 'o arquivo não tem faixa de vídeo';
           return false;
         }
+        const codec = (await video.getCodecParameterString().catch(() => null)) ?? '?';
+        estadoDoMotor.codec = codec;
+        // Quais decodificadores o aparelho aceita para este vídeo: o primeiro
+        // é o do navegador; os outros ficam de reserva se ele travar.
+        const config = await video.getDecoderConfig().catch(() => null);
+        if (config && typeof VideoDecoder.isConfigSupported === 'function') {
+          const aceitos: Aceleracao[] = [];
+          for (const a of ['prefer-hardware', 'prefer-software'] as const) {
+            const r = await VideoDecoder.isConfigSupported({ ...config, hardwareAcceleration: a }).catch(() => null);
+            if (r?.supported) aceitos.push(a);
+          }
+          estadoDoMotor.opcoes = aceitos.join(',') || 'nenhuma';
+          this.alternativas = aceitos;
+        }
+        estadoDoMotor.decodificador = this.aceleracao;
         if (!(await video.canDecode())) {
           estadoDoMotor.erro = `o aparelho não decodifica ${await video.getCodecParameterString().catch(() => '?')}`;
           return false;
@@ -339,12 +391,26 @@ export class MotorDecodificado {
         l = herdado[1];
       } else {
         l?.fechar();
-        l = new LeitorDoTrecho(faixa, Math.max(0, s));
+        l = new LeitorDoTrecho(faixa, Math.max(0, s), this.aceleracao);
       }
       this.leitores.set(indice, l);
     }
     void fimS;
     l.avancar(s);
+    // O decodificador não entrega quadro neste aparelho: troca pelo próximo que ele aceita.
+    if (l.travado()) this.trocarDecodificador();
+  }
+
+  private trocarDecodificador(): void {
+    const proximo = this.alternativas.find((a) => a !== this.aceleracao);
+    estadoDoMotor.erro = `o decodificador "${this.aceleracao}" não entregou quadros${proximo ? `; trocando para "${proximo}"` : ''}`;
+    if (!proximo) return;
+    this.alternativas = this.alternativas.filter((a) => a !== this.aceleracao);
+    this.aceleracao = proximo;
+    estadoDoMotor.decodificador = proximo;
+    estadoDoMotor.trocas += 1;
+    for (const l of this.leitores.values()) l.fechar();
+    this.leitores.clear();
   }
 
   /** O próximo trecho começa a decodificar antes do corte (sem mostrar nada ainda). */
@@ -354,7 +420,7 @@ export class MotorDecodificado {
     void fimS;
     // O trecho seguinte vem logo depois no original: o leitor atual chega lá sozinho.
     if ([...this.leitores.values()].some((x) => x.ultimoS >= 0 && inicioS - x.ultimoS >= 0 && inicioS - x.ultimoS < 1.5)) return;
-    this.leitores.set(indice, new LeitorDoTrecho(faixa, Math.max(0, inicioS)));
+    this.leitores.set(indice, new LeitorDoTrecho(faixa, Math.max(0, inicioS), this.aceleracao));
   }
 
   /** Fecha os leitores dos trechos que não estão mais em uso. */
@@ -386,7 +452,7 @@ export class MotorDecodificado {
     p.s = s;
     p.emCurso = true;
     const alvo = p;
-    void new CanvasSink(faixa, { decoderOptions: DECODIFICADOR })
+    void new CanvasSink(faixa, { decoderOptions: { hardwareAcceleration: this.aceleracao } })
       .getCanvas(s)
       .then((w) => {
         if (!w || this.destruido) return;
