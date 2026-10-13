@@ -21,6 +21,7 @@
 import { EscolhaDoEstilo } from '../../components/novo-video/EscolhaDoEstilo';
 import { estiloDeAnimacao } from '@makucho/studio-contracts';
 import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
+import { ouvirRepouso, repousoDasAnimacoes } from '../../components/editor/AnimacoesAoVivo';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1099,6 +1100,47 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     window.addEventListener('keydown', aoTeclar);
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [plano, excluirItem]);
+
+  // ---------- Animação escolhida: o vídeo vai para o descanso dela ----------
+  // O ajuste das peças vale para a animação inteira. Posicionar no meio de
+  // uma entrada (a peça ainda subindo, ainda pequena) deixava a peça longe
+  // de onde foi solta. Escolhida uma animação, a prévia vai para o instante
+  // em que tudo já entrou e nada saiu; desmarcada, volta para onde estava.
+  const descanso = useRef<{ id: string; voltarPara: number; foiPara: number | null } | null>(null);
+  const irParaODescanso = useCallback(
+    (id: string): number | null => {
+      const m = plano?.mediaLayers?.find((x) => x.id === id && x.kind === 'html');
+      const r = repousoDasAnimacoes.get(id);
+      if (!m || r === undefined) return null;
+      const ms = Math.min(m.timelineStartMs + m.durationMs - 1, m.timelineStartMs + Math.round(r * 1000));
+      setPosicaoMs(ms);
+      setAviso('Animação com tudo no lugar: mova e ajuste as peças aqui.');
+      return ms;
+    },
+    [plano],
+  );
+  const animacaoEscolhida = itemSelecionado?.tipo === 'midia' && plano?.mediaLayers?.find((m) => m.id === itemSelecionado.id)?.kind === 'html' ? itemSelecionado.id : null;
+  useEffect(() => {
+    const atual = descanso.current;
+    if (animacaoEscolhida && atual?.id !== animacaoEscolhida) {
+      const voltarPara = atual ? atual.voltarPara : posicaoMs;
+      descanso.current = { id: animacaoEscolhida, voltarPara, foiPara: tocandoNaPrevia ? null : irParaODescanso(animacaoEscolhida) };
+    } else if (!animacaoEscolhida && atual) {
+      descanso.current = null;
+      // Só volta se a pessoa não levou o vídeo para outro ponto enquanto editava.
+      if (atual.foiPara !== null && Math.abs(posicaoMs - atual.foiPara) < 50) setPosicaoMs(atual.voltarPara);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animacaoEscolhida]);
+  // A animação escolhida ainda não tinha montado (veio da lista "Tudo no vídeo"): vai quando ela informar o descanso.
+  useEffect(
+    () =>
+      ouvirRepouso((id) => {
+        const atual = descanso.current;
+        if (atual && atual.id === id && atual.foiPara === null && !tocandoNaPrevia) atual.foiPara = irParaODescanso(id);
+      }),
+    [irParaODescanso, tocandoNaPrevia],
+  );
 
   // ---------- Visual prático: o que está na tela no quadro parado ----------
   const naCena = useMemo(

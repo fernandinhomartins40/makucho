@@ -386,6 +386,29 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
     if (d.hfEditar !== undefined) hfEditando = !!d.hfEditar;
     if (typeof d.hfT === 'number' || typeof d.hfCss === 'string' || d.hfEditar !== undefined) hfRelatar();
   });
+  // O instante de DESCANSO: as entradas acabaram e nenhuma saída começou.
+  // É nele que a pessoa posiciona as peças -- o ajuste gravado vale para a
+  // animação toda, e posicionar no meio de uma entrada (a peça ainda
+  // subindo, ainda pequena) deixava a peça longe de onde foi solta.
+  // Entrada = o que começa na primeira metade; saída = na segunda; laços
+  // infinitos (pulsar, girar) não contam.
+  var hfRepouso = function () {
+    var dur = tl.duration();
+    if (!(dur > 0)) return 0;
+    var fimDasEntradas = 0, inicioDasSaidas = dur;
+    var filhos = tl.getChildren(false, true, true);
+    for (var i = 0; i < filhos.length; i++) {
+      var f = filhos[i];
+      if (f.repeat && f.repeat() < 0) continue;
+      var de = f.startTime(), ate = f.endTime();
+      if (de < dur * 0.5) fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
+      else inicioDasSaidas = Math.min(inicioDasSaidas, de);
+    }
+    var t = Math.min(fimDasEntradas + 0.05, inicioDasSaidas - 0.05);
+    if (!(t > 0)) t = dur * 0.6;
+    return Math.max(0, Math.min(dur - 0.05, t));
+  };
+  window.parent.postMessage({ hfRepouso: hfRepouso() }, '*');
   tl.seek(0, false);`
     : '';
   return `<!doctype html>

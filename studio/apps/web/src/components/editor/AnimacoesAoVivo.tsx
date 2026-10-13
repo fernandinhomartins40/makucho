@@ -37,6 +37,19 @@ function carregarComponentes(): Promise<Record<string, string>> {
   return fontesDosComponentes;
 }
 
+/**
+ * O instante de descanso de cada animação (s desde o começo dela), que o
+ * documento da animação informa ao carregar: as entradas acabaram e nenhuma
+ * saída começou. É onde a edição no palco posiciona o vídeo.
+ */
+export const repousoDasAnimacoes = new Map<string, number>();
+const ouvintesDoRepouso = new Set<(id: string) => void>();
+/** Avisa quando o descanso de uma animação chega (ela pode montar depois de escolhida). */
+export function ouvirRepouso(f: (id: string) => void): () => void {
+  ouvintesDoRepouso.add(f);
+  return () => ouvintesDoRepouso.delete(f);
+}
+
 function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: { camada: CamadaDeMidia; origem: string; corDaMarca?: string | undefined; posicaoMs: number; escala: number; editando?: Props['editando'] }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [visivel, setVisivel] = useState(false);
@@ -95,6 +108,15 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
     if (cssAoVivo !== null) ref.current?.contentWindow?.postMessage({ hfCss: cssAoVivo }, '*');
   }, [cssAoVivo]);
   useEffect(() => ouvirPosicao(mandar), [camada.timelineStartMs, camada.durationMs]);
+  useEffect(() => {
+    const ouvir = (e: MessageEvent) => {
+      if (e.source !== ref.current?.contentWindow || typeof e.data?.hfRepouso !== 'number') return;
+      repousoDasAnimacoes.set(camada.id, e.data.hfRepouso as number);
+      ouvintesDoRepouso.forEach((f) => f(camada.id));
+    };
+    window.addEventListener('message', ouvir);
+    return () => window.removeEventListener('message', ouvir);
+  }, [camada.id]);
 
   return (
     <iframe
