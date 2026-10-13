@@ -22,17 +22,43 @@
 // decodificar um pouco antes do corte).
 // ============================================================
 
-import { ALL_FORMATS, AudioBufferSink, CanvasSink, Input, UrlSource, type InputVideoTrack, type WrappedCanvas } from 'mediabunny';
+import { ALL_FORMATS, AudioBufferSink, BlobSource, CanvasSink, Input, type InputVideoTrack, type WrappedCanvas } from 'mediabunny';
 import type { Agenda } from '@makucho/studio-contracts';
 import { QuadroExterno } from './gl/compositor';
 import { trechoNoInstante } from './motorDaPrevia';
 
-/** Quantos quadros cada leitor decodifica à frente do que está na tela. */
-const QUADROS_A_FRENTE = 3;
+/** Quantos quadros cada leitor decodifica à frente do que está na tela (o buffer, ~0,2 s). */
+const QUADROS_A_FRENTE = 6;
+
+/**
+ * No Android, decodificação por SOFTWARE. O decodificador de hardware tem
+ * um conjunto pequeno e fixo de quadros de saída; cheio, ele para sem dar
+ * erro (discussão do W3C, w3c/webcodecs#680) -- a imagem congelava tocando
+ * e aparecia ao pausar. A prévia é pequena (408x720): o software dá conta.
+ */
+const DECODIFICADOR = {
+  hardwareAcceleration: typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) ? ('prefer-software' as const) : ('no-preference' as const),
+};
 /** Quanto som fica agendado à frente do relógio. */
 const SOM_A_FRENTE_S = 1;
 
 const esperar = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+/**
+ * O que o motor está fazendo, para o diagnóstico na tela (?diag=1): quantos
+ * quadros decodificados chegaram e foram mostrados, o estado do som e o
+ * último erro. Só contadores; ninguém depende disto para funcionar.
+ */
+export const estadoDoMotor = {
+  ativo: false,
+  baixado: 0,
+  decodificados: 0,
+  mostrados: 0,
+  leitores: 0,
+  som: '-',
+  decodificador: '',
+  erro: '',
+};
 
 /** Os quadros de UM trecho, em sequência, a partir de um ponto do original. */
 class LeitorDoTrecho {
@@ -48,12 +74,13 @@ class LeitorDoTrecho {
   constructor(
     faixa: InputVideoTrack,
     readonly inicioS: number,
-    readonly fimS: number,
   ) {
     // Um sink por leitor: os canvas do conjunto (pool) circulam só entre a
-    // fila deste leitor e o quadro na tela.
-    const sink = new CanvasSink(faixa, { poolSize: QUADROS_A_FRENTE + 2 });
-    this.iterador = sink.canvases(inicioS, fimS);
+    // fila deste leitor e o quadro na tela. Sem fim: o mesmo leitor segue
+    // para o trecho seguinte quando ele vem logo depois no original (o
+    // corte de uma pausa), sem recomeçar o decodificador.
+    const sink = new CanvasSink(faixa, { poolSize: QUADROS_A_FRENTE + 2, decoderOptions: DECODIFICADOR });
+    this.iterador = sink.canvases(inicioS);
     void this.encher();
   }
 
@@ -68,9 +95,11 @@ class LeitorDoTrecho {
           break;
         }
         this.fila.push(r.value);
+        estadoDoMotor.decodificados += 1;
       }
     } catch (e) {
       this.acabou = true;
+      estadoDoMotor.erro = `leitor: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
       console.warn('[prévia] leitor de quadros parou:', e);
     } finally {
       this.puxando = false;
@@ -86,6 +115,7 @@ class LeitorDoTrecho {
     if (escolhido) {
       this.quadro.atualizar(escolhido.canvas, escolhido.canvas.width, escolhido.canvas.height);
       this.ultimoS = escolhido.timestamp;
+      estadoDoMotor.mostrados += 1;
     }
     void this.encher();
     return Boolean(escolhido);
@@ -139,14 +169,30 @@ export class MotorDecodificado {
   ) {
     this.pronto = (async () => {
       try {
-        const input = new Input({ source: new UrlSource(url, { requestInit: { credentials: 'include' } }), formats: ALL_FORMATS });
+        // A prévia inteira vem UMA vez para a memória (uns 10 MB). Lendo pela
+        // rede, cada leitor novo pedia de novo vários MB do arquivo -- no 4G,
+        // a imagem esperava o download a cada corte e a cada pausa.
+        const resposta = await fetch(url, { credentials: 'include' });
+        if (!resposta.ok) return false;
+        const arquivo = await resposta.blob();
+        estadoDoMotor.baixado = arquivo.size;
+        if (this.destruido) return false;
+        const input = new Input({ source: new BlobSource(arquivo), formats: ALL_FORMATS });
         const video = await input.getPrimaryVideoTrack();
-        if (!video || !(await video.canDecode())) return false;
+        if (!video) {
+          estadoDoMotor.erro = 'o arquivo não tem faixa de vídeo';
+          return false;
+        }
+        if (!(await video.canDecode())) {
+          estadoDoMotor.erro = `o aparelho não decodifica ${await video.getCodecParameterString().catch(() => '?')}`;
+          return false;
+        }
         this.faixaDeVideo = video;
         const audio = await input.getPrimaryAudioTrack();
         if (audio && (await audio.canDecode())) this.somDoArquivo = new AudioBufferSink(audio);
         return !this.destruido;
       } catch (e) {
+        estadoDoMotor.erro = `abrir: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
         console.warn('[prévia] o motor decodificado não abriu o vídeo:', e);
         return false;
       }
@@ -186,6 +232,8 @@ export class MotorDecodificado {
 
   /** O som destravou e o relógio está andando. */
   get andando(): boolean {
+    estadoDoMotor.som = this.ctx ? this.ctx.state : 'sem contexto';
+    estadoDoMotor.leitores = this.leitores.size;
     return this.ativo && this.ctx?.state === 'running';
   }
 
@@ -277,15 +325,25 @@ export class MotorDecodificado {
   // ---------- Imagem ----------
 
   /** Tocando: avança o trecho `indice` até `s` (no original) e devolve o quadro dele. */
-  avancar(indice: number, s: number, fimS: number): void {
+  avancar(indice: number, s: number, fimS: number, emUso: ReadonlySet<number> = new Set()): void {
     const faixa = this.faixaDeVideo;
     if (!faixa) return;
     let l = this.leitores.get(indice);
     if (!l || !l.serve(s)) {
-      l?.fechar();
-      l = new LeitorDoTrecho(faixa, Math.max(0, s), fimS);
+      // O leitor do trecho anterior serve (o corte só pulou uma pausa)? Segue nele.
+      // (Nunca o de um trecho ainda na tela: numa transição, os dois lados aparecem juntos.)
+      const herdado = [...this.leitores.entries()].find(([i, x]) => i !== indice && !emUso.has(i) && x.serve(s));
+      if (herdado) {
+        if (l) l.fechar();
+        this.leitores.delete(herdado[0]);
+        l = herdado[1];
+      } else {
+        l?.fechar();
+        l = new LeitorDoTrecho(faixa, Math.max(0, s));
+      }
       this.leitores.set(indice, l);
     }
+    void fimS;
     l.avancar(s);
   }
 
@@ -293,7 +351,10 @@ export class MotorDecodificado {
   preparar(indice: number, inicioS: number, fimS: number): void {
     const faixa = this.faixaDeVideo;
     if (!faixa || this.leitores.has(indice)) return;
-    this.leitores.set(indice, new LeitorDoTrecho(faixa, Math.max(0, inicioS), fimS));
+    void fimS;
+    // O trecho seguinte vem logo depois no original: o leitor atual chega lá sozinho.
+    if ([...this.leitores.values()].some((x) => x.ultimoS >= 0 && inicioS - x.ultimoS >= 0 && inicioS - x.ultimoS < 1.5)) return;
+    this.leitores.set(indice, new LeitorDoTrecho(faixa, Math.max(0, inicioS)));
   }
 
   /** Fecha os leitores dos trechos que não estão mais em uso. */
@@ -325,7 +386,7 @@ export class MotorDecodificado {
     p.s = s;
     p.emCurso = true;
     const alvo = p;
-    void new CanvasSink(faixa)
+    void new CanvasSink(faixa, { decoderOptions: DECODIFICADOR })
       .getCanvas(s)
       .then((w) => {
         if (!w || this.destruido) return;

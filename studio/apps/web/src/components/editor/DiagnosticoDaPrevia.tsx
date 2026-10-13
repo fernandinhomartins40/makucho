@@ -9,7 +9,8 @@
 // emulador não reproduz. Não aparece sem o `diag=1` no endereço.
 // ============================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { estadoDoMotor } from './motorDecodificado';
 
 const CAMADAS = [
   ['legendas', 'Legenda'],
@@ -42,6 +43,7 @@ export function DiagnosticoDaPrevia() {
   const [ligado, setLigado] = useState(false);
   const [texto, setTexto] = useState('');
   const [desligadas, setDesligadas] = useState<Set<string>>(new Set());
+  const antes = useRef({ d: 0, m: 0, t: 0 });
   useEffect(() => setLigado(new URLSearchParams(window.location.search).get('diag') === '1'), []);
 
   useEffect(() => {
@@ -49,6 +51,11 @@ export function DiagnosticoDaPrevia() {
     const id = setInterval(() => {
       const linhas: string[] = [];
       linhas.push(`${navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 90)} · dpr ${window.devicePixelRatio} · toque ${matchMedia('(pointer: coarse)').matches}`);
+      const m = estadoDoMotor;
+      const agora = performance.now();
+      const seg = Math.max(0.001, (agora - antes.current.t) / 1000);
+      linhas.push(`MOTOR ${m.ativo ? 'ATIVO' : 'desligado'} · baixou ${(m.baixado / 1e6).toFixed(1)} MB · decodifica ${((m.decodificados - antes.current.d) / seg).toFixed(0)}/s · mostra ${((m.mostrados - antes.current.m) / seg).toFixed(0)}/s · som ${m.som} · leitores ${m.leitores} · WebCodecs ${typeof VideoDecoder === 'function' ? 'sim' : 'NÃO'} · ${/Android/i.test(navigator.userAgent) ? 'software' : 'automático'}${m.erro ? ' · ERRO ' + m.erro : ''}`);
+      antes.current = { d: m.decodificados, m: m.mostrados, t: agora };
       const imagem = document.querySelector('.palco__imagem');
       linhas.push(`webgl ${imagem?.classList.contains('palco__imagem--gl') ? 'LIGADO' : 'desligado'} · editor ${document.querySelector('.editor')?.getAttribute('data-tocando') ? 'TOCANDO' : 'parado'}`);
       document.querySelectorAll<HTMLVideoElement>('.palco__video').forEach((v, i) => {

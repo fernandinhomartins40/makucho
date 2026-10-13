@@ -66,7 +66,7 @@ import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import { cenaDaComposicao, comPecasEditaveis } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
-import { MotorDecodificado } from './motorDecodificado';
+import { MotorDecodificado, estadoDoMotor } from './motorDecodificado';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
@@ -324,6 +324,7 @@ export function Palco({
     };
   }, [proxyUrl]);
   const comMotor = decodificado === true && comGl;
+  estadoDoMotor.ativo = comMotor;
   const comMotorRef = useRef(comMotor);
   comMotorRef.current = comMotor;
   /** Os players só carregam o vídeo quando são a reserva. */
@@ -562,12 +563,11 @@ export function Palco({
 
       const motor = comMotorRef.current ? motorRef.current : null;
       if (motor) {
-        const usados = new Set<number>();
+        const usados = new Set<number>(estado.camadas.map((x) => x.indice));
         for (const x of estado.camadas) {
-          usados.add(x.indice);
           const fimS = agenda.trechos[x.indice]!.clip.sourceEndMs / 1000;
           const s = Math.min(sourceNoInstante(agenda, x.indice, ms), fimS - 0.001);
-          if (tocandoAgora) motor.avancar(x.indice, s, fimS);
+          if (tocandoAgora) motor.avancar(x.indice, s, fimS, usados);
           else motor.mostrarParado(x.indice, s);
         }
         if (tocandoAgora) {
