@@ -66,6 +66,7 @@ import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import { cenaDaComposicao, comPecasEditaveis } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
+import { MotorDecodificado } from './motorDecodificado';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
 import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
@@ -250,6 +251,7 @@ export function Palco({
   const glRef = useRef<HTMLCanvasElement>(null);
   const compositorRef = useRef<Compositor | null>(null);
   const [comGl, setComGl] = useState(false);
+  const [glChecado, setGlChecado] = useState(false);
   const ultimoEstado = useRef<EstadoNoInstante | null>(null);
   /** Camada sendo arrastada ou redimensionada: a alça segue o ponteiro até soltar. */
   const [arrasteDaMidia, setArrasteDaMidia] = useState<{ id: string; x?: number; y?: number; width?: number } | null>(null);
@@ -261,6 +263,7 @@ export function Palco({
     const c = Compositor.criar(canvas);
     compositorRef.current = c;
     setComGl(Boolean(c));
+    setGlChecado(true);
     // O aparelho tirou o contexto (memória de vídeo): em vez de um quadro
     // preto, a prévia segue com os próprios players, sem o compositor.
     const aoPerder = (e: Event) => {
@@ -286,6 +289,45 @@ export function Palco({
   // No celular o canvas não passa de 540 px de largura: a prévia em tela
   // cheia pedia até 4x mais pixels por quadro que o palco pequeno.
   const telaDeToque = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
+
+  // ---------- Motor decodificado: a prévia sem <video> ----------
+  // A imagem vem de quadros decodificados (WebCodecs, pelo Mediabunny) e o
+  // som é agendado no Web Audio, que dá o relógio (motorDecodificado.ts).
+  // Os dois <video> abaixo ficam só de reserva: navegador sem WebCodecs ou
+  // WebGL2, ou um arquivo que o motor não abriu.
+  const motorRef = useRef<MotorDecodificado | null>(null);
+  /** null = abrindo o arquivo; true = motor; false = reserva com os players. */
+  const [decodificado, setDecodificado] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!proxyUrl) return;
+    if (!MotorDecodificado.suportado()) {
+      setDecodificado(false);
+      return;
+    }
+    setDecodificado(null);
+    const m = new MotorDecodificado(proxyUrl, () => desenharGlRef.current?.());
+    let vivo = true;
+    void m.pronto.then((ok) => {
+      if (!vivo) return;
+      if (ok) {
+        motorRef.current = m;
+        setDecodificado(true);
+      } else {
+        m.destruir();
+        setDecodificado(false);
+      }
+    });
+    return () => {
+      vivo = false;
+      if (motorRef.current === m) motorRef.current = null;
+      m.destruir();
+    };
+  }, [proxyUrl]);
+  const comMotor = decodificado === true && comGl;
+  const comMotorRef = useRef(comMotor);
+  comMotorRef.current = comMotor;
+  /** Os players só carregam o vídeo quando são a reserva. */
+  const usarPlayers = decodificado === false || (decodificado === true && glChecado && !comGl);
 
   // ---------- Mídias sobrepostas (B-roll, PiP) ----------
   // Um elemento por camada, fora da tela: a imagem é carregada uma vez;
@@ -461,7 +503,9 @@ export function Palco({
         canvas.width = w;
         canvas.height = h;
       }
+      const motor = comMotorRef.current ? motorRef.current : null;
       const fonte = (indice: number) => {
+        if (motor) return motor.quadro(indice, tocandoRef.current);
         const p = donoRef.current.indexOf(indice);
         return p >= 0 ? players[p]!.current : null;
       };
@@ -469,7 +513,7 @@ export function Palco({
       const entrando = estado.camadas[1];
       // O player que espera o próximo trecho já guarda o quadro dele: na
       // transição, o lado que entra aparece mesmo se ainda estiver buscando.
-      for (const p of players) {
+      for (const p of motor ? [] : players) {
         const v = p.current;
         if (v && !estado.camadas.some((x) => fonte(x.indice) === v)) c.guardarQuadro(v);
       }
@@ -502,7 +546,7 @@ export function Palco({
   // celular, a prévia fica sem as mídias sobrepostas e os efeitos de tela
   // (legenda, textos, animações, zoom e transições continuam); pausado e
   // na exportação, tudo aparece.
-  const glAoVivo = comGl && !(tocando && telaDeToque);
+  const glAoVivo = comGl && (comMotor || !(tocando && telaDeToque));
   const glAoVivoRef = useRef(glAoVivo);
   glAoVivoRef.current = glAoVivo;
   desenharGlRef.current = () => desenharGl(ultimoEstado.current);
@@ -515,6 +559,32 @@ export function Palco({
       ultimoMs.current = ms;
       indiceRef.current = estado.indice;
       const dono = donoRef.current;
+
+      const motor = comMotorRef.current ? motorRef.current : null;
+      if (motor) {
+        const usados = new Set<number>();
+        for (const x of estado.camadas) {
+          usados.add(x.indice);
+          const fimS = agenda.trechos[x.indice]!.clip.sourceEndMs / 1000;
+          const s = Math.min(sourceNoInstante(agenda, x.indice, ms), fimS - 0.001);
+          if (tocandoAgora) motor.avancar(x.indice, s, fimS);
+          else motor.mostrarParado(x.indice, s);
+        }
+        if (tocandoAgora) {
+          // O próximo trecho começa a decodificar 1,5 s antes do corte.
+          const atual = agenda.trechos[estado.indice]!;
+          const proximo = estado.indice + 1;
+          if (proximo < agenda.trechos.length && atual.inicioMs + atual.duracaoMs - ms < 1500) {
+            usados.add(proximo);
+            motor.preparar(proximo, sourceNoInstante(agenda, proximo, inicioDoUso(agenda, proximo)), agenda.trechos[proximo]!.clip.sourceEndMs / 1000);
+          }
+          motor.manter(usados);
+          for (const [i, v] of estado.volumes) motor.volume(i, v);
+          motor.mudo(mudoRef.current);
+        }
+        desenharGl(estado);
+        return;
+      }
 
       // No celular, UM player só. Muitos Android abrem poucos vídeos ao mesmo
       // tempo no decodificador; com o segundo player carregado (esperando o
@@ -595,6 +665,7 @@ export function Palco({
     relogioRef.current.ms = ms;
     ultimaPosicaoRef.current = ms;
     tempoAoVivo.current = ms;
+    if (tocando && comMotorRef.current) motorRef.current?.tocar(agenda, ms);
     aplicar(ms, tocando);
     if (agenda.trechos[indiceRef.current]) setSourceMs(sourceNoInstante(agenda, indiceRef.current, ms) * 1000);
     desenharFundo();
@@ -604,6 +675,13 @@ export function Palco({
   useEffect(() => {
     if (!tocando) aplicar(relogioRef.current.ms, false);
   }, [aplicar, tocando]);
+
+  // O motor ficou pronto (o primeiro quadro aparece) ou saiu (o som dele para).
+  useEffect(() => {
+    if (!comMotor) motorRef.current?.parar();
+    if (!tocandoRef.current) aplicar(relogioRef.current.ms, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comMotor]);
 
   // ---------- Efeitos sonoros ----------
   const sons = useRef(new Map<string, HTMLAudioElement>());
@@ -740,9 +818,11 @@ export function Palco({
       anterior = agora;
       quadrosNaJanela += 1;
       const janela = agora - janelaDesde;
+      const motor = comMotorRef.current ? motorRef.current : null;
       if (janela >= 2500) {
         // Janela comprida demais = a aba ficou em segundo plano: não conta.
-        if (janela < 4000 && !document.hidden) {
+        // Com o motor, não há para onde cair (ele precisa do compositor).
+        if (!motor && janela < 4000 && !document.hidden) {
           janelasRuins = (quadrosNaJanela * 1000) / janela < 15 ? janelasRuins + 1 : 0;
           if (janelasRuins >= 2) semCompositor('o aparelho não acompanhou a reprodução');
         }
@@ -751,7 +831,7 @@ export function Palco({
       }
       // O relógio espera o player carregar (depois de um salto ou com a
       // rede lenta): sem isso a timeline correria na frente da imagem.
-      const principal = playerVisivel();
+      const principal = motor ? null : playerVisivel();
       // Também espera o player COMEÇAR: no celular o play() leva décimos de
       // segundo. Por no máximo 2 s seguidos -- um play recusado pelo
       // navegador não pode parar o relógio para sempre.
@@ -759,7 +839,9 @@ export function Palco({
       if (!naoPronto) esperandoDesde = 0;
       else if (!esperandoDesde) esperandoDesde = agora;
       const carregando = naoPronto && agora - esperandoDesde < 2000;
-      if (!carregando) relogio.ms += Math.min(dt, 100);
+      // Com o motor: o relógio do som (enquanto o celular não libera o som, anda sozinho).
+      if (motor && motor.andando) relogio.ms = motor.tempoMs();
+      else if (!carregando) relogio.ms += Math.min(dt, 100);
 
       // O RELÓGIO SEGUE O VÍDEO, e não o contrário. Antes, se o player
       // ficava 150 ms para trás (decodificador lento, play que demorou), a
@@ -782,6 +864,7 @@ export function Palco({
       if (relogio.ms >= duracaoMs) {
         relogio.ms = duracaoMs;
         for (const p of players) p.current?.pause();
+        motorRef.current?.parar();
         setTocando(false);
         ultimaPosicaoRef.current = duracaoMs;
         onPosicao(duracaoMs);
@@ -844,14 +927,16 @@ export function Palco({
       tempoAoVivo.current = inicio;
       ultimaPosicaoRef.current = inicio;
       onPosicao(inicio);
+      if (comMotorRef.current) motorRef.current?.tocar(agenda, inicio);
       aplicar(inicio, true);
       setTocando(true);
     },
-    [agenda.trechos.length, duracaoMs, onPosicao, aplicar],
+    [agenda, duracaoMs, onPosicao, aplicar],
   );
 
   const pausar = useCallback(() => {
     for (const p of players) p.current?.pause();
+    motorRef.current?.parar();
     setTocando(false);
     onPosicao(relogioRef.current.ms);
   }, [players, onPosicao]);
@@ -1048,7 +1133,10 @@ export function Palco({
       const visivel =
         planoDaPrevia.overlays.some((o) => ehTextoAtras(o) && ms >= o.timelineStartMs && ms < o.timelineStartMs + o.durationMs) ||
         (planoDaPrevia.mediaLayers ?? []).some((m) => ehAnimacaoAtras(m) && ms >= m.timelineStartMs && ms < m.timelineStartMs + m.durationMs);
-      if (!visivel) {
+      // No celular, tocando, sem recorte: ler o quadro e pintar a pessoa a
+      // cada décimo de segundo pesa demais num aparelho simples. O texto
+      // "atrás" passa na frente até pausar (no vídeo exportado, atrás).
+      if (!visivel || (tocando && telaDeToque)) {
         if (destino.dataset.limpo !== '1') {
           destino.getContext('2d')?.clearRect(0, 0, destino.width, destino.height);
           destino.dataset.limpo = '1';
@@ -1092,7 +1180,7 @@ export function Palco({
     };
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [temRecorte, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas]);
+  }, [temRecorte, modeloPronto, tocando, planoDaPrevia, playerVisivel, enquadramento, camadas, telaDeToque]);
 
   // ---------- Máscara para os efeitos que mudam só o fundo ----------
   // O modelo roda no quadro composto ANTES dos efeitos (o mesmo que o
@@ -1421,7 +1509,7 @@ export function Palco({
                 <video
                   ref={players[p]}
                   // No celular o segundo player nem carrega o vídeo (ver `aplicar`).
-                  src={p === 1 && telaDeToque ? undefined : proxyUrl}
+                  src={!usarPlayers || (p === 1 && telaDeToque) ? undefined : proxyUrl}
                   playsInline
                   preload="auto"
                   muted={mudo}

@@ -121,8 +121,31 @@ function resumo(t: string): string {
   return (h >>> 0).toString(36);
 }
 
+/** Quanto antes de começar a animação é montada (o documento carrega e o GSAP fica pronto). */
+const ANTES_MS = 1500;
+/** E quanto depois de acabar ela continua montada (sem desmontar no meio de um ajuste). */
+const DEPOIS_MS = 500;
+
 export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, editando }: Props) {
   const html = camadas.filter((c) => c.kind === 'html' && c.composicao);
+
+  // Só ficam montadas a animação da tela e a que vem logo depois. Antes,
+  // todas ficavam no palco o tempo todo, escondidas: cada uma é uma página
+  // inteira de 1080x1920 rodando GSAP, e num vídeo com 9 animações eram 9
+  // páginas disputando memória de vídeo com o player -- num celular mais
+  // simples, o vídeo perdia a imagem enquanto tocava.
+  const perto = (ms: number) =>
+    new Set(html.filter((c) => ms >= c.timelineStartMs - ANTES_MS && ms < c.timelineStartMs + c.durationMs + DEPOIS_MS).map((c) => c.id));
+  const [montadas, setMontadas] = useState<Set<string>>(() => perto(posicaoMs));
+  const atualizarMontadas = useRef((ms: number) => void ms);
+  atualizarMontadas.current = (ms: number) => {
+    const novas = perto(ms);
+    setMontadas((atuais) => (atuais.size === novas.size && [...novas].every((id) => atuais.has(id)) ? atuais : novas));
+  };
+  const idsDasAnimacoes = html.map((c) => `${c.id}:${c.timelineStartMs}:${c.durationMs}`).join('|');
+  useEffect(() => atualizarMontadas.current(posicaoMs), [posicaoMs, idsDasAnimacoes]);
+  // Tocando, a posição do editor chega de vez em quando: o relógio ao vivo monta a próxima a tempo.
+  useEffect(() => ouvirPosicao((ms) => atualizarMontadas.current(ms)), []);
   const caixa = useRef<HTMLDivElement>(null);
   const [escala, setEscala] = useState(0.3);
   const [origem, setOrigem] = useState('');
@@ -165,7 +188,7 @@ export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, edi
   if (!html.length || !origem) return null;
   return (
     <div ref={caixa} className="palco__animacoes" aria-hidden>
-      {html.map((c) => (
+      {html.filter((c) => montadas.has(c.id) || editando?.id === c.id).map((c) => (
         <Animacao key={c.id} camada={c} origem={origem} corDaMarca={corDaMarca} posicaoMs={posicaoMs} escala={escala} editando={editando} />
       ))}
     </div>
