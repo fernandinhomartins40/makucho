@@ -65,6 +65,8 @@ export const estadoDoMotor = {
   codec: '',
   opcoes: '',
   trocas: 0,
+  /** Por onde o som da fala sai: o WebCodecs, ou o decodificador de áudio comum do navegador. */
+  audio: '-',
   erro: '',
 };
 
@@ -216,6 +218,13 @@ export class MotorDecodificado {
   readonly pronto: Promise<boolean>;
   private faixaDeVideo: InputVideoTrack | null = null;
   private somDoArquivo: AudioBufferSink | null = null;
+  /**
+   * Reserva do som: o áudio inteiro decodificado pelo decodificador comum do
+   * navegador (decodeAudioData). O Chrome de alguns Android não decodifica o
+   * AAC pelo WebCodecs, e a prévia ficava sem a fala.
+   */
+  private somInteiro: Promise<AudioBuffer | null> | null = null;
+  private arquivoDoVideo: Blob | null = null;
 
   private ctx: AudioContext | null = null;
   private principal: GainNode | null = null;
@@ -278,7 +287,17 @@ export class MotorDecodificado {
         }
         this.faixaDeVideo = video;
         const audio = await input.getPrimaryAudioTrack();
-        if (audio && (await audio.canDecode())) this.somDoArquivo = new AudioBufferSink(audio);
+        this.arquivoDoVideo = arquivo;
+        // No Android, a fala vai pelo decodificador de áudio comum do navegador
+        // (relatado: vídeo tocando e a fala muda pelo WebCodecs). O áudio todo
+        // fica na memória (22 kHz): só para vídeos de até 4 minutos.
+        const duracaoS = await input.computeDuration().catch(() => Infinity);
+        if (audio && /Android/i.test(navigator.userAgent) && duracaoS <= 240) this.usarSomInteiro('Android');
+        else if (audio && (await audio.canDecode().catch(() => false))) {
+          this.somDoArquivo = new AudioBufferSink(audio);
+          estadoDoMotor.audio = 'webcodecs';
+        } else if (audio) this.usarSomInteiro('o aparelho não decodifica o áudio pelo WebCodecs');
+        else estadoDoMotor.audio = 'o vídeo não tem som';
         return !this.destruido;
       } catch (e) {
         estadoDoMotor.erro = `abrir: ${e instanceof Error ? e.message : String(e)}`.slice(0, 160);
@@ -337,7 +356,7 @@ export class MotorDecodificado {
     this.msInicio = ms;
     // Uma folga para o primeiro pedaço de som chegar.
     this.ctxInicio = ctx.currentTime + 0.12;
-    if (this.somDoArquivo) void this.agendarSom(geracao, agenda, ms);
+    if (this.somDoArquivo || this.somInteiro) void this.agendarSom(geracao, agenda, ms);
   }
 
   parar(): void {
@@ -371,10 +390,37 @@ export class MotorDecodificado {
     this.tocando.clear();
   }
 
+  /** Passa a usar o som inteiro, decodificado pelo decodificador comum do navegador. */
+  private usarSomInteiro(motivo: string): void {
+    this.somDoArquivo = null;
+    estadoDoMotor.audio = `decodeAudioData (${motivo})`;
+    if (this.somInteiro || !this.arquivoDoVideo) return;
+    const arquivo = this.arquivoDoVideo;
+    // Um contexto só para decodificar: não precisa do toque na tela, e o
+    // AudioBuffer serve no contexto que toca.
+    this.somInteiro = arquivo
+      .arrayBuffer()
+      .then((b) => new OfflineAudioContext(2, 1, 22050).decodeAudioData(b))
+      .catch((e: unknown) => {
+        estadoDoMotor.audio = `sem som: ${e instanceof Error ? e.message : String(e)}`.slice(0, 120);
+        return null;
+      });
+  }
+
+  /** Os pedaços de som de `s0` a `s1` (no original), pelo caminho que este aparelho aceita. */
+  private async *pedacosDeSom(s0: number, s1: number): AsyncGenerator<{ buffer: AudioBuffer; timestamp: number }> {
+    if (this.somDoArquivo) {
+      yield* this.somDoArquivo.buffers(s0, s1);
+      return;
+    }
+    const inteiro = await this.somInteiro;
+    if (inteiro) yield { buffer: inteiro, timestamp: 0 };
+  }
+
   /** Agenda o som dos trechos, um atrás do outro, com no máximo 1 s à frente do relógio. */
   private async agendarSom(geracao: number, agenda: Agenda, msDe: number): Promise<void> {
     const ctx = this.ctx!;
-    const sink = this.somDoArquivo!;
+    let agendados = 0;
     try {
       for (let i = trechoNoInstante(agenda, msDe); i < agenda.trechos.length; i++) {
         const t = agenda.trechos[i]!;
@@ -385,7 +431,7 @@ export class MotorDecodificado {
         const s0 = (t.clip.sourceStartMs + (ini - t.inicioMs) * vel) / 1000;
         const s1 = (t.clip.sourceStartMs + (fim - t.inicioMs) * vel) / 1000;
         const saida = this.ganho(i);
-        for await (const { buffer, timestamp } of sink.buffers(s0, s1)) {
+        for await (const { buffer, timestamp } of this.pedacosDeSom(s0, s1)) {
           if (geracao !== this.geracao) return;
           const de = Math.max(timestamp, s0);
           const ate = Math.min(timestamp + buffer.duration, s1);
@@ -402,13 +448,20 @@ export class MotorDecodificado {
             no.start(Math.max(quando, ctx.currentTime), de - timestamp + atraso, ate - de - atraso);
             this.tocando.add(no);
             no.onended = () => this.tocando.delete(no);
+            agendados += 1;
           }
           while (geracao === this.geracao && quando - ctx.currentTime > SOM_A_FRENTE_S) await esperar(100);
         }
       }
     } catch (e) {
       console.warn('[prévia] o som parou:', e);
+      // O WebCodecs falhou no meio: troca para o decodificador comum e recomeça daqui.
+      if (this.somDoArquivo && geracao === this.geracao) {
+        this.usarSomInteiro(`o WebCodecs falhou: ${e instanceof Error ? e.message : String(e)}`.slice(0, 100));
+        void this.agendarSom(geracao, agenda, this.tempoMs());
+      }
     }
+    void agendados;
   }
 
   // ---------- Imagem ----------

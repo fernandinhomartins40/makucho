@@ -81,6 +81,14 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
 
   const ultimo = useRef(posicaoMs);
   const enviadoEm = useRef(0);
+  // Editando esta animação, ela fica PARADA no descanso (tudo entrou, nada
+  // saiu), seja qual for a posição do vídeo: o ajuste das peças vale para a
+  // animação inteira, e medir no meio de uma entrada deixava a peça grande
+  // ou fora do lugar depois.
+  const editandoAgora = editando?.id === camada.id;
+  const [repouso, setRepouso] = useState<number | null>(() => repousoDasAnimacoes.get(camada.id) ?? null);
+  const fixo = useRef<number | null>(null);
+  fixo.current = editandoAgora && repouso !== null ? repouso : null;
   const mandar = (ms: number, sempre = false) => {
     ultimo.current = ms;
     const dentro = ms >= camada.timelineStartMs && ms < camada.timelineStartMs + camada.durationMs;
@@ -91,7 +99,7 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
     const agora = performance.now();
     if (!sempre && agora - enviadoEm.current < 30) return;
     enviadoEm.current = agora;
-    ref.current?.contentWindow?.postMessage({ hfT: (ms - camada.timelineStartMs) / 1000 }, '*');
+    ref.current?.contentWindow?.postMessage({ hfT: fixo.current ?? (ms - camada.timelineStartMs) / 1000 }, '*');
   };
   useEffect(() => mandar(posicaoMs, true), [posicaoMs, camada.timelineStartMs, camada.durationMs]);
 
@@ -118,11 +126,18 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
     const ouvir = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow || typeof e.data?.hfRepouso !== 'number') return;
       repousoDasAnimacoes.set(camada.id, e.data.hfRepouso as number);
+      setRepouso(e.data.hfRepouso as number);
       ouvintesDoRepouso.forEach((f) => f(camada.id));
     };
     window.addEventListener('message', ouvir);
     return () => window.removeEventListener('message', ouvir);
   }, [camada.id]);
+  // Entrou ou saiu da edição (ou o descanso chegou): manda o instante certo na hora.
+  useEffect(() => {
+    if (editandoAgora && repouso === null) ref.current?.contentWindow?.postMessage({ hfQualRepouso: true }, '*');
+    mandar(ultimo.current, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editandoAgora, repouso]);
 
   return (
     <iframe
@@ -133,6 +148,8 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
       srcDoc={doc}
       onLoad={() => {
         if (editandoEsta) ref.current?.contentWindow?.postMessage({ hfEditar: true }, '*');
+        // O descanso (de novo: a animação pode ter sido refeita).
+        ref.current?.contentWindow?.postMessage({ hfQualRepouso: true }, '*');
         mandar(ultimo.current, true);
       }}
       style={{ transform: `scale(${escala})`, visibility: visivel ? 'visible' : 'hidden', opacity: camada.opacity ?? 1 }}

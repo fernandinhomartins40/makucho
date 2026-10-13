@@ -385,6 +385,7 @@ export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): 
     }
     if (d.hfEditar !== undefined) hfEditando = !!d.hfEditar;
     if (typeof d.hfT === 'number' || typeof d.hfCss === 'string' || d.hfEditar !== undefined) hfRelatar();
+    if (d.hfQualRepouso) window.parent.postMessage({ hfRepouso: hfRepouso() }, '*');
   });
   // O instante de DESCANSO: as entradas acabaram e nenhuma saída começou.
   // É nele que a pessoa posiciona as peças -- o ajuste gravado vale para a

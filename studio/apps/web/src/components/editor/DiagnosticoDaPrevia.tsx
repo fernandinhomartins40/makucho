@@ -54,7 +54,7 @@ export function DiagnosticoDaPrevia() {
       const m = estadoDoMotor;
       const agora = performance.now();
       const seg = Math.max(0.001, (agora - antes.current.t) / 1000);
-      linhas.push(`MOTOR ${m.ativo ? 'ATIVO' : 'desligado'} · baixou ${(m.baixado / 1e6).toFixed(1)} MB · decodifica ${((m.decodificados - antes.current.d) / seg).toFixed(0)}/s · mostra ${((m.mostrados - antes.current.m) / seg).toFixed(0)}/s · som ${m.som} · leitores ${m.leitores} · WebCodecs ${typeof VideoDecoder === 'function' ? 'sim' : 'NÃO'} · decodificador ${m.decodificador || "?"} (aceita: ${m.opcoes || "?"}) · ${m.codec}${m.trocas ? " · trocou " + m.trocas + "x" : ""}${m.erro ? ' · ERRO ' + m.erro : ''}`);
+      linhas.push(`MOTOR ${m.ativo ? 'ATIVO' : 'desligado'} · baixou ${(m.baixado / 1e6).toFixed(1)} MB · decodifica ${((m.decodificados - antes.current.d) / seg).toFixed(0)}/s · mostra ${((m.mostrados - antes.current.m) / seg).toFixed(0)}/s · som ${m.som} (${m.audio}) · leitores ${m.leitores} · WebCodecs ${typeof VideoDecoder === 'function' ? 'sim' : 'NÃO'} · decodificador ${m.decodificador || "?"} (aceita: ${m.opcoes || "?"}) · ${m.codec}${m.trocas ? " · trocou " + m.trocas + "x" : ""}${m.erro ? ' · ERRO ' + m.erro : ''}`);
       antes.current = { d: m.decodificados, m: m.mostrados, t: agora };
       const imagem = document.querySelector('.palco__imagem');
       linhas.push(`webgl ${imagem?.classList.contains('palco__imagem--gl') ? 'LIGADO' : 'desligado'} · editor ${document.querySelector('.editor')?.getAttribute('data-tocando') ? 'TOCANDO' : 'parado'}`);
