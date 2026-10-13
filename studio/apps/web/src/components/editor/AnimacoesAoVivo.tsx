@@ -140,7 +140,11 @@ export function AnimacoesAoVivo({ projectId, camadas, posicaoMs, corDaMarca, edi
   // O vídeo com transparência de cada animação, para exportar: pedido
   // quando ela aparece ou muda (um pouco depois, para não pedir a cada tecla).
   // O CSS entra (o ajuste de posição e tamanho mora nele): aplicar refaz o vídeo da animação.
-  const assinatura = html.map((c) => `${c.id}:${c.durationMs}:${c.composicao!.html.length}:${c.composicao!.script.length}:${c.composicao!.layout}:${resumo(c.composicao!.css)}`).join('|');
+  // Guardada: o resumo percorre o CSS de cada animação (18 KB cada), e isto roda a cada redesenho do palco.
+  const assinatura = useMemo(
+    () => camadas.filter((c) => c.kind === 'html' && c.composicao).map((c) => `${c.id}:${c.durationMs}:${c.composicao!.html.length}:${c.composicao!.script.length}:${c.composicao!.layout}:${resumo(c.composicao!.css)}`).join('|'),
+    [camadas],
+  );
   useEffect(() => {
     if (!projectId || !html.length) return;
     // A legenda do HyperFrames muda a cada ajuste de texto ou posição e cada

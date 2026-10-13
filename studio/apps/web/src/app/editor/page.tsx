@@ -752,7 +752,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
 
   // A película da timeline: a folha de quadros que o servidor gerou no
   // preparo. Sem timeline (visual prático), nem se baixa.
-  const quadrosDoVideo = useQuadrosDoVideo(!simples && projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? `/api/projects/${projectId}/pelicula` : undefined, plano?.sourceDurationMs ?? 0);
+  const quadrosDoVideo = useQuadrosDoVideo(visual === 'completo' && projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? `/api/projects/${projectId}/pelicula` : undefined, plano?.sourceDurationMs ?? 0);
 
   // O que foi copiado na etiqueta do item (cola no cursor).
   const [copiado, setCopiado] = useState<ItemCopiado | null>(null);
@@ -1905,6 +1905,8 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (noCelular()) setFolha('inspector');
             }}
+            // Sem timeline na tela, a posição só interessa ao pausar (o Palco avisa na hora).
+            {...(simples ? { ritmoDoAvisoMs: 5000 } : {})}
             {...(simples && editandoNoPratico
               ? {
                   onTocarNaAnimacao: (id: string) => {

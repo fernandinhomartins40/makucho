@@ -127,6 +127,12 @@ interface Props {
    * posição daquele trecho); Shift+arrastar muda a posição de todas.
    */
   onPosicionarBloco?: (inicioMs: number, fimMs: number, y: number) => void;
+  /**
+   * De quanto em quanto tempo (ms) a reprodução avisa a posição ao editor.
+   * Cada aviso redesenha a página inteira: com a timeline na tela, 500;
+   * sem ela (editor prático), basta de vez em quando.
+   */
+  ritmoDoAvisoMs?: number;
   /** Tocou no vídeo onde passa uma animação (editor prático: ela vira o item escolhido). */
   onTocarNaAnimacao?: (id: string) => void;
   /** Tocou na legenda do vídeo (editor prático: ela vira o item escolhido). */
@@ -163,6 +169,7 @@ export function Palco({
   onPosicionarBloco,
   onTocarNaLegenda,
   onTocarNaAnimacao,
+  ritmoDoAvisoMs = 500,
   gravandoDe = null,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
@@ -685,7 +692,7 @@ export function Palco({
   // O editor (React) só recebe a posição de tempos em tempos: cada aviso
   // re-renderiza a página inteira. O cursor, o tempo e a rolagem da
   // timeline andam a cada quadro pelo relógio ao vivo, fora do React.
-  const intervaloDoEditor = 500;
+  const intervaloDoEditor = ritmoDoAvisoMs;
   useEffect(() => {
     if (!tocando) return;
     let quadro = 0;
@@ -699,10 +706,13 @@ export function Palco({
     // no ritmo do vídeo.
     let ultimoDesenho = 0;
     let desenhadoAte = relogioRef.current.ms;
-    // Se nem assim o aparelho passa de 18 quadros por segundo, a prévia
-    // troca o compositor pelos players direto (semCompositor).
+    // Se nem assim o aparelho passa de 15 quadros por segundo por duas
+    // janelas seguidas (5 s), a prévia troca o compositor pelos players
+    // direto (semCompositor). Uma janela só não basta: o começo, com o
+    // modelo da pessoa e as animações carregando, é sempre mais pesado.
     let janelaDesde = performance.now();
     let quadrosNaJanela = 0;
+    let janelasRuins = 0;
 
     const passo = (agora: number) => {
       const relogio = relogioRef.current;
@@ -712,7 +722,10 @@ export function Palco({
       const janela = agora - janelaDesde;
       if (janela >= 2500) {
         // Janela comprida demais = a aba ficou em segundo plano: não conta.
-        if (janela < 4000 && !document.hidden && (quadrosNaJanela * 1000) / janela < 18) semCompositor('o aparelho não acompanhou a reprodução');
+        if (janela < 4000 && !document.hidden) {
+          janelasRuins = (quadrosNaJanela * 1000) / janela < 15 ? janelasRuins + 1 : 0;
+          if (janelasRuins >= 2) semCompositor('o aparelho não acompanhou a reprodução');
+        }
         janelaDesde = agora;
         quadrosNaJanela = 0;
       }
@@ -750,7 +763,7 @@ export function Palco({
       // atualizações por segundo: cada uma re-renderiza o editor. No
       // celular, 4 por segundo (o cursor da timeline desliza por CSS
       // entre uma e outra): o processador fica para o vídeo.
-      if (agora - ultimoAviso > intervaloDoAviso) {
+      if (libassFalhou && agora - ultimoAviso > intervaloDoAviso) {
         ultimoAviso = agora;
         setSourceMs(sourceNoInstante(agenda, indiceRef.current, relogio.ms) * 1000);
       }
@@ -764,7 +777,7 @@ export function Palco({
 
     quadro = requestAnimationFrame(passo);
     return () => cancelAnimationFrame(quadro);
-  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes, sincronizarTrilha, intervaloDoAviso]);
+  }, [tocando, agenda, duracaoMs, onPosicao, aplicar, desenharFundo, playerVisivel, players, plan, tocarSom, sincronizarNarracoes, sincronizarTrilha, intervaloDoAviso, intervaloDoEditor, libassFalhou]);
 
   // ---------- Trilha ----------
   const trilhaUrl = plan.music && urlDoAsset ? urlDoAsset(plan.music.assetId) : undefined;
@@ -982,7 +995,7 @@ export function Palco({
     if (!temRecorte || !modeloPronto) return;
     let quadro = 0;
     let ocupado = false;
-    let alternado = false;
+    let ultimoRecorte = 0;
     const passo = () => {
       quadro = requestAnimationFrame(passo);
       const destino = recorteRef.current;
@@ -998,9 +1011,10 @@ export function Palco({
         }
         return;
       }
-      // Tocando, um quadro sim, um não; parado, só quando algo mudou.
-      alternado = !alternado;
-      if (tocando ? !alternado : !precisaRecortar.current) return;
+      // Tocando, no máximo 10 por segundo (quem fala mexe pouco, e cada
+      // máscara custa ler o quadro e pintar o recorte); parado, só quando algo mudou.
+      if (tocando ? performance.now() - ultimoRecorte < 100 : !precisaRecortar.current) return;
+      ultimoRecorte = performance.now();
       const video = playerVisivel();
       if (!video) return;
       if (!quadroDoRecorte.current) {
@@ -1047,7 +1061,7 @@ export function Palco({
     let vivo = true;
     let quadro = 0;
     let ocupado = false;
-    let alternado = false;
+    let ultimaMascaraEm = 0;
     let anterior: Uint8Array | null = null;
     const amostra = document.createElement('canvas');
     let ativoAntes = false;
@@ -1065,9 +1079,9 @@ export function Palco({
         return;
       }
       ativoAntes = true;
-      // Tocando, um quadro sim, um não; parado, só quando algo mudou.
-      alternado = !alternado;
-      if (tocando ? !alternado : !precisaRecortar.current) return;
+      // Tocando, no máximo 10 por segundo; parado, só quando algo mudou.
+      if (tocando ? performance.now() - ultimaMascaraEm < 100 : !precisaRecortar.current) return;
+      ultimaMascaraEm = performance.now();
       if (!c.amostraSemEfeitos(amostra)) return;
       ocupado = true;
       precisaRecortar.current = false;

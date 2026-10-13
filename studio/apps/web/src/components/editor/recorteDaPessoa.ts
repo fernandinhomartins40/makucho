@@ -18,7 +18,7 @@ interface Sessao {
 }
 
 interface Ort {
-  env: { wasm: { wasmPaths?: string; numThreads?: number } };
+  env: { wasm: { wasmPaths?: string; numThreads?: number; proxy?: boolean } };
   InferenceSession: { create(url: string): Promise<Sessao> };
   Tensor: new (tipo: 'float32', dados: Float32Array, forma: number[]) => unknown;
 }
@@ -33,6 +33,17 @@ export function carregarModeloDaPessoa(): Promise<{ ort: Ort; sessao: Sessao }> 
       ort.env.wasm.wasmPaths = '/ort/';
       // Sem threads: exigiria isolamento de origem (COOP/COEP).
       ort.env.wasm.numThreads = 1;
+      // A conta roda num worker (o proxy do onnxruntime): na linha principal,
+      // cada máscara segurava a página por 100 a 150 ms num celular -- com o
+      // vídeo tocando, era a imagem travando a cada recorte.
+      ort.env.wasm.proxy = true;
+      try {
+        return { ort, sessao: await ort.InferenceSession.create('/modelos/pessoa.onnx') };
+      } catch (e) {
+        // Sem worker (navegador antigo, política da página): como era antes.
+        console.warn('[prévia] modelo da pessoa sem worker:', e);
+        ort.env.wasm.proxy = false;
+      }
       const sessao = await ort.InferenceSession.create('/modelos/pessoa.onnx');
       return { ort, sessao };
     })();

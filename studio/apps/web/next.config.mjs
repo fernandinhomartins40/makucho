@@ -11,6 +11,10 @@ const nextConfig = {
   // "/C:/..." e faz o standalone nem sair.
   outputFileTracingRoot: fileURLToPath(new URL('../../../', import.meta.url)),
 
+  // Outra pasta de saída, para rodar uma segunda instância (um teste, uma
+  // reprodução) sem pisar na .next de quem já está com o dev aberto.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
   reactStrictMode: true,
 
   // Metadados no <head>, para todo navegador. Desde o 15.2 o Next os

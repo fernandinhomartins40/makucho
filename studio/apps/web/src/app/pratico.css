@@ -42,7 +42,8 @@
 }
 
 /* Com uma gaveta aberta, o quadro fica acima dela: muda-se vendo. */
-.editor[data-modo='pratico'][data-folha] .editor__palco {
+.editor[data-modo='pratico'][data-folha] .editor__palco,
+.editor[data-modo='pratico'][data-folha][data-editando]:not([data-tocando]) .editor__palco {
   top: var(--seguro-topo, 0px);
   bottom: 52dvh;
 }
