@@ -313,6 +313,17 @@ export async function gerarProxy(opcoes: OpcoesDoProxy): Promise<void> {
       // a CPU e disputada com o render e com os apps vizinhos.
       '-preset', 'ultrafast',
       '-crf', String(opcoes.crf ?? 28),
+      // Um quadro-chave por segundo. O padrao do x264 (250 quadros) dava um
+      // a cada 8 s: cada busca do editor -- trocar de trecho, arrastar a
+      // barra de tempo -- obrigava o celular a decodificar ate 8 s de video
+      // para chegar ao ponto, e a previa travava. O arquivo cresce pouco.
+      '-g', '30',
+      '-keyint_min', '30',
+      '-sc_threshold', '0',
+      // Ritmo constante de 30 quadros: video de WhatsApp vem com ritmo
+      // variavel, e o player do navegador busca pior nesses.
+      '-r', '30',
+      '-pix_fmt', 'yuv420p',
       // Permite ao player buscar posicao sem baixar o arquivo todo --
       // essencial num preview que se navega com a timeline.
       '-movflags', '+faststart',

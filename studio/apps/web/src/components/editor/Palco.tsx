@@ -542,10 +542,10 @@ export function Palco({
             v.preservesPitch = true;
             v.playbackRate = velocidade;
           }
-          // Tocando, só corrige desvio real (buscar a cada quadro trava);
-          // parado, vai ao quadro exato.
+          // Tocando, só busca em SALTO (o relógio já acompanha o vídeo no
+          // desvio pequeno: ver o laço da reprodução); parado, vai ao quadro exato.
           const desvio = Math.abs(v.currentTime - alvo);
-          if ((tocandoAgora && desvio > 0.15 && !v.seeking) || (!tocandoAgora && desvio > 0.02)) v.currentTime = alvo;
+          if ((tocandoAgora && desvio > 0.6 && !v.seeking) || (!tocandoAgora && desvio > 0.02)) v.currentTime = alvo;
           if (tocandoAgora && v.paused) void v.play().catch(() => undefined);
           if (!tocandoAgora && !v.paused) v.pause();
           const volume = estado.volumes.get(i) ?? 0;
@@ -713,6 +713,7 @@ export function Palco({
     let janelaDesde = performance.now();
     let quadrosNaJanela = 0;
     let janelasRuins = 0;
+    let esperandoDesde = 0;
 
     const passo = (agora: number) => {
       const relogio = relogioRef.current;
@@ -732,8 +733,32 @@ export function Palco({
       // O relógio espera o player carregar (depois de um salto ou com a
       // rede lenta): sem isso a timeline correria na frente da imagem.
       const principal = playerVisivel();
-      const carregando = principal && !principal.paused && principal.readyState < 3;
+      // Também espera o player COMEÇAR: no celular o play() leva décimos de
+      // segundo. Por no máximo 2 s seguidos -- um play recusado pelo
+      // navegador não pode parar o relógio para sempre.
+      const naoPronto = !!principal && !principal.ended && (principal.paused || principal.seeking || principal.readyState < 3);
+      if (!naoPronto) esperandoDesde = 0;
+      else if (!esperandoDesde) esperandoDesde = agora;
+      const carregando = naoPronto && agora - esperandoDesde < 2000;
       if (!carregando) relogio.ms += Math.min(dt, 100);
+
+      // O RELÓGIO SEGUE O VÍDEO, e não o contrário. Antes, se o player
+      // ficava 150 ms para trás (decodificador lento, play que demorou), a
+      // prévia mandava ele BUSCAR o ponto certo. Uma busca num celular leva
+      // muito mais que 150 ms -- o vídeo de prévia tinha um quadro-chave a
+      // cada 8 s --, então ao terminar ele já estava atrasado de novo:
+      // busca atrás de busca, a imagem nunca aparecia (só ao pausar), com o
+      // som picando. Agora o relógio é que volta (ou avança) para onde o
+      // vídeo está; busca, só em salto de verdade.
+      if (principal && !naoPronto && donoRef.current.indexOf(indiceRef.current) >= 0) {
+        const i = indiceRef.current;
+        const velocidade = agenda.trechos[i]?.velocidade ?? 1;
+        const desvioMs = ((principal.currentTime - sourceNoInstante(agenda, i, relogio.ms)) * 1000) / velocidade;
+        if (Math.abs(desvioMs) > 80 && Math.abs(desvioMs) < 3000) {
+          // Nunca para antes do começo do trecho: voltaria ao trecho anterior.
+          relogio.ms = Math.max(inicioDoUso(agenda, i), relogio.ms + desvioMs);
+        }
+      }
 
       if (relogio.ms >= duracaoMs) {
         relogio.ms = duracaoMs;
