@@ -254,7 +254,31 @@ export function Palco({
     const c = Compositor.criar(canvas);
     compositorRef.current = c;
     setComGl(Boolean(c));
+    // O aparelho tirou o contexto (memória de vídeo): em vez de um quadro
+    // preto, a prévia segue com os próprios players, sem o compositor.
+    const aoPerder = (e: Event) => {
+      e.preventDefault();
+      semCompositor('o navegador tirou o contexto WebGL');
+    };
+    canvas.addEventListener('webglcontextlost', aoPerder);
+    return () => canvas.removeEventListener('webglcontextlost', aoPerder);
   }, [proxyUrl]);
+
+  /**
+   * Desliga o compositor nesta visita: os dois players aparecem direto
+   * (o modo sem WebGL2), com o navegador compondo o vídeo. Perde as
+   * mídias sobrepostas e os efeitos de tela na PRÉVIA (o vídeo exportado
+   * não muda); em troca, a imagem não trava nem some.
+   */
+  const semCompositor = (motivo: string) => {
+    if (!compositorRef.current) return;
+    console.warn(`[prévia] sem o compositor: ${motivo}`);
+    compositorRef.current = null;
+    setComGl(false);
+  };
+  // No celular o canvas não passa de 540 px de largura: a prévia em tela
+  // cheia pedia até 4x mais pixels por quadro que o palco pequeno.
+  const telaDeToque = useMemo(() => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches, []);
 
   // ---------- Mídias sobrepostas (B-roll, PiP) ----------
   // Um elemento por camada, fora da tela: a imagem é carregada uma vez;
@@ -421,7 +445,9 @@ export function Palco({
       const canvas = glRef.current;
       if (!c || !canvas || !estado) return;
       // O canvas desenha na resolução em que aparece (até o quadro do plano).
-      const escala = Math.min(2, window.devicePixelRatio || 1);
+      const larguraNaTela = canvas.clientWidth * Math.min(2, window.devicePixelRatio || 1);
+      const teto = Math.min(plan.canvas.width, telaDeToque ? 540 : plan.canvas.width);
+      const escala = larguraNaTela > 0 ? Math.min(2, window.devicePixelRatio || 1) * Math.min(1, teto / larguraNaTela) : 1;
       const w = Math.min(plan.canvas.width, Math.round(canvas.clientWidth * escala));
       const h = Math.min(plan.canvas.height, Math.round(canvas.clientHeight * escala));
       if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
@@ -458,7 +484,7 @@ export function Palco({
         guardarQuadro: (plan.mediaLayers ?? []).some((m) => m.followPerson),
       });
     },
-    [players, enquadramento, agenda, plan.screenEffects, plan.mediaLayers, midiasNoInstante],
+    [players, enquadramento, agenda, plan.screenEffects, plan.mediaLayers, midiasNoInstante, telaDeToque],
   );
 
   tocandoRef.current = tocando;
@@ -666,16 +692,34 @@ export function Palco({
     let anterior = performance.now();
     let ultimoAviso = 0;
     let ultimoAvisoDoEditor = 0;
+    // O vídeo tem 30 quadros por segundo; a tela, 60, 90 ou 120. Desenhar a
+    // cada quadro da TELA mandava o mesmo quadro do vídeo à placa 2 a 4
+    // vezes -- e é esse envio que pesa no celular (a imagem travava com o
+    // som e a legenda seguindo). O relógio anda a cada quadro; o desenho,
+    // no ritmo do vídeo.
+    let ultimoDesenho = 0;
+    let desenhadoAte = relogioRef.current.ms;
+    // Se nem assim o aparelho passa de 18 quadros por segundo, a prévia
+    // troca o compositor pelos players direto (semCompositor).
+    let janelaDesde = performance.now();
+    let quadrosNaJanela = 0;
 
     const passo = (agora: number) => {
       const relogio = relogioRef.current;
       const dt = agora - anterior;
       anterior = agora;
+      quadrosNaJanela += 1;
+      const janela = agora - janelaDesde;
+      if (janela >= 2500) {
+        // Janela comprida demais = a aba ficou em segundo plano: não conta.
+        if (janela < 4000 && !document.hidden && (quadrosNaJanela * 1000) / janela < 18) semCompositor('o aparelho não acompanhou a reprodução');
+        janelaDesde = agora;
+        quadrosNaJanela = 0;
+      }
       // O relógio espera o player carregar (depois de um salto ou com a
       // rede lenta): sem isso a timeline correria na frente da imagem.
       const principal = playerVisivel();
       const carregando = principal && !principal.paused && principal.readyState < 3;
-      const de = relogio.ms;
       if (!carregando) relogio.ms += Math.min(dt, 100);
 
       if (relogio.ms >= duracaoMs) {
@@ -687,7 +731,15 @@ export function Palco({
         return;
       }
 
-      for (const e of sonsQueComecam(plan, de, relogio.ms)) tocarSom(e);
+      publicarPosicao(relogio.ms);
+      if (agora - ultimoDesenho < 30) {
+        quadro = requestAnimationFrame(passo);
+        return;
+      }
+      ultimoDesenho = agora;
+
+      for (const e of sonsQueComecam(plan, desenhadoAte, relogio.ms)) tocarSom(e);
+      desenhadoAte = relogio.ms;
       sincronizarNarracoes(relogio.ms, true);
       sincronizarTrilha(relogio.ms);
       aplicar(relogio.ms, true);
@@ -698,7 +750,6 @@ export function Palco({
       // atualizações por segundo: cada uma re-renderiza o editor. No
       // celular, 4 por segundo (o cursor da timeline desliza por CSS
       // entre uma e outra): o processador fica para o vídeo.
-      publicarPosicao(relogio.ms);
       if (agora - ultimoAviso > intervaloDoAviso) {
         ultimoAviso = agora;
         setSourceMs(sourceNoInstante(agenda, indiceRef.current, relogio.ms) * 1000);
