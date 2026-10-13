@@ -48,6 +48,7 @@ import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import type { DestinoSimples } from '../../components/editor/EditorSimples';
 import { EditorPratico } from '../../components/editor/EditorPratico';
+import { DiagnosticoDaPrevia } from '../../components/editor/DiagnosticoDaPrevia';
 import { itemDoAlvo, itensDoVideo, itensNaCena, legendaNoInstante, type ItemNaCena } from '../../components/editor/naCena';
 import { EtiquetaDoItem, type Alvo, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
 import { focoDoItem } from '../../lib/focoDaIa';
@@ -1508,6 +1509,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
 
   return (
     <AnimacoesDaIaContexto.Provider value={animacoesDaIa}>
+      <DiagnosticoDaPrevia />
       {/* No computador o topo vai para dentro da grade (só sobre o vídeo e
           a timeline, como no CapCut); no celular fica em cima de tudo. */}
       {celular && !simples && cabecalho}
