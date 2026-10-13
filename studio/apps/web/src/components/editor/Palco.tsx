@@ -450,7 +450,7 @@ export function Palco({
     (estado: EstadoNoInstante | null) => {
       const c = compositorRef.current;
       const canvas = glRef.current;
-      if (!c || !canvas || !estado) return;
+      if (!c || !canvas || !estado || !glAoVivoRef.current) return;
       // O canvas desenha na resolução em que aparece (até o quadro do plano).
       const larguraNaTela = canvas.clientWidth * Math.min(2, window.devicePixelRatio || 1);
       const teto = Math.min(plan.canvas.width, telaDeToque ? 540 : plan.canvas.width);
@@ -495,6 +495,16 @@ export function Palco({
   );
 
   tocandoRef.current = tocando;
+  // No celular, TOCANDO, a imagem é o próprio <video>, mostrado pelo
+  // navegador; o compositor (WebGL) desenha só com o vídeo parado. Em
+  // vários Android a cópia do quadro de um vídeo que toca para o WebGL
+  // (texImage2D) volta vazia: a imagem só aparecia ao pausar. Tocando no
+  // celular, a prévia fica sem as mídias sobrepostas e os efeitos de tela
+  // (legenda, textos, animações, zoom e transições continuam); pausado e
+  // na exportação, tudo aparece.
+  const glAoVivo = comGl && !(tocando && telaDeToque);
+  const glAoVivoRef = useRef(glAoVivo);
+  glAoVivoRef.current = glAoVivo;
   desenharGlRef.current = () => desenharGl(ultimoEstado.current);
 
   const aplicar = useCallback(
@@ -1049,7 +1059,7 @@ export function Palco({
       }
       const q = quadroDoRecorte.current;
       const gl = glRef.current;
-      if (compositorRef.current && gl && gl.width > 0) {
+      if (glAoVivoRef.current && compositorRef.current && gl && gl.width > 0) {
         q.getContext('2d')?.drawImage(gl, 0, 0, q.width, q.height);
       } else if (!desenharQuadro(video, q, enquadramento === 'preencher')) {
         return;
@@ -1082,7 +1092,7 @@ export function Palco({
   const temEfeitoDePessoa =
     (plan.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type)) || (plan.mediaLayers ?? []).some((m) => m.followPerson);
   useEffect(() => {
-    if (!temEfeitoDePessoa || !comGl) return;
+    if (!temEfeitoDePessoa || !glAoVivo) return;
     let vivo = true;
     let quadro = 0;
     let ocupado = false;
@@ -1141,7 +1151,7 @@ export function Palco({
       vivo = false;
       cancelAnimationFrame(quadro);
     };
-  }, [temEfeitoDePessoa, comGl, tocando, plan.screenEffects, agenda.duracaoQuadros, desenharGl]);
+  }, [temEfeitoDePessoa, glAoVivo, tocando, plan.screenEffects, agenda.duracaoQuadros, desenharGl]);
 
   // Textos na tela agora, com a caixa que ocupam (medida pela fonte).
   const textosVisiveis = planoDaPrevia.overlays
@@ -1392,7 +1402,7 @@ export function Palco({
         </div>
 
         {proxyUrl && !erroDoVideo ? (
-          <div ref={imagemRef} className={`palco__imagem${comGl ? ' palco__imagem--gl' : ''}`}>
+          <div ref={imagemRef} className={`palco__imagem${glAoVivo ? ' palco__imagem--gl' : ''}`}>
             <canvas ref={glRef} className="palco__gl" aria-hidden />
             {enquadramento === 'desfoque' && (
               <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
