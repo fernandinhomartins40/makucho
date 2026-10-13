@@ -2058,7 +2058,9 @@ q('[data-in]').forEach(function (el) {
   else if (k === 'dir') tl.fromTo(el, { x: 110, autoAlpha: 0 }, { x: 0, autoAlpha: 1, duration: M.d, ease: M.e }, t);
   else if (k === 'aparece') tl.fromTo(el, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.35, ease: 'power1.out' }, t);
   else if (k === 'revela') { tl.fromTo(el, { clipPath: 'inset(100% 0% 0% 0%)', scale: 0.7 }, { clipPath: 'inset(0% 0% 0% 0%)', scale: 1, duration: d, ease: M.e }, t); tl.to(el, { scale: 1.06, duration: 0.5, yoyo: true, repeat: 1, ease: 'sine.inOut' }, t + d + 0.2); }
-  else if (k === 'desenha') tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: num(el, 'data-ate', 0), duration: d, ease: 'power2.inOut' }, t);
+  // O traço fica escondido até começar a se desenhar: com a ponta redonda, o
+  // traço de comprimento zero aparecia como um ponto solto antes da hora.
+  else if (k === 'desenha') { tl.fromTo(el, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01 }, t); tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: num(el, 'data-ate', 0), duration: d, ease: 'power2.inOut' }, t); }
   else if (k === 'enche') tl.fromTo(el, { scaleX: 0 }, { scaleX: 1, duration: d, ease: 'power3.out' }, t);
   else if (k === 'cresce') tl.fromTo(el, { scaleY: 0 }, { scaleY: 1, duration: d, ease: 'power3.out' }, t);
   else if (k === 'desce-linha') tl.fromTo(el, { scaleY: 0 }, { scaleY: 1, duration: d, ease: 'none' }, t);

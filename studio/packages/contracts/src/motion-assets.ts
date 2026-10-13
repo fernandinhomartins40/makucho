@@ -119,8 +119,8 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
         script: s([
           `tl.fromTo('#${id}-p', { x: 34, y: 30, autoAlpha: 0 }, { x: 0, y: 0, autoAlpha: 1, duration: 0.55, ease: 'power3.out' }, ${r2(T + 0.15)});`,
           `tl.to('#${id}-p', { scale: 0.85, duration: 0.09, yoyo: true, repeat: 1, transformOrigin: '20% 10%' }, ${r2(T + 0.75)});`,
-          `tl.fromTo('#${id}-o1', { scale: 0.3, autoAlpha: 0.9, transformOrigin: '50% 50%' }, { scale: 1.9, autoAlpha: 0, duration: 0.6, ease: 'power2.out' }, ${r2(T + 0.8)});`,
-          `tl.fromTo('#${id}-o2', { scale: 0.3, autoAlpha: 0.7, transformOrigin: '50% 50%' }, { scale: 1.5, autoAlpha: 0, duration: 0.6, ease: 'power2.out' }, ${r2(T + 0.95)});`,
+          `tl.fromTo('#${id}-o1', { scale: 0.3, autoAlpha: 0.9, svgOrigin: '62 58' }, { scale: 1.9, autoAlpha: 0, svgOrigin: '62 58', duration: 0.6, ease: 'power2.out', immediateRender: false }, ${r2(T + 0.8)});`,
+          `tl.fromTo('#${id}-o2', { scale: 0.3, autoAlpha: 0.7, svgOrigin: '62 58' }, { scale: 1.5, autoAlpha: 0, svgOrigin: '62 58', duration: 0.6, ease: 'power2.out', immediateRender: false }, ${r2(T + 0.95)});`,
         ]),
       };
     case 'sino':
@@ -138,7 +138,7 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
         html: svg(`<g id="${id}-f"><path class="sv" d="M60 8c16 12 22 30 22 48l-10 18H48L38 56c0-18 6-36 22-48z"/><path ${traco(T, 0.6)} d="M60 8c16 12 22 30 22 48l-10 18H48L38 56c0-18 6-36 22-48z"/><circle class="ch" cx="60" cy="40" r="8"/><path class="ch2" d="M38 56l-12 18 18-2zM82 56l12 18-18-2z"/><path id="${id}-fo" class="ch" d="M50 76h20l-10 24z"/></g><path ${traco(T + 0.7, 0.4)} d="M40 112v-10M60 116v-12M80 112v-10"/>`),
         script: s([
           `tl.fromTo('#${id}-fo', { scaleY: 0.4, transformOrigin: '50% 0%' }, { scaleY: 1.2, duration: 0.08, yoyo: true, repeat: 15, ease: 'none' }, ${r2(T + 0.3)});`,
-          `tl.fromTo('#${id}-f', { y: 14 }, { y: -10, duration: 1.4, ease: 'power2.in' }, ${r2(T + 0.4)});`,
+          `tl.fromTo('#${id}-f', { y: 12 }, { y: -2, duration: 1.4, ease: 'power2.in' }, ${r2(T + 0.4)});`,
         ]),
       };
     case 'moedas': {
@@ -156,7 +156,7 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
       };
     case 'trofeu':
       return {
-        html: svg(`<path class="ch" d="M38 16h44v26c0 14-10 24-22 24S38 56 38 42z"/><path ${traco(T, 0.5)} d="M38 24H24c0 14 6 22 16 22M82 24h14c0 14-6 22-16 22"/><path ${traco(T + 0.2, 0.3)} d="M60 66v16"/><rect class="ch2" x="40" y="84" width="40" height="14" rx="4"/>${[0, 1, 2].map((k) => `<path id="${id}-e${k}" class="ch2" d="M${[16, 100, 92][k]} ${[60, 70, 10][k]}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>`).join('')}`),
+        html: svg(`<path class="ch" d="M38 16h44v26c0 14-10 24-22 24S38 56 38 42z"/><path ${traco(T, 0.5)} d="M38 24H24c0 14 6 22 16 22M82 24h14c0 14-6 22-16 22"/><path ${traco(T + 0.2, 0.3)} d="M60 66v16"/><rect class="ch2" x="40" y="84" width="40" height="14" rx="4"/>${[0, 1, 2].map((k) => `<path id="${id}-e${k}" class="ch2" d="M${[16, 102, 104][k]} ${[60, 72, 8][k]}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/>`).join('')}`),
         script: s([0, 1, 2].map((k) => `tl.fromTo('#${id}-e${k}', { scale: 0, rotation: -45, transformOrigin: '50% 50%' }, { scale: 1, rotation: 0, duration: 0.35, ease: 'back.out(3)' }, ${r2(T + 0.6 + k * 0.15)});`)),
       };
     case 'relogio':
@@ -196,15 +196,19 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
       };
     case 'envelope':
       return {
-        html: svg(`<rect id="${id}-l" class="fu-k" x="30" y="30" width="60" height="50" rx="4"/><path id="${id}-ll" class="fu-tr" d="M40 44h40M40 54h30"/><rect class="ch" x="14" y="46" width="92" height="60" rx="8"/><path class="fu-tr" d="M14 54l46 30 46-30"/><path id="${id}-a" class="ch2" d="M14 50l46-32 46 32z"/>`),
+        // Fechado (a aba para baixo, na frente); a aba abre para cima, por TRÁS da
+        // carta, e a carta sai. Antes começava aberto e fechava ao contrário.
+        html: svg(`<path id="${id}-ab" class="ch2" d="M14 50l46-32 46 32z"/><rect id="${id}-l" class="fu-k" x="30" y="30" width="60" height="50" rx="4"/><path id="${id}-ll" class="fu-tr" d="M40 44h40M40 54h30"/><rect class="ch" x="14" y="46" width="92" height="60" rx="8"/><path class="fu-tr" d="M14 54l46 30 46-30"/><path id="${id}-a" class="ch2" d="M14 50l46 32 46-32z"/>`),
         script: s([
-          `tl.fromTo('#${id}-a', { scaleY: 1, transformOrigin: '50% 100%' }, { scaleY: -1, duration: 0.45, ease: 'power2.inOut' }, ${r2(T + 0.4)});`,
-          `tl.fromTo(['#${id}-l', '#${id}-ll'], { y: 30 }, { y: -6, duration: 0.5, ease: 'back.out(1.6)' }, ${r2(T + 0.8)});`,
+          `tl.fromTo('#${id}-ab', { scaleY: 0, svgOrigin: '60 50' }, { scaleY: 0, svgOrigin: '60 50', duration: 0.01 }, 0);`,
+          `tl.fromTo('#${id}-a', { scaleY: 1, svgOrigin: '60 50' }, { scaleY: 0, svgOrigin: '60 50', duration: 0.22, ease: 'power2.in' }, ${r2(T + 0.4)});`,
+          `tl.fromTo('#${id}-ab', { scaleY: 0, svgOrigin: '60 50' }, { scaleY: 1, svgOrigin: '60 50', duration: 0.25, ease: 'power2.out' }, ${r2(T + 0.62)});`,
+          `tl.fromTo(['#${id}-l', '#${id}-ll'], { y: 20, autoAlpha: 0 }, { y: -6, autoAlpha: 1, duration: 0.5, ease: 'back.out(1.6)' }, ${r2(T + 0.85)});`,
         ]),
       };
     case 'lampada':
       return {
-        html: svg(`<circle id="${id}-g" class="brilho" cx="60" cy="48" r="44"/><path class="sv" d="M60 14a32 32 0 0 0-18 58c4 3 6 7 6 12v4h24v-4c0-5 2-9 6-12a32 32 0 0 0-18-58z"/><path ${traco(T, 0.6)} d="M60 14a32 32 0 0 0-18 58c4 3 6 7 6 12v4h24v-4c0-5 2-9 6-12a32 32 0 0 0-18-58z"/><path ${traco(T + 0.3, 0.3)} d="M50 98h20M53 108h14"/>${[-60, -30, 0, 30, 60].map((a, k) => `<path ${traco(T + 0.7 + k * 0.05, 0.2)} d="M60 0v-8" transform="rotate(${a} 60 48) translate(0 -6)"/>`).join('')}`),
+        html: svg(`<circle id="${id}-g" class="brilho" cx="60" cy="48" r="44"/><path class="sv" d="M60 14a32 32 0 0 0-18 58c4 3 6 7 6 12v4h24v-4c0-5 2-9 6-12a32 32 0 0 0-18-58z"/><path ${traco(T, 0.6)} d="M60 14a32 32 0 0 0-18 58c4 3 6 7 6 12v4h24v-4c0-5 2-9 6-12a32 32 0 0 0-18-58z"/><path ${traco(T + 0.3, 0.3)} d="M50 98h20M53 108h14"/>${[-60, -30, 0, 30, 60].map((a, k) => `<path ${traco(T + 0.7 + k * 0.05, 0.2)} d="M60 9V1" transform="rotate(${a} 60 48)"/>`).join('')}`),
         script: s([`tl.fromTo('#${id}-g', { autoAlpha: 0, scale: 0.6, transformOrigin: '50% 50%' }, { autoAlpha: 1, scale: 1, duration: 0.18, yoyo: true, repeat: 2, ease: 'none' }, ${r2(T + 0.6)});`, `tl.to('#${id}-g', { autoAlpha: 1, scale: 1, duration: 0.2 }, ${r2(T + 1.2)});`]),
       };
     case 'alvo':
@@ -254,7 +258,7 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
           ...[0, 1, 2, 3, 4, 5, 6, 7].map((k) => `tl.fromTo('#${id}-b${k}', { scaleY: 0, transformOrigin: '50% 100%' }, { scaleY: 1, duration: 0.3, ease: 'power2.out' }, ${r2(T + k * 0.05)});`),
           `tl.fromTo('#${id}-a', { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.5 }, ${r2(T + 0.8)});`,
           `tl.fromTo('#${id}-p', { scale: 0, transformOrigin: '50% 50%' }, { scale: 1, duration: 0.3, ease: 'back.out(3)' }, ${r2(T + 1.1)});`,
-          `tl.fromTo('#${id}-r', { scale: 0.5, autoAlpha: 1, transformOrigin: '50% 50%' }, { scale: 2, autoAlpha: 0, duration: 0.8, repeat: 2, ease: 'power1.out' }, ${r2(T + 1.2)});`,
+          `tl.fromTo('#${id}-r', { scale: 0.5, autoAlpha: 1, svgOrigin: '106 30' }, { scale: 2, autoAlpha: 0, svgOrigin: '106 30', duration: 0.8, repeat: 2, ease: 'power1.out', immediateRender: false }, ${r2(T + 1.2)});`,
         ]),
       };
     }
@@ -282,7 +286,7 @@ export function assetAnimado(chave: string, id: string, t: number, classe = 'ast
         script: s([
           `tl.fromTo('#${id}-f1', { scale: 0, rotation: -60, svgOrigin: '60 60' }, { scale: 1, rotation: 0, svgOrigin: '60 60', duration: 0.7, ease: 'back.out(1.6)' }, ${T});`,
           `tl.fromTo('#${id}-f2', { scale: 0, svgOrigin: '60 60' }, { scale: 1, svgOrigin: '60 60', duration: 0.45, ease: 'back.out(2)' }, ${r2(T + 0.55)});`,
-          `tl.to('#${id}-f2', { x: -6, y: 0, duration: 0.35, ease: 'power2.out' }, ${r2(T + 1)});`,
+          `tl.to('#${id}-f2', { x: -3, y: 0, duration: 0.35, ease: 'power2.out' }, ${r2(T + 1)});`,
         ]),
       };
     case 'calendario':
@@ -368,9 +372,13 @@ export const CSS_DOS_ASSETS = `
 .ast .fu-c { fill: var(--cor-destaque-3); }
 .ast .fu-k { fill: color-mix(in srgb, var(--cor-fundo) 30%, #ffffff); }
 .ast .fu-tr { fill: none; stroke: var(--cor-fundo); stroke-width: 3.5; stroke-linecap: round; }
-.ast .onda { fill: none; stroke: var(--cor-destaque); stroke-width: 3; }
+.ast .onda { fill: none; stroke: var(--cor-destaque); stroke-width: 3; opacity: 0; }
 .ast .brilho { fill: color-mix(in srgb, var(--cor-destaque) 32%, transparent); }
-.ast * { transform-box: fill-box; }
+/* Sem "transform-box: fill-box" nas peças: o GSAP já calcula o ponto de giro
+   das peças do SVG (transformOrigin, svgOrigin) e grava na própria
+   transformação. Com fill-box o navegador deslocava o giro de novo -- o
+   ponteiro do relógio saía do centro, a fatia da pizza saía do círculo, os
+   traços da explosão espalhavam e as estrelas do troféu andavam. */
 .ast .tr.tr-cor { stroke: var(--cor-destaque); stroke-width: 5.5; }
 .ast .area { fill: color-mix(in srgb, var(--cor-destaque) 22%, transparent); }
 .ast .tracejado { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 4 5; opacity: .55; }
