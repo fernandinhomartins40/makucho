@@ -101,7 +101,9 @@ class LeitorDoTrecho {
   /** Instante (no original, em s) do último quadro mostrado; -1 antes do primeiro. */
   ultimoS = -1;
   private readonly fila: VideoSample[] = [];
-  private naTela: VideoFrame | null = null;
+  /** Dois canvas comuns que se revezam: o quadro é copiado num, enquanto o outro ainda está na tela. */
+  private readonly telas = typeof document !== 'undefined' ? [document.createElement('canvas'), document.createElement('canvas')] : [];
+  private vez = 0;
   private readonly iterador: AsyncGenerator<VideoSample, void, unknown>;
   private puxando = false;
   private acabou = false;
@@ -160,13 +162,22 @@ class LeitorDoTrecho {
     // Antes do primeiro quadro (o lado que entra numa transição): mostra o primeiro.
     if (!escolhido && this.ultimoS < 0 && this.fila.length) escolhido = this.fila.shift();
     if (escolhido) {
-      const frame = escolhido.toVideoFrame();
+      // Copiado para um canvas comum ANTES de ir para o WebGL: em vários
+      // Android, o quadro do decodificador entregue direto ao WebGL sai
+      // PRETO (só a legenda aparecia). É o mesmo caminho do quadro parado.
+      const tela = this.telas[this.vez]!;
+      this.vez = 1 - this.vez;
+      const w = escolhido.displayWidth;
+      const h = escolhido.displayHeight;
+      if (tela.width !== w || tela.height !== h) {
+        tela.width = w;
+        tela.height = h;
+      }
+      const ctx = tela.getContext('2d');
+      if (ctx) escolhido.draw(ctx, 0, 0, w, h);
       this.ultimoS = escolhido.timestamp;
       escolhido.close();
-      this.quadro.atualizar(frame, frame.displayWidth, frame.displayHeight);
-      // O anterior já foi para a textura (ou nunca será): libera o lugar no decodificador.
-      this.naTela?.close();
-      this.naTela = frame;
+      this.quadro.atualizar(tela, w, h);
       estadoDoMotor.mostrados += 1;
     }
     void this.encher();
@@ -191,8 +202,6 @@ class LeitorDoTrecho {
     this.fila.length = 0;
     // O compositor não pode subir um quadro fechado: some a imagem do leitor junto.
     this.quadro.imagem = null;
-    this.naTela?.close();
-    this.naTela = null;
     void this.iterador.return(undefined).catch(() => undefined);
   }
 }

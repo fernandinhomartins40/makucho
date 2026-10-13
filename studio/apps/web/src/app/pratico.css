@@ -688,3 +688,12 @@
 .pratico__lista button[aria-pressed='false'] {
   opacity: 0.6;
 }
+
+/* Desenho reserva do vídeo em 2D (Palco.tsx, quando o WebGL sai preto no aparelho). */
+.palco__tela2d {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+}

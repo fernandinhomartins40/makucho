@@ -144,6 +144,26 @@ interface Props {
   onEditarAnimacao?: (id: string, composicao: ComposicaoHtml) => void;
 }
 
+/** Brilho médio (0-255) de uma imagem, numa amostra pequena; null se não deu para ler. */
+const amostra = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+function brilho(imagem: CanvasImageSource | null): number | null {
+  if (!imagem || !amostra) return null;
+  try {
+    amostra.width = 12;
+    amostra.height = 20;
+    const ctx = amostra.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, 12, 20);
+    ctx.drawImage(imagem, 0, 0, 12, 20);
+    const d = ctx.getImageData(0, 0, 12, 20).data;
+    let soma = 0;
+    for (let i = 0; i < d.length; i += 4) soma += d[i]! + d[i + 1]! + d[i + 2]!;
+    return Math.round(soma / (d.length / 4) / 3);
+  } catch {
+    return null;
+  }
+}
+
 export function Palco({
   plan,
   proxyUrl,
@@ -489,8 +509,52 @@ export function Palco({
   );
   const desenharGlRef = useRef<(() => void) | null>(null);
 
+  // ---------- Desenho reserva em 2D (sem WebGL) ----------
+  // Se, tocando, a imagem que sai do WebGL está preta e o quadro decodificado
+  // tem imagem, o aparelho não está levando o quadro para o WebGL: a prévia
+  // passa a desenhar o vídeo num canvas 2D comum (sem efeitos de tela e
+  // mídias sobrepostas na prévia; legenda, textos e animações continuam).
+  const tela2dRef = useRef<HTMLCanvasElement>(null);
+  const ultimoBrilho = useRef<{ gl: number | null; quadro: number | null }>({ gl: null, quadro: null });
+  const [modo2d, setModo2d] = useState(false);
+  // ?previa2d=1 no endereço força o desenho 2D (para testar num aparelho).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('previa2d') === '1') setModo2d(true);
+  }, []);
+  const modo2dRef = useRef(false);
+  modo2dRef.current = modo2d;
+  const desenhar2d = (estado: EstadoNoInstante) => {
+    const tela = tela2dRef.current;
+    const imagem = motorRef.current?.quadro(estado.indice, tocandoRef.current)?.imagem as CanvasImageSource | null | undefined;
+    if (!tela) return;
+    const escala = Math.min(2, window.devicePixelRatio || 1);
+    const W = Math.min(540, Math.round(tela.clientWidth * escala)) || 540;
+    const H = Math.round((W * plan.canvas.height) / plan.canvas.width);
+    if (tela.width !== W || tela.height !== H) {
+      tela.width = W;
+      tela.height = H;
+    }
+    const ctx = tela.getContext('2d');
+    if (!ctx) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    if (!imagem) return;
+    const iw = (imagem as HTMLCanvasElement).width;
+    const ih = (imagem as HTMLCanvasElement).height;
+    if (!iw || !ih) return;
+    const k = enquadramento === 'preencher' ? Math.max(W / iw, H / ih) : Math.min(W / iw, H / ih);
+    const zoom = estado.camadas.find((x) => x.indice === estado.indice)?.zoom ?? 1;
+    const dw = iw * k * zoom;
+    const dh = ih * k * zoom;
+    ctx.drawImage(imagem, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  };
+
   const desenharGl = useCallback(
     (estado: EstadoNoInstante | null) => {
+      if (estado && modo2dRef.current && comMotorRef.current) {
+        desenhar2d(estado);
+        return;
+      }
       const c = compositorRef.current;
       const canvas = glRef.current;
       if (!c || !canvas || !estado || !glAoVivoRef.current) return;
@@ -811,6 +875,9 @@ export function Palco({
     let quadrosNaJanela = 0;
     let janelasRuins = 0;
     let esperandoDesde = 0;
+    const inicioDoPlay = performance.now();
+    let ultimaChecagem = 0;
+    let checagensPretas = 0;
 
     const passo = (agora: number) => {
       const relogio = relogioRef.current;
@@ -872,6 +939,21 @@ export function Palco({
       }
 
       publicarPosicao(relogio.ms);
+      // A imagem do WebGL está saindo preta com o quadro tendo imagem? Vai para o 2D.
+      if (motor && !modo2dRef.current && agora - inicioDoPlay > 1500 && agora - ultimaChecagem > 1000) {
+        ultimaChecagem = agora;
+        const fonte = motor.quadro(indiceRef.current, true)?.imagem as CanvasImageSource | null | undefined;
+        const gl = brilho(glRef.current);
+        const doQuadro = brilho(fonte ?? null);
+        ultimoBrilho.current = { gl, quadro: doQuadro };
+        if (gl !== null && doQuadro !== null && doQuadro > 12 && gl < 4) {
+          checagensPretas += 1;
+          if (checagensPretas >= 2) {
+            setModo2d(true);
+            relatarPrevia({ momento: 'WebGL preto: trocou para o desenho 2D', brilhoGl: gl, brilhoQuadro: doQuadro });
+          }
+        } else checagensPretas = 0;
+      }
       if (agora - ultimoDesenho < 30) {
         quadro = requestAnimationFrame(passo);
         return;
@@ -1029,6 +1111,9 @@ export function Palco({
         gaveta: editor?.getAttribute('data-folha') ?? null,
         player0: v ? { src: !!v.getAttribute('src'), rs: v.readyState, t: Math.round(v.currentTime * 10) / 10, quadros: v.getVideoPlaybackQuality?.().totalVideoFrames ?? null } : null,
         relogioMs: Math.round(relogioRef.current.ms),
+        modo2d: modo2dRef.current,
+        brilhoGl: ultimoBrilho.current.gl,
+        brilhoQuadro: ultimoBrilho.current.quadro,
       };
     };
     if (tocando) {
@@ -1536,6 +1621,7 @@ export function Palco({
         {proxyUrl && !erroDoVideo ? (
           <div ref={imagemRef} className={`palco__imagem${glAoVivo ? ' palco__imagem--gl' : ''}`}>
             <canvas ref={glRef} className="palco__gl" aria-hidden />
+            <canvas ref={tela2dRef} className="palco__tela2d" hidden={!modo2d} aria-hidden />
             {enquadramento === 'desfoque' && (
               <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
             )}
