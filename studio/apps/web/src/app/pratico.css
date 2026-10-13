@@ -66,6 +66,18 @@
   display: none !important;
 }
 
+/* Tocar no vídeo onde passa uma animação a escolhe. Fica acima do vídeo e
+   da animação, abaixo das alças (z-index 4) de texto, legenda e imagem. */
+.palco__toque-na-animacao {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Assistindo, nada de alças: elas são de quem está editando. */
 .editor[data-modo='pratico']:not([data-editando]) :is(.palco__alca-destaque, .palco__posicionar) {
   display: none !important;
@@ -279,7 +291,7 @@
   width: 100%;
   max-width: 720px;
   margin: auto auto 0;
-  padding: 44px var(--e4) calc(var(--e4) + var(--seguro-baixo, 0px));
+  padding: 28px var(--e4) calc(var(--e3) + var(--seguro-baixo, 0px));
 }
 
 /* Assistindo, a sombra vai de lado a lado mesmo com a base estreita. */
@@ -289,8 +301,8 @@
   right: 0;
   bottom: 0;
   left: 0;
-  height: 230px;
-  background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
+  height: 120px;
+  background: linear-gradient(to top, rgb(0 0 0 / 70%), transparent);
   pointer-events: none;
 }
 
@@ -339,26 +351,36 @@
   background: var(--primary);
 }
 
+/* "Editar": sobre o vídeo, logo abaixo do play. Discreto (vidro escuro,
+   letra pequena) para não disputar com o vídeo, mas no meio da tela,
+   onde o olho já está depois de pausar. */
 .pratico__editar {
+  position: absolute;
+  top: calc(50% + 58px);
+  left: 50%;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  justify-self: center;
-  width: min(100%, 320px);
-  min-height: 58px;
-  border: 0;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 16px 0 13px;
+  border: 1px solid rgb(255 255 255 / 30%);
   border-radius: 999px;
-  background: var(--primary);
+  background: rgb(0 0 0 / 50%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   color: #fff;
   font: inherit;
-  font-size: 18px;
-  font-weight: 700;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+  font-size: 14px;
+  font-weight: 600;
+  transform: translateX(-50%);
   cursor: pointer;
 }
 
-.pratico__editar:active,
+.pratico__editar:active {
+  background: rgb(0 0 0 / 70%);
+}
+
 .pratico__chip:active,
 .pratico__acoes button:active,
 .pratico__opcoes button:active {
@@ -424,6 +446,12 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A animação da IA: em destaque, é o que mais se quer mexer. */
+.pratico__chip[data-animacao] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-2));
 }
 
 .pratico__chip[data-tudo] {

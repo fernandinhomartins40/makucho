@@ -44,7 +44,7 @@ import {
 import { TipoDoVideo } from '../../components/editor/TipoDoVideo';
 import { AcoesDoPalco, FerramentasDoPalco, type AcaoDoPalco, type FerramentaDoPalco } from '../../components/editor/LateraisDoPalco';
 import type { AbaDoInspector } from '../../components/editor/Inspector';
-import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
+import { useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import type { DestinoSimples } from '../../components/editor/EditorSimples';
 import { EditorPratico } from '../../components/editor/EditorPratico';
@@ -708,12 +708,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     await analisar();
   };
 
-  // A película da timeline: quadros tirados da prévia leve.
-  const quadrosDoVideo = useQuadrosDoVideo(projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? urlDoVideo(projectId) : undefined, plano?.sourceDurationMs ?? 0, `/api/projects/${projectId}/pelicula`);
 
   // ---------- Reprodução: o que para enquanto o vídeo toca ----------
   const [tocandoNaPrevia, setTocandoNaPrevia] = useState(false);
-  useEffect(() => pausarQuadros(tocandoNaPrevia), [tocandoNaPrevia]);
   const [celular, setCelular] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 899px)');
@@ -752,6 +749,10 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
   };
   /** O visual prático: painéis e propriedades abrem em gavetas, em qualquer tela. */
   const simples = visual === 'pratico';
+
+  // A película da timeline: a folha de quadros que o servidor gerou no
+  // preparo. Sem timeline (visual prático), nem se baixa.
+  const quadrosDoVideo = useQuadrosDoVideo(!simples && projeto?.mediaSources.some((m) => m.kind === 'PROXY') ? `/api/projects/${projectId}/pelicula` : undefined, plano?.sourceDurationMs ?? 0);
 
   // O que foi copiado na etiqueta do item (cola no cursor).
   const [copiado, setCopiado] = useState<ItemCopiado | null>(null);
@@ -1110,6 +1111,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     } else {
       setSelecionado(null);
       setItemSelecionado(i.alvo.item);
+      // A animação abre direto para editar (textos, modelo, elementos), como na timeline;
+      // as peças dela continuam à mão no vídeo, acima da gaveta.
+      if (i.animacao) setFolha('inspector');
     }
   };
   /** Leva o vídeo até o item e o escolhe (a lista "Tudo no vídeo"). */
@@ -1491,6 +1495,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       onEditorCompleto={() => trocarVisual('completo')}
       legendasLigadas={plano.captions.enabled}
       somOriginalMudo={somOriginalMudo}
+      animacoes={{ estado: criandoAnimacoes ? 'criando' : temAnimacoes ? 'prontas' : 'nenhuma', ...(!semIa ? { onCriar: () => void criarAnimacoesDaFala() } : {}) }}
       gavetaAberta={folha !== null}
       avisos={
         <>
@@ -1900,6 +1905,14 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (noCelular()) setFolha('inspector');
             }}
+            {...(simples && editandoNoPratico
+              ? {
+                  onTocarNaAnimacao: (id: string) => {
+                    setSelecionado(null);
+                    setItemSelecionado({ tipo: 'midia', id });
+                  },
+                }
+              : {})}
             {...(simples
               ? {
                   onTocarNaLegenda: () => {

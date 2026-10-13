@@ -8,7 +8,8 @@
 // operações); muda só o que aparece em volta do vídeo:
 //
 //   tocando   só o vídeo. Um toque pausa;
-//   pausado   voltar, exportar, a barra de tempo e o botão "Editar";
+//   pausado   voltar, exportar, a barra de tempo e, sobre o vídeo, logo
+//             abaixo do play, um "Editar" discreto;
 //   editando  o quadro continua o mesmo. Embaixo, o que está NA TELA
 //             AGORA (legenda, texto, imagem, animação, música...) para
 //             tocar e mudar, "Adicionar", "Pedir à IA" e "Mais ajustes".
@@ -112,6 +113,8 @@ interface Props {
   legendasLigadas: boolean;
   somOriginalMudo: boolean;
 
+  /** As animações da IA neste vídeo: sem nenhuma, a bandeja oferece criar. */
+  animacoes: { estado: 'nenhuma' | 'criando' | 'prontas'; onCriar?: () => void };
   /** Uma gaveta (propriedades, biblioteca) está aberta: a bandeja sai. */
   gavetaAberta: boolean;
   /** Erros e avisos do editor, logo abaixo do topo. */
@@ -153,6 +156,7 @@ export function EditorPratico({
   onEditorCompleto,
   legendasLigadas,
   somOriginalMudo,
+  animacoes,
   gavetaAberta,
   avisos,
 }: Props) {
@@ -246,6 +250,14 @@ export function EditorPratico({
         </button>
       )}
 
+      {/* Sobre o vídeo, logo abaixo do play: discreto, mas à mão. */}
+      {!tocando && !editando && (
+        <button type="button" className="pratico__editar" onClick={() => onEditando(true)}>
+          <IconeRenomear size={16} weight="bold" />
+          Editar
+        </button>
+      )}
+
       {!tocando && (
         <header className="pratico__topo">
           {editando ? (
@@ -313,20 +325,33 @@ export function EditorPratico({
             <span>{tempo(duracaoMs)}</span>
           </div>
 
-          {!editando ? (
-            <button type="button" className="pratico__editar" onClick={() => onEditando(true)}>
-              <IconeRenomear size={20} weight="bold" />
-              Editar
-            </button>
-          ) : selecionado ? (
+          {!editando ? null : selecionado ? (
             selecionado
           ) : (
             <>
               <div className="pratico__cena">
                 <span className="pratico__cena-titulo">Na tela agora · toque para mudar</span>
                 <div className="pratico__chips">
+                  {animacoes.estado === 'criando' && (
+                    <span className="pratico__chip" data-animacao role="status">
+                      <IconeAnimacao size={18} />
+                      <span>
+                        <strong>Criando animações…</strong>
+                        <small>leva alguns minutos</small>
+                      </span>
+                    </span>
+                  )}
+                  {animacoes.estado === 'nenhuma' && animacoes.onCriar && (
+                    <button type="button" className="pratico__chip" data-animacao onClick={animacoes.onCriar}>
+                      <IconeAnimacao size={18} />
+                      <span>
+                        <strong>Criar animações</strong>
+                        <small>a IA ilustra a fala</small>
+                      </span>
+                    </button>
+                  )}
                   {itens.map((i) => (
-                    <button key={i.chave} type="button" className="pratico__chip" onClick={() => onEscolher(i)}>
+                    <button key={i.chave} type="button" className="pratico__chip" data-animacao={i.animacao || undefined} onClick={() => onEscolher(i)}>
                       <i.Icone size={18} />
                       <span>
                         <strong>{i.rotulo}</strong>

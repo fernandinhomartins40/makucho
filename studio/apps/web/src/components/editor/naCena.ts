@@ -36,6 +36,8 @@ export interface ItemNaCena {
   detalhe?: string;
   Icone: Icon;
   alvo: Alvo;
+  /** Animação da IA: vem primeiro e em destaque (é o que mais se quer mexer). */
+  animacao?: boolean;
   /** Onde o item está no vídeo. */
   inicioMs: number;
   fimMs: number;
@@ -114,6 +116,7 @@ function sobreOVideo(plan: EditPlanV1): ItemNaCena[] {
       rotulo: animacao ? 'Animação' : m.kind === 'sticker' ? 'Enfeite' : m.kind === 'video' ? 'Vídeo por cima' : 'Imagem',
       ...(sticker ? { detalhe: sticker } : {}),
       Icone: animacao ? IconeAnimacao : m.kind === 'sticker' ? IconeSticker : IconeMidia,
+      ...(animacao ? { animacao: true } : {}),
       alvo: { tipo: 'item', item: { tipo: 'midia', id: m.id } },
       inicioMs: m.timelineStartMs,
       fimMs: m.timelineStartMs + m.durationMs,
@@ -201,7 +204,7 @@ export function itensNaCena(plan: EditPlanV1, ms: number, palavras: readonly Pal
     const folga = i.alvo.tipo === 'item' && i.alvo.item.tipo === 'som' ? JANELA_DO_SOM_MS : 0;
     if (ms >= i.inicioMs - folga && ms < i.fimMs) lista.push(i);
   }
-  return lista;
+  return [...lista.filter((i) => i.animacao), ...lista.filter((i) => !i.animacao)];
 }
 
 /** Tudo o que o vídeo tem, na ordem do tempo: a lista que faz as vezes das faixas. */

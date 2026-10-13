@@ -1,19 +1,17 @@
 // ============================================================
 // Quadros do vídeo para a tira da timeline (a "película" de cada trecho).
 //
-// Primeiro caminho: a PELÍCULA DO SERVIDOR -- uma folha de quadros (sprite
-// sheet) que o worker de mídia gera uma vez no preparo, com FFmpeg. O
-// editor baixa uma imagem, decodifica fora do processador principal
+// Vêm da PELÍCULA DO SERVIDOR -- uma folha de quadros (sprite sheet) que
+// o worker de mídia gera uma vez no preparo, com FFmpeg. O editor baixa
+// uma imagem, decodifica fora do processador principal
 // (createImageBitmap) e pronto: nenhum <video> a mais na página.
 //
-// Antes, os quadros saíam SÓ daqui: um <video> escondido pulava pela
-// prévia de segundo em segundo. Mesmo "pausado" ele seguia com o vídeo
-// carregado -- segurando um decodificador e disputando a rede com os
-// players da prévia --, e no celular a reprodução travava.
-//
-// Reserva (projeto preparado antes da película existir): o <video>
-// escondido continua, mas SOLTA o vídeo enquanto a prévia toca (sem src,
-// sem decodificador) e só volta depois de um tempo parado.
+// Não há mais reserva no navegador. Antes, sem a película, um <video>
+// escondido pulava pela prévia tirando os quadros; mesmo parando
+// enquanto a prévia tocava, ele segurava um decodificador e disputava a
+// rede com os players, e no celular a reprodução travava. Projeto sem
+// película (preparado antes dela existir) fica com os trechos sem
+// miniatura -- a prévia fluida vale mais que a tira.
 //
 // A timeline desenha a tira de cada trecho num <canvas> só, a partir da
 // folha, e só redesenha quando algo muda. Guardado por URL enquanto a
@@ -45,28 +43,12 @@ export interface QuadrosDoVideo {
 
 const porUrl = new Map<string, Estado>();
 
-// ---------- A prévia tocando ----------
-//
-// Enquanto a prévia toca, a extração de reserva para E solta o vídeo; ao
-// parar, espera um pouco antes de voltar (pausas curtas -- trocar de
-// trecho, arrastar a agulha -- não acordam o vídeo escondido).
-let pausada = false;
-let pausadaDesde = 0;
-const VOLTA_DEPOIS_DE_PARADA_MS = 2500;
-export function pausarQuadros(pausar: boolean): void {
-  if (pausar === pausada) return;
-  pausada = pausar;
-  pausadaDesde = Date.now();
-}
-const esperar = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
-const livre = () => !pausada && Date.now() - pausadaDesde >= VOLTA_DEPOIS_DE_PARADA_MS;
-
 function avisar(estado: Estado) {
   estado.versao++;
   estado.ouvintes.forEach((f) => f());
 }
 
-/** A película pronta do servidor. false = não existe (cai na reserva). */
+/** A película pronta do servidor. false = não existe (os trechos ficam sem miniatura). */
 async function daPelicula(estado: Estado, urlDaPelicula: string): Promise<boolean> {
   try {
     const r = await fetch(urlDaPelicula, { credentials: 'include' });
@@ -84,106 +66,13 @@ async function daPelicula(estado: Estado, urlDaPelicula: string): Promise<boolea
   }
 }
 
-/** Reserva: tira os quadros da prévia com um <video> escondido, sem atrapalhar quem assiste. */
-async function daPrevia(estado: Estado, url: string, duracaoMs: number): Promise<void> {
-  const video = document.createElement('video');
-  video.muted = true;
-  video.playsInline = true;
-  // Só o que cada busca pede: 'auto' baixava a prévia inteira em
-  // segundo plano, concorrendo com o vídeo que a pessoa assiste.
-  video.preload = 'metadata';
-  let carregado = false;
-
-  const carregar = () =>
-    new Promise<void>((ok, falha) => {
-      video.addEventListener('loadeddata', () => ok(), { once: true });
-      video.addEventListener('error', () => falha(new Error('prévia indisponível')), { once: true });
-      video.src = url;
-      carregado = true;
-    });
-  // Solta o vídeo: sem src, o navegador libera o decodificador e a rede.
-  const soltar = () => {
-    if (!carregado) return;
-    video.removeAttribute('src');
-    video.load();
-    carregado = false;
-  };
-  const buscar = (s: number) =>
-    new Promise<void>((ok) => {
-      const pronto = () => {
-        video.removeEventListener('seeked', pronto);
-        ok();
-      };
-      video.addEventListener('seeked', pronto);
-      video.currentTime = s;
-      // Um seek que não volta (rede caiu) não trava a tira inteira.
-      setTimeout(pronto, 4000);
-    });
-
-  const quantos = Math.max(1, Math.ceil(duracaoMs / estado.passoMs));
-  const folha = document.createElement('canvas');
-  folha.width = estado.largura * Math.min(estado.colunas, quantos);
-  folha.height = estado.altura * Math.ceil(quantos / estado.colunas);
-  const ctx = folha.getContext('2d');
-  if (!ctx) return;
-  estado.folha = folha;
-  let desde = 0;
-  // Deixa o editor abrir primeiro.
-  await esperar(1500);
-  try {
-    for (let i = 0; i < quantos; i++) {
-      if (!livre()) {
-        soltar();
-        while (!livre()) await esperar(400);
-      }
-      if (!carregado) await carregar();
-      // Um quadro por vez, com folga: nunca uma rajada no processador.
-      await esperar(60);
-      await buscar((i * estado.passoMs + estado.passoMs / 2) / 1000);
-      // A prévia começou a tocar durante a busca: este quadro fica para depois.
-      if (!livre()) {
-        i -= 1;
-        continue;
-      }
-      // Cobre o quadro 9:16 (vídeo deitado é cortado no centro).
-      const vw = video.videoWidth || estado.largura;
-      const vh = video.videoHeight || estado.altura;
-      const escala = Math.max(estado.largura / vw, estado.altura / vh);
-      const w = vw * escala;
-      const h = vh * escala;
-      const x0 = (i % estado.colunas) * estado.largura;
-      const y0 = Math.floor(i / estado.colunas) * estado.altura;
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x0, y0, estado.largura, estado.altura);
-      ctx.clip();
-      ctx.drawImage(video, x0 + (estado.largura - w) / 2, y0 + (estado.altura - h) / 2, w, h);
-      ctx.restore();
-      estado.prontos.add(i);
-      // Avisos espaçados: cada um redesenha as tiras da timeline.
-      if (++desde >= 8) {
-        desde = 0;
-        avisar(estado);
-      }
-    }
-    avisar(estado);
-  } finally {
-    soltar();
-  }
-}
-
-function extrair(url: string, duracaoMs: number, urlDaPelicula?: string): Estado {
-  const existente = porUrl.get(url);
+function extrair(urlDaPelicula: string, duracaoMs: number): Estado {
+  const existente = porUrl.get(urlDaPelicula);
   if (existente) return existente;
   const estado: Estado = { passoMs: passoDaPelicula(duracaoMs), colunas: PELICULA.colunas, largura: PELICULA.largura, altura: PELICULA.altura, folha: null, prontos: new Set(), versao: 0, ouvintes: new Set() };
-  porUrl.set(url, estado);
+  porUrl.set(urlDaPelicula, estado);
   if (typeof document === 'undefined') return estado;
-  void (async () => {
-    if (urlDaPelicula && (await daPelicula(estado, urlDaPelicula))) return;
-    await daPrevia(estado, url, duracaoMs);
-  })().catch(() => {
-    porUrl.delete(url); // tenta de novo numa próxima montagem
-  });
+  void daPelicula(estado, urlDaPelicula);
   return estado;
 }
 
@@ -192,12 +81,12 @@ function extrair(url: string, duracaoMs: number, urlDaPelicula?: string): Estado
  * quando chegam quadros novos: a reprodução, que re-renderiza o editor
  * várias vezes por segundo, não redesenha nenhuma tira.
  */
-export function useQuadrosDoVideo(url: string | undefined, duracaoMs: number, urlDaPelicula?: string): QuadrosDoVideo | undefined {
+export function useQuadrosDoVideo(urlDaPelicula: string | undefined, duracaoMs: number): QuadrosDoVideo | undefined {
   const [versao, setVersao] = useState(0);
   const [estado, setEstado] = useState<Estado | null>(null);
   useEffect(() => {
-    if (!url || duracaoMs <= 0) return;
-    const e = extrair(url, duracaoMs, urlDaPelicula);
+    if (!urlDaPelicula || duracaoMs <= 0) return;
+    const e = extrair(urlDaPelicula, duracaoMs);
     setEstado(e);
     setVersao(e.versao);
     const ouvir = () => setVersao(e.versao);
@@ -205,7 +94,7 @@ export function useQuadrosDoVideo(url: string | undefined, duracaoMs: number, ur
     return () => {
       e.ouvintes.delete(ouvir);
     };
-  }, [url, duracaoMs, urlDaPelicula]);
+  }, [urlDaPelicula, duracaoMs]);
   return useMemo(() => {
     if (!estado) return undefined;
     return {

@@ -127,6 +127,8 @@ interface Props {
    * posição daquele trecho); Shift+arrastar muda a posição de todas.
    */
   onPosicionarBloco?: (inicioMs: number, fimMs: number, y: number) => void;
+  /** Tocou no vídeo onde passa uma animação (editor prático: ela vira o item escolhido). */
+  onTocarNaAnimacao?: (id: string) => void;
   /** Tocou na legenda do vídeo (editor prático: ela vira o item escolhido). */
   onTocarNaLegenda?: () => void;
   /** Gravando narração: toca SEM SOM a partir daqui (null para). */
@@ -160,6 +162,7 @@ export function Palco({
   onAjustarLegenda,
   onPosicionarBloco,
   onTocarNaLegenda,
+  onTocarNaAnimacao,
   gravandoDe = null,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
@@ -1372,6 +1375,16 @@ export function Palco({
             }}
           />
         )}
+
+        {/* Sem a faixa da timeline, a animação se escolhe tocando no vídeo: a
+            camada fica abaixo das alças de texto, legenda e imagem. */}
+        {!tocando &&
+          onTocarNaAnimacao &&
+          !animacaoEditada &&
+          (() => {
+            const a = (plan.mediaLayers ?? []).find((m) => m.kind === 'html' && !!m.composicao && posicaoMs >= m.timelineStartMs && posicaoMs < m.timelineStartMs + m.durationMs);
+            return a ? <button type="button" className="palco__toque-na-animacao" aria-label="Editar a animação" onClick={() => onTocarNaAnimacao(a.id)} /> : null;
+          })()}
 
         {/* Logo e imagem: mesmas posições e tamanhos do render. */}
         {urlDoAsset &&
