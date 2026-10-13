@@ -38,6 +38,9 @@
       "@prisma/client",
       "prisma",
       "next"
-    ]
+    ],
+    "patchedDependencies": {
+      "jassub@2.5.16": "patches/jassub@2.5.16.patch"
+    }
   }
 }

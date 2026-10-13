@@ -21,6 +21,8 @@ ENV PATH=$PNPM_HOME:$PATH
 # ---------- Dependencias Node ----------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# As correções locais de dependências (pnpm patch): sem elas o install falha.
+COPY patches ./patches
 COPY studio/workers/transcription/package.json ./studio/workers/transcription/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/
@@ -50,6 +52,8 @@ RUN pnpm --filter @makucho/studio-worker-transcription build
 # ---------- Dependencias de producao ----------
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# As correções locais de dependências (pnpm patch): sem elas o install falha.
+COPY patches ./patches
 COPY studio/workers/transcription/package.json ./studio/workers/transcription/
 COPY studio/packages/contracts/package.json ./studio/packages/contracts/
 COPY studio/packages/database/package.json ./studio/packages/database/

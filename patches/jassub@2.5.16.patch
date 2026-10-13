@@ -1,0 +1,19 @@
+diff --git a/dist/worker/worker.js b/dist/worker/worker.js
+index 6e86ddd4aad9fd186088753dc266793b46f41a7d..a084b5bf4241edbf25ee18a5f4a4b39ef02a8a0a 100644
+--- a/dist/worker/worker.js
++++ b/dist/worker/worker.js
+@@ -33,7 +33,13 @@ export class ASSRenderer {
+         // }).then(adapter => adapter?.requestDevice())
+         try {
+             const testCanvas = new OffscreenCanvas(1, 1);
+-            if (testCanvas.getContext('webgl2')) {
++            // MAKUCHO: no Android, desenho 2D. Num Android 10 o canvas WebGL da legenda,
++            // atualizado a cada quadro, mostrava preto onde devia ser transparente --
++            // e cobria o vídeo inteiro, sobrando só o texto.
++            if (/Android/i.test(self.navigator?.userAgent ?? '')) {
++                this._gpurender = new Canvas2DRenderer();
++            }
++            else if (testCanvas.getContext('webgl2')) {
+                 this._gpurender = new WebGL2Renderer();
+             }
+             else {

@@ -20,6 +20,8 @@ ENV PATH=$PNPM_HOME:$PATH
 # o Docker reaproveita esta camada e pula a instalacao inteira.
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# As correções locais de dependências (pnpm patch): sem elas o install falha.
+COPY patches ./patches
 COPY portal/apps/api/package.json ./portal/apps/api/
 COPY portal/packages/database/package.json ./portal/packages/database/
 COPY portal/packages/types/package.json ./portal/packages/types/
@@ -54,6 +56,8 @@ RUN pnpm --filter @makucho/api build
 # Arvore separada, sem devDependencies.
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# As correções locais de dependências (pnpm patch): sem elas o install falha.
+COPY patches ./patches
 COPY portal/apps/api/package.json ./portal/apps/api/
 COPY portal/packages/database/package.json ./portal/packages/database/
 COPY portal/packages/types/package.json ./portal/packages/types/

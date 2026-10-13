@@ -16,6 +16,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # ---------- Dependencias ----------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# As correções locais de dependências (pnpm patch): sem elas o install falha.
+COPY patches ./patches
 COPY portal/apps/web/package.json ./portal/apps/web/
 COPY portal/packages/types/package.json ./portal/packages/types/
 COPY portal/packages/validation/package.json ./portal/packages/validation/
