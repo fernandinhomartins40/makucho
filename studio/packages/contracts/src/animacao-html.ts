@@ -330,7 +330,35 @@ ${comFundo ? `#area-fundo { position: absolute; inset: 0; background:
  * miolo): política de conteúdo sem rede, raiz da composição no formato
  * do HyperFrames e uma única linha do tempo pausada, `tl`.
  */
-export function documentoDaComposicao(c: ComposicaoHtml, o: OpcoesDoDocumento): string {
+/**
+ * Animações gravadas antes de correções no CSS dos elementos e no runtime
+ * das cenas: o CSS e o script vão gravados dentro da animação, então a
+ * correção é aplicada aqui, ao montar a página (vale para a prévia e para o
+ * vídeo do render). Ver VERSAO_DO_VIDEO.
+ */
+const CORRECOES_DO_CSS: ReadonlyArray<[string, string]> = [
+  // O GSAP já grava o ponto de giro das peças do SVG; com fill-box o navegador deslocava de novo
+  // (o ponteiro do relógio saía do centro, a fatia da pizza do círculo, os traços da explosão espalhavam).
+  ['.ast * { transform-box: fill-box; }', ''],
+  ['.ast .onda { fill: none; stroke: var(--cor-destaque); stroke-width: 3; }', '.ast .onda { fill: none; stroke: var(--cor-destaque); stroke-width: 3; opacity: 0; }'],
+];
+const CORRECOES_DO_SCRIPT: ReadonlyArray<[string, string]> = [
+  // O traço fica escondido até começar a se desenhar (antes aparecia um ponto solto).
+  [
+    "else if (k === 'desenha') tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: num(el, 'data-ate', 0), duration: d, ease: 'power2.inOut' }, t);",
+    "else if (k === 'desenha') { tl.fromTo(el, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.01 }, t); tl.fromTo(el, { strokeDashoffset: 1 }, { strokeDashoffset: num(el, 'data-ate', 0), duration: d, ease: 'power2.inOut' }, t); }",
+  ],
+];
+function comCorrecoes(c: ComposicaoHtml): ComposicaoHtml {
+  let css = c.css;
+  for (const [de, para] of CORRECOES_DO_CSS) css = css.split(de).join(para);
+  let script = c.script;
+  for (const [de, para] of CORRECOES_DO_SCRIPT) script = script.split(de).join(para);
+  return css === c.css && script === c.script ? c : { ...c, css, script };
+}
+
+export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocumento): string {
+  const c = comCorrecoes(original);
   const W = o.largura ?? 1080;
   const H = o.altura ?? 1920;
   const area = areaDaComposicao(c, W, H);
@@ -464,7 +492,9 @@ function cyrb53(s: string, semente = 0): string {
 // v4: a escala e o tema em variáveis (--t-*, --cor-*, --fonte-*).
 // v5: componentes do catálogo do HyperFrames (data-hf).
 // v6: fontes dos componentes em base64 no documento.
-const VERSAO_DO_VIDEO = 'v6';
+// v7: correções dos elementos animados aplicadas ao montar (comCorrecoes): o vídeo de cada
+//     animação já preparada é refeito com o relógio, a pizza, a explosão... no lugar.
+const VERSAO_DO_VIDEO = 'v7';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área
