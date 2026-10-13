@@ -48,7 +48,7 @@ import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import type { DestinoSimples } from '../../components/editor/EditorSimples';
 import { EditorPratico } from '../../components/editor/EditorPratico';
-import { itensNaCena, legendaNoInstante, type ItemNaCena } from '../../components/editor/naCena';
+import { itemDoAlvo, itensDoVideo, itensNaCena, legendaNoInstante, type ItemNaCena } from '../../components/editor/naCena';
 import { EtiquetaDoItem, type Alvo, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
 import { focoDoItem } from '../../lib/focoDaIa';
 import { BarraMovel, type AcaoMovel } from '../../components/editor/BarraMovel';
@@ -73,7 +73,7 @@ import { DivisorDaTimeline } from '../../components/editor/DivisorDaTimeline';
 import { DialogoDeExportacao } from '../../components/exportacao/DialogoDeExportacao';
 import { BotaoDeTema } from '../../components/shell/BotaoDeTema';
 import { useExportacoes } from '../../lib/exportacao/tarefas';
-import { esconderCamadas, ehCamadaOcultavel, type CamadaOcultavel } from '../../lib/camadasOcultas';
+import { esconderCamadas, ehCamadaOcultavel, CAMADAS_OCULTAVEIS, type CamadaOcultavel } from '../../lib/camadasOcultas';
 import type { OpcoesDeExportacao } from '../../lib/exportacao/opcoes';
 import { tempo } from '../../components/editor/funcoes';
 import {
@@ -116,6 +116,7 @@ import {
   IconeTexto,
   IconeMicrofone,
   IconeCelular,
+  IconeFechar,
 } from '../../components/icones';
 
 export default function EditorPage() {
@@ -815,6 +816,17 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     setPainelAberto(true);
     if (noCelular() || simples) setFolha('painel');
   };
+  /**
+   * A biblioteca acabou de pôr algo no vídeo. No visual prático a gaveta
+   * dela sai da frente: um texto novo abre para escrever, o resto fica
+   * escolhido no vídeo, pronto para mover e ajustar.
+   */
+  const selecionarDaBiblioteca = (item: ItemDaTimeline) => {
+    setItemSelecionado(item);
+    if (!simples) return;
+    setSelecionado(null);
+    setFolha(item.tipo === 'elemento' ? 'inspector' : null);
+  };
   const abrirBiblioteca = (c: CategoriaDaBiblioteca) => {
     setCategoriaDaBiblioteca(c);
     abrirPainel('biblioteca');
@@ -1100,8 +1112,20 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       setItemSelecionado(i.alvo.item);
     }
   };
-  const chaveDoSelecionado = itemSelecionado ? (itemSelecionado.tipo === 'trilha' ? 'trilha' : `${itemSelecionado.tipo}-${itemSelecionado.id}`) : selecionado ? `clipe-${selecionado}` : null;
-  const naCenaSelecionado = naCena.find((i) => i.chave === chaveDoSelecionado);
+  /** Leva o vídeo até o item e o escolhe (a lista "Tudo no vídeo"). */
+  const irParaItem = (i: ItemNaCena) => {
+    const ms = i.alvo.tipo === 'item' && i.alvo.item.tipo === 'corte' ? i.alvo.item.ms : i.inicioMs;
+    setPosicaoMs(Math.min(Math.max(0, duracaoMs - 1), Math.max(0, ms)));
+    escolherNaCena(i);
+  };
+  // A lista de tudo e o item escolhido saem do plano inteiro: o que está
+  // escondido continua lá, e o escolhido vale mesmo fora do quadro atual.
+  const tudoNoVideo = useMemo(() => (plano && simples ? itensDoVideo(plano, [...desligados]) : []), [plano, simples, desligados]);
+  const escolhido = useMemo(() => {
+    if (!plano || !simples) return null;
+    if (itemSelecionado) return itemDoAlvo(plano, { tipo: 'item', item: itemSelecionado }, [...desligados]);
+    return selecionado ? itemDoAlvo(plano, { tipo: 'clipe', id: selecionado }, [...desligados]) : null;
+  }, [plano, simples, itemSelecionado, selecionado, desligados]);
 
   // ---------- Telas ----------
   if (erroDeCarga) {
@@ -1156,8 +1180,8 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
         return executarVarias(plano.clips.map((c) => ({ op: 'ajustar_audio_do_clipe' as const, clipId: c.id, muted: somOriginalMudo ? null : true })));
       case 'silencios':
         return tirarAsPausas();
-      case 'novo-texto':
-        return executar({
+      case 'novo-texto': {
+        const novo = comIdsNovos<Extract<TimelineOperation, { op: 'adicionar_overlay' }>>({
           op: 'adicionar_overlay',
           component: 'Destaque',
           text: 'Seu destaque',
@@ -1165,8 +1189,21 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           durationMs: Math.min(2500, Math.max(300, duracaoMs - noCursor)),
           style: { ...(PRESETS_DE_TEXTO.find((x) => x.id === 'marca_texto')?.estilo ?? {}), x: 0.5, y: 0.3 },
         });
-      case 'nova-legenda':
-        return executar({ op: 'adicionar_legenda', timelineStartMs: noCursor, durationMs: 1500, text: 'Nova legenda' });
+        executar(novo);
+        // No visual prático o texto novo já abre para escrever.
+        if (simples && novo.id) selecionarDaBiblioteca({ tipo: 'elemento', id: novo.id, aba: 'texto' });
+        return;
+      }
+      case 'nova-legenda': {
+        const nova = comIdsNovos<Extract<TimelineOperation, { op: 'adicionar_legenda' }>>({ op: 'adicionar_legenda', timelineStartMs: noCursor, durationMs: 1500, text: 'Nova legenda' });
+        executar(nova);
+        if (simples && nova.id) {
+          setSelecionado(null);
+          setItemSelecionado({ tipo: 'legenda', id: nova.id, manualId: nova.id, wordIds: [], inicioMs: noCursor, fimMs: noCursor + 1500, texto: 'Nova legenda' });
+          setFolha('inspector');
+        }
+        return;
+      }
       case 'legenda-estilo':
         return abrirNoSimples('legendas');
       case 'legenda-corrigir':
@@ -1362,7 +1399,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       copiado={copiado}
       onCopiar={(c) => {
         setCopiado(c);
-        setAviso(`${c.rotulo} copiado. Leve o cursor e use "Colar" em Mais opções.`);
+        setAviso(noPratico ? `${c.rotulo} copiado. Pare o vídeo onde quiser, escolha um item e use "Colar aqui" em Mais.` : `${c.rotulo} copiado. Leve o cursor e use "Colar" em Mais opções.`);
       }}
       onOperacao={executar}
       onOperacoes={executarVarias}
@@ -1420,13 +1457,34 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       itens={naCena}
       onEscolher={escolherNaCena}
       selecionado={
-        chaveDoSelecionado ? (
+        selecionado || itemSelecionado ? (
           <div className="pratico__cena">
-            <span className="pratico__cena-titulo">{naCenaSelecionado ? [naCenaSelecionado.rotulo, naCenaSelecionado.detalhe].filter(Boolean).join(' · ') : 'Escolhido'}</span>
+            <div className="pratico__escolhido">
+              <span>
+                <strong>{escolhido ? [escolhido.rotulo, escolhido.detalhe].filter(Boolean).join(' · ') : 'Escolhido'}</strong>
+                {escolhido && <small>{Number.isFinite(escolhido.fimMs) ? `aparece de ${tempo(escolhido.inicioMs)} a ${tempo(escolhido.fimMs)}` : `de ${tempo(escolhido.inicioMs)} até o fim`}</small>}
+              </span>
+              <button
+                type="button"
+                className="botao-icone"
+                aria-label="Fechar"
+                onClick={() => {
+                  setSelecionado(null);
+                  setItemSelecionado(null);
+                }}
+              >
+                <IconeFechar size={18} />
+              </button>
+            </div>
             {etiquetaDoItem(true)}
           </div>
         ) : undefined
       }
+      {...(escolhido ? { faixa: { inicioMs: escolhido.inicioMs, fimMs: escolhido.fimMs } } : {})}
+      tudo={tudoNoVideo}
+      onIrPara={irParaItem}
+      camadas={CAMADAS_OCULTAVEIS.map((id) => ({ id, rotulo: ROTULO_DA_CAMADA[id], oculta: ocultas.has(id) }))}
+      onAlternarCamada={(id) => alternarCamada(id as CamadaOcultavel)}
       onAcao={executarAcaoMovel}
       {...(!semIa ? { onPedirIa: () => abrirPainel('ia') } : {})}
       onTrechos={() => abrirPainel('ia')}
@@ -1675,7 +1733,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
               marca={marcaDoVideo}
               onOperacao={executar}
               onOperacoes={executarVarias}
-              onSelecionarItem={(item) => setItemSelecionado(item)}
+              onSelecionarItem={selecionarDaBiblioteca}
               urlDoAsset={apiAssets.url}
               transcricao={transcricao}
               desligados={[...desligados]}
@@ -1743,7 +1801,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
                 posicaoMs={posicaoMs}
                 onOperacao={executar}
                 onOperacoes={executarVarias}
-                onSelecionarItem={(item) => setItemSelecionado(item)}
+                onSelecionarItem={selecionarDaBiblioteca}
                 urlDoAsset={apiAssets.url}
                 transcricao={transcricao}
                 desligados={[...desligados]}
@@ -1819,7 +1877,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
             onAjustarLegenda={(mudanca) => executar({ op: 'configurar_legenda', ...mudanca })}
             onPosicionarBloco={(inicioMs, fimMs, y) => {
               executar({ op: 'posicionar_legenda_no_trecho', inicioMs: Math.round(inicioMs), fimMs: Math.round(fimMs), y });
-              setAviso('Só esta legenda mudou de lugar. Para mover todas, segure Shift ao arrastar ou use Legendas → Posição.');
+              setAviso(simples ? 'Só esta legenda mudou de lugar. Para mover todas, use Mais ajustes → Estilo da legenda.' : 'Só esta legenda mudou de lugar. Para mover todas, segure Shift ao arrastar ou use Legendas → Posição.');
             }}
             midiaSelecionada={itemSelecionado?.tipo === 'midia' ? itemSelecionado.id : null}
             onSelecionarMidia={(id) => setItemSelecionado({ tipo: 'midia', id })}
@@ -2109,6 +2167,18 @@ function SobreOVideo({
     </details>
   );
 }
+
+/** As faixas da timeline, com o nome que o visual prático mostra para esconder e mostrar. */
+const ROTULO_DA_CAMADA: Record<CamadaOcultavel, string> = {
+  midia: 'Imagens e animações',
+  textos: 'Textos',
+  elementos: 'Logo e elementos',
+  legendas: 'Legenda',
+  efeitos: 'Efeitos',
+  audio: 'Som do vídeo',
+  sons: 'Sons',
+  trilha: 'Música',
+};
 
 const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
   ia: 'IA',

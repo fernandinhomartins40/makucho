@@ -12,7 +12,12 @@
 //   editando  o quadro continua o mesmo. Embaixo, o que está NA TELA
 //             AGORA (legenda, texto, imagem, animação, música...) para
 //             tocar e mudar, "Adicionar", "Pedir à IA" e "Mais ajustes".
-//             Com algo escolhido, a bandeja mostra as ações dele.
+//             Com algo escolhido, a bandeja mostra as ações dele e a
+//             barra de tempo marca onde ele aparece no vídeo.
+//
+// O que na timeline se faz arrastando, aqui se faz parando o vídeo no
+// ponto e tocando em "Começar aqui" ou "Terminar aqui". "Tudo no vídeo"
+// lista o que há em qualquer momento e leva até lá.
 //
 // Tudo o que a timeline faz continua aqui; quem quiser as faixas troca
 // para o editor completo em "Mais ajustes".
@@ -59,6 +64,7 @@ import {
   IconeSalvo,
   IconeSalvando,
   IconeAviso,
+  IconeMenu,
 } from '../icones';
 
 interface Props {
@@ -88,6 +94,15 @@ interface Props {
   onEscolher: (item: ItemNaCena) => void;
   /** As ações do que está escolhido (a etiqueta do item); com isto, saem os chips. */
   selecionado?: React.ReactNode;
+  /** Onde o escolhido aparece no vídeo: marcado na barra de tempo. */
+  faixa?: { inicioMs: number; fimMs: number };
+  /** Tudo o que o vídeo tem, em qualquer momento. */
+  tudo: ItemNaCena[];
+  /** Leva o vídeo até o item e o escolhe. */
+  onIrPara: (item: ItemNaCena) => void;
+  /** As partes do vídeo que dá para esconder sem apagar (o olho das faixas). */
+  camadas: Array<{ id: string; rotulo: string; oculta: boolean }>;
+  onAlternarCamada: (id: string) => void;
 
   /** As mesmas ações da barra do editor completo no celular. */
   onAcao: (a: AcaoMovel) => void;
@@ -103,7 +118,8 @@ interface Props {
   avisos?: React.ReactNode;
 }
 
-type Menu = 'adicionar' | 'mais';
+type Menu = 'adicionar' | 'mais' | 'tudo' | 'camadas';
+const TITULO_DO_MENU: Record<Menu, string> = { adicionar: 'Adicionar ao vídeo', mais: 'Mais ajustes', tudo: 'Tudo no vídeo', camadas: 'Mostrar e esconder' };
 type Opcao = { id: string; rotulo: string; Icone: Icon; fazer: () => void };
 
 export function EditorPratico({
@@ -126,6 +142,11 @@ export function EditorPratico({
   itens,
   onEscolher,
   selecionado,
+  faixa,
+  tudo,
+  onIrPara,
+  camadas,
+  onAlternarCamada,
   onAcao,
   onPedirIa,
   onTrechos,
@@ -162,7 +183,7 @@ export function EditorPratico({
     setMenu(null);
     onAcao(a);
   };
-  const OPCOES: Record<Menu, Opcao[]> = {
+  const OPCOES: Record<'adicionar' | 'mais', Opcao[]> = {
     adicionar: [
       { id: 'texto', rotulo: 'Texto', Icone: IconeTexto, fazer: escolher('novo-texto') },
       { id: 'modelos', rotulo: 'Texto pronto', Icone: IconeMaisFerramentas, fazer: escolher('modelos-texto') },
@@ -186,6 +207,7 @@ export function EditorPratico({
       { id: 'marca', rotulo: 'Minha marca', Icone: IconeMarca, fazer: escolher('marca') },
       { id: 'silencios', rotulo: 'Tirar os silêncios', Icone: IconeIA, fazer: escolher('silencios') },
       { id: 'silenciar', rotulo: somOriginalMudo ? 'Ligar o som do vídeo' : 'Tirar o som do vídeo', Icone: somOriginalMudo ? IconeVolume : IconeMudo, fazer: escolher('silenciar') },
+      { id: 'camadas', rotulo: 'Mostrar e esconder', Icone: IconeOlho, fazer: () => setMenu('camadas') },
       {
         id: 'trechos',
         rotulo: 'Trechos do vídeo',
@@ -240,7 +262,7 @@ export function EditorPratico({
           {editando ? (
             <span className="pratico__salvo" role="status" aria-live="polite" data-erro={salvamento === 'erro' || undefined}>
               {salvamento === 'salvando' ? <IconeSalvando size={16} /> : salvamento === 'erro' ? <IconeAviso size={16} /> : <IconeSalvo size={16} />}
-              {salvamento === 'salvando' ? 'Salvando…' : salvamento === 'erro' ? 'Não salvo' : 'Salvo'}
+              <span>{salvamento === 'salvando' ? 'Salvando…' : salvamento === 'erro' ? 'Não salvo' : 'Salvo'}</span>
             </span>
           ) : (
             <strong className="pratico__titulo">{titulo}</strong>
@@ -275,7 +297,19 @@ export function EditorPratico({
               </button>
             )}
             <span>{tempo(agora)}</span>
-            <input type="range" min={0} max={limite} step={50} value={agora} aria-label="Posição no vídeo" onChange={(e) => onPosicao(Number(e.target.value))} />
+            <span className="pratico__trilho">
+              {/* Onde o item escolhido aparece: a "faixa" dele, sem timeline. */}
+              {faixa && editando && (
+                <i
+                  aria-hidden
+                  style={{
+                    left: `${(Math.min(faixa.inicioMs, limite) / limite) * 100}%`,
+                    width: `${Math.max(1.5, ((Math.min(faixa.fimMs, limite) - Math.min(faixa.inicioMs, limite)) / limite) * 100)}%`,
+                  }}
+                />
+              )}
+              <input type="range" min={0} max={limite} step={50} value={agora} aria-label="Posição no vídeo" onChange={(e) => onPosicao(Number(e.target.value))} />
+            </span>
             <span>{tempo(duracaoMs)}</span>
           </div>
 
@@ -300,6 +334,13 @@ export function EditorPratico({
                       </span>
                     </button>
                   ))}
+                  <button type="button" className="pratico__chip" data-tudo onClick={() => setMenu('tudo')}>
+                    <IconeMenu size={18} />
+                    <span>
+                      <strong>Tudo no vídeo</strong>
+                      <small>ver a lista</small>
+                    </span>
+                  </button>
                 </div>
               </div>
               <nav className="pratico__acoes" aria-label="Outras mudanças">
@@ -326,21 +367,59 @@ export function EditorPratico({
       {menu && (
         <>
           <div className="pratico__veu" aria-hidden onClick={() => setMenu(null)} />
-          <section className="pratico__menu" role="dialog" aria-label={menu === 'adicionar' ? 'Adicionar ao vídeo' : 'Mais ajustes'}>
+          <section className="pratico__menu" role="dialog" aria-label={TITULO_DO_MENU[menu]}>
             <div className="pratico__menu-topo">
-              <h2>{menu === 'adicionar' ? 'Adicionar ao vídeo' : 'Mais ajustes'}</h2>
+              <h2>{TITULO_DO_MENU[menu]}</h2>
               <button type="button" className="botao-icone" aria-label="Fechar" onClick={() => setMenu(null)}>
                 <IconeFechar size={18} />
               </button>
             </div>
-            <div className="pratico__opcoes">
-              {OPCOES[menu].map((o) => (
-                <button key={o.id} type="button" onClick={o.fazer}>
-                  <o.Icone size={26} />
-                  <span>{o.rotulo}</span>
-                </button>
-              ))}
-            </div>
+            {(menu === 'adicionar' || menu === 'mais') && (
+              <div className="pratico__opcoes">
+                {OPCOES[menu].map((o) => (
+                  <button key={o.id} type="button" onClick={o.fazer}>
+                    <o.Icone size={26} />
+                    <span>{o.rotulo}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* A lista que faz as vezes das faixas: tocar leva o vídeo até o item e o escolhe. */}
+            {menu === 'tudo' && (
+              <div className="pratico__lista">
+                {tudo.map((i) => (
+                  <button
+                    key={i.chave}
+                    type="button"
+                    onClick={() => {
+                      setMenu(null);
+                      onIrPara(i);
+                    }}
+                  >
+                    <i.Icone size={20} />
+                    <span>
+                      <strong>{i.rotulo}</strong>
+                      {i.detalhe && <small>{i.detalhe}</small>}
+                    </span>
+                    <time>{Number.isFinite(i.fimMs) ? `${tempo(i.inicioMs)} – ${tempo(i.fimMs)}` : `${tempo(i.inicioMs)} até o fim`}</time>
+                  </button>
+                ))}
+              </div>
+            )}
+            {menu === 'camadas' && (
+              <div className="pratico__lista">
+                <p>Esconder tira do vídeo e da exportação sem apagar: é só mostrar de novo.</p>
+                {camadas.map((c) => (
+                  <button key={c.id} type="button" aria-pressed={!c.oculta} onClick={() => onAlternarCamada(c.id)}>
+                    {c.oculta ? <IconeOlhoFechado size={20} /> : <IconeOlho size={20} />}
+                    <span>
+                      <strong>{c.rotulo}</strong>
+                    </span>
+                    <time>{c.oculta ? 'Escondido' : 'Aparecendo'}</time>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}

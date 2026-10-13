@@ -21,9 +21,15 @@
 .editor[data-modo='pratico'] .editor__palco {
   position: absolute;
   inset: 0;
-  display: grid !important;
-  place-items: center;
-  gap: 0;
+  /* Uma caixa só, com o quadro no meio. No celular o editor completo
+     divide o palco em três colunas (botões, quadro, botões): sem desfazer
+     a grade, o quadro caía na coluna de 58 px dos botões. */
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  grid-template: none !important;
+  gap: 0 !important;
   padding: 0 !important;
   container-type: size;
 }
@@ -43,9 +49,14 @@
 
 .editor[data-modo='pratico'] .editor__palco > .palco__quadro {
   grid-area: auto !important;
+  flex: 0 0 auto !important;
+  align-self: center !important;
   width: min(100cqw, calc(100cqh / var(--quadro-hw, 1.7778))) !important;
+  min-width: 0;
+  max-width: none !important;
   height: auto !important;
-  max-height: 100cqh;
+  max-height: none !important;
+  margin: 0 !important;
   aspect-ratio: var(--quadro-ar, 9 / 16);
   border-radius: 0;
   box-shadow: none;
@@ -224,6 +235,13 @@
   opacity: 0.85;
 }
 
+/* Em tela estreita fica só o ícone: o texto saía cortado ("Sal"). */
+@media (max-width: 479px) {
+  .pratico__salvo > span {
+    display: none;
+  }
+}
+
 .pratico__salvo[data-erro] {
   color: #fca5a5;
   opacity: 1;
@@ -293,11 +311,28 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pratico__tempo input {
+.pratico__trilho {
+  position: relative;
+  display: flex;
   flex: 1;
+  align-items: center;
   min-width: 0;
+}
+
+.pratico__tempo input {
+  width: 100%;
   height: 32px;
   accent-color: var(--accent);
+}
+
+/* Onde o item escolhido aparece no vídeo: uma barra logo abaixo do trilho. */
+.pratico__trilho > i {
+  position: absolute;
+  bottom: 1px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .pratico[data-estado='editando'] .pratico__tempo .pratico__redondo {
@@ -391,6 +426,36 @@
   white-space: nowrap;
 }
 
+.pratico__chip[data-tudo] {
+  border-style: dashed;
+  background: none;
+}
+
+.pratico__escolhido {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--e2);
+}
+
+.pratico__escolhido > span {
+  display: grid;
+  min-width: 0;
+}
+
+.pratico__escolhido strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pratico__escolhido small {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .pratico__acoes {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
@@ -425,10 +490,11 @@
 /* ---------- As ações do que está escolhido (EtiquetaDoItem), na bandeja ---------- */
 
 .etiqueta-do-item[data-rotulos] {
-  position: static;
+  position: relative;
+  inset: auto;
   z-index: auto;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
   gap: 6px;
   padding: 0;
   border: 0;
@@ -445,7 +511,7 @@
 .etiqueta-do-item[data-rotulos] .etiqueta-do-item__botao {
   align-content: center;
   gap: 4px;
-  width: 72px;
+  width: 100%;
   height: auto;
   min-height: 58px;
   padding: 8px 2px 6px;
@@ -462,7 +528,30 @@
   border-color: var(--primary);
 }
 
-/* ---------- "Adicionar" e "Mais ajustes" ---------- */
+/* O mini menu de uma ação (velocidade, som, mais) abre por cima das
+   ações, de lado a lado: preso ao botão, sairia da tela nas pontas. */
+.etiqueta-do-item[data-rotulos] .etiqueta-do-item__lugar {
+  position: static;
+}
+
+.etiqueta-do-item[data-rotulos] .etiqueta-do-item__menu {
+  right: 0;
+  left: 0;
+  transform: none;
+}
+
+.etiqueta-do-item[data-rotulos] .etiqueta-do-item__menu button {
+  min-height: 44px;
+  font-size: 15px;
+  white-space: normal;
+}
+
+/* Sem timeline, "arraste na faixa" não existe: o tempo se muda na bandeja. */
+.editor[data-modo='pratico'] .dica-da-timeline {
+  display: none;
+}
+
+/* ---------- "Adicionar", "Mais ajustes", "Tudo no vídeo" ---------- */
 
 .pratico__veu {
   position: fixed;
@@ -519,4 +608,54 @@
   .editor[data-modo='pratico'][data-folha] :is(.editor__ia, .editor__inspector) {
     animation: none;
   }
+}
+
+.pratico__lista {
+  display: grid;
+  gap: 6px;
+}
+
+.pratico__lista > p {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.pratico__lista button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pratico__lista button > span {
+  display: grid;
+  min-width: 0;
+}
+
+.pratico__lista strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pratico__lista small,
+.pratico__lista time {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pratico__lista button[aria-pressed='false'] {
+  opacity: 0.6;
 }

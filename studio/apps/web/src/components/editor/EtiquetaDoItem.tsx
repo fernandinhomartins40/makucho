@@ -30,6 +30,8 @@ import {
   IconeCor,
   IconeCortar,
   IconeIA,
+  IconeAnterior,
+  IconeProximo,
 } from '../icones';
 
 /** O que foi copiado: a operação de "adicionar" pronta, sem posição. */
@@ -95,7 +97,8 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
   }, [seletor, rotulos]);
 
   if (!alvo) return null;
-  const acoes = acoesDo(alvo, { plan, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar });
+  // Na bandeja, quem fecha é o X ao lado do nome do item.
+  const acoes = acoesDo(alvo, { plan, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar, rotulos }).filter((a) => !rotulos || a.id !== 'fechar');
   if (!acoes.length) return null;
   // Logo depois de "Editar": pedir à IA com este item como assunto.
   if (onPedirIa) acoes.splice(1, 0, { id: 'ia', rotulo: 'Pedir à IA sobre este item', curto: 'Pedir à IA', Icone: IconeIA, fazer: onPedirIa, ia: true });
@@ -180,7 +183,7 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
     const dentro = t ? c.posicaoMs - t.inicioMs : -1;
     const noCursor = t && dentro > 300 && dentro < t.duracaoMs - 300 ? clip.sourceStartMs + dentro * t.velocidade : null;
     const v = velocidadeDoTrecho(clip);
-    return [
+    const lista: Acao[] = [
       editar,
       { id: 'dividir', rotulo: 'Dividir no cursor', curto: 'Dividir aqui', Icone: IconeDividir, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'dividir_clipe', clipId: clip.id, sourceMs: Math.round(noCursor) }) },
       { id: 'cortar', rotulo: 'Cortar o começo até o cursor', curto: 'Cortar início', Icone: IconeCortar, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'ajustar_corte', clipId: clip.id, sourceStartMs: Math.round(noCursor), sourceEndMs: clip.sourceEndMs }) },
@@ -222,6 +225,47 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
       },
       fechar,
     ];
+    if (!c.rotulos) return lista;
+
+    // Na bandeja do editor prático: cortar o fim e mudar a ordem (na
+    // timeline, puxar a borda e arrastar o trecho); o menos usado vai em "Mais".
+    const acao = (id: string) => lista.find((a) => a.id === id)!;
+    const ordem = c.plan.clips.map((x) => x.id);
+    const posicao = ordem.indexOf(clip.id);
+    const trocarCom = (outro: number) => {
+      const nova = [...ordem];
+      nova[posicao] = ordem[outro]!;
+      nova[outro] = clip.id;
+      c.onOperacao({ op: 'reordenar', clipIds: nova });
+    };
+    return [
+      editar,
+      acao('dividir'),
+      acao('cortar'),
+      {
+        id: 'cortar-fim',
+        rotulo: 'Cortar o fim a partir daqui',
+        curto: 'Cortar fim',
+        Icone: IconeProximo,
+        desligada: noCursor === null,
+        fazer: () => noCursor !== null && c.onOperacao({ op: 'ajustar_corte', clipId: clip.id, sourceStartMs: clip.sourceStartMs, sourceEndMs: Math.round(noCursor) }),
+      },
+      acao('velocidade'),
+      acao('som'),
+      {
+        id: 'mais',
+        rotulo: 'Mais opções',
+        curto: 'Mais',
+        Icone: IconeMaisOpcoes,
+        menu: [
+          { rotulo: 'Duplicar este trecho', fazer: () => acao('duplicar').fazer?.() },
+          { rotulo: 'Cor e filtro deste trecho', fazer: c.onCor },
+          ...(posicao > 0 ? [{ rotulo: 'Passar para antes do trecho anterior', fazer: () => trocarCom(posicao - 1) }] : []),
+          ...(posicao < ordem.length - 1 ? [{ rotulo: 'Passar para depois do próximo trecho', fazer: () => trocarCom(posicao + 1) }] : []),
+        ],
+      },
+      acao('excluir'),
+    ];
   }
 
   // ---------- Itens das faixas ----------
@@ -249,6 +293,13 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
       },
     });
   }
+  // Na bandeja do editor prático, o tempo do item: começa e termina onde o vídeo está parado.
+  if (c.rotulos) {
+    const comecar = mover ?? (i.tipo === 'trilha' && c.plan.music ? (ms: number): TimelineOperation => ({ op: 'configurar_musica', timelineStartMs: ms }) : null);
+    const terminar = terminarItem(c.plan, i, c.posicaoMs);
+    if (comecar) lista.push({ id: 'comecar', rotulo: 'Começar aqui', Icone: IconeAnterior, fazer: () => c.onOperacao(comecar(Math.round(c.posicaoMs))) });
+    if (comecar) lista.push({ id: 'terminar', rotulo: 'Terminar aqui', Icone: IconeProximo, desligada: !terminar, fazer: () => terminar && c.onOperacao(terminar) });
+  }
   if (i.tipo === 'audio') {
     const clip = c.plan.clips.find((x) => x.id === i.id);
     lista.push({ id: 'mudo', rotulo: clip?.audio?.muted ? 'Ligar o som' : 'Deixar mudo', Icone: clip?.audio?.muted ? IconeMudo : IconeVolume, fazer: () => c.onOperacao({ op: 'ajustar_audio_do_clipe', clipId: i.id, muted: clip?.audio?.muted ? null : true }) });
@@ -257,14 +308,14 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
   if (criar) mais.push({ rotulo: 'Copiar', fazer: () => c.onCopiar({ rotulo: criar.rotulo, criar: criar.criar }) });
   if (c.copiado) {
     mais.push({
-      rotulo: `Colar ${c.copiado.rotulo.toLowerCase()} no cursor`,
+      rotulo: c.rotulos ? `Colar ${c.copiado.rotulo.toLowerCase()} aqui` : `Colar ${c.copiado.rotulo.toLowerCase()} no cursor`,
       fazer: () => {
         const o = c.copiado?.criar(Math.round(c.posicaoMs));
         if (o) c.onOperacao(o);
       },
     });
   }
-  if (mover) mais.push({ rotulo: 'Trazer para o cursor', fazer: () => c.onOperacao(mover(Math.round(c.posicaoMs))) });
+  if (mover && !c.rotulos) mais.push({ rotulo: 'Trazer para o cursor', fazer: () => c.onOperacao(mover(Math.round(c.posicaoMs))) });
   // Legenda da fala dividida antes: juntar de novo com a anterior; e a pinça volta ao tempo natural.
   if (i.tipo === 'legenda' && !i.manualId && i.wordIds[0]) {
     const primeira = i.wordIds[0];
@@ -366,6 +417,50 @@ function removerItem(plan: EditPlanV1, i: ItemDaTimeline): TimelineOperation | n
       return { op: 'definir_transicao', clipId: i.clipId, type: 'cut' };
     case 'trilha':
       return plan.music ? { op: 'trocar_musica', assetId: null } : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * "Terminar aqui": o item passa a acabar no cursor (na timeline, puxar a
+ * borda direita do bloco). Nulo quando o cursor não está depois do começo.
+ */
+function terminarItem(plan: EditPlanV1, i: ItemDaTimeline, cursorMs: number): TimelineOperation | null {
+  const ate = (inicioMs: number | undefined, min: number, max: number) => {
+    if (inicioMs === undefined) return null;
+    const d = Math.round(cursorMs - inicioMs);
+    return d >= min && d <= max ? d : null;
+  };
+  switch (i.tipo) {
+    case 'elemento': {
+      const d = ate(plan.overlays.find((x) => x.id === i.id)?.timelineStartMs, 300, 600_000);
+      return d ? { op: 'editar_overlay', overlayId: i.id, durationMs: d } : null;
+    }
+    case 'midia': {
+      const d = ate((plan.mediaLayers ?? []).find((x) => x.id === i.id)?.timelineStartMs, 100, 600_000);
+      return d ? { op: 'editar_midia', mediaId: i.id, durationMs: d } : null;
+    }
+    case 'efeito': {
+      const d = ate((plan.screenEffects ?? []).find((x) => x.id === i.id)?.timelineStartMs, 100, 600_000);
+      return d ? { op: 'editar_efeito_de_tela', effectId: i.id, durationMs: d } : null;
+    }
+    case 'narracao': {
+      const d = ate((plan.voiceovers ?? []).find((x) => x.id === i.id)?.timelineStartMs, 200, 900_000);
+      return d ? { op: 'editar_narracao', narracaoId: i.id, durationMs: d } : null;
+    }
+    case 'som': {
+      const d = ate(plan.soundEffects.find((x) => x.id === i.id)?.timelineStartMs, 50, 30_000);
+      return d ? { op: 'editar_efeito_sonoro', soundEffectId: i.id, durationMs: d } : null;
+    }
+    case 'legenda': {
+      const d = i.manualId ? ate(i.inicioMs, 200, 20_000) : null;
+      return d && i.manualId ? { op: 'editar_legenda_manual', legendaId: i.manualId, durationMs: d } : null;
+    }
+    case 'trilha': {
+      const d = plan.music ? ate(plan.music.timelineStartMs ?? 0, 300, 3_600_000) : null;
+      return d ? { op: 'configurar_musica', durationMs: d } : null;
+    }
     default:
       return null;
   }

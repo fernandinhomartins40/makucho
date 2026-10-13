@@ -361,7 +361,7 @@ function NarracaoDoItem({
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       <p className="campo__ajuda" style={{ marginTop: 0 }}>
-        Toca de {segundos(n.timelineStartMs)} s a {segundos(n.timelineStartMs + n.durationMs)} s. Arraste o bloco na faixa Narração para mudar de lugar.
+        Toca de {segundos(n.timelineStartMs)} s a {segundos(n.timelineStartMs + n.durationMs)} s.<span className="dica-da-timeline"> Arraste o bloco na faixa Narração para mudar de lugar.</span>
       </p>
       <Deslizante rotulo="Volume" valor={n.gainDb} min={-30} max={12} passo={1} unidade=" dB" onSoltar={(v) => editar({ gainDb: v })} />
       <div className="linha" style={{ gap: 'var(--e3)' }}>
@@ -492,7 +492,7 @@ function EfeitoSonoro({
           <IconeTocar size={14} weight="fill" /> Ouvir
         </button>
         <span className="texto-secundario" style={{ fontSize: 12 }}>
-          {NOME_DO_SOM[e.assetId] ?? 'Som do workspace'} em {segundos(e.timelineStartMs)} s — arraste na faixa Sons para mover.
+          {NOME_DO_SOM[e.assetId] ?? 'Som do workspace'} em {segundos(e.timelineStartMs)} s<span className="dica-da-timeline"> — arraste na faixa Sons para mover</span>.
         </span>
       </div>
       {catalogo && <p className="campo__ajuda" style={{ marginTop: 0 }}>{catalogo.descricao} {catalogo.quando}</p>}
@@ -554,7 +554,7 @@ function EfeitoDeTelaDoItem({
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       {def && (
         <p className="campo__ajuda" style={{ marginTop: 0 }}>
-          {def.descricao} {def.quando} Arraste na faixa Efeitos para mover; puxe as bordas para mudar a duração.
+          {def.descricao} {def.quando}<span className="dica-da-timeline"> Arraste na faixa Efeitos para mover; puxe as bordas para mudar a duração.</span>
         </p>
       )}
       <label className="campo" style={{ marginBottom: 0 }}>
@@ -708,7 +708,7 @@ function MidiaDoItem({
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       <p className="campo__ajuda" style={{ marginTop: 0 }}>
-        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.
+        <span className="dica-da-timeline">Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.</span>
         {m.kind === 'video' ? ' O vídeo entra mudo; suba o volume para ouvir o som dele.' : ''}
       </p>
       {posicionavel && <p className="campo__ajuda" style={{ marginTop: 0 }}>Na prévia: arraste para mover, puxe um canto para o tamanho.</p>}
@@ -1111,7 +1111,7 @@ function AnimacaoHtmlDoItem({ id, composicao, editar }: { id: string; composicao
         </button>
       </form>
       <p className="campo__ajuda" style={{ margin: 0 }}>
-        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.
+        <span className="dica-da-timeline">Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.</span>
       </p>
     </div>
   );
@@ -1127,7 +1127,7 @@ function CenaDoItem({ cena, editar }: { cena: CenaAnimada; editar: (c: CenaAnima
   return (
     <div className="pilha" style={{ gap: 'var(--e3)' }}>
       <p className="campo__ajuda" style={{ marginTop: 0 }}>
-        Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo. Para trocar os textos ou os elementos, peça à IA (&ldquo;muda o título da animação para…&rdquo;).
+        <span className="dica-da-timeline">Arraste na faixa Mídia para mover; puxe as bordas para mudar o tempo.</span> Para trocar os textos ou os elementos, peça à IA (&ldquo;muda o título da animação para…&rdquo;).
       </p>
       <div className="campo" style={{ marginBottom: 0 }}>
         <span className="campo__rotulo">Onde a animação passa</span>
