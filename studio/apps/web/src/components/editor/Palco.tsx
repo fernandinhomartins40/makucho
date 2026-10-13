@@ -528,7 +528,7 @@ export function Palco({
     const imagem = motorRef.current?.quadro(estado.indice, tocandoRef.current)?.imagem as CanvasImageSource | null | undefined;
     if (!tela) return;
     const escala = Math.min(2, window.devicePixelRatio || 1);
-    const W = Math.min(540, Math.round(tela.clientWidth * escala)) || 540;
+    const W = Math.min(432, Math.round(tela.clientWidth * escala)) || 432;
     const H = Math.round((W * plan.canvas.height) / plan.canvas.width);
     if (tela.width !== W || tela.height !== H) {
       tela.width = W;
@@ -551,7 +551,7 @@ export function Palco({
 
   const desenharGl = useCallback(
     (estado: EstadoNoInstante | null) => {
-      if (estado && modo2dRef.current && comMotorRef.current) {
+      if (estado && comMotorRef.current && modo2dRef.current) {
         desenhar2d(estado);
         return;
       }
@@ -560,7 +560,8 @@ export function Palco({
       if (!c || !canvas || !estado || !glAoVivoRef.current) return;
       // O canvas desenha na resolução em que aparece (até o quadro do plano).
       const larguraNaTela = canvas.clientWidth * Math.min(2, window.devicePixelRatio || 1);
-      const teto = Math.min(plan.canvas.width, telaDeToque ? 540 : plan.canvas.width);
+      // No celular, na resolução da própria prévia (408 de largura): mais que isso é só pixel a mais por quadro.
+      const teto = Math.min(plan.canvas.width, telaDeToque ? 432 : plan.canvas.width);
       const escala = larguraNaTela > 0 ? Math.min(2, window.devicePixelRatio || 1) * Math.min(1, teto / larguraNaTela) : 1;
       const w = Math.min(plan.canvas.width, Math.round(canvas.clientWidth * escala));
       const h = Math.min(plan.canvas.height, Math.round(canvas.clientHeight * escala));
@@ -599,6 +600,22 @@ export function Palco({
         janela: janelaNoInstante(plan.mediaLayers, ultimoMs.current),
         guardarQuadro: (plan.mediaLayers ?? []).some((m) => m.followPerson),
       });
+      // No celular, TOCANDO, o quadro montado pelo WebGL (com efeitos, meio a
+      // meio, vídeo no canto) é copiado para um canvas 2D comum, e é ele que
+      // aparece. Relatado num Android 10: o canvas do WebGL tinha a imagem
+      // (lida dele mesmo), mas a tela mostrava preto enquanto ele era
+      // atualizado; a legenda, num canvas 2D, sempre apareceu. Pausado, o
+      // próprio WebGL aparece (ali ele funciona).
+      if (telaDeToque && tocandoRef.current && comMotorRef.current) {
+        const tela = tela2dRef.current;
+        if (tela) {
+          if (tela.width !== canvas.width || tela.height !== canvas.height) {
+            tela.width = canvas.width;
+            tela.height = canvas.height;
+          }
+          tela.getContext('2d')?.drawImage(canvas, 0, 0);
+        }
+      }
     },
     [players, enquadramento, agenda, plan.screenEffects, plan.mediaLayers, midiasNoInstante, telaDeToque],
   );
@@ -1621,7 +1638,7 @@ export function Palco({
         {proxyUrl && !erroDoVideo ? (
           <div ref={imagemRef} className={`palco__imagem${glAoVivo ? ' palco__imagem--gl' : ''}`}>
             <canvas ref={glRef} className="palco__gl" aria-hidden />
-            <canvas ref={tela2dRef} className="palco__tela2d" hidden={!modo2d} aria-hidden />
+            <canvas ref={tela2dRef} className="palco__tela2d" hidden={!(comMotor && (modo2d || (telaDeToque && tocando)))} aria-hidden />
             {enquadramento === 'desfoque' && (
               <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
             )}
@@ -1741,7 +1758,7 @@ export function Palco({
           )}
 
         {assAtras && !libassFalhou && (
-          <CamadaDeLegendas largura={plan.canvas.width} altura={plan.canvas.height}
+          <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
             ass={assAtras}
             tempoMs={posicaoMs}
             tempoAoVivo={tempoAoVivo}
@@ -1752,7 +1769,7 @@ export function Palco({
         {temRecorte && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
 
         {ass && !libassFalhou && (
-          <CamadaDeLegendas largura={plan.canvas.width} altura={plan.canvas.height}
+          <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
             ass={ass}
             tempoMs={posicaoMs}
             tempoAoVivo={tempoAoVivo}
