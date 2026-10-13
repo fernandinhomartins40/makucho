@@ -1907,8 +1907,11 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
               if (noCelular()) setFolha('inspector');
             }}
-            // Sem timeline na tela, a posição só interessa ao pausar (o Palco avisa na hora).
-            {...(simples ? { ritmoDoAvisoMs: 5000 } : {})}
+            // Tocando, a página não é redesenhada para acompanhar a posição: o cursor,
+            // o tempo e a rolagem da timeline andam pelo relógio ao vivo (relogioAoVivo),
+            // e o Palco avisa a posição ao pausar. Redesenhar o editor inteiro (timeline
+            // com todos os blocos) a cada meio segundo travava a prévia no celular.
+            ritmoDoAvisoMs={5000}
             {...(simples && editandoNoPratico
               ? {
                   onTocarNaAnimacao: (id: string) => {
