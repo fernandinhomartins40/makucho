@@ -80,14 +80,20 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
   );
 
   const ultimo = useRef(posicaoMs);
-  const mandar = (ms: number) => {
+  const enviadoEm = useRef(0);
+  const mandar = (ms: number, sempre = false) => {
     ultimo.current = ms;
     const dentro = ms >= camada.timelineStartMs && ms < camada.timelineStartMs + camada.durationMs;
     setVisivel((v) => (v === dentro ? v : dentro));
     if (!dentro) return;
+    // Tocando, no ritmo do vídeo (30/s): a tela do celular pede 60 a 120, e
+    // cada envio faz a animação inteira se redesenhar.
+    const agora = performance.now();
+    if (!sempre && agora - enviadoEm.current < 30) return;
+    enviadoEm.current = agora;
     ref.current?.contentWindow?.postMessage({ hfT: (ms - camada.timelineStartMs) / 1000 }, '*');
   };
-  useEffect(() => mandar(posicaoMs), [posicaoMs, camada.timelineStartMs, camada.durationMs]);
+  useEffect(() => mandar(posicaoMs, true), [posicaoMs, camada.timelineStartMs, camada.durationMs]);
 
   // Edição no palco: liga o relato das peças e passa o ajuste ao vivo; ouve só o próprio iframe.
   const editandoEsta = editando?.id === camada.id;
@@ -127,7 +133,7 @@ function Animacao({ camada, origem, corDaMarca, posicaoMs, escala, editando }: {
       srcDoc={doc}
       onLoad={() => {
         if (editandoEsta) ref.current?.contentWindow?.postMessage({ hfEditar: true }, '*');
-        mandar(ultimo.current);
+        mandar(ultimo.current, true);
       }}
       style={{ transform: `scale(${escala})`, visibility: visivel ? 'visible' : 'hidden', opacity: camada.opacity ?? 1 }}
       aria-hidden

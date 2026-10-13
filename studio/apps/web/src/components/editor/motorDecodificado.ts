@@ -22,13 +22,17 @@
 // decodificar um pouco antes do corte).
 // ============================================================
 
-import { ALL_FORMATS, AudioBufferSink, BlobSource, CanvasSink, Input, type InputVideoTrack, type WrappedCanvas } from 'mediabunny';
+import { ALL_FORMATS, AudioBufferSink, BlobSource, CanvasSink, Input, VideoSampleSink, type InputVideoTrack, type VideoSample } from 'mediabunny';
 import type { Agenda } from '@makucho/studio-contracts';
 import { QuadroExterno } from './gl/compositor';
 import { trechoNoInstante } from './motorDaPrevia';
 
-/** Quantos quadros cada leitor decodifica à frente do que está na tela (o buffer, ~0,2 s). */
-const QUADROS_A_FRENTE = 6;
+/**
+ * Quantos quadros cada leitor guarda à frente do que está na tela. Pouco de
+ * propósito: cada quadro guardado ocupa um lugar do decodificador de
+ * hardware, que no celular tem poucos (cheio, ele para).
+ */
+const QUADROS_A_FRENTE = 3;
 
 /**
  * O tipo de decodificador. Começa no que o navegador escolher; se ele não
@@ -82,13 +86,23 @@ export function relatarPrevia(dados: Record<string, unknown>): void {
   }
 }
 
-/** Os quadros de UM trecho, em sequência, a partir de um ponto do original. */
+/**
+ * Os quadros de UM trecho, em sequência, a partir de um ponto do original.
+ *
+ * O quadro decodificado (VideoFrame) vai DIRETO para o compositor, que o
+ * sobe para o WebGL. Antes cada quadro era desenhado num canvas primeiro --
+ * inclusive os que nem seriam mostrados --, e num celular (medido num
+ * Android 10) a página só conseguia mostrar 11 dos 33 quadros por segundo
+ * que o aparelho decodificava. Quadro que passou da hora é fechado sem
+ * cópia nenhuma.
+ */
 class LeitorDoTrecho {
   readonly quadro = new QuadroExterno();
   /** Instante (no original, em s) do último quadro mostrado; -1 antes do primeiro. */
   ultimoS = -1;
-  private readonly fila: WrappedCanvas[] = [];
-  private readonly iterador: AsyncGenerator<WrappedCanvas, void, unknown>;
+  private readonly fila: VideoSample[] = [];
+  private naTela: VideoFrame | null = null;
+  private readonly iterador: AsyncGenerator<VideoSample, void, unknown>;
   private puxando = false;
   private acabou = false;
   private fechado = false;
@@ -102,12 +116,9 @@ class LeitorDoTrecho {
     readonly inicioS: number,
     aceleracao: Aceleracao,
   ) {
-    // Um sink por leitor: os canvas do conjunto (pool) circulam só entre a
-    // fila deste leitor e o quadro na tela. Sem fim: o mesmo leitor segue
-    // para o trecho seguinte quando ele vem logo depois no original (o
-    // corte de uma pausa), sem recomeçar o decodificador.
-    const sink = new CanvasSink(faixa, { poolSize: QUADROS_A_FRENTE + 2, decoderOptions: { hardwareAcceleration: aceleracao } });
-    this.iterador = sink.canvases(inicioS);
+    // Sem fim: o mesmo leitor segue para o trecho seguinte quando ele vem
+    // logo depois no original (o corte de uma pausa), sem recomeçar.
+    this.iterador = new VideoSampleSink(faixa, { hardwareAcceleration: aceleracao }).samples(inicioS);
     void this.encher();
   }
 
@@ -119,6 +130,10 @@ class LeitorDoTrecho {
         const r = await this.iterador.next();
         if (r.done) {
           this.acabou = true;
+          break;
+        }
+        if (this.fechado) {
+          r.value.close();
           break;
         }
         this.fila.push(r.value);
@@ -137,13 +152,21 @@ class LeitorDoTrecho {
 
   /** Mostra o quadro mais recente até `s` (no original). Quadro atrasado é pulado, nunca esperado. */
   avancar(s: number): boolean {
-    let escolhido: WrappedCanvas | undefined;
-    while (this.fila.length && this.fila[0]!.timestamp <= s + 0.005) escolhido = this.fila.shift();
+    let escolhido: VideoSample | undefined;
+    while (this.fila.length && this.fila[0]!.timestamp <= s + 0.005) {
+      escolhido?.close();
+      escolhido = this.fila.shift();
+    }
     // Antes do primeiro quadro (o lado que entra numa transição): mostra o primeiro.
     if (!escolhido && this.ultimoS < 0 && this.fila.length) escolhido = this.fila.shift();
     if (escolhido) {
-      this.quadro.atualizar(escolhido.canvas, escolhido.canvas.width, escolhido.canvas.height);
+      const frame = escolhido.toVideoFrame();
       this.ultimoS = escolhido.timestamp;
+      escolhido.close();
+      this.quadro.atualizar(frame, frame.displayWidth, frame.displayHeight);
+      // O anterior já foi para a textura (ou nunca será): libera o lugar no decodificador.
+      this.naTela?.close();
+      this.naTela = frame;
       estadoDoMotor.mostrados += 1;
     }
     void this.encher();
@@ -164,7 +187,12 @@ class LeitorDoTrecho {
 
   fechar(): void {
     this.fechado = true;
+    for (const x of this.fila) x.close();
     this.fila.length = 0;
+    // O compositor não pode subir um quadro fechado: some a imagem do leitor junto.
+    this.quadro.imagem = null;
+    this.naTela?.close();
+    this.naTela = null;
     void this.iterador.return(undefined).catch(() => undefined);
   }
 }
