@@ -516,8 +516,17 @@ export function Palco({
       indiceRef.current = estado.indice;
       const dono = donoRef.current;
 
+      // No celular, UM player só. Muitos Android abrem poucos vídeos ao mesmo
+      // tempo no decodificador; com o segundo player carregado (esperando o
+      // próximo trecho), o que toca ficava com som e sem imagem -- que só
+      // voltava ao pausar. O preço: na troca de trecho o player busca o
+      // ponto (uma parada curta) e as transições viram corte seco na prévia.
+      if (telaDeToque) {
+        dono[0] = estado.indice;
+        dono[1] = null;
+      }
       // Trecho que precisa de player e não tem: vai para um livre.
-      for (const i of estado.necessarios) {
+      for (const i of telaDeToque ? [] : estado.necessarios) {
         if (dono.includes(i)) continue;
         const livre = [0, 1].find((p) => dono[p] === null || !estado.necessarios.includes(dono[p]!));
         if (livre === undefined) break;
@@ -525,7 +534,7 @@ export function Palco({
       }
       // O player que sobrou já espera parado no começo do próximo.
       const proximo = estado.necessarios.length ? Math.max(...estado.necessarios) + 1 : estado.indice + 1;
-      if (proximo < agenda.trechos.length && !dono.includes(proximo)) {
+      if (!telaDeToque && proximo < agenda.trechos.length && !dono.includes(proximo)) {
         const livre = [0, 1].find((p) => dono[p] === null || !estado.necessarios.includes(dono[p]!));
         const v = livre !== undefined ? players[livre]!.current : null;
         if (livre !== undefined && v) {
@@ -565,7 +574,7 @@ export function Palco({
           v.pause();
         }
 
-        camada.style.opacity = c ? String(c.opacidade) : '0';
+        camada.style.opacity = telaDeToque ? (p === 0 ? '1' : '0') : c ? String(c.opacidade) : '0';
         camada.style.transform = c?.transformacao ?? '';
         camada.style.filter = c?.filtro ?? '';
         camada.style.clipPath = c?.recorte ?? '';
@@ -1411,7 +1420,8 @@ export function Palco({
               <div key={p} ref={camadas[p]} className="palco__player" style={{ opacity: p === 0 ? 1 : 0 }}>
                 <video
                   ref={players[p]}
-                  src={proxyUrl}
+                  // No celular o segundo player nem carrega o vídeo (ver `aplicar`).
+                  src={p === 1 && telaDeToque ? undefined : proxyUrl}
                   playsInline
                   preload="auto"
                   muted={mudo}
