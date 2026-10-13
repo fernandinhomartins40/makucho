@@ -5,6 +5,8 @@ import { SCRIPT_DO_TEMA } from '../lib/tema';
 import './globals.css';
 // Depois do globals: troca os tokens e a aparência das peças comuns.
 import './liquid-glass.css';
+// Por último: o visual prático do editor desfaz regras das duas acima.
+import './pratico.css';
 
 /**
  * Telas de abertura do iOS, por aparelho (tamanho em pontos e densidade).

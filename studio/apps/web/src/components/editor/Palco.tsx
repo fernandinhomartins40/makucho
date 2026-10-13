@@ -127,6 +127,8 @@ interface Props {
    * posição daquele trecho); Shift+arrastar muda a posição de todas.
    */
   onPosicionarBloco?: (inicioMs: number, fimMs: number, y: number) => void;
+  /** Tocou na legenda do vídeo (editor prático: ela vira o item escolhido). */
+  onTocarNaLegenda?: () => void;
   /** Gravando narração: toca SEM SOM a partir daqui (null para). */
   gravandoDe?: number | null;
   /** A animação selecionada editada no palco (peças movidas ou redimensionadas): a animação nova. */
@@ -157,6 +159,7 @@ export function Palco({
   onAbrirEstilos,
   onAjustarLegenda,
   onPosicionarBloco,
+  onTocarNaLegenda,
   gravandoDe = null,
 }: Props) {
   // Dois players do mesmo proxy (ver motorDaPrevia.ts): um mostra o
@@ -1114,6 +1117,7 @@ export function Palco({
     if (!ponto || !onAjustarLegenda || !caixaDaLegenda) return;
     e.preventDefault();
     setLegendaSelecionada(true);
+    onTocarNaLegenda?.();
     const inicio = ponto(e);
     const base0 = caixaDaLegenda.baseY;
     // Só este bloco (o que está na tela); com Shift, todas.

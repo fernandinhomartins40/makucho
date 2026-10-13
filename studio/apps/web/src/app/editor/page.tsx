@@ -47,6 +47,8 @@ import type { AbaDoInspector } from '../../components/editor/Inspector';
 import { pausarQuadros, useQuadrosDoVideo } from '../../lib/quadrosDoVideo';
 import { Congelado } from '../../components/editor/Congelado';
 import type { DestinoSimples } from '../../components/editor/EditorSimples';
+import { EditorPratico } from '../../components/editor/EditorPratico';
+import { itensNaCena, legendaNoInstante, type ItemNaCena } from '../../components/editor/naCena';
 import { EtiquetaDoItem, type Alvo, type ItemCopiado } from '../../components/editor/EtiquetaDoItem';
 import { focoDoItem } from '../../lib/focoDaIa';
 import { BarraMovel, type AcaoMovel } from '../../components/editor/BarraMovel';
@@ -113,6 +115,7 @@ import {
   IconeTrilha,
   IconeTexto,
   IconeMicrofone,
+  IconeCelular,
 } from '../../components/icones';
 
 export default function EditorPage() {
@@ -719,29 +722,35 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     return () => mq.removeEventListener('change', atualizar);
   }, []);
 
-  // ---------- Modo: simples (padrão) ou avançado (timeline completa) ----------
-  const [modo, setModo] = useState<'simples' | 'avancado'>('simples');
+  // ---------- Visual: prático ou completo ----------
+  // O mesmo editor (plano, operações, prévia, propriedades), com duas
+  // caras: a completa, com as faixas da timeline; e a prática, para quem
+  // nunca editou -- o vídeo na tela toda, e edita-se tocando no que
+  // aparece nele. Sem escolha guardada, o celular abre na prática.
+  const [visual, setVisual] = useState<'pratico' | 'completo' | null>(null);
   useEffect(() => {
+    let salvo: string | null = null;
     try {
-      if (window.localStorage.getItem('studio:modo-editor') === 'avancado') setModo('avancado');
+      salvo = window.localStorage.getItem('studio:visual-do-editor');
     } catch {
-      // Sem armazenamento: simples.
+      // Sem armazenamento: vale o padrão da tela.
     }
+    setVisual(salvo === 'pratico' || salvo === 'completo' ? salvo : window.matchMedia('(max-width: 899px)').matches ? 'pratico' : 'completo');
   }, []);
-  const alternarModo = () => {
-    const novo = modo === 'simples' ? 'avancado' : 'simples';
-    setModo(novo);
+  // No prático: assistindo (falso) ou editando o quadro parado.
+  const [editandoNoPratico, setEditandoNoPratico] = useState(false);
+  const trocarVisual = (novo: 'pratico' | 'completo') => {
+    setVisual(novo);
     setFolha(null);
+    setEditandoNoPratico(false);
     try {
-      window.localStorage.setItem('studio:modo-editor', novo);
+      window.localStorage.setItem('studio:visual-do-editor', novo);
     } catch {
       // Vale só nesta visita.
     }
   };
-  // Um editor só, completo (o jeito do CapCut): o "simples" ficou para trás.
-  const simples = false as boolean;
-  void modo;
-  void alternarModo;
+  /** O visual prático: painéis e propriedades abrem em gavetas, em qualquer tela. */
+  const simples = visual === 'pratico';
 
   // O que foi copiado na etiqueta do item (cola no cursor).
   const [copiado, setCopiado] = useState<ItemCopiado | null>(null);
@@ -775,21 +784,22 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
   // abre em "Ajustes", no painel da esquerda, como as outras categorias.
   const pedirAbaDoInspector = (a: AbaDoInspector) => {
     setAbaDoInspector((x) => ({ aba: a, n: (x?.n ?? 0) + 1 }));
-    if (!window.matchMedia('(max-width: 899px)').matches) {
+    if (!simples && !window.matchMedia('(max-width: 899px)').matches) {
       setSelecionado(null);
       setItemSelecionado(null);
       setAba('ajustes');
       setPainelAberto(true);
     }
   };
-  const noCelular = () => window.matchMedia('(max-width: 899px)').matches;
+  /** As gavetas de baixo: no celular e no visual prático. */
+  const noCelular = () => simples || window.matchMedia('(max-width: 899px)').matches;
 
   // Computador: selecionar um trecho ou item abre as PROPRIEDADES dele no
   // painel da esquerda (nada abre à direita). Tirar a seleção (o X) volta
   // à categoria em que a pessoa estava.
   const voltarDasPropriedades = useRef<AbaDoEditor>('ia');
   useEffect(() => {
-    if (celular) return;
+    if (celular || simples) return;
     if (selecionado || itemSelecionado) {
       setAba((a) => {
         if (a !== 'propriedades') voltarDasPropriedades.current = a;
@@ -799,7 +809,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     } else {
       setAba((a) => (a === 'propriedades' ? voltarDasPropriedades.current : a));
     }
-  }, [selecionado, itemSelecionado, celular]);
+  }, [selecionado, itemSelecionado, celular, simples]);
   const abrirPainel = (a: AbaDoEditor) => {
     setAba(a);
     setPainelAberto(true);
@@ -887,7 +897,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
   useEffect(carregarMidiasSeparadas, [carregarMidiasSeparadas]);
   const abrirMidiasSeparadas = () => {
     setAba('midia');
-    if (window.matchMedia('(max-width: 899px)').matches || modo === 'simples') setFolha('painel');
+    if (noCelular()) setFolha('painel');
   };
   const concluirMidiasSeparadas = useCallback(() => {
     setMidiasSeparadas(null);
@@ -1076,6 +1086,23 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     return () => window.removeEventListener('keydown', aoTeclar);
   }, [plano, excluirItem]);
 
+  // ---------- Visual prático: o que está na tela no quadro parado ----------
+  const naCena = useMemo(
+    () => (plano && simples && !tocandoNaPrevia ? itensNaCena(planoVisivel ?? plano, posicaoMs, palavrasDaTranscricao, [...desligados]) : []),
+    [plano, planoVisivel, simples, tocandoNaPrevia, posicaoMs, palavrasDaTranscricao, desligados],
+  );
+  const escolherNaCena = (i: ItemNaCena) => {
+    if (i.alvo.tipo === 'clipe') {
+      setItemSelecionado(null);
+      setSelecionado(i.alvo.id);
+    } else {
+      setSelecionado(null);
+      setItemSelecionado(i.alvo.item);
+    }
+  };
+  const chaveDoSelecionado = itemSelecionado ? (itemSelecionado.tipo === 'trilha' ? 'trilha' : `${itemSelecionado.tipo}-${itemSelecionado.id}`) : selecionado ? `clipe-${selecionado}` : null;
+  const naCenaSelecionado = naCena.find((i) => i.chave === chaveDoSelecionado);
+
   // ---------- Telas ----------
   if (erroDeCarga) {
     return (
@@ -1253,6 +1280,11 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           {/* Claro ou escuro, como nas outras telas (o editor não usa a Topbar comum). */}
           <BotaoDeTema />
 
+          {/* O outro visual do mesmo editor: o vídeo na tela toda, sem timeline. */}
+          <button type="button" className="botao-icone" onClick={() => trocarVisual('pratico')} aria-label="Modo prático" title="Modo prático: o vídeo na tela toda, e você edita tocando nele">
+            <IconeCelular size={19} />
+          </button>
+
 
 
           <button
@@ -1310,11 +1342,112 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     );
   }
 
+  const avisoDeErro = erro && (
+    <div role="alert" className="aviso aviso--erro" style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}>
+      <IconeAviso size={16} />
+      <span>{erro}</span>
+    </div>
+  );
+  const avisoDeFechamento = transcricao && (
+    <AvisoDeFechamento plano={plano} segmentos={transcricao.segmentos} desligados={[...desligados]} onOperacao={executar} />
+  );
+
+  /** As ações do que está selecionado: junto do item na timeline, ou na bandeja do visual prático. */
+  const etiquetaDoItem = (noPratico: boolean) => (
+    <EtiquetaDoItem
+      plan={plano}
+      alvo={itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado && (noPratico || !celular) ? { tipo: 'clipe', id: selecionado } : null}
+      rotulos={noPratico}
+      posicaoMs={posicaoMs}
+      copiado={copiado}
+      onCopiar={(c) => {
+        setCopiado(c);
+        setAviso(`${c.rotulo} copiado. Leve o cursor e use "Colar" em Mais opções.`);
+      }}
+      onOperacao={executar}
+      onOperacoes={executarVarias}
+      {...(!semIa
+        ? {
+            onPedirIa: () => {
+              const alvo: Alvo | null = itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado ? { tipo: 'clipe', id: selecionado } : null;
+              if (!alvo) return;
+              setAlvoDaIa(alvo);
+              abrirPainel('ia');
+            },
+          }
+        : {})}
+      onEditar={(estilos) => {
+        if (estilos && itemSelecionado?.tipo === 'elemento') setItemSelecionado({ tipo: 'elemento', id: itemSelecionado.id, aba: 'estilos' });
+        if (noCelular() || simples) setFolha('inspector');
+      }}
+      onCor={() => {
+        setCategoriaDaBiblioteca('cor');
+        abrirPainel('biblioteca');
+      }}
+      onDesmarcar={() => {
+        setSelecionado(null);
+        setItemSelecionado(null);
+      }}
+    />
+  );
+
+  const rotuloDeExportar = tarefaDeExportacao?.estado === 'rodando' ? `${Math.round(tarefaDeExportacao.progresso.fracao * 100)}%` : tarefaDeExportacao?.estado === 'pronta' ? 'Vídeo pronto' : 'Exportar';
+  const praticoEl = (
+    <EditorPratico
+      titulo={titulo || projeto?.title || 'Vídeo'}
+      posicaoMs={posicaoMs}
+      duracaoMs={duracaoMs}
+      tocando={tocandoNaPrevia}
+      // Gravando a voz, o vídeo toca sozinho: um toque nele não pode parar a gravação.
+      temVideo={temProxy && gravandoDe === null}
+      onAlternar={() => setComandoAlternar((n) => n + 1)}
+      onPosicao={setPosicaoMs}
+      editando={editandoNoPratico}
+      onEditando={(v) => {
+        setEditandoNoPratico(v);
+        if (v) return;
+        setFolha(null);
+        setSelecionado(null);
+        setItemSelecionado(null);
+      }}
+      salvamento={salvamento}
+      podeDesfazer={passado.length > 0}
+      podeRefazer={futuro.length > 0}
+      onDesfazer={desfazer}
+      onRefazer={refazer}
+      rotuloDeExportar={rotuloDeExportar}
+      onExportar={() => setExportarAberto(true)}
+      itens={naCena}
+      onEscolher={escolherNaCena}
+      selecionado={
+        chaveDoSelecionado ? (
+          <div className="pratico__cena">
+            <span className="pratico__cena-titulo">{naCenaSelecionado ? [naCenaSelecionado.rotulo, naCenaSelecionado.detalhe].filter(Boolean).join(' · ') : 'Escolhido'}</span>
+            {etiquetaDoItem(true)}
+          </div>
+        ) : undefined
+      }
+      onAcao={executarAcaoMovel}
+      {...(!semIa ? { onPedirIa: () => abrirPainel('ia') } : {})}
+      onTrechos={() => abrirPainel('ia')}
+      onEditorCompleto={() => trocarVisual('completo')}
+      legendasLigadas={plano.captions.enabled}
+      somOriginalMudo={somOriginalMudo}
+      gavetaAberta={folha !== null}
+      avisos={
+        <>
+          {avisoDeErro}
+          {editandoNoPratico && avisoDeFechamento}
+        </>
+      }
+    />
+  );
+
   return (
     <AnimacoesDaIaContexto.Provider value={animacoesDaIa}>
       {/* No computador o topo vai para dentro da grade (só sobre o vídeo e
           a timeline, como no CapCut); no celular fica em cima de tudo. */}
-      {celular && cabecalho}
+      {celular && !simples && cabecalho}
 
       {plano && (
         <DialogoDeExportacao
@@ -1331,27 +1464,23 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
         />
       )}
 
-      {erro && (
-        <div role="alert" className="aviso aviso--erro" style={{ margin: 'var(--e3) var(--e4) 0', flexShrink: 0 }}>
-          <IconeAviso size={16} />
-          <span>{erro}</span>
-        </div>
-      )}
+      {!simples && avisoDeErro}
+      {!simples && avisoDeFechamento}
 
-      {transcricao && (
-        <AvisoDeFechamento
-          plano={plano}
-          segmentos={transcricao.segmentos}
-          desligados={[...desligados]}
-          onOperacao={executar}
-        />
-      )}
-
-      <div className="editor" ref={editorRef} data-folha={folha ?? undefined} data-tocando={tocandoNaPrevia || undefined} data-modo="completo" data-painel={painelAberto ? undefined : 'fechado'} data-props="sem">
-        {!celular && cabecalho}
-        <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />
+      <div
+        className="editor"
+        ref={editorRef}
+        data-folha={folha ?? undefined}
+        data-tocando={tocandoNaPrevia || undefined}
+        data-modo={simples ? 'pratico' : 'completo'}
+        data-editando={(simples && editandoNoPratico) || undefined}
+        data-painel={painelAberto ? undefined : 'fechado'}
+        data-props="sem"
+      >
+        {!celular && !simples && cabecalho}
+        {!simples && <RailDeFerramentas ativa={colunaAtiva} onEscolher={escolherNaColuna} />}
         {/* A alça na borda do painel: recolhe e devolve (computador). */}
-        <button
+        {!simples && <button
           type="button"
           className="editor__alca so-largo"
           aria-label={painelAberto ? 'Recolher o painel' : 'Abrir o painel'}
@@ -1359,9 +1488,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           onClick={() => setPainelAberto((v) => !v)}
         >
           <span aria-hidden>{painelAberto ? '‹' : '›'}</span>
-        </button>
+        </button>}
 
-        {folha && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
+        {folha && !simples && <div className="editor__veu so-celular" onClick={() => setFolha(null)} aria-hidden />}
 
         <section className="editor__ia" aria-label="Painel de conteúdo">
           {/* No celular a folha fechada não se atualiza (continua montada:
@@ -1623,7 +1752,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
                 onVerNoVideo={(ms) => {
                   setPosicaoMs(ms);
                   // No celular a folha cobre o vídeo: fecha para ver.
-                  if (window.matchMedia('(max-width: 899px)').matches) setFolha(null);
+                  if (noCelular()) setFolha(null);
                 }}
                 {...(marcaDoVideo ? { marca: marcaDoVideo } : {})}
               />
@@ -1640,18 +1769,18 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           className="editor__palco"
           style={{ ['--quadro-ar' as string]: `${plano.canvas.width} / ${plano.canvas.height}`, ['--quadro-hw' as string]: String(plano.canvas.height / plano.canvas.width) }}
         >
-          <ProporcaoDoVideo formato={plano.canvas.aspectRatio} onEscolher={(f) => executar({ op: 'definir_formato', aspectRatio: f })} />
-          <FerramentasDoPalco
+          {!simples && <ProporcaoDoVideo formato={plano.canvas.aspectRatio} onEscolher={(f) => executar({ op: 'definir_formato', aspectRatio: f })} />}
+          {!simples && <FerramentasDoPalco
             ativa={folha === 'painel' ? (aba === 'midia' ? 'midia' : null) : null}
             onEscolher={naFerramenta}
-          />
-          <AcoesDoPalco
+          />}
+          {!simples && <AcoesDoPalco
             formato={plano.canvas.aspectRatio}
             resolucao="1080P"
             onFormato={(f) => executar({ op: 'definir_formato', aspectRatio: f })}
             onResolucao={() => setExportarAberto(true)}
             onAcao={naAcao}
-          />
+          />}
           <Palco
             plan={planoVisivel ?? plano}
             proxyUrl={temProxy ? urlDoVideo(projectId) : undefined}
@@ -1711,12 +1840,22 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
             onTocando={setTocandoNaPrevia}
             onAbrirEstilos={(id) => {
               setItemSelecionado({ tipo: 'elemento', id, aba: 'estilos' });
-              if (window.matchMedia('(max-width: 899px)').matches) setFolha('inspector');
+              if (noCelular()) setFolha('inspector');
             }}
+            {...(simples
+              ? {
+                  onTocarNaLegenda: () => {
+                    const legenda = legendaNoInstante(plano, palavrasDaTranscricao, posicaoMs);
+                    if (!legenda) return;
+                    setSelecionado(null);
+                    setItemSelecionado((atual) => (atual?.tipo === 'legenda' && atual.id === legenda.id ? atual : legenda));
+                  },
+                }
+              : {})}
           />
           {/* Celular: tela cheia, play no meio, desfazer e refazer (o CapCut
               põe aqui; o topo fica só com fechar, qualidade e exportar). */}
-          <div className="controles-moveis so-celular">
+          {!simples && <div className="controles-moveis so-celular">
             <button type="button" className="botao-icone" aria-label="Tela cheia" onClick={abrirTelaCheia}>
               <IconeTelaCheia size={20} />
             </button>
@@ -1731,7 +1870,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
                 <IconeRefazer size={20} />
               </button>
             </span>
-          </div>
+          </div>}
         </main>
 
         <aside className="editor__inspector" aria-label="Propriedades">
@@ -1785,7 +1924,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           </div>
         )}
 
-        <section className="editor__timeline" aria-label="Linha do tempo">
+        {!simples && <section className="editor__timeline" aria-label="Linha do tempo">
             <DivisorDaTimeline editorRef={editorRef} />
             <Timeline
               plan={plano}
@@ -1834,9 +1973,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
                 if (item && item.tipo === 'midia' && plano.mediaLayers?.find((m) => m.id === item.id)?.kind === 'html' && (window.matchMedia('(max-width: 899px)').matches || simples)) setFolha('inspector');
               }}
             />
-          </section>
+          </section>}
 
-        {celular && (
+        {celular && !simples && (
           <>
             <BarraMovel
               trechoSelecionado={Boolean(selecionado) && !itemSelecionado}
@@ -1858,40 +1997,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
           </>
         )}
 
-        <EtiquetaDoItem
-          plan={plano}
-          alvo={itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado && !celular ? { tipo: 'clipe', id: selecionado } : null}
-          posicaoMs={posicaoMs}
-          copiado={copiado}
-          onCopiar={(c) => {
-            setCopiado(c);
-            setAviso(`${c.rotulo} copiado. Leve o cursor e use "Colar" em Mais opções.`);
-          }}
-          onOperacao={executar}
-          onOperacoes={executarVarias}
-          {...(!semIa
-            ? {
-                onPedirIa: () => {
-                  const alvo: Alvo | null = itemSelecionado ? { tipo: 'item', item: itemSelecionado } : selecionado ? { tipo: 'clipe', id: selecionado } : null;
-                  if (!alvo) return;
-                  setAlvoDaIa(alvo);
-                  abrirPainel('ia');
-                },
-              }
-            : {})}
-          onEditar={(estilos) => {
-            if (estilos && itemSelecionado?.tipo === 'elemento') setItemSelecionado({ tipo: 'elemento', id: itemSelecionado.id, aba: 'estilos' });
-            if (noCelular() || simples) setFolha('inspector');
-          }}
-          onCor={() => {
-            setCategoriaDaBiblioteca('cor');
-            abrirPainel('biblioteca');
-          }}
-          onDesmarcar={() => {
-            setSelecionado(null);
-            setItemSelecionado(null);
-          }}
-        />
+        {!simples && etiquetaDoItem(false)}
+
+        {simples && praticoEl}
       </div>
     </AnimacoesDaIaContexto.Provider>
   );

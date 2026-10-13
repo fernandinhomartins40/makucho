@@ -55,9 +55,11 @@ interface Props {
   onDesmarcar: () => void;
   /** "Pedir à IA" sobre este item: abre o pedido com ele como foco. */
   onPedirIa?: () => void;
+  /** Editor prático: fica na bandeja (não junto do item na timeline), com o nome de cada ação. */
+  rotulos?: boolean;
 }
 
-type Acao = { id: string; rotulo: string; Icone: Icon; fazer?: () => void; menu?: Array<{ rotulo: string; ativo?: boolean; fazer: () => void }>; perigo?: boolean; desligada?: boolean; ia?: boolean };
+type Acao = { id: string; rotulo: string; /** O nome curto, quando a etiqueta mostra rótulos. */ curto?: string; Icone: Icon; fazer?: () => void; menu?: Array<{ rotulo: string; ativo?: boolean; fazer: () => void }>; perigo?: boolean; desligada?: boolean; ia?: boolean };
 
 /** Uma operação montada à mão passa pelo schema (tira campos que não são dela). */
 function op(bruta: Record<string, unknown>): TimelineOperation | null {
@@ -65,7 +67,7 @@ function op(bruta: Record<string, unknown>): TimelineOperation | null {
   return r.success ? r.data : null;
 }
 
-export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar, onPedirIa }: Props) {
+export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar, onPedirIa, rotulos = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [lugar, setLugar] = useState<{ x: number; y: number } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
   // Onde o elemento está na tela (acompanha rolagem, zoom e o cursor).
   const seletor = !alvo ? null : alvo.tipo === 'clipe' ? `[data-arrastavel="clipe-${alvo.id}"]` : seletorDoItem(alvo.item);
   useLayoutEffect(() => {
-    if (!seletor) return;
+    if (!seletor || rotulos) return;
     let quadro = 0;
     const medir = () => {
       const el = document.querySelector<HTMLElement>(seletor);
@@ -90,13 +92,13 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
     };
     medir();
     return () => cancelAnimationFrame(quadro);
-  }, [seletor]);
+  }, [seletor, rotulos]);
 
   if (!alvo) return null;
   const acoes = acoesDo(alvo, { plan, posicaoMs, copiado, onCopiar, onOperacao, onOperacoes, onEditar, onCor, onDesmarcar });
   if (!acoes.length) return null;
   // Logo depois de "Editar": pedir à IA com este item como assunto.
-  if (onPedirIa) acoes.splice(1, 0, { id: 'ia', rotulo: 'Pedir à IA sobre este item', Icone: IconeIA, fazer: onPedirIa, ia: true });
+  if (onPedirIa) acoes.splice(1, 0, { id: 'ia', rotulo: 'Pedir à IA sobre este item', curto: 'Pedir à IA', Icone: IconeIA, fazer: onPedirIa, ia: true });
 
   return (
     <div
@@ -104,8 +106,9 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
       className="etiqueta-do-item"
       role="toolbar"
       aria-label="Ações do item selecionado"
-      style={lugar ? { left: lugar.x, top: lugar.y } : { left: '50%', bottom: 16 }}
+      style={rotulos ? undefined : lugar ? { left: lugar.x, top: lugar.y } : { left: '50%', bottom: 16 }}
       data-solta={!lugar || undefined}
+      data-rotulos={rotulos || undefined}
       onPointerDown={(e) => e.stopPropagation()}
     >
       {acoes.map((a) => (
@@ -121,7 +124,8 @@ export function EtiquetaDoItem({ plan, alvo, posicaoMs, copiado, onCopiar, onOpe
             aria-expanded={a.menu ? menu === a.id : undefined}
             onClick={() => (a.menu ? setMenu((m) => (m === a.id ? null : a.id)) : a.fazer?.())}
           >
-            <a.Icone size={17} />
+            <a.Icone size={rotulos ? 22 : 17} />
+            {rotulos && <span>{a.curto ?? a.rotulo}</span>}
           </button>
           {a.menu && menu === a.id && (
             <div className="etiqueta-do-item__menu" role="menu">
@@ -178,12 +182,13 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
     const v = velocidadeDoTrecho(clip);
     return [
       editar,
-      { id: 'dividir', rotulo: 'Dividir no cursor', Icone: IconeDividir, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'dividir_clipe', clipId: clip.id, sourceMs: Math.round(noCursor) }) },
-      { id: 'cortar', rotulo: 'Cortar o começo até o cursor', Icone: IconeCortar, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'ajustar_corte', clipId: clip.id, sourceStartMs: Math.round(noCursor), sourceEndMs: clip.sourceEndMs }) },
+      { id: 'dividir', rotulo: 'Dividir no cursor', curto: 'Dividir aqui', Icone: IconeDividir, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'dividir_clipe', clipId: clip.id, sourceMs: Math.round(noCursor) }) },
+      { id: 'cortar', rotulo: 'Cortar o começo até o cursor', curto: 'Cortar início', Icone: IconeCortar, desligada: noCursor === null, fazer: () => noCursor !== null && c.onOperacao({ op: 'ajustar_corte', clipId: clip.id, sourceStartMs: Math.round(noCursor), sourceEndMs: clip.sourceEndMs }) },
       { id: 'duplicar', rotulo: 'Duplicar', Icone: IconeCopiar, fazer: () => c.onOperacao({ op: 'duplicar_clipe', clipId: clip.id }) },
       {
         id: 'velocidade',
         rotulo: `Velocidade (${String(v).replace('.', ',')}x)`,
+        curto: 'Velocidade',
         Icone: IconeVelocidade,
         menu: VELOCIDADES_DO_TRECHO.filter((s) => (clip.sourceEndMs - clip.sourceStartMs) / s >= 500).map((s) => ({
           rotulo: `${String(s).replace('.', ',')}x`,
@@ -194,6 +199,7 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
       {
         id: 'som',
         rotulo: 'Som do trecho',
+        curto: 'Som',
         Icone: clip.audio?.muted ? IconeMudo : IconeVolume,
         menu: [
           { rotulo: clip.audio?.muted ? 'Ligar o som' : 'Deixar mudo', fazer: () => c.onOperacao({ op: 'ajustar_audio_do_clipe', clipId: clip.id, muted: clip.audio?.muted ? null : true }) },
@@ -205,6 +211,7 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
       {
         id: 'excluir',
         rotulo: 'Tirar do vídeo',
+        curto: 'Tirar',
         Icone: IconeLixeira,
         perigo: true,
         desligada: c.plan.clips.length <= 1,
@@ -229,7 +236,7 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
   if (i.tipo === 'elemento') lista.push({ id: 'estilo', rotulo: 'Estilo', Icone: IconeTexto, fazer: () => c.onEditar(true) });
   if (i.tipo === 'legenda') {
     const dividir = dividirLegenda(i, c.posicaoMs);
-    lista.push({ id: 'dividir', rotulo: dividir ? 'Dividir no cursor' : 'Dividir: leve o cursor para entre duas palavras', Icone: IconeDividir, desligada: !dividir, fazer: () => dividir && c.onOperacoes(dividir) });
+    lista.push({ id: 'dividir', rotulo: dividir ? 'Dividir no cursor' : 'Dividir: leve o cursor para entre duas palavras', curto: 'Dividir aqui', Icone: IconeDividir, desligada: !dividir, fazer: () => dividir && c.onOperacoes(dividir) });
   }
   if (criar) {
     lista.push({
@@ -264,11 +271,12 @@ function acoesDo(alvo: Alvo, c: Ctx): Acao[] {
     if (c.plan.captions.quebras?.includes(primeira)) mais.push({ rotulo: 'Juntar com a legenda anterior', fazer: () => c.onOperacao({ op: 'juntar_legenda', wordId: primeira }) });
     if (c.plan.captions.tempos?.some((t) => t.wordId === primeira)) mais.push({ rotulo: 'Voltar ao tempo da fala', fazer: () => c.onOperacao({ op: 'ajustar_tempo_da_legenda', wordId: primeira, antesMs: 0, depoisMs: 0 }) });
   }
-  if (mais.length) lista.push({ id: 'mais', rotulo: 'Mais opções', Icone: IconeMaisOpcoes, menu: mais });
+  if (mais.length) lista.push({ id: 'mais', rotulo: 'Mais opções', curto: 'Mais', Icone: IconeMaisOpcoes, menu: mais });
   if (remover) {
     lista.push({
       id: 'excluir',
       rotulo: i.tipo === 'corte' ? 'Tirar a transição' : i.tipo === 'legenda' && !i.manualId ? 'Esconder esta legenda' : 'Excluir',
+      curto: i.tipo === 'corte' ? 'Tirar' : i.tipo === 'legenda' && !i.manualId ? 'Esconder' : 'Excluir',
       Icone: IconeLixeira,
       perigo: true,
       fazer: () => {

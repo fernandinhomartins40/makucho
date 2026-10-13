@@ -1,0 +1,522 @@
+/* ============================================================
+   Editor prático (EditorPratico.tsx): o vídeo na tela toda.
+
+   É o MESMO editor, sem a timeline em volta: o palco ocupa a tela, e o
+   que se edita aparece numa bandeja embaixo e em gavetas. As regras do
+   editor completo (globals.css e liquid-glass.css) valem para
+   [data-modo='completo'] e para as telas pequenas em geral; aqui elas
+   são desfeitas para [data-modo='pratico'], por isso os !important.
+   ============================================================ */
+
+.editor[data-modo='pratico'] {
+  position: relative;
+  display: block !important;
+  padding: 0 !important;
+  overflow: hidden;
+  background: #000 !important;
+}
+
+/* ---------- O vídeo ---------- */
+
+.editor[data-modo='pratico'] .editor__palco {
+  position: absolute;
+  inset: 0;
+  display: grid !important;
+  place-items: center;
+  gap: 0;
+  padding: 0 !important;
+  container-type: size;
+}
+
+/* Editando, o quadro encolhe para caber entre o topo e a bandeja: a
+   legenda (embaixo do quadro) continua à vista e ao alcance do dedo. */
+.editor[data-modo='pratico'][data-editando]:not([data-tocando]) .editor__palco {
+  top: calc(62px + var(--seguro-topo, 0px));
+  bottom: var(--pratico-base, 0px);
+}
+
+/* Com uma gaveta aberta, o quadro fica acima dela: muda-se vendo. */
+.editor[data-modo='pratico'][data-folha] .editor__palco {
+  top: var(--seguro-topo, 0px);
+  bottom: 52dvh;
+}
+
+.editor[data-modo='pratico'] .editor__palco > .palco__quadro {
+  grid-area: auto !important;
+  width: min(100cqw, calc(100cqh / var(--quadro-hw, 1.7778))) !important;
+  height: auto !important;
+  max-height: 100cqh;
+  aspect-ratio: var(--quadro-ar, 9 / 16);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.editor[data-modo='pratico'] :is(.palco__controles, .palco__chips, .palco__grade) {
+  display: none !important;
+}
+
+/* Assistindo, nada de alças: elas são de quem está editando. */
+.editor[data-modo='pratico']:not([data-editando]) :is(.palco__alca-destaque, .palco__posicionar) {
+  display: none !important;
+}
+
+/* ---------- As gavetas (propriedades, biblioteca, IA) ---------- */
+
+.editor[data-modo='pratico'] :is(.editor__ia, .editor__inspector) {
+  display: none !important;
+}
+
+.editor[data-modo='pratico'][data-folha='painel'] .editor__ia,
+.editor[data-modo='pratico'][data-folha='inspector'] .editor__inspector {
+  display: flex !important;
+  position: fixed;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  width: auto;
+  max-width: 720px;
+  height: 52dvh;
+  max-height: none;
+  margin: 0 auto;
+  padding-bottom: var(--seguro-baixo, 0px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--bg-sidebar);
+  animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.editor[data-modo='pratico'] .editor__folha-cabecalho {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid !important;
+  justify-items: center;
+  gap: var(--e1);
+  padding: var(--e2) var(--e2) var(--e1) var(--e4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+/* O título da gaveta já diz o que é. */
+.editor[data-modo='pratico'] .editor__inspector .painel__cabecalho {
+  display: none;
+}
+
+.editor[data-modo='pratico'] .editor__aviso {
+  top: calc(70px + var(--seguro-topo, 0px));
+  bottom: auto;
+}
+
+/* ---------- O que fica em volta do vídeo ---------- */
+
+.pratico {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  pointer-events: none;
+}
+
+.pratico > * {
+  pointer-events: auto;
+}
+
+.pratico__toque {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pratico__toque:disabled {
+  cursor: default;
+}
+
+.pratico__play {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  padding-left: 4px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 48%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 40%);
+}
+
+.pratico__toque:disabled .pratico__play {
+  opacity: 0.4;
+}
+
+.pratico__topo {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--e2);
+  padding: calc(10px + var(--seguro-topo, 0px)) var(--e3) 22px;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 62%), transparent);
+}
+
+.pratico__redondo {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 16%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.pratico__redondo:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pratico__pronto {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #05122b;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pratico__titulo,
+.pratico__salvo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
+}
+
+.pratico__salvo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.pratico__salvo[data-erro] {
+  color: #fca5a5;
+  opacity: 1;
+}
+
+.pratico__exportar {
+  flex-shrink: 0;
+  min-height: 42px;
+  margin-left: auto;
+}
+
+.pratico__avisos {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--e2);
+  padding: 0 var(--e2);
+}
+
+.pratico__avisos:empty {
+  display: none;
+}
+
+.pratico__avisos > * {
+  margin: 0 !important;
+}
+
+/* ---------- A base: tempo e "Editar"; editando, a bandeja ---------- */
+
+.pratico__base {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--e3);
+  width: 100%;
+  max-width: 720px;
+  margin: auto auto 0;
+  padding: 44px var(--e4) calc(var(--e4) + var(--seguro-baixo, 0px));
+}
+
+/* Assistindo, a sombra vai de lado a lado mesmo com a base estreita. */
+.pratico[data-estado='pausado']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 230px;
+  background: linear-gradient(to top, rgb(0 0 0 / 78%), transparent);
+  pointer-events: none;
+}
+
+.pratico[data-estado='editando'] .pratico__base {
+  padding: var(--e3) var(--e3) calc(var(--e3) + var(--seguro-baixo, 0px));
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+}
+
+.pratico__tempo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pratico__tempo input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  accent-color: var(--accent);
+}
+
+.pratico[data-estado='editando'] .pratico__tempo .pratico__redondo {
+  background: var(--primary);
+}
+
+.pratico__editar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  justify-self: center;
+  width: min(100%, 320px);
+  min-height: 58px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 45%);
+  cursor: pointer;
+}
+
+.pratico__editar:active,
+.pratico__chip:active,
+.pratico__acoes button:active,
+.pratico__opcoes button:active {
+  transform: scale(0.97);
+}
+
+.pratico__cena {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pratico__cena-titulo {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pratico__chips {
+  display: flex;
+  gap: var(--e2);
+  padding-bottom: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pratico__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.pratico__chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--e2);
+  max-width: 220px;
+  min-height: 50px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pratico__chip > span {
+  display: grid;
+  min-width: 0;
+}
+
+.pratico__chip strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pratico__chip small {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pratico__acoes {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--e2);
+}
+
+.pratico__acoes button,
+.pratico__opcoes button {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.pratico__acoes button[data-ia] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-1));
+}
+
+/* ---------- As ações do que está escolhido (EtiquetaDoItem), na bandeja ---------- */
+
+.etiqueta-do-item[data-rotulos] {
+  position: static;
+  z-index: auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  animation: none;
+}
+
+.etiqueta-do-item[data-rotulos]::after {
+  display: none;
+}
+
+.etiqueta-do-item[data-rotulos] .etiqueta-do-item__botao {
+  align-content: center;
+  gap: 4px;
+  width: 72px;
+  height: auto;
+  min-height: 58px;
+  padding: 8px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-1);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.etiqueta-do-item[data-rotulos] .etiqueta-do-item__botao[data-ia] {
+  border-color: var(--primary);
+}
+
+/* ---------- "Adicionar" e "Mais ajustes" ---------- */
+
+.pratico__veu {
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  background: rgb(0 0 0 / 55%);
+}
+
+.pratico__menu {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 47;
+  display: grid;
+  gap: var(--e3);
+  max-width: 720px;
+  max-height: 80dvh;
+  margin: 0 auto;
+  padding: var(--e3) var(--e3) calc(var(--e4) + var(--seguro-baixo, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 20px 20px 0 0;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  animation: subir 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pratico__menu-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: var(--e1);
+}
+
+.pratico__menu-topo h2 {
+  font-size: 17px;
+}
+
+.pratico__opcoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: var(--e2);
+}
+
+.pratico__opcoes button {
+  min-height: 86px;
+  gap: 6px;
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pratico__menu,
+  .editor[data-modo='pratico'][data-folha] :is(.editor__ia, .editor__inspector) {
+    animation: none;
+  }
+}
