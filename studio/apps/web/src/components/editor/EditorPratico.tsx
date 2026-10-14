@@ -30,6 +30,7 @@ import type { Icon } from '@phosphor-icons/react';
 import type { AcaoMovel } from './BarraMovel';
 import type { ItemNaCena } from './naCena';
 import { tempo } from './funcoes';
+import { Deslizante } from './PainelDoItem';
 import {
   IconeTocar,
   IconeVoltar,
@@ -112,6 +113,11 @@ interface Props {
   onEditorCompleto: () => void;
   legendasLigadas: boolean;
   somOriginalMudo: boolean;
+  /** O volume do som do vídeo e o da trilha, em dB (vídeo mudo ou sem trilha: null). */
+  volume: { video: number | null; trilha: number | null };
+  /** null tira o som do vídeo. */
+  onVolumeDoVideo: (db: number | null) => void;
+  onVolumeDaTrilha: (db: number) => void;
 
   /** As animações da IA neste vídeo: sem nenhuma, a bandeja oferece criar. */
   animacoes: { estado: 'nenhuma' | 'criando' | 'prontas'; onCriar?: () => void };
@@ -121,8 +127,12 @@ interface Props {
   avisos?: React.ReactNode;
 }
 
-type Menu = 'adicionar' | 'mais' | 'tudo' | 'camadas';
-const TITULO_DO_MENU: Record<Menu, string> = { adicionar: 'Adicionar ao vídeo', mais: 'Mais ajustes', tudo: 'Tudo no vídeo', camadas: 'Mostrar e esconder' };
+type Menu = 'adicionar' | 'mais' | 'tudo' | 'camadas' | 'volume';
+const TITULO_DO_MENU: Record<Menu, string> = { adicionar: 'Adicionar ao vídeo', mais: 'Mais ajustes', tudo: 'Tudo no vídeo', camadas: 'Mostrar e esconder', volume: 'Volume' };
+
+// O volume em % do som original (100% = como foi gravado / como a trilha veio): mais fácil que dB.
+const emPorcento = (db: number) => Math.round((10 ** (db / 20) * 100) / 5) * 5;
+const emDb = (porcento: number) => Math.round(20 * Math.log10(porcento / 100) * 2) / 2;
 type Opcao = { id: string; rotulo: string; Icone: Icon; fazer: () => void };
 
 export function EditorPratico({
@@ -156,6 +166,9 @@ export function EditorPratico({
   onEditorCompleto,
   legendasLigadas,
   somOriginalMudo,
+  volume,
+  onVolumeDoVideo,
+  onVolumeDaTrilha,
   animacoes,
   gavetaAberta,
   avisos,
@@ -209,6 +222,7 @@ export function EditorPratico({
       { id: 'transicoes', rotulo: 'Transições', Icone: IconeTransicao, fazer: escolher('transicoes') },
       { id: 'formato', rotulo: 'Formato', Icone: IconeCelular, fazer: escolher('formato') },
       { id: 'marca', rotulo: 'Minha marca', Icone: IconeMarca, fazer: escolher('marca') },
+      { id: 'volume', rotulo: 'Volume', Icone: IconeVolume, fazer: () => setMenu('volume') },
       { id: 'silencios', rotulo: 'Tirar os silêncios', Icone: IconeIA, fazer: escolher('silencios') },
       { id: 'silenciar', rotulo: somOriginalMudo ? 'Ligar o som do vídeo' : 'Tirar o som do vídeo', Icone: somOriginalMudo ? IconeVolume : IconeMudo, fazer: escolher('silenciar') },
       { id: 'camadas', rotulo: 'Mostrar e esconder', Icone: IconeOlho, fazer: () => setMenu('camadas') },
@@ -429,6 +443,39 @@ export function EditorPratico({
                     <time>{Number.isFinite(i.fimMs) ? `${tempo(i.inicioMs)} – ${tempo(i.fimMs)}` : `${tempo(i.inicioMs)} até o fim`}</time>
                   </button>
                 ))}
+              </div>
+            )}
+            {/* O volume do som do vídeo (todos os trechos) e o da trilha, em % do original. */}
+            {menu === 'volume' && (
+              <div className="pratico__volume">
+                <Deslizante
+                  rotulo="Som do vídeo"
+                  valor={volume.video === null ? 0 : emPorcento(volume.video)}
+                  min={0}
+                  max={300}
+                  passo={5}
+                  unidade="%"
+                  onSoltar={(p) => onVolumeDoVideo(p <= 0 ? null : Math.max(-30, Math.min(12, emDb(p))))}
+                />
+                <p className="pratico__volume-dica">100% é o som como foi gravado. 0% tira o som do vídeo.</p>
+                {volume.trilha !== null ? (
+                  <>
+                    <Deslizante
+                      rotulo="Trilha"
+                      valor={emPorcento(volume.trilha)}
+                      min={0}
+                      max={100}
+                      passo={5}
+                      unidade="%"
+                      onSoltar={(p) => onVolumeDaTrilha(p <= 0 ? -40 : Math.max(-40, Math.min(0, emDb(p))))}
+                    />
+                    <p className="pratico__volume-dica">100% é a música no volume em que ela veio.</p>
+                  </>
+                ) : (
+                  <button type="button" className="botao botao--secundario" onClick={escolher('musica')}>
+                    <IconeTrilha size={18} /> Pôr uma trilha
+                  </button>
+                )}
               </div>
             )}
             {menu === 'camadas' && (

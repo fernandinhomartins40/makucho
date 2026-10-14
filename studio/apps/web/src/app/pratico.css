@@ -645,6 +645,28 @@
   }
 }
 
+.pratico__volume {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.pratico__volume .deslizante {
+  width: 100%;
+}
+
+.pratico__volume-dica {
+  margin: -2px 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pratico__volume > .botao {
+  justify-self: start;
+  gap: 6px;
+}
+
 .pratico__lista {
   display: grid;
   gap: 6px;

@@ -1198,6 +1198,13 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
 
   // ---------- Barra de baixo do celular ----------
   const somOriginalMudo = !!plano && plano.clips.every((c) => c.audio?.muted);
+  // O volume do som do vídeo: o ganho que a maioria dos trechos usa (mudo = null).
+  const volumeDoVideo = (() => {
+    if (!plano || somOriginalMudo) return null;
+    const contagem = new Map<number, number>();
+    for (const c of plano.clips) if (!c.audio?.muted) contagem.set(c.audio?.gainDb ?? 0, (contagem.get(c.audio?.gainDb ?? 0) ?? 0) + 1);
+    return [...contagem].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
+  })();
   const executarAcaoMovel = (a: AcaoMovel) => {
     if (!plano) return;
     const biblioteca: Partial<Record<AcaoMovel, CategoriaDaBiblioteca>> = {
@@ -1538,6 +1545,12 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
       onEditorCompleto={() => trocarVisual('completo')}
       legendasLigadas={plano.captions.enabled}
       somOriginalMudo={somOriginalMudo}
+      volume={{ video: volumeDoVideo, trilha: plano.music ? plano.music.gainDb : null }}
+      onVolumeDoVideo={(db) =>
+        // O mesmo volume em todos os trechos (um desfazer só). Zero tira o som; subir de novo devolve.
+        executarVarias(plano.clips.map((c) => ({ op: 'ajustar_audio_do_clipe' as const, clipId: c.id, ...(db === null ? { muted: true } : { gainDb: db === 0 ? null : db, muted: null }) })))
+      }
+      onVolumeDaTrilha={(db) => executar({ op: 'configurar_musica', gainDb: db })}
       animacoes={{ estado: criandoAnimacoes ? 'criando' : temAnimacoes ? 'prontas' : 'nenhuma', ...(!semIa ? { onCriar: () => void criarAnimacoesDaFala() } : {}) }}
       gavetaAberta={folha !== null}
       avisos={

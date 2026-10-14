@@ -218,6 +218,16 @@ export function Palco({
   const mudoRef = useRef(mudo);
   // Gravando narração, a prévia fica muda: o microfone não pega o vídeo.
   mudoRef.current = mudo || gravandoDe !== null;
+  // O teto da mixagem da prévia: o navegador não toca acima de 100% (volume 1). Com o som do
+  // vídeo acima disso (ou a trilha no alto), tudo abaixa na mesma proporção -- o equilíbrio
+  // entre a voz e a trilha é o da exportação, e cada mudança de volume se ouve.
+  const tetoDoSom = (() => {
+    const voz = Math.max(0, ...plan.clips.filter((c) => !c.audio?.muted).map((c) => 10 ** ((c.audio?.gainDb ?? 0) / 20)));
+    const trilha = plan.music ? 10 ** ((plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0)) / 20) * 4 : 0;
+    return Math.max(1, voz, trilha);
+  })();
+  const tetoDoSomRef = useRef(tetoDoSom);
+  tetoDoSomRef.current = tetoDoSom;
   const [zonasSeguras, setZonasSeguras] = useState(true);
   const [erroDoVideo, setErroDoVideo] = useState(false);
   const [libassFalhou, setLibassFalhou] = useState(false);
@@ -441,7 +451,7 @@ export function Palco({
           const desvio = Math.abs(el.currentTime - alvoNoArquivo);
           const volume = c.volume ?? 0;
           el.muted = mudoRef.current || volume <= 0;
-          el.volume = Math.min(1, volume);
+          el.volume = Math.min(1, volume / tetoDoSomRef.current);
           if (tocandoRef.current && alvo < fim) {
             if (desvio > 0.2 && !el.seeking) el.currentTime = alvoNoArquivo;
             if (el.paused) void el.play().catch(() => undefined);
@@ -662,7 +672,7 @@ export function Palco({
             motor.preparar(proximo, sourceNoInstante(agenda, proximo, inicioDoUso(agenda, proximo)), agenda.trechos[proximo]!.clip.sourceEndMs / 1000);
           }
           motor.manter(usados);
-          for (const [i, v] of estado.volumes) motor.volume(i, v);
+          for (const [i, v] of estado.volumes) motor.volume(i, v / tetoDoSomRef.current);
           motor.mudo(mudoRef.current);
         }
         desenharGl(estado);
@@ -722,7 +732,7 @@ export function Palco({
           if (!tocandoAgora && !v.paused) v.pause();
           const volume = estado.volumes.get(i) ?? 0;
           v.muted = mudoRef.current || volume <= 0;
-          v.volume = Math.min(1, Math.max(0, volume));
+          v.volume = Math.min(1, Math.max(0, volume / tetoDoSomRef.current));
         } else if (!v.paused) {
           v.pause();
         }
@@ -1015,10 +1025,10 @@ export function Palco({
     // O ganho em dB do plano; com ducking, a voz está quase sempre
     // presente, então a prévia usa o volume "abaixado".
     const db = plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0);
-    audio.volume = Math.min(1, Math.max(0, 10 ** (db / 20) * 4));
+    audio.volume = Math.min(1, Math.max(0, (10 ** (db / 20) * 4) / tetoDoSom));
     if (tocando) sincronizarTrilha(relogioRef.current.ms);
     else audio.pause();
-  }, [tocando, plan.music, sincronizarTrilha]);
+  }, [tocando, plan.music, sincronizarTrilha, tetoDoSom]);
 
   const tocarDe = useCallback(
     (msNaTimeline: number) => {
