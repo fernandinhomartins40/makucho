@@ -203,6 +203,66 @@ const CENAS = {
 };
 const SILHUETA = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3a3f4b"/><circle cx="50" cy="38" r="18" fill="#9aa3b5"/><path d="M14 100c4-22 18-34 36-34s32 12 36 34z" fill="#9aa3b5"/></svg>')}`;
 
+/**
+ * O script que enquadra o desenho na caixa: mede o que aparece no meio da
+ * animação e ajusta (sem distorcer, centrado). `W`x`H` é o palco original --
+ * o que ocupa quase ele todo é fundo e não entra na medida.
+ */
+function jsDeEnquadrar(nome, W, H) {
+  return `(function () {
+var palco = document.getElementById('palco-hf'); if (!palco) return;
+var raiz = palco.parentElement; var lw = raiz.clientWidth || ${W}; var lh = raiz.clientHeight || ${H};
+var tl = window.__timelines && window.__timelines[${JSON.stringify(nome)}];
+var enquadrar = function () {
+var k = Math.min(1, lw / ${W}); var tx = 0; var ty = 0;
+var t0 = tl && tl.totalTime ? tl.totalTime() : 0;
+palco.style.transform = 'none';
+try {
+var base = palco.getBoundingClientRect(); var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+[0.3, 0.5, 0.7].forEach(function (p) {
+if (tl && tl.progress) tl.progress(p, true);
+palco.querySelectorAll('*').forEach(function (el) {
+var r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
+if (r.width >= ${W} * 0.9 && r.height >= ${H} * 0.9) return;
+for (var a = el; a && a !== palco; a = a.parentElement) { var cs = getComputedStyle(a); if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) < 0.05) return; if (a !== el && cs.overflowX !== 'visible') return; }
+x0 = Math.min(x0, r.left - base.left); y0 = Math.min(y0, r.top - base.top); x1 = Math.max(x1, r.right - base.left); y1 = Math.max(y1, r.bottom - base.top);
+});
+});
+if (x1 > x0 && y1 > y0) { k = Math.min(lw / (x1 - x0), lh / (y1 - y0)) * 0.94; tx = lw / 2 - k * (x0 + x1) / 2; ty = lh / 2 - k * (y0 + y1) / 2; }
+} catch (e) {}
+if (tl && tl.totalTime) tl.totalTime(t0, true);
+palco.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+};
+enquadrar();
+// As fontes chegam depois e mudam a largura dos textos: mede de novo com elas.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(enquadrar);
+})();`;
+}
+
+/** Os textos da tela viram campos (t1, t2...): cada um num <span data-hf-t>. Fora de svg. */
+function comCamposDeTexto(markup) {
+  const textos = [];
+  const html = markup
+    .split(/(<svg[\s\S]*?<\/svg>)/i)
+    .map((parte) =>
+      /^<svg/i.test(parte)
+        ? parte
+        : parte.replace(/>([^<>]*[A-Za-zÀ-ÿ0-9][^<>]*)</g, (_t, txt) => {
+            const limpo = txt.replace(/\s+/g, ' ').trim();
+            if (!limpo) return `>${txt}<`;
+            textos.push(limpo);
+            return `><span data-hf-t="t${textos.length}">${limpo}</span><`;
+          }),
+    )
+    .join('');
+  return { html, textos };
+}
+const JS_DOS_TEXTOS = `(function () {
+var palco = document.getElementById('palco-hf'); if (!palco) return;
+var vars = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+palco.querySelectorAll('[data-hf-t]').forEach(function (el) { var v = vars[el.getAttribute('data-hf-t')]; if (typeof v === 'string' && v) el.textContent = v; });
+})();`;
+
 function converterCena(nome, s, m) {
   const css = [...s.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((x) => x[1]).join('\n');
   const corpo = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(s)?.[1] ?? '';
@@ -266,25 +326,7 @@ palco.querySelectorAll('[data-hf-t]').forEach(function (el) { var v = vars[el.ge
     .join('\n');
   // Enquadrar: a cena foi desenhada num palco de ${W}x${H} com o desenho num canto;
   // mede-se o que aparece no meio da animação e isso é ajustado (sem distorcer) à caixa.
-  const enquadrar = `(function () {
-var palco = document.getElementById('palco-hf'); if (!palco) return;
-var raiz = palco.parentElement; var lw = raiz.clientWidth || ${W}; var lh = raiz.clientHeight || ${H};
-var tl = window.__timelines && window.__timelines[${JSON.stringify(nome)}];
-var k = lw / ${W}; var tx = 0; var ty = 0;
-try {
-if (tl && tl.progress) tl.progress(0.5);
-var base = palco.getBoundingClientRect(); var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-palco.querySelectorAll('*').forEach(function (el) {
-var r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
-if (r.width >= ${W} * 0.9 && r.height >= ${H} * 0.9) return;
-for (var a = el; a && a !== palco; a = a.parentElement) { var cs = getComputedStyle(a); if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) < 0.05) return; }
-x0 = Math.min(x0, r.left - base.left); y0 = Math.min(y0, r.top - base.top); x1 = Math.max(x1, r.right - base.left); y1 = Math.max(y1, r.bottom - base.top);
-});
-if (x1 > x0 && y1 > y0) { k = Math.min(lw / (x1 - x0), lh / (y1 - y0)) * 0.94; tx = lw / 2 - k * (x0 + x1) / 2; ty = lh / 2 - k * (y0 + y1) / 2; }
-} catch (e) {}
-if (tl && tl.progress) tl.progress(0);
-palco.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
-})();`;
+  const enquadrar = jsDeEnquadrar(nome, W, H);
   const miolo = `<div id="root" data-composition-id="${nome}" style="position:absolute;inset:0">
 <style>${cssLimpo}</style>
 ${markup}
@@ -328,6 +370,158 @@ if (pastaDasCenas && existsSync(pastaDasCenas)) {
       evitar: '',
       envelope: m.duration ? `dura ${m.duration}s` : '',
       variaveis: c.textos.map((t, i) => ({ id: `t${i + 1}`, tipo: 'string', padrao: t, descricao: `texto ${i + 1} da tela (exemplo: "${t}")` })),
+    });
+  }
+}
+
+// ---------- Receitas (componentes em formato de demonstração) ----------
+//
+// Metade do registro não vem pronta para montar: é a marcação e o CSS de um
+// cartão de demonstração, com a animação descrita num comentário ("Timeline
+// integration: tl.fromTo(...)"). Aqui a receita vira componente: o trecho do
+// comentário passa a ser a linha do tempo dele, os textos viram campos
+// (t1, t2...) e o desenho é enquadrado na caixa.
+const RECEITAS = {
+  typewriter: 'texto', 'per-word-crossfade': 'texto', 'rgb-glitch-text': 'texto',
+  'top-down-letters': 'texto', 'bottom-up-letters': 'texto', 'text-stagger': 'texto', 'text-state-swap': 'texto',
+  'blur-in': 'texto', 'blur-out-up': 'texto', 'focus-blur-resolve': 'texto', 'line-by-line-slide': 'texto',
+  'soft-blur-in': 'texto', 'staggered-fade-up': 'texto', 'tracking-in': 'texto', 'shared-axis-y': 'texto',
+  'shared-axis-z': 'texto', 'strikethrough-replace': 'destaque', 'inline-highlight': 'destaque',
+  'number-pop-in': 'dados', 'number-wheel': 'dados', 'slot-machine-roll': 'dados', 'animated-bar-chart': 'dados',
+  'success-check': 'destaque', 'badge-pop': 'destaque', 'typing-indicator': 'destaque',
+  'tilt-card': 'destaque', 'x-follow-card': 'destaque', 'skeleton-reveal': 'destaque',
+  'tabs-slide-indicator': 'destaque', 'input-feedback': 'destaque',
+  // Reprovadas na bancada: matrix-decode (não decodifica: fica em zeros), perspective-marquee e
+  // spotlight-card (ilegíveis), icon-swap (o texto cobre o ícone), confetti e terminal-simulator
+  // (cartão de demonstração, não o efeito), svg-line-draw-loader (só uma linha), panel-reveal
+  // (linhas fixas em inglês). As que são só estilo, sem desenho (tracking-in, soft-blur-in,
+  // bottom-up-letters, separator...), só entram com marcação escrita em MARCACAO_DAS_RECEITAS.
+};
+
+/**
+ * Receitas que são só estilo e script (uma classe para pôr num texto): a
+ * marcação é escrita aqui. `antes` roda antes do script da receita, com as
+ * variáveis em `v`; `variaveis` entram no catálogo.
+ */
+const TEXTO_SOLTO = 'font:800 96px/1.2 var(--font-display, var(--font-body, Inter, system-ui, sans-serif));color:#fff;text-align:center;white-space:nowrap;text-shadow:0 4px 18px rgba(0,0,0,.45)';
+const MARCACAO_DAS_RECEITAS = {
+  'inline-highlight': {
+    markup: `<div style="${TEXTO_SOLTO}"><span>Isso é</span> <span class="hf-inline-highlight" style="color:#111;text-shadow:none;--hf-highlight-height:1.12em;margin-left:.12em">importante</span></div>`,
+  },
+  'number-wheel': {
+    markup: `<div style="${TEXTO_SOLTO.replace('800 96px', '900 200px')}"><span class="hf-number-wheel" data-value="1250"></span></div>`,
+    antes: `var el = document.querySelector('#palco-hf .hf-number-wheel'); if (el && (typeof v.valor === 'string' || typeof v.valor === 'number') && String(v.valor)) el.setAttribute('data-value', String(v.valor));`,
+    variaveis: [{ id: 'valor', type: 'string', default: '1250', description: 'o número que os dígitos rolam até mostrar (pode ter ponto, vírgula, % ou R$)' }],
+    semCampos: true,
+  },
+};
+
+function converterReceita(nome, s) {
+  const integracao = /Timeline integration:([\s\S]*?)-->/.exec(s)?.[1]?.trim();
+  if (!integracao || !/\btl\./.test(integracao)) return null;
+  const semComentarios = s
+    .split(/(<script[\s\S]*?<\/script>)/i)
+    .map((parte) => (/^<script/i.test(parte) ? parte : parte.replace(/<!--[\s\S]*?-->/g, '')))
+    .join('');
+  const css = [...semComentarios.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)]
+    .map((x) => x[1])
+    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/@import[^;]+;/g, '')
+    .replace(/^[ \t]+/gm, '')
+    .replace(/\n{2,}/g, '\n');
+  const scripts = [...semComentarios.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((x) => x[1]);
+  let markup = semComentarios.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').trim();
+  const escrita = MARCACAO_DAS_RECEITAS[nome];
+  if (escrita) markup = escrita.markup;
+  // Só estilo, sem desenho e sem marcação escrita aqui: não há o que mostrar.
+  if (!markup.replace(/<[^>]*>/g, '').trim() && !/<(svg|img|span|div|i|b)\b/i.test(markup)) return null;
+  if (/(src|href)\s*=\s*["']https?:|url\(\s*["']?https?:/i.test(markup + css)) return null;
+  // As variáveis que a receita declara (na própria marcação).
+  let variaveis = [];
+  const declaradas = /data-composition-variables='([\s\S]*?)'/.exec(semComentarios)?.[1];
+  if (declaradas) {
+    try {
+      variaveis = JSON.parse(declaradas);
+    } catch {
+      return null;
+    }
+  }
+  markup = markup.replace(/\sdata-composition-variables='[\s\S]*?'/, '');
+  // Quem já tem campo de texto próprio não ganha t1, t2... (seriam dois donos do mesmo texto).
+  if (escrita?.variaveis) variaveis = [...escrita.variaveis, ...variaveis];
+  const temTextoProprio = escrita ? !!escrita.semCampos : variaveis.some((v) => v.type === 'string');
+  const campos = temTextoProprio ? { html: markup, textos: [] } : comCamposDeTexto(markup);
+  // O padrão das receitas é letra escura (para fundo claro); em cima do vídeo, a clara.
+  const padroes = {};
+  for (const v of variaveis) {
+    if (v.id === 'tone' && (v.options ?? []).some((o) => (typeof o === 'object' ? o.value : o) === 'paper')) {
+      padroes.tone = 'paper';
+      v.default = 'paper';
+    }
+  }
+  const jsDosPadroes =
+    Object.keys(padroes).length || escrita?.antes
+      ? `(function () { var v = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {}; var p = ${JSON.stringify(padroes)}; for (var k in p) if (v[k] === undefined) v[k] = p[k]; ${escrita?.antes ?? ''} })();\n`
+      : '';
+  const miolo = `<div id="root" data-composition-id="${nome}" style="position:absolute;inset:0">
+<style>${css}</style>
+<div id="palco-hf" style="position:absolute;left:0;top:0;width:max-content;height:max-content;transform-origin:0 0">
+${campos.html}
+</div>
+<script>${jsDosPadroes}${JS_DOS_TEXTOS}
+${scripts.join('\n')}
+(function () {
+window.__timelines = window.__timelines || {};
+var tl = gsap.timeline({ paused: true });
+var startTime = 0; var endTime = 2.4;
+{
+${integracao}
+}
+window.__timelines[${JSON.stringify(nome)}] = tl;
+})();
+${jsDeEnquadrar(nome, 100000, 100000)}</script>
+</div>`;
+  return { miolo, textos: campos.textos, variaveis };
+}
+
+if (pastaDasCenas) {
+  for (const [nome, grupo] of Object.entries(RECEITAS)) {
+    if (REPROVADOS.has(nome)) continue;
+    const html = join(pasta, nome, `${nome}.html`);
+    const item = join(pasta, nome, 'registry-item.json');
+    if (!existsSync(html) || !existsSync(item)) {
+      pulados.push(`${nome} (receita não existe)`);
+      continue;
+    }
+    const s = readFileSync(html, 'utf8');
+    const c = /<canvas|getContext\(/.test(s) ? null : converterReceita(nome, s);
+    if (!c) {
+      pulados.push(`${nome} (receita não convertida)`);
+      continue;
+    }
+    const m = JSON.parse(readFileSync(item, 'utf8'));
+    fontes[nome] = c.miolo;
+    catalogo.push({
+      nome,
+      grupo,
+      titulo: m.title ?? nome,
+      oQue: `${(m.description ?? '').trim()} (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)`,
+      quando: '',
+      evitar: '',
+      envelope: '',
+      variaveis: [
+        ...c.textos.map((t, i) => ({ id: `t${i + 1}`, tipo: 'string', padrao: t, descricao: `texto ${i + 1} da tela (exemplo: "${t}")` })),
+        ...c.variaveis.map((v) => ({
+          id: v.id,
+          tipo: v.type,
+          padrao: v.default ?? null,
+          descricao: v.description ?? v.label ?? '',
+          ...(v.options ? { opcoes: v.options.map((o) => (typeof o === 'object' ? o.value : o)) } : {}),
+          ...(v.min !== undefined ? { min: v.min } : {}),
+          ...(v.max !== undefined ? { max: v.max } : {}),
+        })),
+      ],
     });
   }
 }

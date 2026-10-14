@@ -3028,5 +3028,1308 @@ export const COMPONENTES_DO_CATALOGO_EXTRA: readonly ComponenteDoCatalogo[] = [
         "descricao": "texto 4 da tela (exemplo: \"Subscribed\")"
       }
     ]
+  },
+  {
+    "nome": "typewriter",
+    "grupo": "texto",
+    "titulo": "Typewriter",
+    "oQue": "Character-by-character text reveal with a deterministic blinking cursor. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "text",
+        "tipo": "string",
+        "padrao": "hyperframes add typewriter",
+        "descricao": "Line that types itself out character by character."
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Colour of the text and the caret: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      },
+      {
+        "id": "caret",
+        "tipo": "enum",
+        "padrao": "line",
+        "descricao": "Caret shape: a thin rule, a terminal-style block, or no caret at all.",
+        "opcoes": [
+          "line",
+          "block",
+          "none"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "per-word-crossfade",
+    "grupo": "texto",
+    "titulo": "Per-Word Crossfade",
+    "oQue": "Words gently fade into place with a short vertical drift for calm keynote rhythm. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "text",
+        "tipo": "string",
+        "padrao": "Create once reuse everywhere",
+        "descricao": "The line to animate. It is split on whitespace and every word gets its own span, so the stagger picks up the new words."
+      },
+      {
+        "id": "drift",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "blur",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the blur radius the timeline drives, from a light haze to a full smear.",
+        "opcoes": [
+          "soft",
+          "standard",
+          "heavy"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "rgb-glitch-text",
+    "grupo": "texto",
+    "titulo": "RGB Glitch Text",
+    "oQue": "RGB-offset text copies jitter briefly for a controlled glitch window. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "text",
+        "tipo": "string",
+        "padrao": "GLITCH",
+        "descricao": "The word shown on all three stacked copies."
+      },
+      {
+        "id": "intensity",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the red and cyan offsets the timeline drives, so the split reads as a hairline or a hard tear.",
+        "opcoes": [
+          "subtle",
+          "standard",
+          "extreme"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Colour of the solid copy the two ghosts split away from: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "top-down-letters",
+    "grupo": "texto",
+    "titulo": "Top-Down Letters",
+    "oQue": "Letters descend from above in a pronounced staircase with zero blur. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "text",
+        "tipo": "string",
+        "padrao": "CASCADE",
+        "descricao": "Word that cascades in. Every character becomes one letter span, in source order."
+      },
+      {
+        "id": "distance",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Multiplies the drop the timeline drives, so the letters cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Letter colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "text-stagger",
+    "grupo": "texto",
+    "titulo": "Text Stagger",
+    "oQue": "A transitions.dev-inspired text stagger primitive with enter, shimmer, and exit-ready words (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "text",
+        "tipo": "string",
+        "padrao": "Build motion systems fast",
+        "descricao": "Headline copy. Every whitespace-separated word becomes one staggered span."
+      },
+      {
+        "id": "size",
+        "tipo": "number",
+        "padrao": 74,
+        "descricao": "Type size of every word in pixels, clamped to 24-160. Line height stays proportional.",
+        "min": 24,
+        "max": 160
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Base word colour: ink for light frames, paper for dark ones.",
+        "opcoes": [
+          "ink",
+          "paper"
+        ]
+      },
+      {
+        "id": "accent",
+        "tipo": "enum",
+        "padrao": "blue",
+        "descricao": "Colour of the shimmer the second timeline step sweeps across the words.",
+        "opcoes": [
+          "blue",
+          "green",
+          "violet"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "text-state-swap",
+    "grupo": "texto",
+    "titulo": "Text State Swap",
+    "oQue": "A text state swap primitive with outgoing blur and incoming lift (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "from-text",
+        "tipo": "string",
+        "padrao": "Saving draft",
+        "descricao": "The outgoing label, on screen before the swap."
+      },
+      {
+        "id": "to-text",
+        "tipo": "string",
+        "padrao": "Saved",
+        "descricao": "The incoming label, on screen after the swap. It rests hidden until the timeline reveals it."
+      },
+      {
+        "id": "distance",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the vertical offset the timeline drives, so each label covers a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Label colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "blur-in",
+    "grupo": "texto",
+    "titulo": "Blur In",
+    "oQue": "An Operator Black word-level content reveal that resolves its own text from controlled blur (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Design",
+        "descricao": "texto 1 da tela (exemplo: \"Design\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "systems",
+        "descricao": "texto 2 da tela (exemplo: \"systems\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "for",
+        "descricao": "texto 3 da tela (exemplo: \"for\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "video",
+        "descricao": "texto 4 da tela (exemplo: \"video\")"
+      },
+      {
+        "id": "size",
+        "tipo": "number",
+        "padrao": 52,
+        "descricao": "Type size of the revealed words in pixels; the gap between words scales with it.",
+        "min": 24,
+        "max": 120
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "strong",
+        "descricao": "Word colour: strong for headlines, muted for supporting lines, accent for the brand green.",
+        "opcoes": [
+          "strong",
+          "muted",
+          "accent"
+        ]
+      },
+      {
+        "id": "align",
+        "tipo": "enum",
+        "padrao": "left",
+        "descricao": "Horizontal alignment of the words in the frame.",
+        "opcoes": [
+          "left",
+          "center",
+          "right"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "blur-out-up",
+    "grupo": "texto",
+    "titulo": "Blur Out Up",
+    "oQue": "Words arrive clean and depart upward with increasing blur for airy exits. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HELLO",
+        "descricao": "texto 1 da tela (exemplo: \"HELLO\")"
+      },
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "up",
+        "descricao": "Where the offset the timeline drives points.",
+        "opcoes": [
+          "up",
+          "down",
+          "left",
+          "right"
+        ]
+      },
+      {
+        "id": "distance",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "blur",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the blur radius the timeline drives, from a light haze to a full smear.",
+        "opcoes": [
+          "soft",
+          "standard",
+          "heavy"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "focus-blur-resolve",
+    "grupo": "texto",
+    "titulo": "Focus Blur Resolve",
+    "oQue": "A premium focus pull from heavy blur to crisp text, then a soft blur-out exit. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Crystal",
+        "descricao": "texto 1 da tela (exemplo: \"Crystal\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "clear",
+        "descricao": "texto 2 da tela (exemplo: \"clear\")"
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      },
+      {
+        "id": "size",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Type size of the words, from a caption-scale line to a full display card.",
+        "opcoes": [
+          "compact",
+          "standard",
+          "display"
+        ]
+      },
+      {
+        "id": "blur",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the blur radius the timeline drives, so the focus pull starts as a light haze or a full smear.",
+        "opcoes": [
+          "soft",
+          "standard",
+          "heavy"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "line-by-line-slide",
+    "grupo": "texto",
+    "titulo": "Line-by-Line Slide",
+    "oQue": "Each line enters from the left with staggered slide and exits to the right. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Design faster",
+        "descricao": "texto 1 da tela (exemplo: \"Design faster\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Render cleaner",
+        "descricao": "texto 2 da tela (exemplo: \"Render cleaner\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Ship louder",
+        "descricao": "texto 3 da tela (exemplo: \"Ship louder\")"
+      },
+      {
+        "id": "size",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Type size of the whole stack.",
+        "opcoes": [
+          "compact",
+          "standard",
+          "display"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Line colour: ink for light frames, paper for dark ones, accent rides the brand token.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      },
+      {
+        "id": "density",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "The gap between lines, from a tight block to an airy stack.",
+        "opcoes": [
+          "fine",
+          "standard",
+          "coarse"
+        ]
+      },
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "left",
+        "descricao": "Which side the lines slide in from as the timeline drives the offset.",
+        "opcoes": [
+          "left",
+          "right"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "staggered-fade-up",
+    "grupo": "texto",
+    "titulo": "Staggered Fade Up",
+    "oQue": "Words fade in and slide up one after another with configurable delay. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "up",
+        "descricao": "Where the offset the timeline drives points.",
+        "opcoes": [
+          "up",
+          "down",
+          "left",
+          "right"
+        ]
+      },
+      {
+        "id": "distance",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the travel offset, so the words cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      },
+      {
+        "id": "words",
+        "tipo": "string",
+        "padrao": "Staggered fade up",
+        "descricao": "The words themselves, split on spaces, one span and one stagger step each."
+      }
+    ]
+  },
+  {
+    "nome": "shared-axis-y",
+    "grupo": "texto",
+    "titulo": "Shared Axis Y",
+    "oQue": "Per-word vertical shared-axis transition for sharp editorial swaps. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Plan",
+        "descricao": "texto 1 da tela (exemplo: \"Plan\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Debug",
+        "descricao": "texto 2 da tela (exemplo: \"Debug\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Ask",
+        "descricao": "texto 3 da tela (exemplo: \"Ask\")"
+      },
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "up",
+        "descricao": "Which side of the baseline the words travel in from.",
+        "opcoes": [
+          "up",
+          "down"
+        ]
+      },
+      {
+        "id": "distance",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the vertical offset, so the words cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "shared-axis-z",
+    "grupo": "texto",
+    "titulo": "Shared Axis Z",
+    "oQue": "Scale-based shared-axis transition for focus shifts and context depth. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Zoom",
+        "descricao": "texto 1 da tela (exemplo: \"Zoom\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "context",
+        "descricao": "texto 2 da tela (exemplo: \"context\")"
+      },
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "in",
+        "descricao": "Which way the words travel along the z axis: in swells up from small, out settles down from large.",
+        "opcoes": [
+          "in",
+          "out"
+        ]
+      },
+      {
+        "id": "depth",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales how far the words start from their final size, so the push covers a shorter or longer run in the same time.",
+        "opcoes": [
+          "shallow",
+          "standard",
+          "deep"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Word colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "strikethrough-replace",
+    "grupo": "destaque",
+    "titulo": "Strikethrough Replace",
+    "oQue": "Draw a strike line across old text, then reveal the replacement. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Slow",
+        "descricao": "texto 1 da tela (exemplo: \"Slow\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Fast",
+        "descricao": "texto 2 da tela (exemplo: \"Fast\")"
+      },
+      {
+        "id": "origin",
+        "tipo": "enum",
+        "padrao": "left",
+        "descricao": "Edge the strike grows out of as the timeline runs its scale from 0 to 1.",
+        "opcoes": [
+          "left",
+          "center",
+          "right"
+        ]
+      },
+      {
+        "id": "thickness",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Height of the strike line, from a hairline rule to a heavy bar.",
+        "opcoes": [
+          "thin",
+          "standard",
+          "thick"
+        ]
+      },
+      {
+        "id": "tint",
+        "tipo": "enum",
+        "padrao": "red",
+        "descricao": "Strike colour. Blue and violet ride --accent and --accent-2.",
+        "opcoes": [
+          "red",
+          "amber",
+          "blue",
+          "violet"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Colour of both words: ink for light frames, paper for dark ones.",
+        "opcoes": [
+          "ink",
+          "paper"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "inline-highlight",
+    "grupo": "destaque",
+    "titulo": "Inline Highlight",
+    "oQue": "A clean marker-style inline highlight that animates behind text using a CSS scale variable (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Isso é",
+        "descricao": "texto 1 da tela (exemplo: \"Isso é\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "importante",
+        "descricao": "texto 2 da tela (exemplo: \"importante\")"
+      },
+      {
+        "id": "tint",
+        "tipo": "enum",
+        "padrao": "yellow",
+        "descricao": "Marker colour. Green, blue and violet ride --brand, --accent and --accent-2.",
+        "opcoes": [
+          "yellow",
+          "green",
+          "blue",
+          "violet"
+        ]
+      },
+      {
+        "id": "thickness",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Height of the marker band behind the text, as a share of the font size.",
+        "opcoes": [
+          "thin",
+          "standard",
+          "thick"
+        ]
+      },
+      {
+        "id": "origin",
+        "tipo": "enum",
+        "padrao": "left",
+        "descricao": "Edge the marker grows out of as the scale variable runs from 0 to 1.",
+        "opcoes": [
+          "left",
+          "right",
+          "center"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "number-pop-in",
+    "grupo": "dados",
+    "titulo": "Number Pop In",
+    "oQue": "A transitions.dev-inspired digit pop-in with blur, lift, and staggered value reveal (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "value",
+        "tipo": "string",
+        "padrao": "5.7",
+        "descricao": "The number itself. Every character becomes its own span, so the stagger still lands character by character."
+      },
+      {
+        "id": "unit",
+        "tipo": "string",
+        "padrao": "k",
+        "descricao": "Small suffix printed after the number. Pass an empty string to drop it."
+      },
+      {
+        "id": "lift",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Scales the offset the timeline drives, so the characters cover a shorter or longer run in the same time.",
+        "opcoes": [
+          "close",
+          "standard",
+          "far"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Number colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "number-wheel",
+    "grupo": "dados",
+    "titulo": "Number Wheel",
+    "oQue": "A rolling digit counter primitive for metrics, prices, counts, and scoreboards (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "valor",
+        "tipo": "string",
+        "padrao": "1250",
+        "descricao": "o número que os dígitos rolam até mostrar (pode ter ponto, vírgula, % ou R$)"
+      },
+      {
+        "id": "spin",
+        "tipo": "enum",
+        "padrao": "single",
+        "descricao": "How many full 0 to 9 revolutions each column adds before it lands, which is how far the reel travels in the same time.",
+        "opcoes": [
+          "single",
+          "double",
+          "triple"
+        ]
+      },
+      {
+        "id": "spacing",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Gap between the digit columns.",
+        "opcoes": [
+          "tight",
+          "standard",
+          "wide"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Digit colour: inherit keeps the surrounding text colour, ink suits light frames, paper suits dark ones, accent rides --brand.",
+        "opcoes": [
+          "inherit",
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "slot-machine-roll",
+    "grupo": "dados",
+    "titulo": "Slot Machine Roll",
+    "oQue": "A vertical reel scrolls characters from one value to another. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "result",
+        "tipo": "string",
+        "padrao": "A7K",
+        "descricao": "Characters the reels land on, one reel column per character. Whitespace is stripped and every reel starts on a zero."
+      },
+      {
+        "id": "direction",
+        "tipo": "enum",
+        "padrao": "up",
+        "descricao": "Which way the reels roll: up lifts the zero out through the top, down drops it out through the bottom.",
+        "opcoes": [
+          "up",
+          "down"
+        ]
+      },
+      {
+        "id": "size",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Reel height and type size. The roll distance scales with it so the reel always lands exactly one row on.",
+        "opcoes": [
+          "small",
+          "standard",
+          "large"
+        ]
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "paper",
+        "descricao": "Character colour: ink for light frames, paper for dark ones, accent rides --brand.",
+        "opcoes": [
+          "ink",
+          "paper",
+          "accent"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "animated-bar-chart",
+    "grupo": "dados",
+    "titulo": "Animated Bar Chart",
+    "oQue": "A compact data card with deterministic bar growth and value callouts. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Animated Bar Chart",
+        "descricao": "texto 1 da tela (exemplo: \"Animated Bar Chart\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "A compact data card with deterministic bar growth and value callouts.",
+        "descricao": "texto 2 da tela (exemplo: \"A compact data card with deterministic bar growth and value callouts.\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "+42%",
+        "descricao": "texto 3 da tela (exemplo: \"+42%\")"
+      }
+    ]
+  },
+  {
+    "nome": "success-check",
+    "grupo": "destaque",
+    "titulo": "Success Check",
+    "oQue": "A success check primitive with ring pop, path draw, and subtle rotate blur (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "tint",
+        "tipo": "enum",
+        "padrao": "green",
+        "descricao": "Colour pair, a pale halo behind a saturated mark. green and amber are literal state colours; blue and violet ride the composition theme tokens.",
+        "opcoes": [
+          "green",
+          "blue",
+          "violet",
+          "amber"
+        ]
+      },
+      {
+        "id": "size",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Diameter of the halo and of the mark inside it.",
+        "opcoes": [
+          "small",
+          "standard",
+          "large"
+        ]
+      },
+      {
+        "id": "ring",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Opacity of the circle the tick sits in.",
+        "opcoes": [
+          "subtle",
+          "standard",
+          "bold"
+        ]
+      },
+      {
+        "id": "spin",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Multiplies the rotation the timeline drives, so the mark swings less or more into place.",
+        "opcoes": [
+          "subtle",
+          "standard",
+          "bold"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "badge-pop",
+    "grupo": "destaque",
+    "titulo": "Badge Pop",
+    "oQue": "A transitions.dev-inspired notification badge pop with elastic scale and count reveal (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "count",
+        "tipo": "string",
+        "padrao": "3",
+        "descricao": "Text shown inside the notification badge, up to four characters."
+      },
+      {
+        "id": "accent",
+        "tipo": "enum",
+        "padrao": "red",
+        "descricao": "Colour family of the badge.",
+        "opcoes": [
+          "red",
+          "blue",
+          "green",
+          "violet"
+        ]
+      },
+      {
+        "id": "surface",
+        "tipo": "enum",
+        "padrao": "light",
+        "descricao": "Chrome of the button and the badge ring: light for bright frames, dark for dark ones.",
+        "opcoes": [
+          "light",
+          "dark"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "typing-indicator",
+    "grupo": "destaque",
+    "titulo": "Typing Indicator",
+    "oQue": "The three-dot chat bubble that says someone is writing: it pops in at the thread's edge exactly as messaging apps do, holds while the reply is coming, and vanishes when the message lands (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "size",
+        "tipo": "number",
+        "padrao": 124,
+        "descricao": "Bubble width in pixels; dots and tail scale with it.",
+        "min": 80,
+        "max": 220
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "dark",
+        "descricao": "Dark is the reference iOS bubble; light suits bright chat grounds.",
+        "opcoes": [
+          "dark",
+          "light"
+        ]
+      },
+      {
+        "id": "tail",
+        "tipo": "enum",
+        "padrao": "on",
+        "descricao": "The two shrinking circles anchoring the bubble to the sender side.",
+        "opcoes": [
+          "on",
+          "off"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "tilt-card",
+    "grupo": "destaque",
+    "titulo": "Tilt Card",
+    "oQue": "A transitions.dev-inspired tilt card primitive with depth layers and hover-style parallax (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "eyebrow",
+        "tipo": "string",
+        "padrao": "Primitive",
+        "descricao": "Small uppercase kicker above the headline."
+      },
+      {
+        "id": "headline",
+        "tipo": "string",
+        "padrao": "Agent-ready motion",
+        "descricao": "Large card headline."
+      },
+      {
+        "id": "glow",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "How far the corner glow reaches past the card edges, which sets both its spread at rest and how far the timeline drift carries it.",
+        "opcoes": [
+          "tight",
+          "standard",
+          "wide"
+        ]
+      },
+      {
+        "id": "accent",
+        "tipo": "enum",
+        "padrao": "indigo",
+        "descricao": "Colour family of the card gradient, corner glow, eyebrow and drop shadow.",
+        "opcoes": [
+          "indigo",
+          "emerald",
+          "violet"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "x-follow-card",
+    "grupo": "destaque",
+    "titulo": "X Follow Card",
+    "oQue": "A social follow card with avatar, handle, and follower motion. (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "X Follow Card",
+        "descricao": "texto 1 da tela (exemplo: \"X Follow Card\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "A social follow card with avatar, handle, and follower motion.",
+        "descricao": "texto 2 da tela (exemplo: \"A social follow card with avatar, handle, and follower motion.\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "30.6K",
+        "descricao": "texto 3 da tela (exemplo: \"30.6K\")"
+      }
+    ]
+  },
+  {
+    "nome": "skeleton-reveal",
+    "grupo": "destaque",
+    "titulo": "Skeleton Reveal",
+    "oQue": "A skeleton loader transition that pulses, then cross-fades into content (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "name",
+        "tipo": "string",
+        "padrao": "Jane Cooper",
+        "descricao": "Primary line revealed once the skeleton fades out."
+      },
+      {
+        "id": "detail",
+        "tipo": "string",
+        "padrao": "jane@example.com",
+        "descricao": "Secondary line under the name, such as an email or a role."
+      },
+      {
+        "id": "tone",
+        "tipo": "enum",
+        "padrao": "light",
+        "descricao": "Card palette. Light is the paper card, dark is a near-black card with the matching skeleton bars and text.",
+        "opcoes": [
+          "light",
+          "dark"
+        ]
+      }
+    ]
+  },
+  {
+    "nome": "tabs-slide-indicator",
+    "grupo": "destaque",
+    "titulo": "Tabs Slide Indicator",
+    "oQue": "A pill indicator transition that slides between active tabs (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "accent",
+        "tipo": "enum",
+        "padrao": "ink",
+        "descricao": "Fill of the sliding pill. ink is literal; the rest ride the composition theme tokens.",
+        "opcoes": [
+          "ink",
+          "green",
+          "blue",
+          "violet"
+        ]
+      },
+      {
+        "id": "width",
+        "tipo": "enum",
+        "padrao": "standard",
+        "descricao": "Width of one tab. The slide the timeline drives is scaled to match, so the pill still lands on the next tab.",
+        "opcoes": [
+          "compact",
+          "standard",
+          "wide"
+        ]
+      },
+      {
+        "id": "shape",
+        "tipo": "enum",
+        "padrao": "pill",
+        "descricao": "Corner radius of the track and the pill.",
+        "opcoes": [
+          "pill",
+          "rounded",
+          "square"
+        ]
+      },
+      {
+        "id": "labels",
+        "tipo": "string",
+        "padrao": "Plan,Debug,Ask",
+        "descricao": "The tab names, separated by commas. Two or more names rebuild the row."
+      }
+    ]
+  },
+  {
+    "nome": "input-feedback",
+    "grupo": "destaque",
+    "titulo": "Input Feedback",
+    "oQue": "A transitions.dev-inspired input feedback primitive with shake, clear affordance, and success state (O desenho se ajusta sozinho à caixa, sem distorcer e centrado nela: dê à caixa o tamanho e o lugar que ele deve ocupar. Um por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "",
+    "variaveis": [
+      {
+        "id": "status",
+        "tipo": "enum",
+        "padrao": "valid",
+        "descricao": "Whether the field reads as accepted or rejected, colouring the border, chip and hint.",
+        "opcoes": [
+          "valid",
+          "error"
+        ]
+      },
+      {
+        "id": "value",
+        "tipo": "string",
+        "padrao": "mia@example.com",
+        "descricao": "Text held by the field."
+      },
+      {
+        "id": "hint",
+        "tipo": "string",
+        "padrao": "Looks good.",
+        "descricao": "Helper line under the field."
+      }
+    ]
   }
 ];
