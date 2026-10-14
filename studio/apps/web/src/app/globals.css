@@ -14572,6 +14572,110 @@ button.midia-cartao__previa:disabled {
   font-weight: 600;
   box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
 }
+/* A peça selecionada fica por cima das outras: as alças dela não somem debaixo das peças de dentro. */
+.palco__peca[data-selecionado] {
+  z-index: 1;
+}
+/* Várias peças: a moldura de todas, com as alças do conjunto (só as alças pegam o toque). */
+.palco__selecao-multipla {
+  position: absolute;
+  z-index: 2;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.palco__selecao-multipla .palco__canto {
+  pointer-events: auto;
+}
+.palco__edicao-animacao[data-varios] .palco__peca:not([data-selecionado]) {
+  border-color: rgb(255 255 255 / 30%);
+}
+/* A etiqueta presa na seleção: mover, conjunto, texto, várias. Fora do zoom, em tamanho de dedo. */
+.palco__etiqueta-da-selecao {
+  position: absolute;
+  z-index: 8;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 40%);
+  white-space: nowrap;
+}
+.palco__etiqueta-botao {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.palco__etiqueta-botao:hover,
+.palco__etiqueta-botao[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+.palco__etiqueta-botao--mover {
+  background: var(--accent);
+  color: #fff;
+  cursor: grab;
+}
+.palco__etiqueta-botao--mover:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.palco__etiqueta-nome {
+  padding: 0 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A lista das peças (camadas), dentro da barra: tocar escolhe com precisão. */
+.palco__ver-camadas {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.palco__lista-de-pecas {
+  flex-basis: 100%;
+  max-height: 34vh;
+  overflow: auto;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+.palco__item-de-peca {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.palco__item-de-peca[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
 .palco__zoom-voltar[data-acima] {
   bottom: 56px;
 }

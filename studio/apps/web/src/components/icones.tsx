@@ -95,6 +95,10 @@ import {
   Sun,
   Moon,
   Info,
+  ArrowsOutCardinal,
+  ArrowLineUp,
+  SelectionPlus,
+  Stack,
 } from '@phosphor-icons/react';
 
 export interface PropsDeIcone {
@@ -210,3 +214,13 @@ export const IconeMaisFerramentas = SquaresFour;
 export const IconeAudio2 = MusicNotes;
 /** Animações (motion UI): cartões que se montam. */
 export const IconeAnimacao = Cards;
+
+// ---------- Edição da animação no palco ----------
+/** Arrastar a peça sem mudar o tamanho. */
+export const IconeMover = ArrowsOutCardinal;
+/** Selecionar o conjunto que contém a peça. */
+export const IconeConjunto = ArrowLineUp;
+/** Selecionar várias peças. */
+export const IconeVarios = SelectionPlus;
+/** A lista das peças (camadas). */
+export const IconeCamadas = Stack;
