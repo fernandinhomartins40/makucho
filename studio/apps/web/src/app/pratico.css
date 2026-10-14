@@ -48,6 +48,12 @@
   bottom: 52dvh;
 }
 
+/* Com a gaveta, o quadro sobe até o topo da tela: a barra da peça e a caixa
+   do texto descem para baixo do "Pronto"/"Exportar", que as cobriam. */
+.editor[data-modo='pratico'][data-folha] :is(.palco__barra-da-peca, .palco__texto-da-peca) {
+  top: 58px;
+}
+
 .editor[data-modo='pratico'] .editor__palco > .palco__quadro {
   grid-area: auto !important;
   flex: 0 0 auto !important;

@@ -6,12 +6,15 @@
 // vira uma caixa no palco:
 //
 //   - tocar seleciona (moldura com alças);
-//   - arrastar move; a alça do canto, a pinça (dois dedos) ou Ctrl+roda
-//     (pinça do trackpad) mudam o tamanho (proporcional);
+//   - arrastar move; a alça do canto (ou A−/A+) muda o tamanho (proporcional);
 //   - as alças do meio dos lados esticam só a largura ou só a altura: a
 //     caixa muda de forma e o texto dentro dela quebra em linhas;
 //   - toque duplo (ou "Editar texto") edita o texto ali mesmo (Enter quebra
-//     a linha).
+//     a linha);
+//   - a pinça (dois dedos, em qualquer lugar) ou Ctrl+roda (pinça do
+//     trackpad) dão zoom na VISTA: o vídeo inteiro amplia dentro do quadro,
+//     para acertar peças pequenas no celular. Dois dedos arrastam a vista,
+//     um dedo fora das peças também. As barras ficam fora do zoom.
 //
 // Mover e redimensionar aparecem AO VIVO (o CSS do ajuste vai para o
 // iframe sem recarregar) e, ao soltar, ficam guardados na cena. Editar o
@@ -20,6 +23,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { AjusteDaCena, AjusteDaPeca, ComposicaoHtml } from '@makucho/studio-contracts';
 import { ajusteDaComposicao, cenaDaComposicao, comAjuste, cssDoAjuste, lerAjuste } from '@makucho/studio-contracts';
 
@@ -40,6 +44,15 @@ export interface PecaDaAnimacao {
   /** A peça mora numa máscara (linha de título que sobe): não estica, só escala. */
   mascara?: boolean;
 }
+
+/** O zoom da vista: escala e deslocamento (px da tela) do conteúdo dentro do quadro. */
+export interface ZoomDoPalco {
+  z: number;
+  x: number;
+  y: number;
+}
+export const SEM_ZOOM: ZoomDoPalco = { z: 1, x: 0, y: 0 };
+const ZOOM_MAXIMO = 6;
 
 const W = 1080;
 const H = 1920;
@@ -63,13 +76,18 @@ export function EdicaoNoPalco({
   composicao,
   pecas,
   quadro,
+  zoom,
+  onZoom,
   onAoVivo,
   onSalvar,
   onEditarTexto,
 }: {
   composicao: ComposicaoHtml;
   pecas: readonly PecaDaAnimacao[];
+  /** O quadro do vídeo (sem o zoom): as barras moram nele, fora da vista ampliada. */
   quadro: React.RefObject<HTMLDivElement | null>;
+  zoom: ZoomDoPalco;
+  onZoom: (z: ZoomDoPalco) => void;
   /** O CSS do ajuste enquanto arrasta (vai para o iframe sem recarregar). */
   onAoVivo: (css: string) => void;
   /** Soltou: a animação com o ajuste novo. */
@@ -91,6 +109,12 @@ export function EdicaoNoPalco({
   const dedos = useRef(new Map<number, { x: number; y: number }>());
   const raiz = useRef<HTMLDivElement>(null);
   const esticando = useRef<Esticando | null>(null);
+  // O zoom de agora (gestos seguidos partem dele sem esperar o redesenho) e o começo da pinça.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const pinca = useRef<{ inicio: ZoomDoPalco; mx: number; my: number; d: number } | null>(null);
+  const [barras, setBarras] = useState<HTMLElement | null>(null);
+  useEffect(() => setBarras(quadro.current), [quadro]);
   // A pinça do trackpad chega como Ctrl+roda: ouvinte nativo (não passivo) para não dar zoom na página.
   const aoRodar = useRef<(e: WheelEvent) => void>(() => undefined);
   useEffect(() => {
@@ -133,9 +157,48 @@ export function EdicaoNoPalco({
     setPendente(null);
     onAoVivo(cssDoAjuste(lerAjuste(base)));
   };
+  // Px do quadro de 1080x1920 por px da tela: medido na vista (já com o zoom).
   const escala = () => {
-    const q = quadro.current?.getBoundingClientRect();
+    const q = raiz.current?.getBoundingClientRect();
     return q ? { sx: W / q.width, sy: H / q.height, q } : null;
+  };
+
+  // ---------- Zoom da vista ----------
+  /** O conteúdo sempre cobre o quadro: não dá para arrastar a vista para fora do vídeo. */
+  const mudarZoom = (z: ZoomDoPalco) => {
+    const q = quadro.current;
+    if (!q) return;
+    const largura = q.clientWidth;
+    const altura = q.clientHeight;
+    const novo = z.z <= 1.02 ? SEM_ZOOM : { z: z.z, x: limitar(z.x, largura - z.z * largura, 0), y: limitar(z.y, altura - z.z * altura, 0) };
+    zoomRef.current = novo;
+    onZoom(novo);
+  };
+  /** Ampliar em torno de um ponto do quadro: o que estava em (px, py) vai para (mx, my) -- a pinça também arrasta. */
+  const zoomEm = (inicio: ZoomDoPalco, z: number, px: number, py: number, mx = px, my = py) => {
+    const z1 = limitar(z, 1, ZOOM_MAXIMO);
+    const cx = (px - inicio.x) / inicio.z;
+    const cy = (py - inicio.y) / inicio.z;
+    mudarZoom({ z: z1, x: mx - z1 * cx, y: my - z1 * cy });
+  };
+  /** Dois dedos: a escala segue a distância entre eles; o meio deles arrasta a vista. */
+  const medirDedos = () => {
+    const q = quadro.current?.getBoundingClientRect();
+    const [a, b] = dedos.current.values();
+    if (!q || !a || !b) return null;
+    return { mx: (a.x + b.x) / 2 - q.left, my: (a.y + b.y) / 2 - q.top, d: Math.hypot(a.x - b.x, a.y - b.y) };
+  };
+  /** O segundo dedo pousou (ou um saiu): a pinça parte de onde os dedos estão agora. */
+  const comecarPinca = () => {
+    const m = medirDedos();
+    pinca.current = m ? { inicio: zoomRef.current, mx: m.mx, my: m.my, d: Math.max(8, m.d) } : null;
+  };
+  const pincar = () => {
+    const m = medirDedos();
+    if (!m) return;
+    if (!pinca.current) comecarPinca();
+    const p = pinca.current!;
+    zoomEm(p.inicio, (p.inicio.z * m.d) / p.d, p.mx, p.my, m.mx, m.my);
   };
 
   corrigir.current = (lista) => {
@@ -162,6 +225,7 @@ export function EdicaoNoPalco({
     // Segundo dedo (pinça) em cima de uma peça: entra na conta do primeiro.
     if (dedos.current.size) {
       dedos.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      comecarPinca();
       return;
     }
     setSelecionada(p.chave);
@@ -169,29 +233,35 @@ export function EdicaoNoPalco({
     if (!m) return;
     dedos.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const inicioDoAjuste = atual;
+    const pendenteNoInicio = pendente;
     const inicio = { ...daPeca(p.chave) };
     const x0 = e.clientX;
     const y0 = e.clientY;
-    let distancia0 = 0;
     let moveu = false;
+    let pincou = false;
     const aoMover = (ev: PointerEvent) => {
       if (!dedos.current.has(ev.pointerId)) return;
       dedos.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
       const pontos = [...dedos.current.values()];
-      let novo: AjusteDaCena;
       if (pontos.length >= 2) {
-        // Pinça: a escala segue a distância entre os dois dedos.
-        const d = Math.hypot(pontos[0]!.x - pontos[1]!.x, pontos[0]!.y - pontos[1]!.y);
-        if (!distancia0) distancia0 = d;
-        novo = comPeca(p.chave, { ...inicio, escala: Math.round(limitar((inicio.escala * d) / Math.max(8, distancia0), MINIMO, 4) * 100) / 100 }, inicioDoAjuste);
-      } else {
-        novo = comPeca(p.chave, { ...inicio, x: Math.round(inicio.x + (ev.clientX - x0) * m.sx), y: Math.round(inicio.y + (ev.clientY - y0) * m.sy) }, inicioDoAjuste);
+        // Pinça: zoom na vista. A peça volta para onde estava antes do segundo dedo.
+        if (!pincou && moveu) {
+          atualRef.current = inicioDoAjuste;
+          setPendente(pendenteNoInicio);
+          onAoVivo(cssDoAjuste(lerAjuste(inicioDoAjuste)));
+        }
+        pincou = true;
+        pincar();
+        return;
       }
-      moveu = moveu || Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 3 || pontos.length >= 2;
-      if (moveu) aoVivo(novo);
+      // Depois da pinça, o dedo que ficou não arrasta a peça.
+      if (pincou) return;
+      moveu = moveu || Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 3;
+      if (moveu) aoVivo(comPeca(p.chave, { ...inicio, x: Math.round(inicio.x + (ev.clientX - x0) * m.sx), y: Math.round(inicio.y + (ev.clientY - y0) * m.sy) }, inicioDoAjuste));
     };
     const aoSoltar = (ev: PointerEvent) => {
       dedos.current.delete(ev.pointerId);
+      pinca.current = null;
       if (dedos.current.size) return;
       window.removeEventListener('pointermove', aoMover);
       window.removeEventListener('pointerup', aoSoltar);
@@ -289,10 +359,52 @@ export function EdicaoNoPalco({
   };
 
   aoRodar.current = (e: WheelEvent) => {
-    if (!selecionada || !e.ctrlKey) return;
+    if (!e.ctrlKey) return;
     e.preventDefault();
-    const p = daPeca(selecionada);
-    aoVivo(comPeca(selecionada, { ...p, escala: Math.round(limitar(p.escala * Math.exp(-e.deltaY / 200), MINIMO, 4) * 100) / 100 }));
+    const q = quadro.current?.getBoundingClientRect();
+    if (!q) return;
+    const z = zoomRef.current;
+    zoomEm(z, z.z * Math.exp(-e.deltaY / 200), e.clientX - q.left, e.clientY - q.top);
+  };
+
+  // Fora das peças: um dedo arrasta a vista ampliada (tocar e soltar tira a seleção); dois, a pinça.
+  const arrastarVista = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    dedos.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const inicio = zoomRef.current;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let moveu = false;
+    let pincou = false;
+    const aoMover = (ev: PointerEvent) => {
+      if (!dedos.current.has(ev.pointerId)) return;
+      dedos.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      const pontos = [...dedos.current.values()];
+      if (pontos.length >= 2) {
+        pincou = moveu = true;
+        pincar();
+        return;
+      }
+      if (pincou) return;
+      moveu = moveu || Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 3;
+      if (moveu && inicio.z > 1) mudarZoom({ ...inicio, x: inicio.x + ev.clientX - x0, y: inicio.y + ev.clientY - y0 });
+    };
+    const aoSoltar = (ev: PointerEvent) => {
+      dedos.current.delete(ev.pointerId);
+      pinca.current = null;
+      if (dedos.current.size) return;
+      window.removeEventListener('pointermove', aoMover);
+      window.removeEventListener('pointerup', aoSoltar);
+      window.removeEventListener('pointercancel', aoSoltar);
+      // Tocar fora das peças (sem arrastar) tira a seleção.
+      if (!moveu) {
+        setSelecionada(null);
+        setEditando(null);
+      }
+    };
+    window.addEventListener('pointermove', aoMover);
+    window.addEventListener('pointerup', aoSoltar);
+    window.addEventListener('pointercancel', aoSoltar);
   };
 
   // A ordem das caixas (a última fica por cima e recebe o toque): pela hierarquia, não pelo
@@ -312,13 +424,10 @@ export function EdicaoNoPalco({
         // Segundo dedo fora da peça: a pinça continua valendo.
         if (dedos.current.size) {
           dedos.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          comecarPinca();
           return;
         }
-        // Tocar fora das peças tira a seleção.
-        if (e.target === e.currentTarget) {
-          setSelecionada(null);
-          setEditando(null);
-        }
+        if (e.target === e.currentTarget) arrastarVista(e);
       }}
       ref={raiz}
     >
@@ -335,7 +444,7 @@ export function EdicaoNoPalco({
             data-selecionado={marcada || undefined}
             data-grupo={p.chave === 'cena' || pecas.some((o) => o.pai === p.chave) || undefined}
             aria-label={p.chave === 'cena' ? 'Selecionar a animação inteira' : p.campo ? `Selecionar: ${p.campo}` : 'Selecionar o grupo'}
-            title="Arraste para mover · canto ou pinça para o tamanho · meio dos lados para esticar · toque duplo para editar o texto"
+            title="Arraste para mover · canto para o tamanho · meio dos lados para esticar · toque duplo para editar o texto · pinça para ampliar a vista"
             style={{ left: pct(p.x, W), top: pct(p.y, H), width: pct(p.w, W), height: pct(p.h, H) }}
             onPointerDown={mover(p)}
             onDoubleClick={() => comecarTexto(p)}
@@ -354,84 +463,103 @@ export function EdicaoNoPalco({
         );
       })}
 
-      {sel && !editando && (
-        <div className="palco__barra-da-peca" role="toolbar" aria-label="Ajustar a peça">
-          <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Diminuir" title="Diminuir" onClick={() => mudarTamanho(sel.chave, 1 / 1.15)}>
-            A−
-          </button>
-          <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Aumentar" title="Aumentar" onClick={() => mudarTamanho(sel.chave, 1.15)}>
-            A+
-          </button>
-          {cena && sel.campo && (
-            <button type="button" className="botao-link" onClick={() => comecarTexto(sel)}>
-              Texto
-            </button>
-          )}
-          {sel.pai && (
-            <button type="button" className="botao-link" title="Seleciona o conjunto que contém esta peça" onClick={() => setSelecionada(sel.pai!)}>
-              {sel.pai === 'cena' ? 'Tudo' : 'Grupo'}
-            </button>
-          )}
-          {mudou(sel.chave) && (
-            <button type="button" className="botao-link" onClick={() => restaurar(sel.chave)}>
-              Original
-            </button>
-          )}
-        </div>
-      )}
+      {/* As barras moram no quadro, fora da vista ampliada: não crescem nem saem da tela com o zoom. */}
+      {barras &&
+        createPortal(
+          <>
+            {sel && !editando && (
+              <div className="palco__barra-da-peca" role="toolbar" aria-label="Ajustar a peça">
+                <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Diminuir" title="Diminuir" onClick={() => mudarTamanho(sel.chave, 1 / 1.15)}>
+                  A−
+                </button>
+                <button type="button" className="botao-icone botao-icone--pequeno" aria-label="Aumentar" title="Aumentar" onClick={() => mudarTamanho(sel.chave, 1.15)}>
+                  A+
+                </button>
+                {cena && sel.campo && (
+                  <button type="button" className="botao-link" onClick={() => comecarTexto(sel)}>
+                    Texto
+                  </button>
+                )}
+                {sel.pai && (
+                  <button type="button" className="botao-link" title="Seleciona o conjunto que contém esta peça" onClick={() => setSelecionada(sel.pai!)}>
+                    {sel.pai === 'cena' ? 'Tudo' : 'Grupo'}
+                  </button>
+                )}
+                {mudou(sel.chave) && (
+                  <button type="button" className="botao-link" onClick={() => restaurar(sel.chave)}>
+                    Original
+                  </button>
+                )}
+              </div>
+            )}
 
-      {pendente && (
-        <div className="palco__aplicar-da-peca" role="group" aria-label="Aplicar o ajuste e refazer a animação">
-          <button type="button" className="botao botao--secundario botao--pequeno" onClick={desfazer}>
-            Desfazer
-          </button>
-          <button type="button" className="botao botao--primario botao--pequeno" onClick={aplicar}>
-            Aplicar
-          </button>
-        </div>
-      )}
+            {pendente && (
+              <div className="palco__aplicar-da-peca" role="group" aria-label="Aplicar o ajuste e refazer a animação">
+                <button type="button" className="botao botao--secundario botao--pequeno" onClick={desfazer}>
+                  Desfazer
+                </button>
+                <button type="button" className="botao botao--primario botao--pequeno" onClick={aplicar}>
+                  Aplicar
+                </button>
+              </div>
+            )}
 
-      {sel && editando && (
-        <form
-          className="palco__texto-da-peca"
-          onSubmit={(e) => {
-            e.preventDefault();
-            confirmarTexto();
-          }}
-        >
-          {editando.lista ? (
-            <input
-              autoFocus
-              className="campo__entrada"
-              value={editando.valor}
-              aria-label="Texto (itens separados por vírgula)"
-              onChange={(e) => setEditando({ ...editando, valor: e.target.value })}
-              onKeyDown={(e) => e.key === 'Escape' && setEditando(null)}
-            />
-          ) : (
-            // Enter quebra a linha (como a pessoa quer ver no vídeo); OK ou Ctrl+Enter confirma.
-            <textarea
-              autoFocus
-              className="campo__entrada palco__texto-da-peca-area"
-              value={editando.valor}
-              rows={Math.min(4, Math.max(2, editando.valor.split('\n').length))}
-              aria-label="Texto (Enter quebra a linha)"
-              placeholder="Enter quebra a linha"
-              onChange={(e) => setEditando({ ...editando, valor: e.target.value.split('\n').slice(0, 4).join('\n') })}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setEditando(null);
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            {sel && editando && (
+              <form
+                className="palco__texto-da-peca"
+                onSubmit={(e) => {
                   e.preventDefault();
                   confirmarTexto();
-                }
-              }}
-            />
-          )}
-          <button type="submit" className="botao botao--primario botao--pequeno">
-            OK
-          </button>
-        </form>
-      )}
+                }}
+              >
+                {editando.lista ? (
+                  <input
+                    autoFocus
+                    className="campo__entrada"
+                    value={editando.valor}
+                    aria-label="Texto (itens separados por vírgula)"
+                    onChange={(e) => setEditando({ ...editando, valor: e.target.value })}
+                    onKeyDown={(e) => e.key === 'Escape' && setEditando(null)}
+                  />
+                ) : (
+                  // Enter quebra a linha (como a pessoa quer ver no vídeo); OK ou Ctrl+Enter confirma.
+                  <textarea
+                    autoFocus
+                    className="campo__entrada palco__texto-da-peca-area"
+                    value={editando.valor}
+                    rows={Math.min(4, Math.max(2, editando.valor.split('\n').length))}
+                    aria-label="Texto (Enter quebra a linha)"
+                    placeholder="Enter quebra a linha"
+                    onChange={(e) => setEditando({ ...editando, valor: e.target.value.split('\n').slice(0, 4).join('\n') })}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') setEditando(null);
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                        e.preventDefault();
+                        confirmarTexto();
+                      }
+                    }}
+                  />
+                )}
+                <button type="submit" className="botao botao--primario botao--pequeno">
+                  OK
+                </button>
+              </form>
+            )}
+
+            {zoom.z > 1 && (
+              <button
+                type="button"
+                className="chip chip--acionavel palco__zoom-voltar"
+                data-acima={pendente ? true : undefined}
+                title="Voltar o vídeo ao tamanho normal"
+                onClick={() => mudarZoom(SEM_ZOOM)}
+              >
+                {Math.round(zoom.z * 100)}% · voltar
+              </button>
+            )}
+          </>,
+          barras,
+        )}
     </div>
   );
 }

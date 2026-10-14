@@ -470,8 +470,16 @@ export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocum
   // É nele que a pessoa posiciona as peças -- o ajuste gravado vale para a
   // animação toda, e posicionar no meio de uma entrada (a peça ainda
   // subindo, ainda pequena) deixava a peça longe de onde foi solta.
-  // Entrada = o que começa na primeira metade; saída = na segunda; laços
-  // infinitos (pulsar, girar) não contam.
+  // Saída = o que ESCONDE algo (to com autoAlpha/opacity 0) na segunda metade;
+  // o resto é entrada, mesmo tarde: a resposta que entra aos 3s de 5 também
+  // tem de estar na tela para ser editada (antes ela contava como saída, e o
+  // descanso caía antes dela -- a peça aparecia no vídeo e não no editor).
+  // Laços infinitos (pulsar, girar) não contam.
+  var hfEsconde = function (f) {
+    var v = f.vars;
+    if (!v || v.startAt || v.runBackwards || typeof f.targets !== 'function') return false;
+    return v.autoAlpha === 0 || v.opacity === 0 || v.display === 'none';
+  };
   var hfRepouso = function () {
     var dur = tl.duration();
     if (!(dur > 0)) return 0;
@@ -483,8 +491,8 @@ export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocum
       var de = f.startTime(), ate = f.endTime();
       // Movimento de fundo que dura quase a animação toda (zoom lento, deriva): nem entrada nem saída.
       if (ate - de > dur * 0.6) continue;
-      if (de < dur * 0.5) fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
-      else inicioDasSaidas = Math.min(inicioDasSaidas, de);
+      if (de >= dur * 0.5 && hfEsconde(f)) inicioDasSaidas = Math.min(inicioDasSaidas, de);
+      else fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
     }
     var t = Math.min(fimDasEntradas + 0.05, inicioDasSaidas - 0.05);
     if (!(t > 0)) t = dur * 0.6;

@@ -61,7 +61,7 @@ import type { EstadoNoInstante } from './motorDaPrevia';
 import { misturaDaCamada, recorteDaCamada, Compositor, QuadroExterno, type MidiaNoQuadro } from './gl/compositor';
 import { fontesDaCena, QuadrosDasCenas } from './gl/cenasNoNavegador';
 import { AnimacoesAoVivo } from './AnimacoesAoVivo';
-import { EdicaoNoPalco, type PecaDaAnimacao } from './EdicaoNoPalco';
+import { EdicaoNoPalco, SEM_ZOOM, type PecaDaAnimacao, type ZoomDoPalco } from './EdicaoNoPalco';
 import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
 import { comPecasEditaveis } from '@makucho/studio-contracts';
@@ -208,6 +208,8 @@ export function Palco({
   // Edição da animação no palco: as peças que o iframe informa e o ajuste ao vivo (antes de soltar).
   const [pecasDaAnimacao, setPecasDaAnimacao] = useState<PecaDaAnimacao[]>([]);
   const [cssAoVivo, setCssAoVivo] = useState<string | null>(null);
+  // Zoom da vista enquanto edita a animação (pinça): amplia tudo dentro do quadro, que corta o excesso.
+  const [zoomDoPalco, setZoomDoPalco] = useState<ZoomDoPalco>(SEM_ZOOM);
   const imagemRef = useRef<HTMLDivElement>(null);
   const fundoRef = useRef<HTMLCanvasElement>(null);
   const trilhaRef = useRef<HTMLAudioElement>(null);
@@ -1583,6 +1585,10 @@ export function Palco({
     setPecasDaAnimacao([]);
     setCssAoVivo(null);
   }, [animacaoEditada?.id, animacaoEditada?.composicao]);
+  // Saiu da edição da animação: o vídeo volta ao tamanho normal.
+  useEffect(() => {
+    if (!animacaoEditada) setZoomDoPalco(SEM_ZOOM);
+  }, [!animacaoEditada]); // eslint-disable-line react-hooks/exhaustive-deps
   // Animação feita antes da edição no palco: ganha as marcas das peças (só atributos; o desenho fica).
   useEffect(() => {
     const c = animacaoEditada?.composicao;
@@ -1635,365 +1641,372 @@ export function Palco({
           )}
         </div>
 
-        {proxyUrl && !erroDoVideo ? (
-          <div ref={imagemRef} className={`palco__imagem${glAoVivo ? ' palco__imagem--gl' : ''}`}>
-            <canvas ref={glRef} className="palco__gl" aria-hidden />
-            <canvas ref={tela2dRef} className="palco__tela2d" hidden={!(comMotor && (modo2d || (telaDeToque && tocando)))} aria-hidden />
-            {enquadramento === 'desfoque' && (
-              <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
-            )}
-            {[0, 1].map((p) => (
-              <div key={p} ref={camadas[p]} className="palco__player" style={{ opacity: p === 0 ? 1 : 0 }}>
-                <video
-                  ref={players[p]}
-                  // No celular o segundo player nem carrega o vídeo (ver `aplicar`).
-                  src={!usarPlayers || (p === 1 && telaDeToque) ? undefined : proxyUrl}
-                  playsInline
-                  preload="auto"
-                  muted={mudo}
-                  className="palco__video"
-                  style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
-                  // Primeiro quadro no ponto certo, antes de qualquer play.
-                  onLoadedMetadata={() => aplicar(relogioRef.current.ms, false)}
-                  onSeeked={() => {
-                    desenharFundo();
-                    // Parado, o quadro novo só existe depois da busca.
-                    desenharGl(ultimoEstado.current);
-                  }}
-                  onLoadedData={desenharFundo}
-                  onError={() => setErroDoVideo(true)}
-                />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="palco__vazio">
-            <IconeVideo size={40} />
-            <p className="texto-secundario" style={{ fontSize: 13, lineHeight: 1.5 }}>
-              {erroDoVideo ? (
-                <>
-                  Não foi possível carregar a prévia.
-                  <br />
-                  <button type="button" className="botao botao--pequeno botao--secundario" style={{ marginTop: 8 }} onClick={() => setErroDoVideo(false)}>
-                    Tentar de novo
-                  </button>
-                </>
-              ) : (
-                <>
-                  A prévia aparece aqui
-                  <br />
-                  quando o vídeo estiver preparado.
-                </>
+        <div
+          className="palco__zoom"
+          style={zoomDoPalco.z !== 1 ? { transform: `translate(${zoomDoPalco.x}px, ${zoomDoPalco.y}px) scale(${zoomDoPalco.z})` } : undefined}
+        >
+          {proxyUrl && !erroDoVideo ? (
+            <div ref={imagemRef} className={`palco__imagem${glAoVivo ? ' palco__imagem--gl' : ''}`}>
+              <canvas ref={glRef} className="palco__gl" aria-hidden />
+              <canvas ref={tela2dRef} className="palco__tela2d" hidden={!(comMotor && (modo2d || (telaDeToque && tocando)))} aria-hidden />
+              {enquadramento === 'desfoque' && (
+                <canvas ref={fundoRef} width={108} height={192} className="palco__fundo-desfocado" aria-hidden />
               )}
-            </p>
-          </div>
-        )}
-
-        {/* Animações em HTML (HyperFrames): acima do vídeo, abaixo dos textos. */}
-        <AnimacoesAoVivo
-          {...(plan.projectId ? { projectId: plan.projectId } : {})}
-          camadas={camadasComLegenda}
-          posicaoMs={posicaoMs}
-          {...(marca?.cores.primary ? { corDaMarca: marca.cores.primary } : {})}
-          editando={animacaoEditada ? { id: animacaoEditada.id, css: cssAoVivo, onPecas: setPecasDaAnimacao } : null}
-        />
-        {/* A animação selecionada, parada: cada peça dela se seleciona, move e redimensiona no vídeo. */}
-        {animacaoEditada && onEditarAnimacao && (
-          <EdicaoNoPalco
-            composicao={animacaoEditada.composicao!}
-            pecas={pecasDaAnimacao}
-            quadro={quadroRef}
-            onAoVivo={setCssAoVivo}
-            onSalvar={(c) => onEditarAnimacao(animacaoEditada.id, c)}
-            onEditarTexto={(campo, valor) => {
-              const lista = campo === 'itens' || campo === 'valores' || campo === 'icones';
-              ia?.refazer([animacaoEditada.id], { cena: { textos: { [campo]: lista ? valor.split(',').map((x) => x.trim()).filter(Boolean) : valor } } });
-            }}
-          />
-        )}
-
-        {/* Sem a faixa da timeline, a animação se escolhe tocando no vídeo: a
-            camada fica abaixo das alças de texto, legenda e imagem. */}
-        {!tocando &&
-          onTocarNaAnimacao &&
-          !animacaoEditada &&
-          (() => {
-            const a = (plan.mediaLayers ?? []).find((m) => m.kind === 'html' && !!m.composicao && posicaoMs >= m.timelineStartMs && posicaoMs < m.timelineStartMs + m.durationMs);
-            return a ? <button type="button" className="palco__toque-na-animacao" aria-label="Editar a animação" onClick={() => onTocarNaAnimacao(a.id)} /> : null;
-          })()}
-
-        {/* Logo e imagem: mesmas posições e tamanhos do render. */}
-        {urlDoAsset &&
-          imagensVisiveis.map((o) =>
-            o.component === 'LogoBug' ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                key={o.id}
-                src={urlDoAsset(o.assetId!)}
-                alt=""
-                draggable={false}
-                data-selecionado={destaqueSelecionado === o.id || undefined}
-                className={`palco__logo palco__logo--${o.variant ?? 'sd'}${onMoverDestaque ? ' palco__logo--movel' : ''}`}
-                style={{
-                  maxWidth: `${17 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
-                  maxHeight: `${8 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
-                  opacity: Math.min(1, Math.max(0.1, o.style?.bgOpacity ?? 0.92)),
-                  ...(o.style?.x !== undefined && o.style?.y !== undefined
-                    ? { left: `${o.style.x * 100}%`, top: `${o.style.y * 100}%`, right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' }
-                    : {}),
-                }}
-                onPointerDown={(e) => {
-                  // Arrastar a logo na prévia: pega o centro de onde ela está.
-                  const quadro = quadroRef.current;
-                  if (!quadro || !onMoverDestaque) return;
-                  const q = quadro.getBoundingClientRect();
-                  const r = e.currentTarget.getBoundingClientRect();
-                  arrastarTexto(o.id, (r.left + r.width / 2 - q.left) / q.width, (r.top + r.height / 2 - q.top) / q.height)(e);
-                }}
-              />
-            ) : (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className="palco__imagem-sobreposta" />
-            ),
+              {[0, 1].map((p) => (
+                <div key={p} ref={camadas[p]} className="palco__player" style={{ opacity: p === 0 ? 1 : 0 }}>
+                  <video
+                    ref={players[p]}
+                    // No celular o segundo player nem carrega o vídeo (ver `aplicar`).
+                    src={!usarPlayers || (p === 1 && telaDeToque) ? undefined : proxyUrl}
+                    playsInline
+                    preload="auto"
+                    muted={mudo}
+                    className="palco__video"
+                    style={{ objectFit: enquadramento === 'preencher' ? 'cover' : 'contain' }}
+                    // Primeiro quadro no ponto certo, antes de qualquer play.
+                    onLoadedMetadata={() => aplicar(relogioRef.current.ms, false)}
+                    onSeeked={() => {
+                      desenharFundo();
+                      // Parado, o quadro novo só existe depois da busca.
+                      desenharGl(ultimoEstado.current);
+                    }}
+                    onLoadedData={desenharFundo}
+                    onError={() => setErroDoVideo(true)}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="palco__vazio">
+              <IconeVideo size={40} />
+              <p className="texto-secundario" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                {erroDoVideo ? (
+                  <>
+                    Não foi possível carregar a prévia.
+                    <br />
+                    <button type="button" className="botao botao--pequeno botao--secundario" style={{ marginTop: 8 }} onClick={() => setErroDoVideo(false)}>
+                      Tentar de novo
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    A prévia aparece aqui
+                    <br />
+                    quando o vídeo estiver preparado.
+                  </>
+                )}
+              </p>
+            </div>
           )}
 
-        {assAtras && !libassFalhou && (
-          <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
-            ass={assAtras}
-            tempoMs={posicaoMs}
-            tempoAoVivo={tempoAoVivo}
-            tocando={tocando}
-            onFalha={() => setLibassFalhou(true)}
+          {/* Animações em HTML (HyperFrames): acima do vídeo, abaixo dos textos. */}
+          <AnimacoesAoVivo
+            {...(plan.projectId ? { projectId: plan.projectId } : {})}
+            camadas={camadasComLegenda}
+            posicaoMs={posicaoMs}
+            {...(marca?.cores.primary ? { corDaMarca: marca.cores.primary } : {})}
+            editando={animacaoEditada ? { id: animacaoEditada.id, css: cssAoVivo, onPecas: setPecasDaAnimacao } : null}
           />
-        )}
-        {temRecorte && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
+          {/* A animação selecionada, parada: cada peça dela se seleciona, move e redimensiona no vídeo. */}
+          {animacaoEditada && onEditarAnimacao && (
+            <EdicaoNoPalco
+              composicao={animacaoEditada.composicao!}
+              pecas={pecasDaAnimacao}
+              quadro={quadroRef}
+              zoom={zoomDoPalco}
+              onZoom={setZoomDoPalco}
+              onAoVivo={setCssAoVivo}
+              onSalvar={(c) => onEditarAnimacao(animacaoEditada.id, c)}
+              onEditarTexto={(campo, valor) => {
+                const lista = campo === 'itens' || campo === 'valores' || campo === 'icones';
+                ia?.refazer([animacaoEditada.id], { cena: { textos: { [campo]: lista ? valor.split(',').map((x) => x.trim()).filter(Boolean) : valor } } });
+              }}
+            />
+          )}
 
-        {ass && !libassFalhou && (
-          <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
-            ass={ass}
-            tempoMs={posicaoMs}
-            tempoAoVivo={tempoAoVivo}
-            tocando={tocando}
-            onFalha={() => setLibassFalhou(true)}
-          />
-        )}
+          {/* Sem a faixa da timeline, a animação se escolhe tocando no vídeo: a
+              camada fica abaixo das alças de texto, legenda e imagem. */}
+          {!tocando &&
+            onTocarNaAnimacao &&
+            !animacaoEditada &&
+            (() => {
+              const a = (plan.mediaLayers ?? []).find((m) => m.kind === 'html' && !!m.composicao && posicaoMs >= m.timelineStartMs && posicaoMs < m.timelineStartMs + m.durationMs);
+              return a ? <button type="button" className="palco__toque-na-animacao" aria-label="Editar a animação" onClick={() => onTocarNaAnimacao(a.id)} /> : null;
+            })()}
 
-        {zonasSeguras && plan.canvas.aspectRatio === '9:16' && !tocando && <GradeDoPalco plan={plan} ms={posicaoMs} />}
-
-        {!tocando &&
-          (() => {
-            const o = textosVisiveis.find(({ o }) => o.id === destaqueSelecionado && ehTextoAtras(o))?.o;
-            if (!o || !onMoverDestaque) return null;
-            const caixa = caixaDoTexto(planoDaPrevia, o, marcaDoVideo);
-            return (
-              <button
-                type="button"
-                className="chip chip--acionavel palco__posicionar"
-                disabled={!modeloPronto}
-                title="Acha a altura em que o texto fica atrás da pessoa sem perder a leitura"
-                onClick={() => {
-                  const m = ultimaMascara.current;
-                  if (!m) return;
-                  const y = melhorAlturaAtras(m, caixa.largura / planoDaPrevia.canvas.width, caixa.altura / planoDaPrevia.canvas.height);
-                  if (y !== null) onMoverDestaque(o.id, 0.5, y);
-                }}
-              >
-                {modeloPronto ? 'Posicionar atrás da pessoa' : 'Carregando o recorte…'}
-              </button>
-            );
-          })()}
-
-        {/* Alça da legenda: arrastar muda a altura, o canto o tamanho. */}
-        {!tocando && caixaDaLegenda && onAjustarLegenda && (
-          <div
-            role="button"
-            tabIndex={0}
-            className="palco__alca-destaque palco__alca-legenda"
-            data-selecionado={legendaSelecionada || undefined}
-            style={{
-              left: `${caixaDaLegenda.cx * 100}%`,
-              top: `${caixaDaLegenda.cy * 100}%`,
-              width: `${caixaDaLegenda.largura * 100}%`,
-              height: `${caixaDaLegenda.altura * 100}%`,
-            }}
-            aria-label="Mover a legenda"
-            title={onPosicionarBloco ? 'Legenda: arraste para mover só esta (Shift: todas) · canto para o tamanho' : 'Legenda: arraste para subir ou descer · canto para o tamanho'}
-            onPointerDown={arrastarLegenda}
-            onBlur={() => setLegendaSelecionada(false)}
-          >
-            {legendaSelecionada &&
-              (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
-                <span key={canto} className={`palco__canto palco__canto--${canto}`} aria-hidden onPointerDown={redimensionarLegenda} />
-              ))}
-          </div>
-        )}
-
-        {/* Alças das camadas livres e em janela (stickers, imagens, vídeos):
-            arrastar move, o canto muda a largura. A camada em si é do
-            compositor; a alça só acompanha até soltar. */}
-        {!tocando &&
-          onAjustarMidia &&
-          (plan.mediaLayers ?? [])
-            .filter((c) => (c.layout === 'livre' || c.layout === 'pip') && posicaoMs >= c.timelineStartMs && posicaoMs < c.timelineStartMs + c.durationMs)
-            .map((c) => {
-              const el = elementosDasMidias.current.get(c.id)?.el;
-              const w0 = el instanceof HTMLVideoElement ? el.videoWidth : el?.naturalWidth;
-              const h0 = el instanceof HTMLVideoElement ? el.videoHeight : el?.naturalHeight;
-              const proporcao = w0 && h0 ? w0 / h0 : c.kind === 'sticker' ? 1 : 16 / 9;
-              const arraste = arrasteDaMidia?.id === c.id ? arrasteDaMidia : null;
-              const p = padraoDaCaixa(c);
-              // Animada: a alça fica onde a camada está no cursor.
-              const est = midiaEstaAnimada(c) || c.followPerson ? estadoDaMidia(c, posicaoMs - c.timelineStartMs, { x: c.x ?? p.x, y: c.y ?? p.y }) : null;
-              const cabeca = c.followPerson ? cabecaRef.current : null;
-              if (est && cabeca) {
-                est.x += cabeca.x - 0.5;
-                est.y += cabeca.y - 0.5;
-              }
-              const cx = arraste?.x ?? est?.x ?? c.x ?? p.x;
-              const cy = arraste?.y ?? est?.y ?? c.y ?? p.y;
-              const largura = arraste?.width ?? (c.width ?? p.width) * Math.max(0.05, est?.scale ?? 1);
-              const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao, plan.canvas.width, plan.canvas.height);
-              const selecionada = midiaSelecionada === c.id;
-              return (
-                <div
-                  key={c.id}
-                  role="button"
-                  tabIndex={0}
-                  className="palco__alca-destaque palco__alca-midia"
-                  data-selecionado={selecionada || undefined}
-                  style={{ left: `${cx * 100}%`, top: `${cy * 100}%`, width: `${(caixa.w / plan.canvas.width) * 100}%`, height: `${(caixa.h / plan.canvas.height) * 100}%`, transform: 'translate(-50%, -50%)' }}
-                  aria-label="Mover a camada"
-                  title="Arraste para mover · canto para mudar o tamanho"
+          {/* Logo e imagem: mesmas posições e tamanhos do render. */}
+          {urlDoAsset &&
+            imagensVisiveis.map((o) =>
+              o.component === 'LogoBug' ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  key={o.id}
+                  src={urlDoAsset(o.assetId!)}
+                  alt=""
+                  draggable={false}
+                  data-selecionado={destaqueSelecionado === o.id || undefined}
+                  className={`palco__logo palco__logo--${o.variant ?? 'sd'}${onMoverDestaque ? ' palco__logo--movel' : ''}`}
+                  style={{
+                    maxWidth: `${17 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
+                    maxHeight: `${8 * Math.min(3, Math.max(0.4, o.style?.sizeScale ?? 1))}%`,
+                    opacity: Math.min(1, Math.max(0.1, o.style?.bgOpacity ?? 0.92)),
+                    ...(o.style?.x !== undefined && o.style?.y !== undefined
+                      ? { left: `${o.style.x * 100}%`, top: `${o.style.y * 100}%`, right: 'auto', bottom: 'auto', transform: 'translate(-50%, -50%)' }
+                      : {}),
+                  }}
                   onPointerDown={(e) => {
-                    const ponto = noQuadro();
-                    if (!ponto) return;
-                    e.preventDefault();
-                    onSelecionarMidia?.(c.id);
-                    const inicio = ponto(e);
-                    const limite = (v: number) => Math.min(1, Math.max(0, v));
-                    let ultimo = { x: cx, y: cy };
-                    let moveu = false;
-                    acompanhar(
-                      (ev) => {
-                        const q = ponto(ev);
-                        ultimo = { x: limite(cx + q.x - inicio.x), y: limite(cy + q.y - inicio.y) };
-                        moveu = moveu || Math.abs(q.x - inicio.x) + Math.abs(q.y - inicio.y) > 0.004;
-                        if (moveu) setArrasteDaMidia({ id: c.id, ...ultimo });
-                      },
-                      () => {
-                        // Acompanhando a pessoa, grava a posição EM RELAÇÃO à cabeça.
-                        const rx = cabeca ? ultimo.x - cabeca.x + 0.5 : ultimo.x;
-                        const ry = cabeca ? ultimo.y - cabeca.y + 0.5 : ultimo.y;
-                        if (moveu) onAjustarMidia(c.id, { x: Math.round(Math.min(1, Math.max(0, rx)) * 1000) / 1000, y: Math.round(Math.min(1, Math.max(0, ry)) * 1000) / 1000 });
-                      },
-                      () => setArrasteDaMidia(null),
-                    );
+                    // Arrastar a logo na prévia: pega o centro de onde ela está.
+                    const quadro = quadroRef.current;
+                    if (!quadro || !onMoverDestaque) return;
+                    const q = quadro.getBoundingClientRect();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    arrastarTexto(o.id, (r.left + r.width / 2 - q.left) / q.width, (r.top + r.height / 2 - q.top) / q.height)(e);
+                  }}
+                />
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img key={o.id} src={urlDoAsset(o.assetId!)} alt="" className="palco__imagem-sobreposta" />
+              ),
+            )}
+
+          {assAtras && !libassFalhou && (
+            <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
+              ass={assAtras}
+              tempoMs={posicaoMs}
+              tempoAoVivo={tempoAoVivo}
+              tocando={tocando}
+              onFalha={() => setLibassFalhou(true)}
+            />
+          )}
+          {temRecorte && <canvas ref={recorteRef} className="palco__recorte" width={540} height={960} aria-hidden />}
+
+          {ass && !libassFalhou && (
+            <CamadaDeLegendas largura={telaDeToque ? plan.canvas.width / 2 : plan.canvas.width} altura={telaDeToque ? plan.canvas.height / 2 : plan.canvas.height}
+              ass={ass}
+              tempoMs={posicaoMs}
+              tempoAoVivo={tempoAoVivo}
+              tocando={tocando}
+              onFalha={() => setLibassFalhou(true)}
+            />
+          )}
+
+          {zonasSeguras && plan.canvas.aspectRatio === '9:16' && !tocando && <GradeDoPalco plan={plan} ms={posicaoMs} />}
+
+          {!tocando &&
+            (() => {
+              const o = textosVisiveis.find(({ o }) => o.id === destaqueSelecionado && ehTextoAtras(o))?.o;
+              if (!o || !onMoverDestaque) return null;
+              const caixa = caixaDoTexto(planoDaPrevia, o, marcaDoVideo);
+              return (
+                <button
+                  type="button"
+                  className="chip chip--acionavel palco__posicionar"
+                  disabled={!modeloPronto}
+                  title="Acha a altura em que o texto fica atrás da pessoa sem perder a leitura"
+                  onClick={() => {
+                    const m = ultimaMascara.current;
+                    if (!m) return;
+                    const y = melhorAlturaAtras(m, caixa.largura / planoDaPrevia.canvas.width, caixa.altura / planoDaPrevia.canvas.height);
+                    if (y !== null) onMoverDestaque(o.id, 0.5, y);
                   }}
                 >
-                  {selecionada &&
+                  {modeloPronto ? 'Posicionar atrás da pessoa' : 'Carregando o recorte…'}
+                </button>
+              );
+            })()}
+
+          {/* Alça da legenda: arrastar muda a altura, o canto o tamanho. */}
+          {!tocando && caixaDaLegenda && onAjustarLegenda && (
+            <div
+              role="button"
+              tabIndex={0}
+              className="palco__alca-destaque palco__alca-legenda"
+              data-selecionado={legendaSelecionada || undefined}
+              style={{
+                left: `${caixaDaLegenda.cx * 100}%`,
+                top: `${caixaDaLegenda.cy * 100}%`,
+                width: `${caixaDaLegenda.largura * 100}%`,
+                height: `${caixaDaLegenda.altura * 100}%`,
+              }}
+              aria-label="Mover a legenda"
+              title={onPosicionarBloco ? 'Legenda: arraste para mover só esta (Shift: todas) · canto para o tamanho' : 'Legenda: arraste para subir ou descer · canto para o tamanho'}
+              onPointerDown={arrastarLegenda}
+              onBlur={() => setLegendaSelecionada(false)}
+            >
+              {legendaSelecionada &&
+                (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
+                  <span key={canto} className={`palco__canto palco__canto--${canto}`} aria-hidden onPointerDown={redimensionarLegenda} />
+                ))}
+            </div>
+          )}
+
+          {/* Alças das camadas livres e em janela (stickers, imagens, vídeos):
+              arrastar move, o canto muda a largura. A camada em si é do
+              compositor; a alça só acompanha até soltar. */}
+          {!tocando &&
+            onAjustarMidia &&
+            (plan.mediaLayers ?? [])
+              .filter((c) => (c.layout === 'livre' || c.layout === 'pip') && posicaoMs >= c.timelineStartMs && posicaoMs < c.timelineStartMs + c.durationMs)
+              .map((c) => {
+                const el = elementosDasMidias.current.get(c.id)?.el;
+                const w0 = el instanceof HTMLVideoElement ? el.videoWidth : el?.naturalWidth;
+                const h0 = el instanceof HTMLVideoElement ? el.videoHeight : el?.naturalHeight;
+                const proporcao = w0 && h0 ? w0 / h0 : c.kind === 'sticker' ? 1 : 16 / 9;
+                const arraste = arrasteDaMidia?.id === c.id ? arrasteDaMidia : null;
+                const p = padraoDaCaixa(c);
+                // Animada: a alça fica onde a camada está no cursor.
+                const est = midiaEstaAnimada(c) || c.followPerson ? estadoDaMidia(c, posicaoMs - c.timelineStartMs, { x: c.x ?? p.x, y: c.y ?? p.y }) : null;
+                const cabeca = c.followPerson ? cabecaRef.current : null;
+                if (est && cabeca) {
+                  est.x += cabeca.x - 0.5;
+                  est.y += cabeca.y - 0.5;
+                }
+                const cx = arraste?.x ?? est?.x ?? c.x ?? p.x;
+                const cy = arraste?.y ?? est?.y ?? c.y ?? p.y;
+                const largura = arraste?.width ?? (c.width ?? p.width) * Math.max(0.05, est?.scale ?? 1);
+                const caixa = caixaDaMidia({ ...c, x: cx, y: cy, width: largura }, proporcao, plan.canvas.width, plan.canvas.height);
+                const selecionada = midiaSelecionada === c.id;
+                return (
+                  <div
+                    key={c.id}
+                    role="button"
+                    tabIndex={0}
+                    className="palco__alca-destaque palco__alca-midia"
+                    data-selecionado={selecionada || undefined}
+                    style={{ left: `${cx * 100}%`, top: `${cy * 100}%`, width: `${(caixa.w / plan.canvas.width) * 100}%`, height: `${(caixa.h / plan.canvas.height) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                    aria-label="Mover a camada"
+                    title="Arraste para mover · canto para mudar o tamanho"
+                    onPointerDown={(e) => {
+                      const ponto = noQuadro();
+                      if (!ponto) return;
+                      e.preventDefault();
+                      onSelecionarMidia?.(c.id);
+                      const inicio = ponto(e);
+                      const limite = (v: number) => Math.min(1, Math.max(0, v));
+                      let ultimo = { x: cx, y: cy };
+                      let moveu = false;
+                      acompanhar(
+                        (ev) => {
+                          const q = ponto(ev);
+                          ultimo = { x: limite(cx + q.x - inicio.x), y: limite(cy + q.y - inicio.y) };
+                          moveu = moveu || Math.abs(q.x - inicio.x) + Math.abs(q.y - inicio.y) > 0.004;
+                          if (moveu) setArrasteDaMidia({ id: c.id, ...ultimo });
+                        },
+                        () => {
+                          // Acompanhando a pessoa, grava a posição EM RELAÇÃO à cabeça.
+                          const rx = cabeca ? ultimo.x - cabeca.x + 0.5 : ultimo.x;
+                          const ry = cabeca ? ultimo.y - cabeca.y + 0.5 : ultimo.y;
+                          if (moveu) onAjustarMidia(c.id, { x: Math.round(Math.min(1, Math.max(0, rx)) * 1000) / 1000, y: Math.round(Math.min(1, Math.max(0, ry)) * 1000) / 1000 });
+                        },
+                        () => setArrasteDaMidia(null),
+                      );
+                    }}
+                  >
+                    {selecionada &&
+                      (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
+                        <span
+                          key={canto}
+                          className={`palco__canto palco__canto--${canto}`}
+                          aria-hidden
+                          onPointerDown={(e) => {
+                            const ponto = noQuadro();
+                            const quadro = quadroRef.current;
+                            if (!ponto || !quadro) return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const { width, height } = quadro.getBoundingClientRect();
+                            const distancia = (q: { x: number; y: number }) => Math.hypot((q.x - cx) * width, (q.y - cy) * height);
+                            const d0 = Math.max(8, distancia(ponto(e)));
+                            let nova = largura;
+                            acompanhar(
+                              (ev) => {
+                                nova = Math.round(Math.min(1, Math.max(0.05, (largura * distancia(ponto(ev))) / d0)) * 1000) / 1000;
+                                setArrasteDaMidia({ id: c.id, width: nova });
+                              },
+                              () => {
+                                if (nova !== largura) onAjustarMidia(c.id, { width: nova });
+                              },
+                              () => setArrasteDaMidia(null),
+                            );
+                          }}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
+
+          {/* Alças dos textos de tela: do tamanho do texto de verdade.
+              Arrastar move (mouse ou dedo), o canto redimensiona, clique
+              duplo abre os estilos. O texto em si é o do .ass, acima. */}
+          {!tocando &&
+            textosVisiveis.map(({ o, caixa, escala, giro }) => {
+              const { width, height } = planoDaPrevia.canvas;
+              const cx = caixa.cx / width;
+              const cy = caixa.cy / height;
+              const selecionado = destaqueSelecionado === o.id;
+              return (
+                <div
+                  key={o.id}
+                  role="button"
+                  tabIndex={0}
+                  className="palco__alca-destaque"
+                  data-selecionado={selecionado || undefined}
+                  style={{
+                    left: `${cx * 100}%`,
+                    top: `${cy * 100}%`,
+                    width: `${Math.min(100, ((caixa.largura + 16) / width) * 100)}%`,
+                    height: `${((caixa.altura + 16) / height) * 100}%`,
+                    // \frz do .ass gira no sentido anti-horário; o rotate do CSS, no horário.
+                    transform: `translate(-50%, -50%) rotate(${-giro}deg)`,
+                  }}
+                  aria-label={`Mover "${o.text ?? ''}"`}
+                  title="Arraste para mover · canto para redimensionar · clique duplo para estilos"
+                  onPointerDown={arrastarTexto(o.id, cx, cy)}
+                  onDoubleClick={() => onAbrirEstilos?.(o.id)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter') onAbrirEstilos?.(o.id);
+                  }}
+                >
+                  {selecionado &&
                     (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
                       <span
                         key={canto}
                         className={`palco__canto palco__canto--${canto}`}
                         aria-hidden
-                        onPointerDown={(e) => {
-                          const ponto = noQuadro();
-                          const quadro = quadroRef.current;
-                          if (!ponto || !quadro) return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const { width, height } = quadro.getBoundingClientRect();
-                          const distancia = (q: { x: number; y: number }) => Math.hypot((q.x - cx) * width, (q.y - cy) * height);
-                          const d0 = Math.max(8, distancia(ponto(e)));
-                          let nova = largura;
-                          acompanhar(
-                            (ev) => {
-                              nova = Math.round(Math.min(1, Math.max(0.05, (largura * distancia(ponto(ev))) / d0)) * 1000) / 1000;
-                              setArrasteDaMidia({ id: c.id, width: nova });
-                            },
-                            () => {
-                              if (nova !== largura) onAjustarMidia(c.id, { width: nova });
-                            },
-                            () => setArrasteDaMidia(null),
-                          );
-                        }}
+                        onPointerDown={redimensionarTexto(o.id, cx, cy, (o.style?.sizeScale ?? 1) * escala)}
                       />
                     ))}
                 </div>
               );
             })}
 
-        {/* Alças dos textos de tela: do tamanho do texto de verdade.
-            Arrastar move (mouse ou dedo), o canto redimensiona, clique
-            duplo abre os estilos. O texto em si é o do .ass, acima. */}
-        {!tocando &&
-          textosVisiveis.map(({ o, caixa, escala, giro }) => {
-            const { width, height } = planoDaPrevia.canvas;
-            const cx = caixa.cx / width;
-            const cy = caixa.cy / height;
-            const selecionado = destaqueSelecionado === o.id;
-            return (
-              <div
-                key={o.id}
-                role="button"
-                tabIndex={0}
-                className="palco__alca-destaque"
-                data-selecionado={selecionado || undefined}
-                style={{
-                  left: `${cx * 100}%`,
-                  top: `${cy * 100}%`,
-                  width: `${Math.min(100, ((caixa.largura + 16) / width) * 100)}%`,
-                  height: `${((caixa.altura + 16) / height) * 100}%`,
-                  // \frz do .ass gira no sentido anti-horário; o rotate do CSS, no horário.
-                  transform: `translate(-50%, -50%) rotate(${-giro}deg)`,
-                }}
-                aria-label={`Mover "${o.text ?? ''}"`}
-                title="Arraste para mover · canto para redimensionar · clique duplo para estilos"
-                onPointerDown={arrastarTexto(o.id, cx, cy)}
-                onDoubleClick={() => onAbrirEstilos?.(o.id)}
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Enter') onAbrirEstilos?.(o.id);
-                }}
-              >
-                {selecionado &&
-                  (['ne', 'nw', 'se', 'sw'] as const).map((canto) => (
-                    <span
-                      key={canto}
-                      className={`palco__canto palco__canto--${canto}`}
-                      aria-hidden
-                      onPointerDown={redimensionarTexto(o.id, cx, cy, (o.style?.sizeScale ?? 1) * escala)}
-                    />
-                  ))}
-              </div>
-            );
-          })}
-
-        {/* Reserva: navegador sem WebAssembly/OffscreenCanvas. Aproxima o
-            estilo (fonte e cores), sem as animações. */}
-        {legendaCss && (
-          <div
-            className="palco__legenda"
-            style={{
-              fontFamily: `'${estiloCss.fonte.nomeAss}', ${estiloCss.fonte.rotulo}, sans-serif`,
-              color: estiloCss.cor,
-              textTransform: estiloCss.caixaAlta ? 'uppercase' : 'none',
-              ...(plan.captions.position === 'top'
-                ? { top: '12%', bottom: 'auto' }
-                : plan.captions.position === 'center'
-                  ? { top: '46%', bottom: 'auto' }
-                  : { bottom: '24%' }),
-            }}
-          >
-            {legendaCss.map((p, i) => (
-              <span key={p.id}>
-                {i > 0 && ' '}
-                <span style={p.ativa && plan.captions.highlightActiveWord ? { color: estiloCss.corDestaque } : undefined}>
-                  {p.texto}
+          {/* Reserva: navegador sem WebAssembly/OffscreenCanvas. Aproxima o
+              estilo (fonte e cores), sem as animações. */}
+          {legendaCss && (
+            <div
+              className="palco__legenda"
+              style={{
+                fontFamily: `'${estiloCss.fonte.nomeAss}', ${estiloCss.fonte.rotulo}, sans-serif`,
+                color: estiloCss.cor,
+                textTransform: estiloCss.caixaAlta ? 'uppercase' : 'none',
+                ...(plan.captions.position === 'top'
+                  ? { top: '12%', bottom: 'auto' }
+                  : plan.captions.position === 'center'
+                    ? { top: '46%', bottom: 'auto' }
+                    : { bottom: '24%' }),
+              }}
+            >
+              {legendaCss.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 && ' '}
+                  <span style={p.ativa && plan.captions.highlightActiveWord ? { color: estiloCss.corDestaque } : undefined}>
+                    {p.texto}
+                  </span>
                 </span>
-              </span>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
 
         {trilhaUrl && <audio ref={trilhaRef} src={trilhaUrl} loop preload="auto" muted={mudo} />}
 

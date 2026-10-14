@@ -14554,6 +14554,28 @@ button.midia-cartao__previa:disabled {
   justify-content: center;
 }
 
+/* Zoom da vista na edição da animação (pinça): tudo dentro do quadro amplia junto, e o
+   quadro corta o excesso. Sem zoom a camada não tem transform (nada muda no empilhamento). */
+.palco__zoom {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.palco__zoom-voltar {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 7;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+}
+.palco__zoom-voltar[data-acima] {
+  bottom: 56px;
+}
+
 /* Grupos (a animação inteira, o card com o fundo): moldura discreta até selecionar. */
 .palco__peca[data-grupo] {
   border-style: dotted;
