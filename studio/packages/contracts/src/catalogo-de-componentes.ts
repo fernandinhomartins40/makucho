@@ -4,6 +4,8 @@
 // vídeo explicativo de pessoa falando. Não editar à mão.
 // ============================================================
 
+import { COMPONENTES_DO_CATALOGO_EXTRA } from './catalogo-de-componentes-extra';
+
 export interface VariavelDoComponente {
   id: string;
   tipo: string;
@@ -27,7 +29,7 @@ export interface ComponenteDoCatalogo {
   variaveis: VariavelDoComponente[];
 }
 
-export const COMPONENTES_DO_CATALOGO: readonly ComponenteDoCatalogo[] = [
+const COMPONENTES_DA_PRIMEIRA_LEVA: readonly ComponenteDoCatalogo[] = [
   {
     "nome": "conic-progress-ring",
     "grupo": "dados",
@@ -1328,6 +1330,9 @@ export const COMPONENTES_DO_CATALOGO: readonly ComponenteDoCatalogo[] = [
     ]
   }
 ];
+
+/** Os 34 primeiros e os trazidos depois (scripts/gerar-componentes-hyperframes.mjs). */
+export const COMPONENTES_DO_CATALOGO: readonly ComponenteDoCatalogo[] = [...COMPONENTES_DA_PRIMEIRA_LEVA, ...COMPONENTES_DO_CATALOGO_EXTRA];
 
 export const NOMES_DOS_COMPONENTES = COMPONENTES_DO_CATALOGO.map((c) => c.nome);
 

@@ -231,5 +231,6 @@ Monte assim, dentro da área útil: <div data-hf="nome" data-inicio="1.2" data-d
 - data-vars é JSON (aspas simples por fora, duplas por dentro); só as variáveis que mudam. "accent": green = var(--cor-destaque), blue = var(--cor-destaque-2), violet = var(--cor-destaque-3).
 - O componente preenche a caixa: dê largura e altura generosas (ex.: anel 380x380, contador 520x260, texto 952x220). Não anime os elementos de dentro dele; pode animar a caixa.
 - Um ou dois componentes por animação, somados ao seu próprio desenho (título, rótulos, fundo).
+- Os textos padrão dos componentes estão em inglês: preencha SEMPRE, em português do Brasil e com o que a fala diz, todo campo de texto que aparece na tela (rótulos, títulos, botões, mensagens, listas).
 ${linhas.join(String.fromCharCode(10))}`;
 }
