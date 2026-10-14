@@ -2499,5 +2499,534 @@ export const COMPONENTES_DO_CATALOGO_EXTRA: readonly ComponenteDoCatalogo[] = [
         ]
       }
     ]
+  },
+  {
+    "nome": "instagram-follow",
+    "grupo": "destaque",
+    "titulo": "Instagram Follow",
+    "oQue": "Animated Instagram follow overlay with profile card and follow button (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HeyGen",
+        "descricao": "texto 1 da tela (exemplo: \"HeyGen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "@heygen_official",
+        "descricao": "texto 2 da tela (exemplo: \"@heygen_official\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "47.5K followers",
+        "descricao": "texto 3 da tela (exemplo: \"47.5K followers\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "Follow",
+        "descricao": "texto 4 da tela (exemplo: \"Follow\")"
+      },
+      {
+        "id": "t5",
+        "tipo": "string",
+        "padrao": "Following",
+        "descricao": "texto 5 da tela (exemplo: \"Following\")"
+      }
+    ]
+  },
+  {
+    "nome": "tiktok-follow",
+    "grupo": "destaque",
+    "titulo": "TikTok Follow",
+    "oQue": "Animated TikTok follow overlay with profile card and follow button (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HeyGen",
+        "descricao": "texto 1 da tela (exemplo: \"HeyGen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "@heygen.com",
+        "descricao": "texto 2 da tela (exemplo: \"@heygen.com\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "1,999 followers",
+        "descricao": "texto 3 da tela (exemplo: \"1,999 followers\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "Follow",
+        "descricao": "texto 4 da tela (exemplo: \"Follow\")"
+      },
+      {
+        "id": "t5",
+        "tipo": "string",
+        "padrao": "Following",
+        "descricao": "texto 5 da tela (exemplo: \"Following\")"
+      }
+    ]
+  },
+  {
+    "nome": "spotify-card",
+    "grupo": "destaque",
+    "titulo": "Spotify Now Playing",
+    "oQue": "Animated Spotify now-playing card with album art and progress bar (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HyperFrames",
+        "descricao": "texto 1 da tela (exemplo: \"HyperFrames\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "HeyGen",
+        "descricao": "texto 2 da tela (exemplo: \"HeyGen\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Spotify",
+        "descricao": "texto 3 da tela (exemplo: \"Spotify\")"
+      }
+    ]
+  },
+  {
+    "nome": "x-post",
+    "grupo": "destaque",
+    "titulo": "X Post Card",
+    "oQue": "Animated X/Twitter post card overlay with engagement metrics (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Hyperframes",
+        "descricao": "texto 1 da tela (exemplo: \"Hyperframes\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "@hyperframes",
+        "descricao": "texto 2 da tela (exemplo: \"@hyperframes\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Prompt to replace this text with your tweet. Change the display name, handle, timestamp, and engagement counts to match your content.",
+        "descricao": "texto 3 da tela (exemplo: \"Prompt to replace this text with your tweet. Change the display name, handle, timestamp, and engagement counts to match your content.\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "#YourHashtag",
+        "descricao": "texto 4 da tela (exemplo: \"#YourHashtag\")"
+      },
+      {
+        "id": "t5",
+        "tipo": "string",
+        "padrao": "1:10 PM &middot; Apr 7, 2026",
+        "descricao": "texto 5 da tela (exemplo: \"1:10 PM &middot; Apr 7, 2026\")"
+      },
+      {
+        "id": "t6",
+        "tipo": "string",
+        "padrao": "34",
+        "descricao": "texto 6 da tela (exemplo: \"34\")"
+      },
+      {
+        "id": "t7",
+        "tipo": "string",
+        "padrao": "2.3K",
+        "descricao": "texto 7 da tela (exemplo: \"2.3K\")"
+      },
+      {
+        "id": "t8",
+        "tipo": "string",
+        "padrao": "10.9K",
+        "descricao": "texto 8 da tela (exemplo: \"10.9K\")"
+      },
+      {
+        "id": "t9",
+        "tipo": "string",
+        "padrao": "150K",
+        "descricao": "texto 9 da tela (exemplo: \"150K\")"
+      }
+    ]
+  },
+  {
+    "nome": "reddit-post",
+    "grupo": "destaque",
+    "titulo": "Reddit Post Card",
+    "oQue": "Animated Reddit post card overlay with upvotes and comments (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "r/hyperframes",
+        "descricao": "texto 1 da tela (exemplo: \"r/hyperframes\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "u/placeholder_user &middot; 3h",
+        "descricao": "texto 2 da tela (exemplo: \"u/placeholder_user &middot; 3h\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Prompt to change this title to whatever you want",
+        "descricao": "texto 3 da tela (exemplo: \"Prompt to change this title to whatever you want\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "Prompt to change this body text, the subreddit, username, and vote count to match your content.",
+        "descricao": "texto 4 da tela (exemplo: \"Prompt to change this body text, the subreddit, username, and vote count to match your content.\")"
+      },
+      {
+        "id": "t5",
+        "tipo": "string",
+        "padrao": "4.2k",
+        "descricao": "texto 5 da tela (exemplo: \"4.2k\")"
+      },
+      {
+        "id": "t6",
+        "tipo": "string",
+        "padrao": "328",
+        "descricao": "texto 6 da tela (exemplo: \"328\")"
+      },
+      {
+        "id": "t7",
+        "tipo": "string",
+        "padrao": "Share",
+        "descricao": "texto 7 da tela (exemplo: \"Share\")"
+      }
+    ]
+  },
+  {
+    "nome": "macos-notification",
+    "grupo": "destaque",
+    "titulo": "macOS Notification",
+    "oQue": "Animated macOS-style notification banner with app icon and message (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HyperFrames",
+        "descricao": "texto 1 da tela (exemplo: \"HyperFrames\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "now",
+        "descricao": "texto 2 da tela (exemplo: \"now\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Prompt to replace this title",
+        "descricao": "texto 3 da tela (exemplo: \"Prompt to replace this title\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "Prompt to change this body text, the app icon, and the app name to match your content.",
+        "descricao": "texto 4 da tela (exemplo: \"Prompt to change this body text, the app icon, and the app name to match your content.\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-accent-underline",
+    "grupo": "texto",
+    "titulo": "Lower Third — Accent Underline",
+    "oQue": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-bold-block",
+    "grupo": "texto",
+    "titulo": "Lower Third — Bold Block",
+    "oQue": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-clean-bar",
+    "grupo": "texto",
+    "titulo": "Lower Third — Clean Bar",
+    "oQue": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-color-block",
+    "grupo": "texto",
+    "titulo": "Lower Third — Color Block",
+    "oQue": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-dark-card",
+    "grupo": "texto",
+    "titulo": "Lower Third — Dark Card",
+    "oQue": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-kicker-name",
+    "grupo": "texto",
+    "titulo": "Lower Third — Kicker Name",
+    "oQue": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Episode 47",
+        "descricao": "texto 1 da tela (exemplo: \"Episode 47\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Maya Chen",
+        "descricao": "texto 2 da tela (exemplo: \"Maya Chen\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-mask-reveal",
+    "grupo": "texto",
+    "titulo": "Lower Third — Mask Reveal",
+    "oQue": "Cardless lower third: an accent sweep crosses and clip-path-reveals a heavy name, role fades up; for footage (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-side-rule",
+    "grupo": "texto",
+    "titulo": "Lower Third — Side Rule",
+    "oQue": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-soft-pill",
+    "grupo": "texto",
+    "titulo": "Lower Third — Soft Pill",
+    "oQue": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Dr. Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Dr. Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "lt-stack-bars",
+    "grupo": "texto",
+    "titulo": "Lower Third — Stack Bars",
+    "oQue": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.8s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "Maya Chen",
+        "descricao": "texto 1 da tela (exemplo: \"Maya Chen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "Host · Neuroscientist",
+        "descricao": "texto 2 da tela (exemplo: \"Host · Neuroscientist\")"
+      }
+    ]
+  },
+  {
+    "nome": "yt-lower-third",
+    "grupo": "texto",
+    "titulo": "YouTube Lower Third",
+    "oQue": "Animated YouTube subscribe lower third with avatar and channel info (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)",
+    "quando": "",
+    "evitar": "",
+    "envelope": "dura 4.5s",
+    "variaveis": [
+      {
+        "id": "t1",
+        "tipo": "string",
+        "padrao": "HeyGen",
+        "descricao": "texto 1 da tela (exemplo: \"HeyGen\")"
+      },
+      {
+        "id": "t2",
+        "tipo": "string",
+        "padrao": "82.2K subscribers",
+        "descricao": "texto 2 da tela (exemplo: \"82.2K subscribers\")"
+      },
+      {
+        "id": "t3",
+        "tipo": "string",
+        "padrao": "Subscribe",
+        "descricao": "texto 3 da tela (exemplo: \"Subscribe\")"
+      },
+      {
+        "id": "t4",
+        "tipo": "string",
+        "padrao": "Subscribed",
+        "descricao": "texto 4 da tela (exemplo: \"Subscribed\")"
+      }
+    ]
   }
 ];

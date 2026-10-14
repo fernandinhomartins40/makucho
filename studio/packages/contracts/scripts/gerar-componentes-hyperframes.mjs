@@ -2,7 +2,7 @@
 // Traz componentes do registro do HyperFrames (HeyGen, Apache 2.0) para o
 // catálogo das animações.
 //
-//   node scripts/gerar-componentes-hyperframes.mjs <pasta registry/components>
+//   node scripts/gerar-componentes-hyperframes.mjs <registry/components> [registry/blocks]
 //
 // Gera src/componentes-hyperframes-extra.ts (o miolo de cada componente) e
 // src/catalogo-de-componentes-extra.ts (o que a IA lê para escolher). Os 34
@@ -182,6 +182,154 @@ for (const [nome, grupo] of Object.entries(ESCOLHIDOS)) {
       ...(v.max !== undefined ? { max: v.max } : {}),
     })),
   });
+}
+
+// ---------- Cenas prontas (registry/blocks) ----------
+//
+// Páginas inteiras (1080x1920 ou 1920x1080) com texto, cores e fontes fixos.
+// Viram componentes: as regras gerais (*, html, body) saem, o palco é
+// enquadrado na caixa (mantendo a proporção), cada texto da tela
+// vira um campo (t1, t2...) que a IA preenche, e fotos de exemplo viram uma
+// silhueta. Só as curtas (até ~9 s) e sem canvas/rede. O desenho é enquadrado na caixa.
+const CENAS = {
+  'instagram-follow': 'destaque', 'tiktok-follow': 'destaque', 'spotify-card': 'destaque',
+  'x-post': 'destaque', 'reddit-post': 'destaque', 'macos-notification': 'destaque',
+  'lt-accent-underline': 'texto', 'lt-bold-block': 'texto', 'lt-clean-bar': 'texto', 'lt-color-block': 'texto',
+  'lt-dark-card': 'texto', 'lt-kicker-name': 'texto', 'lt-mask-reveal': 'texto', 'lt-side-rule': 'texto',
+  'lt-soft-pill': 'texto', 'lt-stack-bars': 'texto', 'yt-lower-third': 'texto',
+  // Reprovadas na bancada: thread-message-stack (erro de script), news-ticker (quebra fora do
+  // palco inteiro), logo-outro (logo de outra marca) e yt-comment-card, split-flap-board, mk-*
+  // (texto em inglês montado pelo script, sem campo para trocar).
+};
+const SILHUETA = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#3a3f4b"/><circle cx="50" cy="38" r="18" fill="#9aa3b5"/><path d="M14 100c4-22 18-34 36-34s32 12 36 34z" fill="#9aa3b5"/></svg>')}`;
+
+function converterCena(nome, s, m) {
+  const css = [...s.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((x) => x[1]).join('\n');
+  const corpo = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(s)?.[1] ?? '';
+  const scripts = [...corpo.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((x) => x[1]);
+  let markup = corpo.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<!--[\s\S]*?-->/g, '').trim();
+  // A raiz da cena: o elemento com data-composition-id (nem todas usam id="root").
+  const tagDaRaiz = /<\w+\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/.exec(markup)?.[0];
+  if (!tagDaRaiz) return null;
+  const AQUI = /\[data-composition-id=["']?[\w-]+["']?\]/g;
+  // Regras que valem para o documento todo (e vazariam para o resto da animação) saem.
+  const cssLimpo = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/@import[^;]+;/g, '')
+    .replace(/@font-face\s*{[^}]*}/g, '')
+    .replace(/(^|})\s*([^{}@]+){([^{}]*)}/g, (t, ini, sel, dec) => {
+      const sels = sel
+        .split(',')
+        .map((x) => x.trim())
+        .filter((x) => x && !/^(html|body|\*|:root)(\s|$|::|:|\[)/.test(x) && x !== '*');
+      return sels.length ? `${ini} ${sels.join(', ')} {${dec}}` : ini;
+    })
+    .replace(/font-family:\s*([^;}]+)/g, (_t, f) => `font-family: var(--font-body, ${f.trim()})`)
+    .split('#root')
+    .join('#palco-hf')
+    .replace(AQUI, '#palco-hf')
+    .replace(/^[ \t]+/gm, '')
+    .replace(/\n{2,}/g, '\n');
+  // Fotos de exemplo (assets/...) viram silhueta.
+  markup = markup.replace(/(<img\b[^>]*\bsrc=)["'][^"']*["']/gi, `$1"${SILHUETA}"`).replace(/\s(crossorigin|alt)="[^"]*"/gi, '');
+  if (/(src|href)\s*=\s*["']https?:|url\(\s*["']?https?:/i.test(markup + cssLimpo)) return null;
+  // Cada texto da tela vira um campo (fora de svg: ícones têm texto de desenho).
+  const textos = [];
+  markup = markup
+    .split(/(<svg[\s\S]*?<\/svg>)/i)
+    .map((parte) =>
+      /^<svg/i.test(parte)
+        ? parte
+        : parte.replace(/>([^<>]*[A-Za-zÀ-ÿ0-9][^<>]*)</g, (_t, txt) => {
+            const limpo = txt.replace(/\s+/g, ' ').trim();
+            if (!limpo) return `>${txt}<`;
+            textos.push(limpo);
+            return `><span data-hf-t="t${textos.length}">${limpo}</span><`;
+          }),
+    )
+    .join('');
+  // O palco: a raiz original (#root) vira #palco-hf, encolhido para a largura da caixa.
+  const W = m.dimensions?.width ?? 1080;
+  const H = m.dimensions?.height ?? 1920;
+  const estiloDaRaiz = /\sstyle="([^"]*)"/.exec(tagDaRaiz)?.[1] ?? '';
+  const tagNova = tagDaRaiz
+    .replace(/\s(id|style|data-composition-id)="[^"]*"/g, '')
+    .replace(/>$/, ` id="palco-hf" style="${estiloDaRaiz ? `${estiloDaRaiz};` : ''}position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0">`);
+  markup = markup.replace(tagDaRaiz, () => tagNova);
+  const aplicar = `(function () {
+var palco = document.getElementById('palco-hf'); if (!palco) return;
+var vars = (window.__hyperframes && window.__hyperframes.getVariables && window.__hyperframes.getVariables()) || {};
+palco.querySelectorAll('[data-hf-t]').forEach(function (el) { var v = vars[el.getAttribute('data-hf-t')]; if (typeof v === 'string' && v) el.textContent = v; });
+})();`;
+  const script = scripts
+    .map((x) => x.split('getElementById("root")').join('getElementById("palco-hf")').split("getElementById('root')").join("getElementById('palco-hf')").split('#root').join('#palco-hf').replace(AQUI, '#palco-hf'))
+    .join('\n');
+  // Enquadrar: a cena foi desenhada num palco de ${W}x${H} com o desenho num canto;
+  // mede-se o que aparece no meio da animação e isso é ajustado (sem distorcer) à caixa.
+  const enquadrar = `(function () {
+var palco = document.getElementById('palco-hf'); if (!palco) return;
+var raiz = palco.parentElement; var lw = raiz.clientWidth || ${W}; var lh = raiz.clientHeight || ${H};
+var tl = window.__timelines && window.__timelines[${JSON.stringify(nome)}];
+var k = lw / ${W}; var tx = 0; var ty = 0;
+try {
+if (tl && tl.progress) tl.progress(0.5);
+var base = palco.getBoundingClientRect(); var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+palco.querySelectorAll('*').forEach(function (el) {
+var r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
+if (r.width >= ${W} * 0.9 && r.height >= ${H} * 0.9) return;
+for (var a = el; a && a !== palco; a = a.parentElement) { var cs = getComputedStyle(a); if (cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) < 0.05) return; }
+x0 = Math.min(x0, r.left - base.left); y0 = Math.min(y0, r.top - base.top); x1 = Math.max(x1, r.right - base.left); y1 = Math.max(y1, r.bottom - base.top);
+});
+if (x1 > x0 && y1 > y0) { k = Math.min(lw / (x1 - x0), lh / (y1 - y0)) * 0.94; tx = lw / 2 - k * (x0 + x1) / 2; ty = lh / 2 - k * (y0 + y1) / 2; }
+} catch (e) {}
+if (tl && tl.progress) tl.progress(0);
+palco.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + k + ')';
+})();`;
+  const miolo = `<div id="root" data-composition-id="${nome}" style="position:absolute;inset:0">
+<style>${cssLimpo}</style>
+${markup}
+<script>${aplicar}
+(function () {
+${script}
+})();
+${enquadrar}</script>
+</div>`;
+  return { miolo, textos, W, H };
+}
+
+const pastaDasCenas = process.argv[3];
+if (pastaDasCenas && existsSync(pastaDasCenas)) {
+  for (const [nome, grupo] of Object.entries(CENAS)) {
+    if (REPROVADOS.has(nome)) continue;
+    const item = join(pastaDasCenas, nome, 'registry-item.json');
+    if (!existsSync(item)) {
+      pulados.push(`${nome} (cena não existe)`);
+      continue;
+    }
+    const m = JSON.parse(readFileSync(item, 'utf8'));
+    const arq = (m.files ?? []).find((f) => f.path.endsWith('.html'));
+    const s = arq ? readFileSync(join(pastaDasCenas, nome, arq.path), 'utf8') : '';
+    if (!s || /<canvas|getContext\(/.test(s)) {
+      pulados.push(`${nome} (cena com canvas ou sem html)`);
+      continue;
+    }
+    const c = converterCena(nome, s, m);
+    if (!c) {
+      pulados.push(`${nome} (cena não convertida)`);
+      continue;
+    }
+    fontes[nome] = c.miolo;
+    catalogo.push({
+      nome,
+      grupo,
+      titulo: m.title ?? nome,
+      oQue: `${(m.description ?? '').trim()} (Cena pronta: o desenho se ajusta sozinho à caixa, sem distorcer e centrado nela; dê à caixa o tamanho e o lugar que o desenho deve ocupar, ex.: tarja de nome ou cartão de seguir = width:900px; height:260px; cartão de post = width:920px; height:520px. Uma por animação. Os textos t1, t2... são os da tela, na ordem.)`,
+      quando: '',
+      evitar: '',
+      envelope: m.duration ? `dura ${m.duration}s` : '',
+      variaveis: c.textos.map((t, i) => ({ id: `t${i + 1}`, tipo: 'string', padrao: t, descricao: `texto ${i + 1} da tela (exemplo: "${t}")` })),
+    });
+  }
 }
 
 const cab = `// ============================================================
