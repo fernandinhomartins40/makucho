@@ -37,7 +37,9 @@ COPY --from=deps /app/studio/packages/database/node_modules ./studio/packages/da
 COPY --from=deps /app/studio/packages/worker-core/node_modules ./studio/packages/worker-core/node_modules
 
 ENV STUDIO_DATABASE_URL=postgresql://build:build@localhost:5432/build
-RUN pnpm --filter @makucho/studio-database exec prisma generate
+# O prisma generate baixa o motor do Prisma da internet: uma falha de rede passageira
+# derrubava o deploy inteiro (worker media, release 8c02f86). Tenta até 3 vezes.
+RUN for i in 1 2 3; do pnpm --filter @makucho/studio-database exec prisma generate && exit 0; echo "prisma generate falhou (tentativa $i)"; sleep 10; done; exit 1
 
 RUN pnpm --filter "@makucho/studio-worker-media^..." build
 RUN pnpm --filter @makucho/studio-worker-media build

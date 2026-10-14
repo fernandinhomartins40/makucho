@@ -47,7 +47,9 @@ COPY --from=deps /app/studio/packages/database/node_modules ./studio/packages/da
 # proposito: o generate le apenas o schema, e uma credencial real nao
 # tem por que entrar numa camada de imagem.
 ENV STUDIO_DATABASE_URL=postgresql://build:build@localhost:5432/build
-RUN pnpm --filter @makucho/studio-database exec prisma generate
+# O prisma generate baixa o motor do Prisma da internet: uma falha de rede passageira
+# derrubava o deploy inteiro (worker media, release 8c02f86). Tenta até 3 vezes.
+RUN for i in 1 2 3; do pnpm --filter @makucho/studio-database exec prisma generate && exit 0; echo "prisma generate falhou (tentativa $i)"; sleep 10; done; exit 1
 
 # Os pacotes compartilhados sao resolvidos pelo dist/, que so existe
 # depois de compilados. "^..." compila cada dependencia na ordem certa.
