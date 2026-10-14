@@ -14355,7 +14355,8 @@ button.midia-cartao__previa:disabled {
   font: inherit;
 }
 
-/* Alças do meio dos lados: esticam só a largura ou só a altura da peça. */
+/* Alças do meio dos lados: esticam só a largura ou só a altura da peça. Do lado de dentro
+   da caixa: numa peça encostada na borda do vídeo elas ficavam cortadas. */
 .palco__lado {
   position: absolute;
   background: #fff;
@@ -14377,8 +14378,8 @@ button.midia-cartao__previa:disabled {
   margin-top: -11px;
   cursor: ew-resize;
 }
-.palco__lado--e { right: -6px; }
-.palco__lado--w { left: -6px; }
+.palco__lado--e { right: 2px; }
+.palco__lado--w { left: 2px; }
 .palco__lado--n,
 .palco__lado--s {
   left: 50%;
@@ -14387,8 +14388,8 @@ button.midia-cartao__previa:disabled {
   margin-left: -11px;
   cursor: ns-resize;
 }
-.palco__lado--n { top: -6px; }
-.palco__lado--s { bottom: -6px; }
+.palco__lado--n { top: 2px; }
+.palco__lado--s { bottom: 2px; }
 
 /* ---------- O painel visual da animação ---------- */
 .editor-da-cena {

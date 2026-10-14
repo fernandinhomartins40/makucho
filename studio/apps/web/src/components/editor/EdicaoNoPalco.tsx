@@ -295,6 +295,14 @@ export function EdicaoNoPalco({
     aoVivo(comPeca(selecionada, { ...p, escala: Math.round(limitar(p.escala * Math.exp(-e.deltaY / 200), MINIMO, 4) * 100) / 100 }));
   };
 
+  // A ordem das caixas (a última fica por cima e recebe o toque): pela hierarquia, não pelo
+  // tamanho -- a animação inteira embaixo de tudo, cada grupo embaixo das suas peças. Por
+  // tamanho, um título que transborda a cena ficava embaixo dela e não dava para tocá-lo.
+  const profundidade = (p: PecaDaAnimacao) => {
+    let n = 0;
+    for (let pai = p.pai; pai && n < 20; n += 1) pai = pecas.find((q) => q.chave === pai)?.pai ?? null;
+    return p.chave === 'cena' ? -1 : n;
+  };
   const sel = pecas.find((p) => p.chave === selecionada);
   const pct = (v: number, total: number) => `${(v / total) * 100}%`;
   return (
@@ -314,7 +322,7 @@ export function EdicaoNoPalco({
       }}
       ref={raiz}
     >
-      {[...pecas].sort((a, b) => b.w * b.h - a.w * a.h).map((p) => {
+      {[...pecas].sort((a, b) => profundidade(a) - profundidade(b) || b.w * b.h - a.w * a.h).map((p) => {
         const marcada = p.chave === selecionada;
         // A cena inteira e as linhas em máscara não esticam: só movem e escalam.
         const estica = marcada && p.chave !== 'cena' && !p.mascara;
