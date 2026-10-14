@@ -358,7 +358,16 @@ function comCorrecoes(c: ComposicaoHtml): ComposicaoHtml {
 }
 
 export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocumento): string {
-  const c = comCorrecoes(original);
+  const corrigida = comCorrecoes(original);
+  // O ajuste das peças (mover, tamanho) sai do CSS e entra DEPOIS de a linha do tempo estar
+  // montada. Ele usa as propriedades translate/scale, e o GSAP, ao tocar num elemento pela
+  // primeira vez, lê essas propriedades e as incorpora ao transform que ele mesmo grava: com o
+  // ajuste já no CSS ao carregar, o deslocamento e o tamanho valiam DUAS vezes (a peça solta num
+  // lugar aparecia em outro depois de aplicar, e crescia ao quadrado). Ao vivo, na edição, o CSS
+  // chega depois -- agora o salvo segue o mesmo caminho e dá o mesmo resultado.
+  const iAjuste = corrigida.css.indexOf('\n/*ajuste-da-cena*/');
+  const cssDoAjuste = iAjuste >= 0 ? corrigida.css.slice(iAjuste) : '';
+  const c = iAjuste >= 0 ? { ...corrigida, css: corrigida.css.slice(0, iAjuste) } : corrigida;
   const W = o.largura ?? 1080;
   const H = o.altura ?? 1920;
   const area = areaDaComposicao(c, W, H);
@@ -465,6 +474,9 @@ ${ESC(c.script)}
   })(tl);
   ${usados.length ? ENCAIXAR_COMPONENTES : ''}
   window.__timelines["cena"] = tl;
+  ${cssDoAjuste ? `// Todas as animações leem o estado inicial das peças (ida ao fim e volta); só então o ajuste entra.
+  tl.progress(1, true).progress(0, true);
+  (function () { var s = document.createElement('style'); s.id = 'hf-ajuste'; s.textContent = ${JSON.stringify(cssDoAjuste).replace(/</g, '\\u003c')}; document.head.appendChild(s); })();` : ''}
   ${escuta}
 </script>
 </body></html>`;
@@ -494,7 +506,8 @@ function cyrb53(s: string, semente = 0): string {
 // v6: fontes dos componentes em base64 no documento.
 // v7: correções dos elementos animados aplicadas ao montar (comCorrecoes): o vídeo de cada
 //     animação já preparada é refeito com o relógio, a pizza, a explosão... no lugar.
-const VERSAO_DO_VIDEO = 'v7';
+// v8: o ajuste das peças entra depois da linha do tempo montada (antes valia em dobro no vídeo).
+const VERSAO_DO_VIDEO = 'v8';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área

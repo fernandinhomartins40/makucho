@@ -19,6 +19,11 @@ t('documento: raiz no formato do HyperFrames, com a duração', doc.includes('da
 t('documento: uma única timeline pausada', (doc.match(/gsap\.timeline\(/g) ?? []).length === 1 && doc.includes('paused: true'));
 t('documento de render não escuta mensagens de fora', !doc.includes('addEventListener'));
 t('documento da prévia escuta o instante', documentoDaComposicao(c, { duracaoMs: 4000, gsap: 'g', fontes: '', origens: 'x', previa: true }).includes('hfT'));
+// O ajuste das peças entra depois da linha do tempo montada: no CSS, o GSAP o incorporava e ele valia em dobro.
+const comAjusteNoCss = documentoDaComposicao({ ...c, css: `${c.css}\n/*ajuste-da-cena*/.mg { translate: 40px 0px !important; scale: 1.2 !important; }` }, { duracaoMs: 1000, gsap: 'g', fontes: '', origens: 'x' });
+t('o ajuste das peças fica fora do CSS do documento', !/<style>[\s\S]*ajuste-da-cena[\s\S]*<\/style>/.test(comAjusteNoCss));
+t('e entra depois de a linha do tempo estar montada', comAjusteNoCss.indexOf('tl.progress(1, true)') > comAjusteNoCss.indexOf('window.__timelines["cena"] = tl') && comAjusteNoCss.indexOf('translate: 40px 0px') > comAjusteNoCss.indexOf('tl.progress(1, true)'));
+t('sem ajuste, o documento não muda', !doc.includes('hf-ajuste') && !doc.includes('tl.progress(1, true)'));
 t('script da IA não fecha a tag do documento', documentoDaComposicao({ ...c, script: "tl.to('#a',{x:1},0); // </script><script>alert(1)" }, { duracaoMs: 1000, gsap: 'g', fontes: '', origens: 'x' }).includes('<\/script>'));
 
 t('área no meio a meio (animação em cima): metade de cima', JSON.stringify(areaDaComposicao(c)) === JSON.stringify({ x: 0, y: 0, w: 1080, h: 960 }));
