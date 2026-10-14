@@ -64,7 +64,7 @@ import { AnimacoesAoVivo } from './AnimacoesAoVivo';
 import { EdicaoNoPalco, type PecaDaAnimacao } from './EdicaoNoPalco';
 import { useAnimacoesDaIa } from './animacoesDaIa';
 import type { ComposicaoHtml } from '@makucho/studio-contracts';
-import { cenaDaComposicao, comPecasEditaveis } from '@makucho/studio-contracts';
+import { comPecasEditaveis } from '@makucho/studio-contracts';
 import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { MotorDecodificado, estadoDoMotor, relatarPrevia } from './motorDecodificado';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
@@ -1586,7 +1586,7 @@ export function Palco({
   // Animação feita antes da edição no palco: ganha as marcas das peças (só atributos; o desenho fica).
   useEffect(() => {
     const c = animacaoEditada?.composicao;
-    if (!animacaoEditada || !c || !onEditarAnimacao || !cenaDaComposicao(c)) return;
+    if (!animacaoEditada || !c || !onEditarAnimacao) return;
     const marcada = comPecasEditaveis(c);
     if (marcada !== c) onEditarAnimacao(animacaoEditada.id, marcada);
   }, [animacaoEditada?.id, animacaoEditada?.composicao]); // eslint-disable-line react-hooks/exhaustive-deps

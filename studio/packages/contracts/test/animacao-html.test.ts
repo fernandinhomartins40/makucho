@@ -24,6 +24,7 @@ const comAjusteNoCss = documentoDaComposicao({ ...c, css: `${c.css}\n/*ajuste-da
 t('o ajuste das peças fica fora do CSS do documento', !/<style>[\s\S]*ajuste-da-cena[\s\S]*<\/style>/.test(comAjusteNoCss));
 t('e entra depois de a linha do tempo estar montada', comAjusteNoCss.indexOf('tl.progress(1, true)') > comAjusteNoCss.indexOf('window.__timelines["cena"] = tl') && comAjusteNoCss.indexOf('translate: 40px 0px') > comAjusteNoCss.indexOf('tl.progress(1, true)'));
 t('sem ajuste, o documento não muda', !doc.includes('hf-ajuste') && !doc.includes('tl.progress(1, true)'));
+t('o documento marca as peças que o modelo não marcou (componente, figura, animação livre)', doc.includes("el.setAttribute('data-ed', 'pc.' + n)") && doc.includes("p.style.display = 'inline-block'"));
 t('script da IA não fecha a tag do documento', documentoDaComposicao({ ...c, script: "tl.to('#a',{x:1},0); // </script><script>alert(1)" }, { duracaoMs: 1000, gsap: 'g', fontes: '', origens: 'x' }).includes('<\/script>'));
 
 t('área no meio a meio (animação em cima): metade de cima', JSON.stringify(areaDaComposicao(c)) === JSON.stringify({ x: 0, y: 0, w: 1080, h: 960 }));

@@ -220,6 +220,44 @@ const MONTAR_COMPONENTES = `(function () {
   window.__hfMontados = montados;
 })();`;
 
+/**
+ * As peças que o editor no palco pode mover, além das que o modelo da cena
+ * marcou (data-ed): cada componente do catálogo inteiro, o que entra animado
+ * (data-in) e as figuras (svg) fora dos textos, e -- numa animação livre, sem
+ * modelo -- os dois primeiros níveis do desenho. A chave (pc.N) segue a ordem
+ * no documento: a mesma na prévia e no vídeo, onde o ajuste é aplicado.
+ *
+ * E peça "em linha" (um <span> no meio do texto) vira inline-block: o
+ * navegador ignora mover e escalar elementos em linha -- a peça não andava.
+ */
+const MARCAR_PECAS = `(function () {
+  var area = document.getElementById('area');
+  if (!area) return;
+  var livre = !area.querySelector('.mg');
+  var n = 0;
+  var todos = area.querySelectorAll('*');
+  for (var i = 0; i < todos.length; i++) {
+    var el = todos[i];
+    var tag = el.tagName.toLowerCase();
+    if (el.hasAttribute('data-ed') || el.id === 'area-fundo' || tag === 'script' || tag === 'style' || tag === 'br' || tag === 'template') continue;
+    if (el.closest('#area-fundo')) continue;
+    if (tag !== 'svg' && el.closest('svg')) continue;
+    // Dentro de um componente ou de um texto: a peça é o componente / o texto inteiro.
+    if (el.parentElement && el.parentElement.closest('[data-hf], [data-campo]')) continue;
+    var nivel = 0;
+    for (var a = el.parentElement; a && a !== area; a = a.parentElement) nivel++;
+    var peca = el.hasAttribute('data-hf') || el.hasAttribute('data-in') || (tag === 'svg' && el.hasAttribute('class')) || (livre && nivel <= 1);
+    if (!peca || n > 98) continue;
+    el.setAttribute('data-ed', 'pc.' + n);
+    n++;
+  }
+  var pecas = area.querySelectorAll('[data-ed]');
+  for (var j = 0; j < pecas.length; j++) {
+    var p = pecas[j];
+    if (p.tagName.toLowerCase() !== 'svg' && getComputedStyle(p).display === 'inline') p.style.display = 'inline-block';
+  }
+})();`;
+
 /** Depois do script da IA: cada componente entra na `tl` no seu segundo, visível só na sua janela. */
 const ENCAIXAR_COMPONENTES = `(window.__hfMontados || []).forEach(function (m) {
     if (m.sub) { m.sub.paused(false); tl.add(m.sub, m.inicio); }
@@ -407,7 +445,11 @@ export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocum
       if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
       // O grupo dela: a peça mais próxima que a contém (ou a cena).
       var acima = el.parentElement && el.parentElement.closest('[data-ed]');
-      lista.push({ chave: el.getAttribute('data-ed'), campo: el.getAttribute('data-campo') || '', pai: acima ? acima.getAttribute('data-ed') : 'cena', x: r.left, y: r.top, w: r.width, h: r.height });
+      // O tamanho de layout (sem escala) de quem recebe o ajuste: a peça, ou a máscara que a
+      // contém -- esticar um lado parte dele. Peça em máscara não estica (a máscara cortaria).
+      var mascara = !!(el.parentElement && el.parentElement.matches && el.parentElement.matches('.mg-m, .cz-m'));
+      var alvo = mascara ? el.parentElement : el;
+      lista.push({ chave: el.getAttribute('data-ed'), campo: el.getAttribute('data-campo') || '', pai: acima ? acima.getAttribute('data-ed') : 'cena', x: r.left, y: r.top, w: r.width, h: r.height, lw: alvo.offsetWidth || 0, lh: alvo.offsetHeight || 0, mascara: mascara });
     }
     window.parent.postMessage({ hfEd: lista }, '*');
   };
@@ -439,6 +481,8 @@ export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocum
       var f = filhos[i];
       if (f.repeat && f.repeat() < 0) continue;
       var de = f.startTime(), ate = f.endTime();
+      // Movimento de fundo que dura quase a animação toda (zoom lento, deriva): nem entrada nem saída.
+      if (ate - de > dur * 0.6) continue;
       if (de < dur * 0.5) fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
       else inicioDasSaidas = Math.min(inicioDasSaidas, de);
     }
@@ -466,6 +510,7 @@ ${moldura}
 </div>
 ${usados.length ? `<script type="application/json" id="hf-componentes">${JSON.stringify(Object.fromEntries(usados.map((n) => [n, paraBase64(o.componentes![n]!)])))}</script>
 <script>${MONTAR_COMPONENTES}</script>` : ''}
+<script>${MARCAR_PECAS}</script>
 <script>
   window.__timelines = window.__timelines || {};
   var tl = gsap.timeline({ paused: true });
@@ -507,7 +552,8 @@ function cyrb53(s: string, semente = 0): string {
 // v7: correções dos elementos animados aplicadas ao montar (comCorrecoes): o vídeo de cada
 //     animação já preparada é refeito com o relógio, a pizza, a explosão... no lugar.
 // v8: o ajuste das peças entra depois da linha do tempo montada (antes valia em dobro no vídeo).
-const VERSAO_DO_VIDEO = 'v8';
+// v9: mais peças editáveis (componentes, figuras, animação livre) e peça em linha vira inline-block.
+const VERSAO_DO_VIDEO = 'v9';
 
 /**
  * A chave do vídeo pronto de uma animação: muda com o conteúdo, a área

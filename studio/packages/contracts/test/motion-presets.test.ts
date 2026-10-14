@@ -5,33 +5,7 @@
 // cena.
 // ============================================================
 
-import {
-  PRESETS_DE_MOTION,
-  VISUAIS_DE_MOTION,
-  cenaDaComposicao,
-  composicaoDoPreset,
-  composicaoHtmlSchema,
-  contrasteDasCores,
-  estiloDeAnimacao,
-  lerNumero,
-  lerTextosDaCena,
-  problemasDaComposicao,
-  temaDaAnimacao,
-  textoDaCena,
-  textoDosPresets,
-  ASSETS_DE_MOTION,
-  usarIconesDuotone,
-  ICONES_DE_MOTION,
-  iconeExiste,
-  aplicarEdicaoDaCena,
-  amostraDoModelo,
-  EXEMPLOS_DOS_PRESETS,
-  cenaIncompleta,
-  camposDoPreset,
-  comAjuste,
-  lerAjuste,
-  type TextosDaCena,
-} from '../src';
+import { PRESETS_DE_MOTION, VISUAIS_DE_MOTION, cenaDaComposicao, composicaoDoPreset, composicaoHtmlSchema, contrasteDasCores, estiloDeAnimacao, lerNumero, lerTextosDaCena, problemasDaComposicao, temaDaAnimacao, textoDaCena, textoDosPresets, ASSETS_DE_MOTION, usarIconesDuotone, ICONES_DE_MOTION, iconeExiste, aplicarEdicaoDaCena, amostraDoModelo, EXEMPLOS_DOS_PRESETS, cenaIncompleta, camposDoPreset, comAjuste, lerAjuste, type TextosDaCena, ajusteDaComposicao } from '../src';
 
 import { CATEGORIAS_DOS_ICONES, ICONES_PHOSPHOR } from '../src/icones-phosphor';
 usarIconesDuotone(ICONES_PHOSPHOR, CATEGORIAS_DOS_ICONES);
@@ -178,6 +152,11 @@ for (const v of VISUAIS_DE_MOTION) {
   t('posição e tamanho na hora: só o CSS do ajuste muda', movida.html === comp.html && movida.css.endsWith('.mg { translate: 40px -120px !important; scale: 1.2 !important; }'));
   t('o ajuste fica guardado na cena (remontar mantém)', cenaDaComposicao(movida)?.ajuste?.y === -120 && composicaoDoPreset(cenaDaComposicao(movida)!, 'mg-neon', 5, []).css.includes('translate: 40px -120px !important'));
   t('ajustar de novo troca, não acumula', (comAjuste(movida, lerAjuste({ x: 0, y: 0, escala: 0.8 })).css.match(/ajuste-da-cena/g) ?? []).length === 1);
+  // Esticar um lado: largura/altura próprias, guardadas e no CSS (o texto dentro quebra).
+  const esticada = comAjuste(comp, lerAjuste({ x: 0, y: 0, escala: 1, elementos: { 'mg-t.0': { x: 0, y: 0, escala: 1, w: 600, h: 300 } } }));
+  t('esticar guarda largura e altura da peça', cenaDaComposicao(esticada)?.ajuste?.elementos?.['mg-t.0']?.w === 600 && esticada.css.includes('width: 600px !important') && esticada.css.includes('height: 300px !important'));
+  t('a animação livre relê o ajuste do CSS', ajusteDaComposicao({ ...comAjuste({ ...comp, briefing: undefined }, lerAjuste({ x: 12, y: 0, escala: 1 })), briefing: undefined })?.x === 12);
+  t('quebra de linha digitada: as linhas da pessoa (linhas próprias ou <br>)', lerTextosDaCena({ titulo: 'Nenhum governo\n  vai resolver' }).titulo === 'Nenhum governo\nvai resolver' && composicaoDoPreset({ preset: 'cartaz', textos: { titulo: 'Linha um\nLinha dois' }, layout: 'cartao' }, 'mg-soco', 5, []).html.includes('>Linha um</span>') && composicaoDoPreset({ preset: 'alerta', textos: { titulo: 'Linha um\nLinha dois' }, layout: 'cartao' }, 'mg-soco', 5, []).html.includes('Linha um<br>Linha dois'));
   t('voltar ao original tira o ajuste', !comAjuste(movida, undefined).css.includes('ajuste-da-cena') && !cenaDaComposicao(comAjuste(movida, undefined))?.ajuste);
   t('ajuste preso ao quadro (a cena vai a qualquer lugar dele)', lerAjuste({ x: 9999, y: -9999, escala: 9 })?.x === 1080 && lerAjuste({ x: 9999, y: -9999, escala: 9 })?.y === -1920 && lerAjuste({ x: 9999, y: -9999, escala: 9 })?.escala === 3);
 }

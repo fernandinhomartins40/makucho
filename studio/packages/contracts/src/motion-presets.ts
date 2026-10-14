@@ -814,7 +814,18 @@ const LIMITES: Record<string, number> = { kicker: 32, titulo: 96, detalhe: 140, 
 export function lerTextosDaCena(bruto: unknown): TextosDaCena {
   const b = (bruto && typeof bruto === 'object' ? bruto : {}) as Record<string, unknown>;
   const saida: TextosDaCena = {};
-  const texto = (v: unknown) => (typeof v === 'number' ? String(v) : typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
+  // As quebras de linha ficam (até 4 linhas); o resto dos espaços se junta.
+  const texto = (v: unknown) =>
+    typeof v === 'number'
+      ? String(v)
+      : typeof v === 'string'
+        ? v
+            .split(/\r?\n/)
+            .map((l) => l.replace(/\s+/g, ' ').trim())
+            .filter(Boolean)
+            .slice(0, 4)
+            .join('\n')
+        : '';
   for (const [k, max] of Object.entries(LIMITES)) {
     const v = texto(b[k]);
     if (v) (saida as Record<string, string>)[k] = v.slice(0, max);
@@ -923,7 +934,8 @@ export function textoDosPresets(): string {
 // ---------- Montagem ----------
 
 // "=" também: um texto como "onclick=" não pode parecer atributo para a checagem.
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/=/g, '&#61;');
+// A quebra de linha que a pessoa digitou (Enter ao editar o texto) vira <br>.
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/=/g, '&#61;').replace(/\n/g, '<br>');
 const normal = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -1174,10 +1186,14 @@ export function blocoAcimaDaCabeca(
   const larguraUtil = 1000;
   const corpoDe = (linhas: string[]) => Math.min(o.fonteMax, larguraUtil / (Math.max(...linhas.map((x) => [...x].length)) * l));
   const max = Math.max(1, Math.min(o.maxLinhas ?? 4, palavras.length));
-  const opcoes = Array.from({ length: max }, (_, i) => {
-    const linhas = quebrarEm(palavras, i + 1);
-    return { linhas, fonte: Math.min(corpoDe(linhas), livre / ((i + 1) * alturaDaLinha)) };
-  });
+  // Com quebra digitada pela pessoa, as linhas são as dela (só o corpo é calculado).
+  const manuais = texto.includes('\n') ? texto.split('\n').filter(Boolean) : null;
+  const opcoes = manuais
+    ? [{ linhas: manuais, fonte: Math.min(corpoDe(manuais), livre / (manuais.length * alturaDaLinha)) }]
+    : Array.from({ length: max }, (_, i) => {
+        const linhas = quebrarEm(palavras, i + 1);
+        return { linhas, fonte: Math.min(corpoDe(linhas), livre / ((i + 1) * alturaDaLinha)) };
+      });
   // A menor quantidade de linhas com a letra grande o bastante; se nenhuma
   // chega lá, a de menos linhas que fica perto (85%) da maior letra possível.
   const maior = Math.max(...opcoes.map((x) => x.fonte));
@@ -1191,8 +1207,9 @@ export function blocoAcimaDaCabeca(
 function linhas(c: Ctx, texto: string, desde: number, enfase?: string, classe = 't-l', porLinha = 0): { html: string; fim: number } {
   const palavras = texto.split(/\s+/).filter(Boolean);
   const alvo = porLinha || (palavras.length <= 3 ? 1 : palavras.length <= 6 ? 2 : 3);
-  const grupos: string[] = [];
-  for (let i = 0; i < palavras.length; i += alvo) grupos.push(palavras.slice(i, i + alvo).join(' '));
+  // Com quebra digitada pela pessoa, as linhas são as dela.
+  const grupos: string[] = texto.includes('\n') ? texto.split('\n') : [];
+  if (!grupos.length) for (let i = 0; i < palavras.length; i += alvo) grupos.push(palavras.slice(i, i + alvo).join(' '));
   let t = desde;
   const html = grupos
     .map((g, i) => {
@@ -2098,8 +2115,20 @@ export interface AjusteDaCena {
   x: number;
   y: number;
   escala: number;
-  /** Cada elemento movido ou redimensionado no palco (a chave é o data-ed dele). */
-  elementos?: Record<string, { x: number; y: number; escala: number }>;
+  /**
+   * Cada elemento movido ou redimensionado no palco (a chave é o data-ed dele).
+   * `w`/`h`: largura/altura própria (px no quadro de 1080, antes da escala) --
+   * esticar só um lado: a caixa muda de forma e o texto dentro quebra nela.
+   */
+  elementos?: Record<string, AjusteDaPeca>;
+}
+
+export interface AjusteDaPeca {
+  x: number;
+  y: number;
+  escala: number;
+  w?: number;
+  h?: number;
 }
 
 /** O ajuste lido e preso a limites que nunca tiram a cena do quadro; `undefined` quando é o neutro. */
@@ -2109,12 +2138,14 @@ export function lerAjuste(bruto: unknown): AjusteDaCena | undefined {
   // A cena inteira vai a qualquer lugar do quadro (o limite é o próprio quadro).
   const a: AjusteDaCena = { x: Math.round(n(b.x, -1080, 1080, 0)), y: Math.round(n(b.y, -1920, 1920, 0)), escala: Math.round(n(b.escala, 0.3, 3, 1) * 100) / 100 };
   const els = b.elementos && typeof b.elementos === 'object' ? Object.entries(b.elementos as Record<string, unknown>) : [];
-  const elementos: Record<string, { x: number; y: number; escala: number }> = {};
+  const elementos: Record<string, AjusteDaPeca> = {};
   for (const [chave, v] of els.slice(0, 40)) {
     if (!/^[a-z0-9-]{1,24}\.\d{1,2}$/.test(chave) || !v || typeof v !== 'object') continue;
     const e = v as Record<string, unknown>;
-    const el = { x: Math.round(n(e.x, -1080, 1080, 0)), y: Math.round(n(e.y, -1920, 1920, 0)), escala: Math.round(n(e.escala, 0.2, 4, 1) * 100) / 100 };
-    if (el.x || el.y || el.escala !== 1) elementos[chave] = el;
+    const el: AjusteDaPeca = { x: Math.round(n(e.x, -1080, 1080, 0)), y: Math.round(n(e.y, -1920, 1920, 0)), escala: Math.round(n(e.escala, 0.2, 4, 1) * 100) / 100 };
+    if (typeof e.w === 'number' && Number.isFinite(e.w)) el.w = Math.round(n(e.w, 24, 2160, 0));
+    if (typeof e.h === 'number' && Number.isFinite(e.h)) el.h = Math.round(n(e.h, 24, 3840, 0));
+    if (el.x || el.y || el.escala !== 1 || el.w || el.h) elementos[chave] = el;
   }
   if (Object.keys(elementos).length) a.elementos = elementos;
   return a.x || a.y || a.escala !== 1 || a.elementos ? a : undefined;
@@ -2133,11 +2164,33 @@ export function cssDoAjuste(a: AjusteDaCena | undefined): string {
   const MASCARAS = ':is(.mg-m, .cz-m)';
   const els = Object.entries(a.elementos ?? {})
     .map(([k, e]) => {
-      const regra = `translate: ${e.x}px ${e.y}px !important; scale: ${e.escala} !important;`;
+      // Largura/altura própria: a caixa muda de forma (o conteúdo se acomoda, o texto quebra) --
+      // border-box para a medida ser a da caixa inteira, como o palco a mede.
+      const forma = e.w || e.h ? ' box-sizing: border-box !important;' : '';
+      // Mais estreita que o texto: ele quebra (quem estreita a caixa quer o texto em linhas).
+      const largura = e.w ? ` width: ${e.w}px !important; min-width: 0 !important; max-width: none !important; flex: none !important; white-space: normal !important;` : '';
+      const altura = e.h ? ` height: ${e.h}px !important; min-height: 0 !important; max-height: none !important;` : '';
+      const regra = `translate: ${e.x}px ${e.y}px !important; scale: ${e.escala} !important;${forma}${largura}${altura}`;
       return `[data-ed="${k}"]:not(${MASCARAS} > *) { ${regra} } ${MASCARAS}:has(> [data-ed="${k}"]) { ${regra} }`;
     })
     .join(' ');
-  return `\n${MARCA_DO_AJUSTE}${cena}${els ? ` ${els}` : ''}`;
+  // O próprio ajuste vai junto, num comentário: a animação livre (sem modelo nem briefing) o relê daqui.
+  return `\n${MARCA_DO_AJUSTE}/*${JSON.stringify(a)}*/${cena}${els ? ` ${els}` : ''}`;
+}
+
+/** O ajuste guardado na animação: o da cena (modelo) ou, na animação livre, o do CSS. */
+export function ajusteDaComposicao(c: Pick<ComposicaoHtml, 'briefing' | 'layout' | 'lado' | 'canto' | 'atras' | 'css'>): AjusteDaCena | undefined {
+  const daCena = cenaDaComposicao(c)?.ajuste;
+  if (daCena) return daCena;
+  const i = c.css.indexOf(`\n${MARCA_DO_AJUSTE}/*`);
+  if (i < 0) return undefined;
+  const ini = i + MARCA_DO_AJUSTE.length + 3;
+  const fim = c.css.indexOf('*/', ini);
+  try {
+    return fim > ini ? lerAjuste(JSON.parse(c.css.slice(ini, fim))) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
