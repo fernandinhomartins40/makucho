@@ -360,24 +360,12 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     if (!this.revisao || process.env.STUDIO_REVISAR_NA_MONTAGEM === 'off') return;
     await this.filas.publicarProgresso(projectId, 'revisando', 0).catch(() => undefined);
     try {
-      const atual = await this.planos.atual(sistema, projectId);
-      const r = await this.revisao.revisar(sistema, projectId, atual.document as EditPlanV1);
-      if (r.plano !== atual.document) {
-        await this.planos.salvar(sistema, projectId, r.plano, 'ai');
-        this.revisao.prepararAnimacoes(sistema, projectId, r.plano, r.animacoesMudadas);
-      }
-      await this.filas.publicarProgresso(projectId, 'revisando', 40).catch(() => undefined);
-      let resposta = '';
-      if (r.pendentes.length && this.agente) {
-        const a = await this.agente.executar(sistema, projectId, this.revisao.pedidoDoRevisor(r.feitos, r.pendentes), undefined, undefined, {
-          maxPassos: 14,
-          // O revisor conserta; não remonta, não troca o tipo do vídeo, não recomeça e não revisa de novo.
-          sem: ['remontar_video', 'definir_tipo_do_video', 'desfazer_tudo', 'revisar_video', 'criar_animacao', 'criar_cena_animada'],
-          prazoMs: 4 * 60_000,
-        });
-        resposta = a.resposta;
-      }
-      this.log.log(`revisão do projeto ${projectId}: ${r.feitos.length} corrigido(s) sem IA, ${r.pendentes.length} para o revisor -- ${[...r.feitos, resposta].filter(Boolean).join(' | ').slice(0, 600)}`);
+      // Revisa, salva, refaz o vídeo das animações mudadas e chama o revisor (o agente com a skill).
+      let pct = 5;
+      await this.revisao.revisarESalvar(sistema, projectId, () => {
+        pct = Math.min(90, pct + 15);
+        void this.filas.publicarProgresso(projectId, 'revisando', pct).catch(() => undefined);
+      });
     } catch (e) {
       this.log.warn(`revisão do projeto ${projectId} não rodou: ${e instanceof Error ? e.message : e}`);
     }

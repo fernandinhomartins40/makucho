@@ -279,8 +279,22 @@ export interface ParteDoProjeto {
   posicao: number;
 }
 
+/** A revisão final pedida para um vídeo já montado (fila do servidor). */
+export interface EstadoDaRevisao {
+  estado: 'na_fila' | 'revisando' | 'pronta' | 'falhou';
+  passo?: string;
+  em: number;
+  feitos?: string[];
+  resposta?: string;
+  erro?: string;
+}
+
 export const projetos = {
   listar: (arquivados = false) => api<Projeto[]>(`/projects${arquivados ? '?arquivados=true' : ''}`),
+  /** Põe o vídeo na fila da revisão final (o servidor revisa um de cada vez). */
+  revisar: (id: string) => api<EstadoDaRevisao>(`/projects/${id}/review`, { metodo: 'POST' }),
+  /** As revisões pedidas dos projetos do workspace. */
+  revisoes: () => api<Record<string, EstadoDaRevisao>>('/reviews'),
   obter: (id: string) => api<ProjetoDetalhado>(`/projects/${id}`),
   criar: (dados: { title: string; scriptId?: string | null; videoKind?: string | null; contentBrief?: string | null; animationStyle?: string | null; animationPalette?: string | null }) =>
     api<Projeto>('/projects', { metodo: 'POST', corpo: dados }),

@@ -17,6 +17,7 @@ import type { TenantContext } from '../../common/tenant';
 import { AcabamentoService } from './acabamento.service';
 import { MidiasService } from './midias.service';
 import { AgenteService } from './agente.service';
+import { RevisaoService } from './revisao.service';
 
 @ApiTags('ai')
 @Controller()
@@ -25,6 +26,7 @@ export class AcabamentoController {
     private readonly acabamento: AcabamentoService,
     private readonly midias: MidiasService,
     private readonly agente: AgenteService,
+    private readonly revisao: RevisaoService,
   ) {}
 
   @Post('projects/:id/finishing')
@@ -94,6 +96,22 @@ export class AcabamentoController {
     // ?fundo=1: responde na hora e o resultado chega pelo progresso.
     if (fundo === '1') return this.agente.iniciar(tenant, id, texto, contexto);
     return this.agente.executar(tenant, id, texto, contexto);
+  }
+
+  /**
+   * A revisão final num vídeo já montado (a lista de projetos pede): entra na
+   * fila do servidor, que revisa um de cada vez -- a pessoa pode sair da tela.
+   */
+  @Post('projects/:id/review')
+  revisar(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertCanWrite(tenant);
+    return this.revisao.enfileirar(tenant, id);
+  }
+
+  /** As revisões pedidas dos projetos do workspace: na fila, revisando, prontas ou com falha. */
+  @Get('reviews')
+  revisoes(@CurrentTenant() tenant: TenantContext) {
+    return this.revisao.estadosDoWorkspace(tenant);
   }
 
   /** O que o agente está fazendo agora ("Lendo a fala", "Buscando imagens"...) e o resultado. */

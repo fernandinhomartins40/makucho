@@ -674,6 +674,49 @@ h3 {
   user-select: none;
 }
 
+/* A revisão final pedida da lista: o andamento e o que mudou, no pé do cartão. */
+.projeto__revisao {
+  margin: 0 var(--e3) var(--e3);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.projeto__revisao[data-estado='pronta'] {
+  background: color-mix(in srgb, var(--success, #1f9d55) 12%, transparent);
+  color: var(--text-primary);
+}
+.projeto__revisao[data-estado='falhou'] {
+  background: color-mix(in srgb, var(--danger, #d64545) 12%, transparent);
+}
+.projeto__revisao-resumo {
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.projeto__revisao-resumo > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.projeto__revisao-detalhe {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.projeto__revisao-detalhe p {
+  margin: 0;
+}
+
 .projeto__midia {
   position: relative;
   overflow: hidden;

@@ -14,11 +14,15 @@
 // ao agente, com a skill do revisor (a montagem, ou a ferramenta
 // `revisar_video` do próprio agente).
 //
-// Nada aqui salva: devolve o plano revisado. Nunca derruba quem chama --
-// sem worker, sem IA ou sem transcrição, a regra que depende disso não roda.
+// `revisar` não salva: devolve o plano revisado. `revisarESalvar` faz a
+// revisão inteira (salva, refaz o vídeo das animações e chama o revisor) e
+// é o que a montagem e a FILA usam -- a fila revisa vídeos já montados, um
+// de cada vez, pedidos da lista de projetos. Nunca derruba quem chama: sem
+// worker, sem IA ou sem transcrição, a regra que depende disso não roda.
 // ============================================================
 
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   aplicarCorrecoes,
   editPlanV1Schema,
@@ -34,6 +38,8 @@ import {
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { AnimacoesService } from '../animacoes/animacoes.service';
+import { EditPlansService } from '../edit-plans/edit-plans.service';
+import { AgenteService } from './agente.service';
 import { AiService } from './ai.service';
 import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { PromptsService } from './prompts.service';
@@ -41,6 +47,24 @@ import { skill } from './skills';
 
 /** Quantas animações a revisão mede por vídeo (o worker mede uma por vez, poucos segundos cada). */
 const MAXIMO_DE_ANIMACOES_MEDIDAS = 16;
+
+/** O que o revisor (agente) não pode usar: ele conserta, não remonta, não recomeça e não revisa de novo. */
+const FORA_DO_REVISOR = ['remontar_video', 'definir_tipo_do_video', 'desfazer_tudo', 'revisar_video', 'criar_animacao', 'criar_cena_animada'] as const;
+/** Os estados em que o vídeo já está montado (tem plano para revisar). */
+const MONTADOS = ['PROPOSAL_READY', 'USER_EDITING', 'READY_TO_RENDER', 'COMPLETED'];
+
+/** A revisão de um projeto pedida da lista: na fila, revisando, pronta ou falhou. */
+export interface EstadoDaRevisao {
+  estado: 'na_fila' | 'revisando' | 'pronta' | 'falhou';
+  /** O passo de agora ("Medindo as animações"...). */
+  passo?: string;
+  em: number;
+  /** Pronta: o que foi corrigido, para a pessoa. */
+  feitos?: string[];
+  /** Pronta: o que o revisor (agente) respondeu. */
+  resposta?: string;
+  erro?: string;
+}
 
 export interface ResultadoDaRevisao {
   /** O plano revisado (o mesmo objeto, se nada mudou). */
@@ -62,9 +86,83 @@ export class RevisaoService {
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
+    private readonly planos: EditPlansService,
+    private readonly modulos: ModuleRef,
     @Optional() private readonly animacoes?: AnimacoesService,
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
   ) {}
+
+  // ---------- A fila (vídeos já montados, pedidos da lista de projetos) ----------
+
+  /** O estado da revisão de cada projeto pedido (em memória: some num reinício da API). */
+  private readonly estados = new Map<string, EstadoDaRevisao & { workspaceId: string }>();
+  private readonly fila: Array<{ tenant: TenantContext; projectId: string }> = [];
+  private rodando = false;
+
+  /** Põe um vídeo já montado na fila de revisão. Um de cada vez: o worker mede uma animação por vez. */
+  async enfileirar(tenant: TenantContext, projectId: string): Promise<EstadoDaRevisao> {
+    const projeto = await this.prisma.project.findFirst({ where: { id: projectId, workspaceId: tenant.workspaceId }, select: { state: true } });
+    if (!projeto) throw new BadRequestException('projeto não encontrado');
+    if (!MONTADOS.includes(projeto.state)) throw new BadRequestException('o vídeo ainda não foi montado');
+    const atual = this.estados.get(projectId);
+    if (atual && (atual.estado === 'na_fila' || atual.estado === 'revisando')) return atual;
+    const estado = { estado: 'na_fila' as const, em: Date.now(), workspaceId: tenant.workspaceId };
+    this.estados.set(projectId, estado);
+    this.fila.push({ tenant, projectId });
+    void this.processar();
+    return estado;
+  }
+
+  /** As revisões pedidas dos projetos deste workspace (a lista mostra no cartão). */
+  estadosDoWorkspace(tenant: TenantContext): Record<string, EstadoDaRevisao> {
+    const out: Record<string, EstadoDaRevisao> = {};
+    for (const [id, { workspaceId, ...e }] of this.estados) if (workspaceId === tenant.workspaceId) out[id] = e;
+    return out;
+  }
+
+  private async processar(): Promise<void> {
+    if (this.rodando) return;
+    this.rodando = true;
+    try {
+      for (let item = this.fila.shift(); item; item = this.fila.shift()) {
+        const estado = this.estados.get(item.projectId);
+        if (!estado) continue;
+        Object.assign(estado, { estado: 'revisando', em: Date.now(), passo: 'Começando' });
+        try {
+          const r = await this.revisarESalvar(item.tenant, item.projectId, (passo) => (estado.passo = passo));
+          Object.assign(estado, { estado: 'pronta', em: Date.now(), passo: undefined, feitos: r.feitos, resposta: r.resposta });
+        } catch (e) {
+          Object.assign(estado, { estado: 'falhou', em: Date.now(), passo: undefined, erro: e instanceof Error ? e.message : 'a revisão falhou' });
+        }
+      }
+    } finally {
+      this.rodando = false;
+    }
+  }
+
+  /**
+   * A revisão inteira de um projeto: revisa o plano ativo, salva (uma versão,
+   * desfazível), refaz o vídeo das animações mudadas e entrega ao revisor
+   * (o agente com a skill) o que pede julgamento.
+   */
+  async revisarESalvar(tenant: TenantContext, projectId: string, aoAndar?: (passo: string) => void): Promise<{ feitos: string[]; pendentes: number; resposta: string }> {
+    const atual = await this.planos.atual(tenant, projectId);
+    const r = await this.revisar(tenant, projectId, atual.document as EditPlanV1, aoAndar);
+    if (r.plano !== atual.document) {
+      await this.planos.salvar(tenant, projectId, r.plano, 'ai');
+      this.prepararAnimacoes(tenant, projectId, r.plano, r.animacoesMudadas);
+    }
+    let resposta = '';
+    // O agente vem pelo ModuleRef: ele também usa esta revisão (a ferramenta revisar_video).
+    const agente = r.pendentes.length ? this.modulos.get(AgenteService, { strict: false }) : null;
+    if (agente) {
+      aoAndar?.(`Resolvendo ${r.pendentes.length === 1 ? 'o ponto que pede julgamento' : `os ${r.pendentes.length} pontos que pedem julgamento`}`);
+      const a = await agente.executar(tenant, projectId, this.pedidoDoRevisor(r.feitos, r.pendentes), undefined, undefined, { maxPassos: 14, sem: FORA_DO_REVISOR, prazoMs: 4 * 60_000 });
+      resposta = a.resposta;
+    }
+    this.log.log(`revisão do projeto ${projectId}: ${r.feitos.length} corrigido(s) sem IA, ${r.pendentes.length} para o revisor -- ${[...r.feitos, resposta].filter(Boolean).join(' | ').slice(0, 600)}`);
+    return { feitos: r.feitos, pendentes: r.pendentes.length, resposta };
+  }
 
   /** Revisa um plano: mede, corrige o que é objetivo e a legenda; devolve o resto como pendente. */
   async revisar(tenant: TenantContext, projectId: string, plano: EditPlanV1, aoAndar?: (passo: string) => void): Promise<ResultadoDaRevisao> {

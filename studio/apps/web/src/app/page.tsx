@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { ROTULO_DE_ESTADO, canTransition, estaProcessando } from '@makucho/studio-contracts';
 import type { ProjectState } from '@makucho/studio-contracts';
 import { Topbar } from '../components/shell/Topbar';
-import { projetos as apiProjetos, type Projeto } from '../lib/api';
+import { projetos as apiProjetos, type EstadoDaRevisao, type Projeto } from '../lib/api';
 import { useDados } from '../lib/useDados';
 import { formatarBytes } from '../lib/upload';
 import { Folha } from '../components/shell/Folha';
@@ -36,7 +36,12 @@ import {
   IconeEnviar,
   IconeLixeira,
   IconeOlhoFechado,
+  IconeIA,
 } from '../components/icones';
+
+/** Vídeos já montados: têm um plano para a revisão final conferir. */
+const MONTADOS = ['PROPOSAL_READY', 'USER_EDITING', 'READY_TO_RENDER', 'COMPLETED'];
+const montado = (p: Projeto) => MONTADOS.includes(p.state);
 
 
 export default function ProjetosPage() {
@@ -71,6 +76,36 @@ export default function ProjetosPage() {
     }, 6000);
     return () => clearInterval(id);
   }, [processando, definir, verArquivados]);
+
+  // ---------- Revisão final em vídeos já montados ----------
+  // O servidor revisa um vídeo por vez; a lista acompanha enquanto há revisão na fila.
+  const [revisoes, setRevisoes] = useState<Record<string, EstadoDaRevisao>>({});
+  const lerRevisoes = useCallback(() => {
+    void apiProjetos
+      .revisoes()
+      .then(setRevisoes)
+      .catch(() => undefined);
+  }, []);
+  useEffect(lerRevisoes, [lerRevisoes]);
+  const revisando = Object.values(revisoes).some((r) => r.estado === 'na_fila' || r.estado === 'revisando');
+  useEffect(() => {
+    if (!revisando) return;
+    const id = setInterval(lerRevisoes, 3000);
+    return () => clearInterval(id);
+  }, [revisando, lerRevisoes]);
+  const revisar = async (ids: string[]) => {
+    setErroDeAcao(null);
+    for (const id of ids) {
+      try {
+        const r = await apiProjetos.revisar(id);
+        setRevisoes((atuais) => ({ ...atuais, [id]: r }));
+      } catch (e) {
+        setErroDeAcao(e instanceof Error ? e.message : 'não foi possível revisar.');
+      }
+    }
+  };
+  // "Revisar todos": os montados que ainda não estão na fila nem foram revisados agora.
+  const paraRevisar = lista.filter((p) => montado(p) && !revisoes[p.id]);
 
   const arquivar = async (id: string) => {
     // Some da lista na hora; se o servidor recusar, volta.
@@ -178,6 +213,16 @@ export default function ProjetosPage() {
                 )}
                 {/* Arquivados somem da lista mas ocupam espaço: é aqui
                     que se encontra para excluir de vez. */}
+                {!verArquivados && paraRevisar.length > 1 && (
+                  <button
+                    type="button"
+                    className="botao botao--fantasma botao--pequeno"
+                    title="A IA revisa cada vídeo montado como um editor faria e corrige o que achar, um de cada vez"
+                    onClick={() => void revisar(paraRevisar.map((p) => p.id))}
+                  >
+                    <IconeIA size={14} /> Revisar todos ({paraRevisar.length})
+                  </button>
+                )}
                 <button
                   type="button"
                   className="botao botao--fantasma botao--pequeno"
@@ -250,6 +295,8 @@ export default function ProjetosPage() {
                     onArquivar={() => arquivar(projeto.id)}
                     onExcluir={() => setAExcluir(projeto)}
                     onReprocessar={() => reprocessar(projeto.id)}
+                    revisao={revisoes[projeto.id]}
+                    {...(montado(projeto) ? { onRevisar: () => void revisar([projeto.id]) } : {})}
                   />
                 ))}
               </div>
@@ -310,12 +357,19 @@ function CartaoDeProjeto({
   onArquivar,
   onExcluir,
   onReprocessar,
+  revisao,
+  onRevisar,
 }: {
   projeto: Projeto;
   onArquivar: () => void;
   onExcluir: () => void;
   onReprocessar: () => void;
+  /** A revisão final pedida para este vídeo (na fila, revisando, pronta). */
+  revisao?: EstadoDaRevisao | undefined;
+  /** Só nos vídeos já montados. */
+  onRevisar?: () => void;
 }) {
+  const [verRevisao, setVerRevisao] = useState(false);
   // Arquivar só vale fora do processamento; excluir vale sempre.
   const podeArquivar = canTransition(projeto.state as ProjectState, 'ARCHIVED');
   const [menuAberto, setMenuAberto] = useState(false);
@@ -416,6 +470,20 @@ function CartaoDeProjeto({
 
           {menuAberto && (
             <span className="menu">
+              {onRevisar && (
+                <button
+                  type="button"
+                  className="menu__item"
+                  disabled={revisao?.estado === 'na_fila' || revisao?.estado === 'revisando'}
+                  onClick={() => {
+                    setMenuAberto(false);
+                    onRevisar();
+                  }}
+                >
+                  <IconeIA size={15} />
+                  Revisar o vídeo
+                </button>
+              )}
               {podeArquivar && (
                 <button
                   type="button"
@@ -444,6 +512,34 @@ function CartaoDeProjeto({
           )}
         </span>
       </div>
+
+      {/* A revisão final: o andamento e, pronta, o que mudou (dá para desfazer no editor). */}
+      {revisao && (
+        <div className="projeto__revisao" data-estado={revisao.estado} role="status">
+          {revisao.estado === 'na_fila' && <span>Na fila para revisar…</span>}
+          {revisao.estado === 'revisando' && <span>Revisando: {revisao.passo ?? 'começando'}…</span>}
+          {revisao.estado === 'falhou' && <span>A revisão não terminou: {revisao.erro}</span>}
+          {revisao.estado === 'pronta' && (
+            <>
+              <button type="button" className="projeto__revisao-resumo" aria-expanded={verRevisao} onClick={() => setVerRevisao((v) => !v)}>
+                <IconeCheck size={14} />
+                {revisao.feitos?.length
+                  ? `Revisado: ${revisao.feitos.length} ${revisao.feitos.length === 1 ? 'correção' : 'correções'}${revisao.resposta ? ' e ajustes da IA' : ''}`
+                  : revisao.resposta
+                    ? 'Revisado: ajustes da IA'
+                    : 'Revisado: nada a corrigir'}
+              </button>
+              {verRevisao && (
+                <div className="projeto__revisao-detalhe">
+                  {revisao.feitos?.map((f, i) => <p key={i}>• {f}</p>)}
+                  {revisao.resposta && <p style={{ whiteSpace: 'pre-line' }}>{revisao.resposta}</p>}
+                  <p className="texto-secundario">Não gostou de algo? Abra o vídeo e use Desfazer.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* A falha fica no cartão, não escondida: projeto parado sem
           explicação é o pior estado possível. */}
