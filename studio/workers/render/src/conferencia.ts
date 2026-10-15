@@ -175,7 +175,11 @@ export const MEDIR_PECAS = `function (duracao) {
         tx0 = Math.min(tx0, lr.left); ty0 = Math.min(ty0, lr.top); tx1 = Math.max(tx1, lr.right); ty1 = Math.max(ty1, lr.bottom);
       });
     }
-    pecas.push({ chave: chave, campo: el.getAttribute('data-campo') || '', pai: pai, r: { x: r.left, y: r.top, w: r.width, h: r.height }, lw: el.offsetWidth || 0, lh: el.offsetHeight || 0, rt: tx1 > tx0 ? { x: tx0, y: ty0, w: tx1 - tx0, h: ty1 - ty0 } : null, letra: letra, texto: textos.join(' ').slice(0, 60) });
+    // Tem fundo, borda ou sombra que se vê (um cartão): a caixa dele é o que aparece.
+    var cs = getComputedStyle(el);
+    var corDoFundo = (cs.backgroundColor.match(/[\\d.]+/g) || []).map(Number);
+    var fundo = (corDoFundo.length === 4 ? corDoFundo[3] > 0.05 : corDoFundo.length === 3) || cs.backgroundImage !== 'none' || parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0 || (cs.boxShadow !== 'none' && cs.boxShadow !== '');
+    pecas.push({ chave: chave, campo: el.getAttribute('data-campo') || '', pai: pai, fundo: !!fundo, r: { x: r.left, y: r.top, w: r.width, h: r.height }, lw: el.offsetWidth || 0, lh: el.offsetHeight || 0, rt: tx1 > tx0 ? { x: tx0, y: ty0, w: tx1 - tx0, h: ty1 - ty0 } : null, letra: letra, texto: textos.join(' ').slice(0, 60) });
   }
   var raiz = area.querySelector('.mg');
   if (raiz) medir(raiz, 'cena', null);

@@ -27,6 +27,8 @@ import {
   aplicarCorrecoes,
   candidatasDaComposicao,
   cenaDaComposicao,
+  LETRA_PRINCIPAL,
+  TINTA_CHEIA,
   textoDosPresets,
   centralizarNaArea,
   composicaoComAjustes,
@@ -323,7 +325,7 @@ export class RevisaoService {
     const nota0 = notaDaComposicao(original, medida, pessoa);
     let melhor = { composicao: original, nota: nota0, mensagem: '' };
     // Animação sem defeito e bem ocupada: nada a testar.
-    if (!nota0.defeitos.length && nota0.ocupacao >= 0.45 && !pontuais.length) return { composicao: original, mensagem: '', restam: [] };
+    if (!nota0.defeitos.length && nota0.ocupacao >= TINTA_CHEIA * 0.85 && nota0.letraPrincipal >= LETRA_PRINCIPAL * 0.9 && !pontuais.length) return { composicao: original, mensagem: '', restam: [] };
     for (const c of candidatasDaComposicao(camadaId, original, medida, pontuais, pessoa).slice(0, MAXIMO_DE_VERSOES)) {
       let composicao = composicaoComAjustes(original, c.correcoes);
       let m = await this.animacoes?.medirPecas(composicao, duracaoMs).catch(() => null);

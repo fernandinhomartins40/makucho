@@ -173,5 +173,19 @@ t('composição: maior e dentro da área é melhor', versaoMelhor(n1, n0));
 t('composição: maior mas cortada na borda nunca ganha', !versaoMelhor(n2, n0) && n2.graves > n0.graves);
 t('composição: as candidatas incluem a cena maior para a informação pequena', candidatasDaComposicao('x', cenaMeia, pequena, [], null).some((c) => c.nome.startsWith('cena') || c.nome.startsWith('textos')));
 
+// O caso que a pessoa reclamou: um ícone grande à esquerda e o texto pequeno ao lado.
+const iconeETexto: MedidasDaRevisao = { t: 1, pecas: [
+  { chave: 'cena', campo: '', pai: null, r: { x: 50, y: 1002, w: 883, h: 421 }, letra: 40, texto: '' },
+  { chave: 'obj-roda.0', campo: '', pai: 'cena', r: { x: 50, y: 1039, w: 345, h: 345 }, letra: null, texto: '' },
+  { chave: 'ico-txt.0', campo: '', pai: 'cena', fundo: false, r: { x: 451, y: 1141, w: 482, h: 142 }, rt: { x: 451, y: 1138, w: 334, h: 146 }, letra: 40, texto: 'Oportunidade não espera' },
+  { chave: 'mg-t.0', campo: 'titulo', pai: 'ico-txt.0', r: { x: 451, y: 1141, w: 482, h: 96 }, rt: { x: 451, y: 1138, w: 334, h: 102 }, letra: 54, texto: 'Oportunidade não espera' },
+  { chave: 'mg-d.0', campo: 'detalhe', pai: 'ico-txt.0', r: { x: 451, y: 1246, w: 444, h: 37 }, rt: { x: 451, y: 1244, w: 242, h: 40 }, letra: 40, texto: 'Esteja preparado' },
+] };
+const nIcone = notaDaComposicao(cenaMeia, iconeETexto, null);
+t('ícone e texto: o grupo sem fundo não conta como fora da margem pela caixa de layout', !nIcone.defeitos.some((d) => d.includes('ico-txt')));
+t('ícone e texto: a letra principal pequena pesa na nota', nIcone.letraPrincipal === 54);
+const maiores = candidatasDaComposicao('x', cenaMeia, iconeETexto, [], null).filter((c) => c.nome.startsWith('textos'));
+t('ícone e texto: a candidata aumenta o texto ao lado do ícone, ancorado à esquerda', maiores.length > 0 && maiores[0]!.correcoes[0]!.chave === 'ico-txt.0' && (maiores[0]!.correcoes[0]!.dx ?? 0) > 0 && (maiores[0]!.correcoes[0]!.fator ?? 1) > 1.25);
+
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

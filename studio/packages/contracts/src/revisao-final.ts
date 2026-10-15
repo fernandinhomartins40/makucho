@@ -39,6 +39,8 @@ export interface PecaMedida {
   /** A peça que a contém (ou "cena"). */
   pai: string | null;
   r: Retangulo;
+  /** Tem fundo, borda ou sombra visível (um cartão): a caixa dela é o que se vê. Sem isso, um grupo é só o que tem dentro. */
+  fundo?: boolean;
   /** Largura e altura de layout (sem escala, px): estreitar parte delas. */
   lw?: number;
   lh?: number;
@@ -247,6 +249,8 @@ const AUMENTO_DA_CENA_MAXIMO = 1.6;
 /** O texto principal ocupa menos que isto da largura do conjunto (o cartão): sobra vazio dentro dele. */
 const OCUPACAO_DO_CONJUNTO = 0.6;
 const AUMENTO_DO_TEXTO_NO_CONJUNTO = 1.5;
+/** Quanto a revisão aumenta os textos de uma animação, no máximo (o dobro: texto pequeno num painel grande). */
+const AUMENTO_DO_TEXTO_MAXIMO = 2;
 /** Onde o conteúdo pode começar no alto (o cabeçalho do app e o logo ficam acima). */
 const GRADE_TOPO = 200;
 /** A folga entre o cartão e o rosto quando a revisão o tira de cima. */
@@ -765,6 +769,8 @@ const ehEnfeite = (p: PecaMedida, util: Retangulo) => (p.letra === null ? area(p
 /** A nota de uma animação medida: quanto a informação ocupa, menos os defeitos. */
 export interface NotaDaComposicao {
   nota: number;
+  /** A altura da maior linha de texto da informação (px no quadro de 1080). */
+  letraPrincipal: number;
   /** Os defeitos que vetam uma versão: sobreposição, fora do quadro, vazando do conjunto, rosto coberto. */
   graves: number;
   ocupacao: number;
@@ -772,6 +778,23 @@ export interface NotaDaComposicao {
 }
 
 const GRAVE = /^(sobreposição|fora do quadro|vaza do conjunto|rosto coberto)/;
+/** A tinta que já enche a área útil, e a linha que a informação principal deve ter. */
+export const TINTA_CHEIA = 0.35;
+export const LETRA_PRINCIPAL = 90;
+
+/** A caixa que se vê de uma peça: a dela se tem fundo (ou é folha); senão, a soma do que tem dentro. */
+function caixaVisivel(pecas: readonly PecaMedida[]): (p: PecaMedida) => Retangulo {
+  const memo = new Map<string, Retangulo>();
+  const ver = (p: PecaMedida): Retangulo => {
+    const ja = memo.get(p.chave);
+    if (ja) return ja;
+    const filhos = pecas.filter((q) => q.pai === p.chave);
+    const r = p.fundo || !filhos.length ? (p.letra !== null && !filhos.length ? (p.rt ?? p.r) : p.r) : (juntar(filhos.map(ver)) ?? p.r);
+    memo.set(p.chave, r);
+    return r;
+  };
+  return ver;
+}
 
 export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa: PessoaNoQuadro | null): NotaDaComposicao {
   const util = gradeDaComposicao(c).util;
@@ -780,6 +803,7 @@ export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa:
   const caixaDe = (p: PecaMedida) => (p.letra !== null ? (p.rt ?? p.r) : p.r);
   const informacao = folhas.filter((p) => !ehEnfeite(p, util));
   const conteudo = juntar(informacao.map(caixaDe));
+  const visivel = caixaVisivel(pecas);
   const defeitos: string[] = [];
   // Texto sobre texto, texto sobre figura (o ícone do cartão).
   const textos = folhas.filter((p) => p.letra !== null && p.texto.trim());
@@ -809,8 +833,9 @@ export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa:
   const quadro = { x: 0, y: 0, w: W, h: H };
   for (const p of pecas) {
     if (p.chave === 'cena' || folhas.includes(p)) continue;
-    // A borda do conjunto (o fundo e o contorno do cartão), não a do texto dentro dele.
-    const r = p.r;
+    // O que se vê do conjunto: o cartão com fundo pela borda dele; o grupo sem fundo
+    // (ícone e texto lado a lado) pelo que tem dentro -- a caixa de layout dele vai até a margem.
+    const r = visivel(p);
     if (ehEnfeite(p, util)) continue;
     // Cortado na borda do celular é grave; fora das laterais da área útil (encostado na borda) é feio.
     if (r.x < -4 || r.y < -6 || r.x + r.w > W + 4 || r.y + r.h > H + 6) defeitos.push(`fora do quadro: ${p.chave}`);
@@ -827,10 +852,17 @@ export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa:
   }
   // A informação fora da área útil (sob a legenda, o cabeçalho do app).
   if (conteudo && area(conteudo) - intersecao(conteudo, util) > 0.06 * area(conteudo)) defeitos.push('fora da área útil');
-  const ocupacao = conteudo ? Math.min(1, area(conteudo) / area(util)) : 0;
-  // Ocupar até ~70% da área conta inteiro; mais que isso não soma (respiro também é design).
-  const nota = Math.min(ocupacao, 0.7) * 3 - defeitos.reduce((s, d) => s + (d.startsWith('ilegível') ? 0.35 : d.startsWith('enfeite') ? 0.6 : d.startsWith('fora da margem') ? 0.5 : 1), 0);
-  return { nota: Math.round(nota * 1000) / 1000, graves: defeitos.filter((d) => GRAVE.test(d)).length, ocupacao: Math.round(ocupacao * 1000) / 1000, defeitos };
+  // A "tinta": a área que a informação pinta (as linhas de texto e as figuras), não a caixa que
+  // a envolve -- um ícone à esquerda e um texto pequeno à direita fazem uma caixa larga e
+  // pouca tinta. 35% da área útil coberta já é um painel cheio.
+  const ocupacao = Math.min(1, informacao.reduce((s, p) => s + area(caixaDe(p)), 0) / area(util));
+  // A hierarquia: a informação principal precisa ser GRANDE (~90 px de linha no quadro de 1080).
+  const letraPrincipal = Math.max(0, ...informacao.filter((p) => p.letra !== null).map((p) => p.letra!));
+  const nota =
+    2.2 * Math.min(1, ocupacao / TINTA_CHEIA) +
+    1.6 * Math.min(1, letraPrincipal / LETRA_PRINCIPAL) -
+    defeitos.reduce((s, d) => s + (d.startsWith('ilegível') ? 0.35 : d.startsWith('enfeite') ? 0.6 : d.startsWith('fora da margem') ? 0.5 : 1), 0);
+  return { nota: Math.round(nota * 1000) / 1000, letraPrincipal: Math.round(letraPrincipal), graves: defeitos.filter((d) => GRAVE.test(d)).length, ocupacao: Math.round(ocupacao * 1000) / 1000, defeitos };
 }
 
 /**
@@ -917,27 +949,46 @@ export function candidatasDaComposicao(camadaId: string, c: ComposicaoHtml, m: M
       out.push({ nome: 'maior à esquerda', centralizar: 'esquerda', mensagem: `"${titulo}" ficou ${Math.round((fator - 1) * 100)}% maior, no lado em que já estava.`, correcoes: maior(fator) });
   }
 
-  // Só os textos maiores (os enfeites ficam onde estão): cada bloco de texto da cena cresce
-  // mantendo o alinhamento (esquerda, ou o centro), e cada um desce o que os de cima cresceram.
+  // Só os textos maiores (as figuras e os enfeites ficam onde estão), como um editor faria:
+  // cada bloco de texto cresce a partir de onde está ancorado (encostado à esquerda -- ou
+  // ao lado de um ícone -- ou centralizado), e a pilha de textos fica no meio da altura da
+  // área útil. O limite é o espaço que o PRÓPRIO bloco tem: até a margem na largura, a área
+  // útil inteira na altura.
+  const visivel = caixaVisivel(pecas);
   const blocos = pecas
     .filter((p) => p.pai === 'cena' && p.letra !== null && p.letra <= 300 && p.texto.trim())
-    .sort((a, b) => caixaDe(a).y - caixaDe(b).y);
+    .sort((a, b) => visivel(a).y - visivel(b).y);
   if (blocos.length && blocos.length <= 4) {
-    const altura = blocos.reduce((s, p) => s + caixaDe(p).h, 0);
-    const largura = Math.max(...blocos.map((p) => caixaDe(p).w));
-    const folga = Math.min(AUMENTO_DA_CENA_MAXIMO, (util.w * (alinhadoAEsquerda ? 0.7 : 0.92)) / largura, 1 + (util.y + util.h * 0.96 - (conteudo.y + conteudo.h)) / Math.max(1, altura));
+    const caixas = blocos.map(visivel);
+    const direitaUtil = util.x + util.w;
+    const ancora = caixas.map((r) => {
+      const centro = r.x + r.w / 2;
+      if (Math.abs(centro - (util.x + util.w / 2)) < util.w * 0.08 && r.x - util.x > util.w * 0.08) return 'centro' as const;
+      return 'esquerda' as const;
+    });
+    // Quanto cada bloco pode crescer na largura (até a margem), e a pilha na altura.
+    const larguraLivre = Math.min(...caixas.map((r, k) => (ancora[k] === 'centro' ? (util.w * 0.94) / r.w : ((direitaUtil - r.x) * 0.97) / r.w)));
+    const topo0 = Math.min(...caixas.map((r) => r.y));
+    const fundo0 = Math.max(...caixas.map((r) => r.y + r.h));
+    const alturaLivre = (util.h * 0.92) / Math.max(1, fundo0 - topo0);
+    const folga = Math.min(AUMENTO_DO_TEXTO_MAXIMO, larguraLivre, alturaLivre);
     for (const f of [folga, 1 + (folga - 1) * 0.6]) {
-      if (f < 1.15) continue;
-      let desce = 0;
+      if (f < 1.12) continue;
+      // A pilha nova: os blocos crescem, os vãos entre eles ficam; o meio dela vai para o meio da área.
+      const vaos = caixas.map((r, k) => (k ? r.y - (caixas[k - 1]!.y + caixas[k - 1]!.h) : 0));
+      const alturaNova = caixas.reduce((t, r, k) => t + r.h * f + vaos[k]!, 0);
+      const meio = util.y + util.h / 2;
+      const novoTopo = Math.max(util.y + 8, Math.min(util.y + util.h - 8 - alturaNova, meio - alturaNova / 2));
+      let y = novoTopo;
       const correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>> = [];
-      for (const p of blocos) {
-        const r = caixaDe(p);
-        // Cresce em volta do centro: na esquerda, volta o que avançou para a esquerda; desce o que os de cima cresceram e o que ele mesmo subiu.
-        const dx = alinhadoAEsquerda ? Math.round((r.w * (f - 1)) / 2) : 0;
-        const dy = Math.round(desce + (r.h * (f - 1)) / 2);
-        desce += r.h * (f - 1);
-        correcoes.push({ tipo: 'ajuste', camadaId, chave: p.chave, dx, dy, fator: Math.round(f * 100) / 100 });
-      }
+      caixas.forEach((r, k) => {
+        y += vaos[k]!;
+        // A escala é em volta do centro do bloco: o centro novo e, na esquerda, a borda esquerda parada.
+        const dy = Math.round(y + (r.h * f) / 2 - (r.y + r.h / 2));
+        const dx = ancora[k] === 'esquerda' ? Math.round((r.w * (f - 1)) / 2) : 0;
+        y += r.h * f;
+        correcoes.push({ tipo: 'ajuste', camadaId, chave: blocos[k]!.chave, dx, dy, fator: Math.round(f * 100) / 100 });
+      });
       out.push({ nome: `textos ${Math.round((f - 1) * 100)}% maiores`, mensagem: `Em "${titulo}", os textos ficaram ${Math.round((f - 1) * 100)}% maiores, ocupando o espaço vazio.`, correcoes });
     }
   }
