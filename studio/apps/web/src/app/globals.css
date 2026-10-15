@@ -2122,6 +2122,14 @@ body {
 
 /* ---------- Menu ---------- */
 
+/* Cartão com o menu aberto fica acima dos vizinhos: o vidro de cada cartão cria a própria
+   camada, e o menu (que passa da borda) ficava atrás do cartão seguinte -- nem se via nem
+   se tocava. */
+.cartao[data-menu-aberto] {
+  position: relative;
+  z-index: 30;
+}
+
 .menu {
   position: absolute;
   top: calc(100% + 4px);

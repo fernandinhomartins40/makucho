@@ -338,6 +338,15 @@ body {
   border-radius: 10px;
 }
 
+/* O menu de um cartão passa por cima do cartão de baixo: o vidro deixava a etiqueta e a
+   imagem dele aparecerem através das opções. Opaco, a leitura fica limpa. */
+.cartao .menu {
+  background: rgb(250 250 252);
+}
+:where([data-tema='escuro']) .cartao .menu {
+  background: rgb(30 30 34);
+}
+
 /* Folha: afastada das bordas e com canto grande, para o conteúdo de
    trás aparecer em volta (como as meias-folhas do iOS 26). */
 .folha {

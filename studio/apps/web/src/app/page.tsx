@@ -13,7 +13,7 @@
 // o layout saltar quando os dados chegam.
 // ============================================================
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ROTULO_DE_ESTADO, canTransition, estaProcessando } from '@makucho/studio-contracts';
 import type { ProjectState } from '@makucho/studio-contracts';
@@ -373,6 +373,16 @@ function CartaoDeProjeto({
   // Arquivar só vale fora do processamento; excluir vale sempre.
   const podeArquivar = canTransition(projeto.state as ProjectState, 'ARCHIVED');
   const [menuAberto, setMenuAberto] = useState(false);
+  // Tocar fora do cartão fecha o menu.
+  const cartaoRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!menuAberto) return;
+    const fora = (e: PointerEvent) => {
+      if (!cartaoRef.current?.contains(e.target as Node)) setMenuAberto(false);
+    };
+    document.addEventListener('pointerdown', fora);
+    return () => document.removeEventListener('pointerdown', fora);
+  }, [menuAberto]);
   const estado = ROTULO_DE_ESTADO[projeto.state as ProjectState];
   // Todo projeto com vídeo abre no editor, que mostra o andamento do
   // processamento. Antes, só os editáveis iam para lá; o resto abria a
@@ -384,7 +394,7 @@ function CartaoDeProjeto({
       : `/editor?projeto=${projeto.id}`;
 
   return (
-    <article className="cartao" style={{ padding: 'var(--e3)' }}>
+    <article ref={cartaoRef} className="cartao" data-menu-aberto={menuAberto || undefined} style={{ padding: 'var(--e3)' }}>
       <Link
         href={destino}
         className="projeto__midia"
