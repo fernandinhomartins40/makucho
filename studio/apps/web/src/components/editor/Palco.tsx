@@ -28,6 +28,7 @@
 import { GradeDoPalco } from './GradeDoPalco';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EditPlanV1, FonteDeVideo, MarcaDoVideo, PalavraDaTranscricao } from '@makucho/studio-contracts';
+import { palavrasNaTimeline } from '@makucho/studio-contracts';
 import {
   CORES_PADRAO_DA_MARCA,
   TEXTOS_DE_TELA,
@@ -223,7 +224,8 @@ export function Palco({
   // entre a voz e a trilha é o da exportação, e cada mudança de volume se ouve.
   const tetoDoSom = (() => {
     const voz = Math.max(0, ...plan.clips.filter((c) => !c.audio?.muted).map((c) => 10 ** ((c.audio?.gainDb ?? 0) / 20)));
-    const trilha = plan.music ? 10 ** ((plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0)) / 20) * 4 : 0;
+    // A trilha no alto (entre as falas, sem o abaixar): o mesmo ganho da exportação.
+    const trilha = plan.music ? 10 ** (plan.music.gainDb / 20) : 0;
     return Math.max(1, voz, trilha);
   })();
   const tetoDoSomRef = useRef(tetoDoSom);
@@ -856,11 +858,39 @@ export function Palco({
   }, [tocando, sincronizarNarracoes]);
 
   /** A música toca só dentro da janela dela (alças da faixa Trilha). */
+  // A trilha na prévia faz a MESMA conta da exportação (lib/exportacao/audio.ts): o ganho do
+  // plano e, com o abaixar-na-fala, 12 dB a menos enquanto alguém fala (ataque de 20 ms,
+  // soltura de 450 ms). Antes a prévia multiplicava a trilha por 4 e abaixava 6 dB fixos: no
+  // editor ela soava ~18 dB mais alta sob a fala do que no vídeo exportado.
+  const falaDaTrilhaRef = useRef<Array<[number, number]>>([]);
+  const abaixoDaFalaRef = useRef({ nivel: 1, em: 0 });
+  /** O volume da trilha no instante `ms` (0-1, já com o teto da mixagem); `suave` anda como o sidechain. */
+  const volumeDaTrilha = useCallback(
+    (ms: number, suave: boolean) => {
+      const m = plan.music;
+      if (!m) return 0;
+      const falando = m.duckUnderVoice && falaDaTrilhaRef.current.some(([a, b]) => ms >= a && ms < b);
+      const alvo = falando ? 10 ** (-12 / 20) : 1;
+      const d = abaixoDaFalaRef.current;
+      const agora = performance.now();
+      if (!suave) d.nivel = alvo;
+      else {
+        const dt = Math.min(0.5, Math.max(0, (agora - d.em) / 1000));
+        const tau = alvo < d.nivel ? 0.02 / 3 : 0.45 / 3;
+        d.nivel += (alvo - d.nivel) * (1 - Math.exp(-dt / tau));
+      }
+      d.em = agora;
+      return Math.min(1, Math.max(0, (10 ** (m.gainDb / 20) * d.nivel) / tetoDoSomRef.current));
+    },
+    [plan.music],
+  );
+
   const sincronizarTrilha = useCallback(
     (ms: number) => {
       const a = trilhaRef.current;
       const m = plan.music;
       if (!a || !m) return;
+      a.volume = volumeDaTrilha(ms, true);
       const inicio = m.timelineStartMs ?? 0;
       const fim = m.durationMs !== undefined ? inicio + m.durationMs : Number.POSITIVE_INFINITY;
       if (ms < inicio || ms >= fim) {
@@ -871,7 +901,7 @@ export function Palco({
       if (Math.abs(a.currentTime - alvo) > 0.35) a.currentTime = alvo;
       if (a.paused) void a.play().catch(() => undefined);
     },
-    [plan.music],
+    [plan.music, volumeDaTrilha],
   );
 
   // ---------- Reprodução ----------
@@ -1022,13 +1052,11 @@ export function Palco({
   useEffect(() => {
     const audio = trilhaRef.current;
     if (!audio || !plan.music) return;
-    // O ganho em dB do plano; com ducking, a voz está quase sempre
-    // presente, então a prévia usa o volume "abaixado".
-    const db = plan.music.gainDb + (plan.music.duckUnderVoice ? -6 : 0);
-    audio.volume = Math.min(1, Math.max(0, (10 ** (db / 20) * 4) / tetoDoSom));
+    // O volume do instante (com o abaixar-na-fala); tocando, ele acompanha a fala quadro a quadro.
+    audio.volume = volumeDaTrilha(relogioRef.current.ms, false);
     if (tocando) sincronizarTrilha(relogioRef.current.ms);
     else audio.pause();
-  }, [tocando, plan.music, sincronizarTrilha, tetoDoSom]);
+  }, [tocando, plan.music, sincronizarTrilha, volumeDaTrilha, tetoDoSom]);
 
   const tocarDe = useCallback(
     (msNaTimeline: number) => {
@@ -1190,6 +1218,16 @@ export function Palco({
         .map((p) => ({ id: p.id, startMs: p.startMs, endMs: p.endMs, word: p.texto })),
     [transcricao],
   );
+  // As falas na timeline (juntas quando a pausa é curta), para o abaixar-na-fala da trilha.
+  falaDaTrilhaRef.current = useMemo(() => {
+    const juntos: Array<[number, number]> = [];
+    for (const f of palavrasNaTimeline(plan, palavras, [...(desligados ?? [])])) {
+      const ultimo = juntos[juntos.length - 1];
+      if (ultimo && f.inicioMs - ultimo[1] < 300) ultimo[1] = Math.max(ultimo[1], f.fimMs);
+      else juntos.push([f.inicioMs, f.fimMs]);
+    }
+    return juntos;
+  }, [plan, palavras, desligados]);
 
   const marcaDoVideo = useMemo<MarcaDoVideo>(() => marca ?? { cores: CORES_PADRAO_DA_MARCA }, [marca]);
 

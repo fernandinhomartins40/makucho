@@ -74,10 +74,13 @@ export const VERSAO_DO_PROMPT = {
   // vez de dez etapas em ordem fixa; motion graphics por encenação livre.
   // v4: motion graphics por cenas prontas (presets) e a coerência com o
   // visual das animações (legenda, título e chamada já seguem o visual).
-  agente_de_edicao: 'agente-v4',
+  // v5: sem o contorno de luz em volta da pessoa (recusado nos vídeos), só a pedido.
+  agente_de_edicao: 'agente-v5',
   // A revisão final: as palavras da legenda que o whisper ouviu com pouca
   // certeza, conferidas com a frase em volta (revisao.service.ts).
   revisar_legenda: 'revisao-legenda-v1',
+  // A revisão final: o tipo de cena de cada animação combina com o que foi dito? (com visão)
+  revisar_estilo_da_animacao: 'revisao-estilo-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

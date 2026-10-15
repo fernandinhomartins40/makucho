@@ -21,6 +21,7 @@ import {
   FILA_ANIMACOES_DA_MONTAGEM,
   JOB_DE_FOTOS,
   JOB_DE_PECAS,
+  JOB_DE_AUDIO,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -30,7 +31,7 @@ import {
   VALIDADE_DO_PROGRESSO_S,
   chaveDoProgresso,
 } from '@makucho/studio-contracts';
-import type { EtapaDoPreparo, JobDeAnimacao, JobDeConferencia, MedidasDaRevisao, ProgressoDoPreparo } from '@makucho/studio-contracts';
+import type { EtapaDoPreparo, JobDeAnimacao, JobDeAudio, JobDeConferencia, MedidasDoAudio, MedidasDaRevisao, ProgressoDoPreparo } from '@makucho/studio-contracts';
 
 export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
@@ -324,7 +325,21 @@ export class FilaService implements OnModuleDestroy {
     }
   }
 
-  private async pedirAoChrome(nome: string, dados: JobDeConferencia, tempoMs: number): Promise<string[] | null> {
+  /**
+   * A loudness da fala (cada trecho) e da trilha, medida pelo ffmpeg do mesmo worker,
+   * para a revisão final. `null` quando não deu -- a trilha é julgada pelo número do plano.
+   */
+  async medirAudio(dados: JobDeAudio, tempoMs = 120_000): Promise<MedidasDoAudio | null> {
+    const r = await this.pedirAoChrome(JOB_DE_AUDIO, dados, tempoMs);
+    try {
+      const m = r?.[0] ? (JSON.parse(r[0]) as MedidasDoAudio) : null;
+      return m && typeof m.trechos === 'object' ? m : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async pedirAoChrome(nome: string, dados: JobDeConferencia | JobDeAudio, tempoMs: number): Promise<string[] | null> {
     try {
       // Sem worker ouvindo a fila (worker antigo, reiniciando, sem memória),
       // nem enfileira: a conferência é um extra e não pode segurar a montagem.

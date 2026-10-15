@@ -25,6 +25,14 @@ import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/commo
 import { ModuleRef } from '@nestjs/core';
 import {
   aplicarCorrecoes,
+  candidatasDaComposicao,
+  cenaDaComposicao,
+  textoDosPresets,
+  centralizarNaArea,
+  composicaoComAjustes,
+  notaDaComposicao,
+  versaoMelhor,
+  type ComposicaoHtml,
   editPlanV1Schema,
   lerRevisaoDaLegenda,
   palavrasDaRevisao,
@@ -35,6 +43,7 @@ import {
   type MedidasDaRevisao,
   type PessoaNoQuadro,
 } from '@makucho/studio-contracts';
+import { FilaService } from '../../common/fila.service';
 import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { AnimacoesService } from '../animacoes/animacoes.service';
@@ -47,6 +56,8 @@ import { skill } from './skills';
 
 /** Quantas animações a revisão mede por vídeo (o worker mede uma por vez, poucos segundos cada). */
 const MAXIMO_DE_ANIMACOES_MEDIDAS = 16;
+/** Quantas versões de uma animação a revisão mede (cada uma, um ou dois segundos no worker). */
+const MAXIMO_DE_VERSOES = 7;
 
 /** O que o revisor (agente) não pode usar: ele conserta, não remonta, não recomeça e não revisa de novo. */
 const FORA_DO_REVISOR = ['remontar_video', 'definir_tipo_do_video', 'desfazer_tudo', 'revisar_video', 'criar_animacao', 'criar_cena_animada'] as const;
@@ -88,6 +99,7 @@ export class RevisaoService {
     private readonly prompts: PromptsService,
     private readonly planos: EditPlansService,
     private readonly modulos: ModuleRef,
+    private readonly filas: FilaService,
     @Optional() private readonly animacoes?: AnimacoesService,
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
   ) {}
@@ -190,12 +202,50 @@ export class RevisaoService {
       }
     }
 
-    // 2. As regras, e o conserto do que é objetivo.
+    // O som de verdade: a loudness de cada trecho da fala e da trilha (o ffmpeg do worker).
+    aoAndar?.('Medindo o som da fala e da trilha');
+    const audio =
+      palavras.length || plano.music
+        ? await this.filas
+            .medirAudio({
+              projectId,
+              trechos: plano.clips.map((c) => ({ id: c.id, inicioMs: c.sourceStartMs, fimMs: c.sourceEndMs })),
+              ...(plano.music ? { musicaAssetId: plano.music.assetId } : {}),
+            })
+            .catch(() => null)
+        : null;
+
+    // 2. As regras, e o conserto do que é objetivo. As animações vão pela composição (abaixo):
+    // os ajustes de peça são testados em versões medidas, não aplicados às cegas.
     aoAndar?.('Conferindo o vídeo como um editor');
-    const achados = revisarVideo(plano, { palavras, medidas, pessoa });
-    const { plano: corrigido, feitos } = aplicarCorrecoes(plano, achados);
+    const achados = revisarVideo(plano, { palavras, medidas, pessoa, audio });
+    const deAnimacao = (a: AchadoDaRevisao) => a.correcao?.tipo === 'ajuste';
+    const { plano: corrigido, feitos } = aplicarCorrecoes(plano, achados.filter((a) => !deAnimacao(a)));
     let revisado = corrigido;
     const mensagens = feitos.map((a) => a.mensagem);
+    const naoResolvidos: AchadoDaRevisao[] = [];
+
+    // 3. A composição de cada animação: as versões candidatas, medidas, e fica a melhor.
+    const comProblema = animacoes.filter((a) => medidas[a.id]);
+    if (comProblema.length) aoAndar?.('Acertando a composição das animações');
+    for (const a of comProblema) {
+      const r = await this.melhorComposicao(a.id, a.composicao!, a.durationMs, medidas[a.id]!, pessoa[a.id] ?? null, achados.filter((x) => x.alvo === a.id && deAnimacao(x)));
+      if (r.composicao !== a.composicao) {
+        revisado = { ...revisado, mediaLayers: (revisado.mediaLayers ?? []).map((m) => (m.id === a.id ? { ...m, composicao: r.composicao } : m)) };
+        mensagens.push(r.mensagem);
+      }
+      if (r.restam.length)
+        naoResolvidos.push({
+          id: `animacao|composicao|${a.id}`,
+          categoria: 'animacao',
+          tipo: 'composicao',
+          gravidade: 'conferir',
+          inicioMs: a.timelineStartMs,
+          fimMs: a.timelineStartMs + a.durationMs,
+          alvo: a.id,
+          mensagem: `A animação "${a.composicao!.titulo ?? ''}" aos ${(a.timelineStartMs / 1000).toFixed(1)} s ainda tem: ${r.restam.join('; ')} (use medir_animacao e ajustar_peca_da_animacao, ou refazer_animacao).`,
+        });
+    }
 
     // 3. A legenda: as palavras incertas, com a frase em volta.
     let custo = 0;
@@ -235,12 +285,139 @@ export class RevisaoService {
 
     const antes = new Map((plano.mediaLayers ?? []).map((m) => [m.id, m.composicao]));
     const animacoesMudadas = (revisado.mediaLayers ?? []).filter((m) => m.kind === 'html' && m.composicao && antes.get(m.id) !== m.composicao).map((m) => m.id);
-    // A palavra incerta já passou pela IA da legenda: não volta como pendente.
-    const pendentes = achados.filter((a) => a.gravidade === 'conferir' && a.tipo !== 'palavra-incerta');
+    // 4. O estilo de cada animação combina com o que foi dito? A IA com visão olha os quadros
+    // (já com a composição corrigida) junto da fala do trecho. O que não combina vai para o
+    // revisor (o agente) refazer com a cena indicada.
+    const animadas = (revisado.mediaLayers ?? []).filter((m) => m.kind === 'html' && m.composicao).slice(0, MAXIMO_DE_ANIMACOES_MEDIDAS);
+    if (animadas.length && process.env.STUDIO_REVISAR_ESTILO !== 'off') {
+      aoAndar?.('Conferindo se cada animação combina com o que foi dito');
+      const estilo = await this.revisarEstilos(tenant.workspaceId, projectId, animadas, palavras);
+      custo += estilo.custoCentavos;
+      naoResolvidos.push(...estilo.achados);
+    }
+
+    // A palavra incerta já passou pela IA da legenda, e as peças das animações pela composição:
+    // não voltam como pendentes (o que a composição não resolveu volta, descrito por ela).
+    const pendentes = [...achados.filter((a) => a.gravidade === 'conferir' && a.tipo !== 'palavra-incerta' && !(a.categoria === 'animacao' && ['sobreposta', 'fora', 'rosto', 'pequena', 'vazia', 'conjunto'].includes(a.tipo))), ...naoResolvidos];
     this.log.log(
       `revisão do projeto ${projectId}: ${achados.length} achado(s), ${mensagens.length} corrigido(s), ${pendentes.length} para julgar, ${Object.values(medidas).filter(Boolean).length}/${animacoes.length} animação(ões) medida(s), ${Date.now() - inicio} ms`,
     );
     return { plano: revisado, feitos: mensagens, pendentes, animacoesMudadas, custoCentavos: custo };
+  }
+
+  /**
+   * A melhor composição de uma animação: gera as versões candidatas (as correções
+   * pontuais, a cena maior, só os textos maiores, o bloco mais estreito e maior),
+   * mede cada uma no Chrome (centralizando pela medida real quando a versão aumenta a
+   * cena) e fica com a de maior nota -- só se for melhor que a original, e nunca com mais
+   * defeitos graves. Devolve também o que continua errado na escolhida.
+   */
+  private async melhorComposicao(
+    camadaId: string,
+    original: ComposicaoHtml,
+    duracaoMs: number,
+    medida: MedidasDaRevisao,
+    pessoa: PessoaNoQuadro | null,
+    pontuais: readonly AchadoDaRevisao[],
+  ): Promise<{ composicao: ComposicaoHtml; mensagem: string; restam: string[] }> {
+    const nota0 = notaDaComposicao(original, medida, pessoa);
+    let melhor = { composicao: original, nota: nota0, mensagem: '' };
+    // Animação sem defeito e bem ocupada: nada a testar.
+    if (!nota0.defeitos.length && nota0.ocupacao >= 0.45 && !pontuais.length) return { composicao: original, mensagem: '', restam: [] };
+    for (const c of candidatasDaComposicao(camadaId, original, medida, pontuais, pessoa).slice(0, MAXIMO_DE_VERSOES)) {
+      let composicao = composicaoComAjustes(original, c.correcoes);
+      let m = await this.animacoes?.medirPecas(composicao, duracaoMs).catch(() => null);
+      if (!m) continue;
+      if (c.centralizar) {
+        const centro = centralizarNaArea(camadaId, composicao, m, c.centralizar);
+        if (centro) {
+          const centrada = composicaoComAjustes(composicao, [centro]);
+          const mc = await this.animacoes?.medirPecas(centrada, duracaoMs).catch(() => null);
+          if (mc) {
+            composicao = centrada;
+            m = mc;
+          }
+        }
+      }
+      const nota = notaDaComposicao(composicao, m, pessoa);
+      if (versaoMelhor(nota, melhor.nota)) melhor = { composicao, nota, mensagem: c.mensagem };
+    }
+    const legivel = (d: string) =>
+      d
+        .replace(/^sobreposição: (.+) e (.+)$/, 'as peças $1 e $2 se sobrepõem')
+        .replace(/^fora do quadro: (.+)$/, 'a peça $1 sai do quadro')
+        .replace(/^vaza do conjunto: (.+)$/, 'a peça $1 vaza do cartão')
+        .replace(/^rosto coberto$/, 'cobre o rosto de quem fala');
+    const restam = melhor.nota.defeitos.filter((d) => /^(sobreposição|fora do quadro|vaza do conjunto|rosto coberto)/.test(d)).map(legivel);
+    return { composicao: melhor.composicao, mensagem: melhor.mensagem, restam };
+  }
+
+  /**
+   * O tipo de cena de cada animação combina com a informação daquele trecho? Fotografa a
+   * animação (o worker), manda os quadros, a fala e o catálogo de cenas à IA com visão, três
+   * de cada vez. O que não combina volta como achado para o revisor refazer.
+   */
+  private async revisarEstilos(
+    workspaceId: string,
+    projectId: string,
+    animacoes: ReadonlyArray<{ id: string; timelineStartMs: number; durationMs: number; composicao?: ComposicaoHtml }>,
+    palavras: ReadonlyArray<{ texto: string; inicioMs: number; fimMs: number }>,
+  ): Promise<{ achados: AchadoDaRevisao[]; custoCentavos: number }> {
+    const prompt = this.prompts.obter('revisar_estilo_da_animacao');
+    const catalogo = textoDosPresets();
+    let custo = 0;
+    const achados: AchadoDaRevisao[] = [];
+    const uma = async (a: (typeof animacoes)[number]) => {
+      try {
+        const c = a.composicao!;
+        const fotos = await this.animacoes?.fotografar(c, a.durationMs);
+        if (!fotos?.length) return;
+        const fala = palavras
+          .filter((p) => p.fimMs > a.timelineStartMs - 1500 && p.inicioMs < a.timelineStartMs + a.durationMs + 500)
+          .map((p) => p.texto)
+          .join(' ');
+        const cena = cenaDaComposicao(c);
+        const r = await this.ai.chamar({
+          workspaceId,
+          projectId,
+          chamada: 'criticar_animacao',
+          sistema: prompt.texto,
+          usuario: [
+            `A ANIMAÇÃO: "${c.titulo ?? ''}", layout ${c.layout}${cena ? `, cena "${cena.preset}" com os textos ${JSON.stringify(cena.textos).slice(0, 400)}` : ''}.`,
+            `O QUE A PESSOA DIZ NESTE TRECHO: "${fala.slice(0, 700) || '(sem fala)'}"`,
+            `Os quadros, na ordem: o começo, o meio e o fim da animação (${(a.durationMs / 1000).toFixed(1)} s).`,
+            '',
+            'O CATÁLOGO DE CENAS (chave [layouts]: quando usar. Campos):',
+            catalogo,
+          ].join('\n'),
+          imagens: fotos,
+          maxTokens: 500,
+          promptVersion: prompt.versao,
+          semCache: true,
+          tempoMaximoMs: 90_000,
+        });
+        custo += r.custoCentavos;
+        const j = JSON.parse(r.texto.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { combina?: unknown; nota?: unknown; motivo?: unknown; cena?: unknown; pedido?: unknown };
+        if (j.combina !== false) return;
+        const motivo = typeof j.motivo === 'string' ? j.motivo.slice(0, 240) : 'o tipo de cena não combina com o que foi dito';
+        const sugestao = typeof j.cena === 'string' ? j.cena.slice(0, 40) : '';
+        const pedido = typeof j.pedido === 'string' ? j.pedido.slice(0, 300) : '';
+        achados.push({
+          id: `animacao|estilo|${a.id}`,
+          categoria: 'animacao',
+          tipo: 'estilo-nao-combina',
+          gravidade: 'conferir',
+          inicioMs: a.timelineStartMs,
+          fimMs: a.timelineStartMs + a.durationMs,
+          alvo: a.id,
+          mensagem: `A animação "${c.titulo ?? ''}" aos ${(a.timelineStartMs / 1000).toFixed(1)} s não combina com o que foi dito: ${motivo}${sugestao ? ` Use a cena "${sugestao}"` : ''}${pedido ? ` mostrando: ${pedido}` : ''} (refazer_animacao com esse pedido; só o que foi dito).`,
+        });
+      } catch (e) {
+        this.log.warn(`revisão do estilo da animação ${a.id} indisponível: ${e instanceof Error ? e.message : e}`);
+      }
+    };
+    for (let i = 0; i < animacoes.length; i += 3) await Promise.all(animacoes.slice(i, i + 3).map(uma));
+    return { achados, custoCentavos: custo };
   }
 
   /** Refaz o vídeo das animações que a revisão mudou (o que a exportação usa). */

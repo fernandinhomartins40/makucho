@@ -39,6 +39,9 @@ export interface PecaMedida {
   /** A peça que a contém (ou "cena"). */
   pai: string | null;
   r: Retangulo;
+  /** Largura e altura de layout (sem escala, px): estreitar parte delas. */
+  lw?: number;
+  lh?: number;
   /** A caixa só do TEXTO dentro dela (as linhas, sem padding nem fundo); null = sem texto. */
   rt?: Retangulo | null;
   /** A altura da MENOR linha de texto dentro dela (px); null = sem texto. */
@@ -56,6 +59,26 @@ export interface MedidasDaRevisao {
 
 /** O job do worker que mede as peças (mesma fila da conferência de layout). */
 export const JOB_DE_PECAS = 'medir-pecas';
+
+/** O job do worker que mede a loudness da fala e da trilha (o worker tem o ffmpeg e o storage). */
+export const JOB_DE_AUDIO = 'medir-audio';
+
+export interface JobDeAudio {
+  projectId: string;
+  /** Os trechos do vídeo, no tempo do ORIGINAL. */
+  trechos: Array<{ id: string; inicioMs: number; fimMs: number }>;
+  musicaAssetId?: string;
+}
+
+/** A loudness medida (LUFS integrados, EBU R128). `null` = sem medida (silêncio, arquivo ausente). */
+export interface MedidasDoAudio {
+  /** A fala do vídeo inteiro (a média em energia dos trechos). */
+  voz: number | null;
+  /** Cada trecho, pelo id do clipe. */
+  trechos: Record<string, number | null>;
+  /** A trilha, como o arquivo veio (antes do ganho do plano). */
+  musica: number | null;
+}
 
 /** Uma palavra da fala, já no tempo da TIMELINE. */
 export interface PalavraDaRevisao {
@@ -141,6 +164,8 @@ export interface ContextoDaRevisao {
   medidas?: Readonly<Record<string, MedidasDaRevisao | null>>;
   /** Onde está a pessoa no trecho de cada animação, pelo id da camada. */
   pessoa?: Readonly<Record<string, PessoaNoQuadro | null>>;
+  /** A loudness medida da fala e da trilha. Sem ela, a trilha é julgada só pelo número do plano. */
+  audio?: MedidasDoAudio | null;
 }
 
 // ---------- O que sai ----------
@@ -151,9 +176,12 @@ export type CategoriaDaRevisao = 'animacao' | 'legenda' | 'audio' | 'texto';
 export type CorrecaoDaRevisao =
   | { tipo: 'musica'; gainDb: number; duckUnderVoice: boolean }
   | { tipo: 'som'; soundEffectId: string; gainDb: number }
-  | { tipo: 'ajuste'; camadaId: string; chave: string; peca: AjusteDaPeca }
+  /** Relativo ao que a peça tem na hora de aplicar: correções na mesma peça se somam. */
+  | { tipo: 'ajuste'; camadaId: string; chave: string; dx?: number; dy?: number; fator?: number; w?: number }
   | { tipo: 'legenda'; wordsPerBlock: number }
-  | { tipo: 'duracao'; overlayId: string; durationMs: number };
+  | { tipo: 'duracao'; overlayId: string; durationMs: number }
+  | { tipo: 'tirar-efeito'; efeitoId: string }
+  | { tipo: 'ganho-do-trecho'; clipId: string; gainDb: number | null };
 
 export interface AchadoDaRevisao {
   /** Estável entre rodadas (categoria|tipo|alvo): a segunda revisão sabe o que já foi visto. */
@@ -181,6 +209,15 @@ const AUMENTO_MAXIMO = 1.8;
 /** A trilha sob a fala: com o abaixar ligado, no máximo isto; sem ele, nunca é seguro. */
 export const TRILHA_MAXIMA_COM_DUCKING_DB = -12;
 const TRILHA_SEGURA_DB = -16;
+/**
+ * A trilha sob a fala, medida: quantos dB (LU) abaixo da voz ela fica enquanto alguém fala.
+ * Menos de 14 cobre a voz; mais de 28 some. O alvo é 19 (o que as produtoras usam para
+ * música de fundo sob locução), com o abaixar-na-fala ligado (12 dB a menos sob a voz).
+ */
+const TRILHA_ABAIXO_DA_VOZ = { min: 14, alvo: 19, max: 28, subindo: 24 };
+const DUCKING_DB = 12;
+/** Um trecho de fala mais alto ou mais baixo que o resto por mais que isto: iguala. */
+const DIFERENCA_ENTRE_TRECHOS = 4;
 /** Som por cima de uma palavra: acima disto atrapalha entender. */
 const SOM_MAXIMO_NA_FALA_DB = -6;
 const SOM_NA_FALA_DB = -12;
@@ -202,6 +239,14 @@ const leitura = (texto: string) => Math.min(4500, 600 + 260 * texto.trim().split
 const ANIMACAO_MINIMA_MS = 1400;
 /** O rosto: a área da cabeça que a animação pode cobrir sem incomodar. */
 const ROSTO_COBERTO_MAXIMO = 0.15;
+/** A informação ocupa menos que isto da área útil (na dimensão que mais ocupa): sobra vazio. */
+const OCUPACAO_MINIMA = 0.62;
+/** Quanto ela passa a ocupar quando a revisão aumenta a cena. */
+const OCUPACAO_ALVO = 0.86;
+const AUMENTO_DA_CENA_MAXIMO = 1.6;
+/** O texto principal ocupa menos que isto da largura do conjunto (o cartão): sobra vazio dentro dele. */
+const OCUPACAO_DO_CONJUNTO = 0.6;
+const AUMENTO_DO_TEXTO_NO_CONJUNTO = 1.5;
 /** Onde o conteúdo pode começar no alto (o cabeçalho do app e o logo ficam acima). */
 const GRADE_TOPO = 200;
 /** A folga entre o cartão e o rosto quando a revisão o tira de cima. */
@@ -243,7 +288,30 @@ function revisarAudio(plano: EditPlanV1, ctx: ContextoDaRevisao): AchadoDaRevisa
   const out: AchadoDaRevisao[] = [];
   const temFala = ctx.palavras.length > 0;
   const m = plano.music;
-  if (m && temFala) {
+  const a = ctx.audio;
+  if (m && temFala && a?.voz != null && a.musica != null) {
+    // Com a medida: o que se ouve de verdade é a loudness do arquivo mais o ganho do plano.
+    const sobAVoz = a.musica + m.gainDb - (m.duckUnderVoice ? DUCKING_DB : 0);
+    const abaixo = a.voz - sobAVoz;
+    if (abaixo < TRILHA_ABAIXO_DA_VOZ.min || abaixo > TRILHA_ABAIXO_DA_VOZ.max) {
+      // Inaudível costuma ser escolha (a pessoa abaixou): sobe só até 24 dB abaixo da voz.
+      const alvoAbaixo = abaixo < TRILHA_ABAIXO_DA_VOZ.min ? TRILHA_ABAIXO_DA_VOZ.alvo : TRILHA_ABAIXO_DA_VOZ.subindo;
+      const gainDb = Math.round(Math.max(-40, Math.min(0, a.voz - alvoAbaixo - a.musica + DUCKING_DB)) * 2) / 2;
+      out.push({
+        id: 'audio|trilha-medida',
+        categoria: 'audio',
+        tipo: abaixo < TRILHA_ABAIXO_DA_VOZ.min ? 'trilha-alta' : 'trilha-baixa',
+        gravidade: 'corrigir',
+        inicioMs: m.timelineStartMs ?? 0,
+        fimMs: (m.timelineStartMs ?? 0) + (m.durationMs ?? 0),
+        mensagem:
+          abaixo < TRILHA_ABAIXO_DA_VOZ.min
+            ? `A trilha ficava só ${Math.max(0, Math.round(abaixo))} dB abaixo da voz enquanto alguém fala e cobria a fala. Ajustei para ficar ${TRILHA_ABAIXO_DA_VOZ.alvo} dB abaixo, abaixando sozinha na fala.`
+            : `A trilha ficava ${Math.round(abaixo)} dB abaixo da voz: quase não se ouvia. Subi para ${TRILHA_ABAIXO_DA_VOZ.subindo} dB abaixo da fala, abaixando sozinha quando alguém fala.`,
+        correcao: { tipo: 'musica', gainDb, duckUnderVoice: true },
+      });
+    }
+  } else if (m && temFala) {
     const alta = m.duckUnderVoice ? m.gainDb > TRILHA_MAXIMA_COM_DUCKING_DB : m.gainDb > TRILHA_SEGURA_DB;
     if (alta) {
       const alvo = m.duckUnderVoice ? Math.min(m.gainDb, -14) : Math.min(m.gainDb, TRILHA_SEGURA_DB);
@@ -258,6 +326,49 @@ function revisarAudio(plano: EditPlanV1, ctx: ContextoDaRevisao): AchadoDaRevisa
         correcao: { tipo: 'musica', gainDb: alvo, duckUnderVoice: true },
       });
     }
+  }
+  // A fala com volumes diferentes entre os trechos (um gravado mais longe do celular, outro
+  // mais perto): o trecho que destoa da mediana ganha ou perde ganho até ficar igual.
+  if (a && temFala) {
+    const medidos = plano.clips.filter((c) => !c.audio?.muted && typeof a.trechos[c.id] === 'number');
+    const valores = medidos.map((c) => a.trechos[c.id]!).sort((x, y) => x - y);
+    if (valores.length >= 3) {
+      const mediana = valores[Math.floor(valores.length / 2)]!;
+      for (const c of medidos) {
+        const l = a.trechos[c.id]!;
+        const diferenca = mediana - l;
+        if (Math.abs(diferenca) <= DIFERENCA_ENTRE_TRECHOS) continue;
+        const alvo = Math.round(Math.max(-30, Math.min(12, diferenca)) * 2) / 2;
+        if (Math.abs(alvo - (c.audio?.gainDb ?? 0)) < 2) continue;
+        out.push({
+          id: `audio|trecho-desigual|${c.id}`,
+          categoria: 'audio',
+          tipo: 'trecho-desigual',
+          gravidade: 'corrigir',
+          inicioMs: c.timelineStartMs,
+          fimMs: c.timelineStartMs + (c.sourceEndMs - c.sourceStartMs),
+          alvo: c.id,
+          mensagem: `A fala aos ${seg(c.timelineStartMs)} estava ${Math.round(Math.abs(diferenca))} dB ${diferenca > 0 ? 'mais baixa' : 'mais alta'} que o resto do vídeo: igualei.`,
+          correcao: { tipo: 'ganho-do-trecho', clipId: c.id, gainDb: alvo === 0 ? null : alvo },
+        });
+      }
+    }
+  }
+
+  // O contorno de luz em volta da pessoa (a borda laranja): recusado nos vídeos, sai sempre.
+  for (const e of plano.screenEffects ?? []) {
+    if (e.type !== 'contorno_luz') continue;
+    out.push({
+      id: `efeito|contorno|${e.id}`,
+      categoria: 'animacao',
+      tipo: 'contorno-na-pessoa',
+      gravidade: 'corrigir',
+      inicioMs: e.timelineStartMs,
+      fimMs: e.timelineStartMs + e.durationMs,
+      alvo: e.id,
+      mensagem: `Tirei o contorno de luz em volta da pessoa aos ${seg(e.timelineStartMs)}.`,
+      correcao: { tipo: 'tirar-efeito', efeitoId: e.id },
+    });
   }
   for (const s of plano.soundEffects ?? []) {
     if (s.gainDb <= SOM_MAXIMO_NA_FALA_DB) continue;
@@ -450,11 +561,12 @@ function revisarPecas(camadaId: string, inicioMs: number, fimMs: number, c: Comp
       fimMs,
       alvo: camadaId,
       mensagem: `Em "${titulo}" ${quando}, o texto "${curto(p.texto)}" tem ${Math.round(p.letra!)} px de altura: ilegível no celular. Aumentado ${Math.round((escala / atual.escala - 1) * 100)}%.`,
-      correcao: { tipo: 'ajuste', camadaId, chave: p.chave, peca: { ...atual, escala } },
+      correcao: { tipo: 'ajuste', camadaId, chave: p.chave, fator: escala / atual.escala },
     });
   }
 
   // 2. Sobre o rosto: só onde o vídeo aparece por trás (cartão em cima do vídeo).
+  let mexeuNaCena = false;
   if (pessoa && c.layout === 'cartao') {
     const rosto = retanguloDaCabeca(pessoa);
     const caixa = cena?.r ?? juntar(pecas.map((p) => p.r));
@@ -473,6 +585,7 @@ function revisarPecas(camadaId: string, inicioMs: number, fimMs: number, c: Comp
       const centroAlvo = (lugar === baixo ? lugar.de : lugar.ate - novaAltura) + novaAltura / 2;
       const dy = centroAlvo - (caixa.y + caixa.h / 2);
       const escala = Math.round(atual.escala * fator * 100) / 100;
+      mexeuNaCena = true;
       out.push({
         id: `animacao|rosto|${camadaId}`,
         categoria: 'animacao',
@@ -484,9 +597,86 @@ function revisarPecas(camadaId: string, inicioMs: number, fimMs: number, c: Comp
         mensagem: !cabe
           ? `"${titulo}" ${quando} cobre o rosto de quem fala, e não há espaço livre acima nem abaixo dele para o cartão (rosto em y ${Math.round(rosto.y)}-${Math.round(rosto.y + rosto.h)}, cartão com ${Math.round(caixa.h)} px de altura).`
           : `"${titulo}" ${quando} cobria o rosto de quem fala: o cartão foi para ${lugar === baixo ? 'baixo do queixo' : 'cima da cabeça'}${fator < 1 ? `, ${Math.round((1 - fator) * 100)}% menor para caber` : ''}.`,
-        ...(cabe ? { correcao: { tipo: 'ajuste' as const, camadaId, chave: 'cena', peca: { ...atual, y: Math.round(atual.y + dy), escala } } } : {}),
+        ...(cabe ? { correcao: { tipo: 'ajuste' as const, camadaId, chave: 'cena', dy: Math.round(dy), fator: escala / atual.escala } } : {}),
       });
     }
+  }
+
+  // 5. Espaço vazio: a informação ocupa pouco da área que a animação tem. Um editor
+  // aumentaria a cena inteira (mantendo o desenho) até a informação tomar o espaço.
+  const grade = gradeDaComposicao(c);
+  const folhasVisiveis = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave));
+  const conteudo = juntar(folhasVisiveis.map((p) => (p.letra !== null ? (p.rt ?? p.r) : p.r)));
+  const util = grade.util;
+  if (!mexeuNaCena && cena && conteudo && c.layout !== 'pip' && textos.length) {
+    const ocupa = Math.max(conteudo.w / util.w, conteudo.h / util.h);
+    if (ocupa < OCUPACAO_MINIMA) {
+      const atual = ajusteDaPeca('cena');
+      const fator = Math.min(AUMENTO_DA_CENA_MAXIMO, OCUPACAO_ALVO / Math.max(0.05, ocupa));
+      // A cena escala em volta do centro dela; depois o conteúdo vai para o centro da área útil.
+      const gx = cena.r.x + cena.r.w / 2;
+      const gy = cena.r.y + cena.r.h / 2;
+      const cx = gx + (conteudo.x + conteudo.w / 2 - gx) * fator;
+      const cy = gy + (conteudo.y + conteudo.h / 2 - gy) * fator;
+      const dx = util.x + util.w / 2 - cx;
+      const dy = util.y + util.h / 2 - cy;
+      if (fator >= 1.12) {
+        mexeuNaCena = true;
+        out.push({
+          id: `animacao|vazia|${camadaId}`,
+          categoria: 'animacao',
+          tipo: 'vazia',
+          gravidade: 'corrigir',
+          inicioMs,
+          fimMs,
+          alvo: camadaId,
+          mensagem: `"${titulo}" ${quando} usava só ${Math.round(ocupa * 100)}% do espaço que tem: a informação ficou ${Math.round((fator - 1) * 100)}% maior e centralizada.`,
+          correcao: { tipo: 'ajuste', camadaId, chave: 'cena', dx: Math.round(dx), dy: Math.round(dy), fator: Math.round(Math.min(4, atual.escala * fator) * 100) / 100 / atual.escala },
+        });
+      }
+    }
+  }
+
+  // 6. Dentro do conjunto (o cartão, a caixa): o texto principal pequeno num conjunto largo
+  // deixa um vazio no meio do cartão. Ele cresce para o espaço livre, sem passar dos vizinhos.
+  for (const g of pecas) {
+    if (g.chave === 'cena') continue;
+    const filhos = pecas.filter((p) => p.pai === g.chave);
+    if (filhos.length < 2) continue;
+    const textosDoConjunto = filhos.filter((p) => p.letra !== null && p.texto.trim() && !pecas.some((q) => q.pai === p.chave));
+    const principal = [...textosDoConjunto].sort((a, b) => b.letra! - a.letra!)[0];
+    if (!principal) continue;
+    const rp = principal.rt ?? principal.r;
+    const larguraUtil = g.r.w * 0.9;
+    if (rp.w / larguraUtil >= OCUPACAO_DO_CONJUNTO) continue;
+    // O espaço livre em cima e embaixo do principal, até o vizinho mais próximo (ou a borda do conjunto).
+    const outros = filhos.filter((p) => p !== principal).map((p) => (p.letra !== null ? (p.rt ?? p.r) : p.r));
+    const sobreposHorizontal = (r: Retangulo) => r.x < rp.x + rp.w && r.x + r.w > rp.x;
+    const acima = Math.max(g.r.y + g.r.h * 0.04, ...outros.filter((r) => sobreposHorizontal(r) && r.y + r.h <= rp.y + 2).map((r) => r.y + r.h + 10));
+    const abaixo = Math.min(g.r.y + g.r.h * 0.96, ...outros.filter((r) => sobreposHorizontal(r) && r.y >= rp.y + rp.h - 2).map((r) => r.y - 10));
+    const fatorVertical = (abaixo - acima) / rp.h;
+    const fator = Math.min(AUMENTO_DO_TEXTO_NO_CONJUNTO, (larguraUtil * 0.92) / rp.w, fatorVertical);
+    if (fator < 1.12) continue;
+    // Cresce em volta do centro: corrige para não passar das bordas do conjunto nem dos vizinhos.
+    const nw = rp.w * fator;
+    const nh = rp.h * fator;
+    const ncx = rp.x + rp.w / 2;
+    const ncy = rp.y + rp.h / 2;
+    const esq = g.r.x + g.r.w * 0.05;
+    const dir = g.r.x + g.r.w * 0.95;
+    const dx = ncx - nw / 2 < esq ? esq - (ncx - nw / 2) : ncx + nw / 2 > dir ? dir - (ncx + nw / 2) : 0;
+    const dy = ncy - nh / 2 < acima ? acima - (ncy - nh / 2) : ncy + nh / 2 > abaixo ? abaixo - (ncy + nh / 2) : 0;
+    out.push({
+      id: `animacao|conjunto|${camadaId}|${principal.chave}`,
+      categoria: 'animacao',
+      tipo: 'conjunto',
+      gravidade: 'corrigir',
+      inicioMs,
+      fimMs,
+      alvo: camadaId,
+      mensagem: `Em "${titulo}" ${quando}, "${curto(principal.texto)}" ocupava ${Math.round((rp.w / larguraUtil) * 100)}% da largura do conjunto: ficou ${Math.round((fator - 1) * 100)}% maior, no espaço que sobrava.`,
+      correcao: { tipo: 'ajuste', camadaId, chave: principal.chave, dx: Math.round(dx), dy: Math.round(dy), fator: Math.round(fator * 100) / 100 },
+    });
   }
 
   // 3. Fora do quadro: texto cortado na borda.
@@ -515,19 +705,283 @@ function revisarPecas(camadaId: string, inicioMs: number, fimMs: number, c: Comp
       const ra = a.rt ?? a.r;
       const rb = b.rt ?? b.r;
       if (intersecao(ra, rb) <= 0.25 * Math.min(area(ra), area(rb))) continue;
+      // Afasta a secundária (a de letra menor) para cima ou para baixo, pelo lado em que já está.
+      const [movel, fixa, rm, rf] = (a.letra ?? 0) <= (b.letra ?? 0) ? [a, b, ra, rb] : [b, a, rb, ra];
+      const desce = rm.y + rm.h / 2 >= rf.y + rf.h / 2;
+      const dy = desce ? rf.y + rf.h + 14 - rm.y : rf.y - 14 - (rm.y + rm.h);
       out.push({
         id: `animacao|sobreposta|${camadaId}|${a.chave}|${b.chave}`,
         categoria: 'animacao',
         tipo: 'sobreposta',
-        gravidade: 'conferir',
+        gravidade: 'corrigir',
+        correcao: { tipo: 'ajuste', camadaId, chave: movel.chave, dy: Math.round(dy) },
         inicioMs,
         fimMs,
         alvo: camadaId,
-        mensagem: `Em "${titulo}" ${quando}, o texto "${curto(a.texto)}" fica em cima de "${curto(b.texto)}" (peças ${a.chave} em y ${Math.round(ra.y)}-${Math.round(ra.y + ra.h)} e ${b.chave} em y ${Math.round(rb.y)}-${Math.round(rb.y + rb.h)}).`,
+        mensagem: `Em "${titulo}" ${quando}, o texto "${curto(movel.texto)}" ficava em cima de "${curto(fixa.texto)}": foi para ${desce ? 'baixo' : 'cima'} dele.`,
       });
     }
   }
   return out;
+}
+
+/**
+ * Os defeitos medidos de uma animação (sobreposição, texto fora do quadro, rosto
+ * coberto, texto ilegível) e quanto a informação ocupa da área, para comparar antes
+ * e depois de uma correção: o serviço mede de novo e desfaz o que piorou.
+ */
+export function defeitosDaAnimacao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa: PessoaNoQuadro | null): { graves: number; pequenas: number; ocupacao: number } {
+  const achados = revisarPecas('x', 0, 0, c, m, pessoa);
+  const pecas = m.pecas.filter((p) => area(p.r) > 40);
+  const folhas = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave));
+  const conteudo = juntar(folhas.map((p) => (p.letra !== null ? (p.rt ?? p.r) : p.r)));
+  const util = gradeDaComposicao(c).util;
+  return {
+    graves: achados.filter((a) => a.tipo === 'sobreposta' || a.tipo === 'fora' || a.tipo === 'rosto').length,
+    pequenas: achados.filter((a) => a.tipo === 'pequena').length,
+    ocupacao: conteudo ? Math.max(conteudo.w / util.w, conteudo.h / util.h) : 0,
+  };
+}
+
+// ============================================================
+// A composição: a nota de uma animação medida e as versões candidatas
+// ============================================================
+//
+// Corrigir peça por peça (aumentar um texto, afastar outro) pode piorar o
+// conjunto: o texto aumentado passa por cima do ícone ou vaza do cartão. Um
+// editor tenta, olha e fica com o que ficou melhor. Aqui é igual: a revisão
+// gera algumas versões candidatas da animação (as correções pontuais; a cena
+// inteira maior; o bloco mais estreito, para o texto quebrar em mais linhas,
+// e maior), o serviço mede cada uma no Chrome e fica a de maior nota -- só se
+// for melhor que a original.
+
+/**
+ * Uma peça é enfeite (não é a informação): figura que não é grande (ícone, brilho, seta --
+ * um gráfico ou uma imagem passa de 15% da área) ou um glifo gigante de fundo ("?" de 400 px).
+ * Medido como fração da área útil, que não muda quando a cena cresce.
+ */
+const ehEnfeite = (p: PecaMedida, util: Retangulo) => (p.letra === null ? area(p.r) < 0.15 * area(util) : p.letra > 300);
+
+/** A nota de uma animação medida: quanto a informação ocupa, menos os defeitos. */
+export interface NotaDaComposicao {
+  nota: number;
+  /** Os defeitos que vetam uma versão: sobreposição, fora do quadro, vazando do conjunto, rosto coberto. */
+  graves: number;
+  ocupacao: number;
+  defeitos: string[];
+}
+
+const GRAVE = /^(sobreposição|fora do quadro|vaza do conjunto|rosto coberto)/;
+
+export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa: PessoaNoQuadro | null): NotaDaComposicao {
+  const util = gradeDaComposicao(c).util;
+  const pecas = m.pecas.filter((p) => area(p.r) > 40);
+  const folhas = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave));
+  const caixaDe = (p: PecaMedida) => (p.letra !== null ? (p.rt ?? p.r) : p.r);
+  const informacao = folhas.filter((p) => !ehEnfeite(p, util));
+  const conteudo = juntar(informacao.map(caixaDe));
+  const defeitos: string[] = [];
+  // Texto sobre texto, texto sobre figura (o ícone do cartão).
+  const textos = folhas.filter((p) => p.letra !== null && p.texto.trim());
+  for (let i = 0; i < folhas.length; i += 1) {
+    for (let j = i + 1; j < folhas.length; j += 1) {
+      const a = folhas[i]!;
+      const b = folhas[j]!;
+      if (a.letra === null && b.letra === null) continue;
+      if (ehEnfeite(a, util) || ehEnfeite(b, util)) continue;
+      const ra = caixaDe(a);
+      const rb = caixaDe(b);
+      if (intersecao(ra, rb) > 0.2 * Math.min(area(ra), area(rb))) defeitos.push(`sobreposição: ${a.chave} e ${b.chave}`);
+    }
+  }
+  // Texto fora do quadro, e texto que vaza do conjunto que o contém (passa da borda do cartão).
+  for (const p of textos) {
+    // O glifo gigante de fundo pode sangrar pela borda: é desenho, não informação cortada.
+    if (ehEnfeite(p, util)) continue;
+    const r = caixaDe(p);
+    if (r.x < -4 || r.y < -4 || r.x + r.w > W + 4 || r.y + r.h > H + 4) defeitos.push(`fora do quadro: ${p.chave}`);
+    const pai = p.pai && p.pai !== 'cena' ? pecas.find((q) => q.chave === p.pai) : null;
+    if (pai && (r.x < pai.r.x - 6 || r.x + r.w > pai.r.x + pai.r.w + 6 || r.y < pai.r.y - 6 || r.y + r.h > pai.r.y + pai.r.h + 6)) defeitos.push(`vaza do conjunto: ${p.chave}`);
+    if (p.letra! < LETRA_MINIMA) defeitos.push(`ilegível: ${p.chave}`);
+  }
+  // Os conjuntos (cartão, caixa) também não podem sair do quadro: o texto deles vai junto.
+  // O enfeite pode sangrar pela borda, mas não sumir (mais de 40% fora).
+  const quadro = { x: 0, y: 0, w: W, h: H };
+  for (const p of pecas) {
+    if (p.chave === 'cena' || folhas.includes(p)) continue;
+    // A borda do conjunto (o fundo e o contorno do cartão), não a do texto dentro dele.
+    const r = p.r;
+    if (ehEnfeite(p, util)) continue;
+    // Cortado na borda do celular é grave; fora das laterais da área útil (encostado na borda) é feio.
+    if (r.x < -4 || r.y < -6 || r.x + r.w > W + 4 || r.y + r.h > H + 6) defeitos.push(`fora do quadro: ${p.chave}`);
+    else if (r.x < util.x - 12 || r.x + r.w > util.x + util.w + 12) defeitos.push(`fora da margem: ${p.chave}`);
+  }
+  for (const p of folhas) {
+    if (!ehEnfeite(p, util)) continue;
+    if (area(p.r) > 0 && intersecao(p.r, quadro) < 0.6 * area(p.r)) defeitos.push(`enfeite cortado: ${p.chave}`);
+  }
+  // Rosto coberto (cartão sobre o vídeo).
+  if (pessoa && c.layout === 'cartao' && conteudo) {
+    const rosto = retanguloDaCabeca(pessoa);
+    if (intersecao(conteudo, rosto) > ROSTO_COBERTO_MAXIMO * area(rosto)) defeitos.push('rosto coberto');
+  }
+  // A informação fora da área útil (sob a legenda, o cabeçalho do app).
+  if (conteudo && area(conteudo) - intersecao(conteudo, util) > 0.06 * area(conteudo)) defeitos.push('fora da área útil');
+  const ocupacao = conteudo ? Math.min(1, area(conteudo) / area(util)) : 0;
+  // Ocupar até ~70% da área conta inteiro; mais que isso não soma (respiro também é design).
+  const nota = Math.min(ocupacao, 0.7) * 3 - defeitos.reduce((s, d) => s + (d.startsWith('ilegível') ? 0.35 : d.startsWith('enfeite') ? 0.6 : d.startsWith('fora da margem') ? 0.5 : 1), 0);
+  return { nota: Math.round(nota * 1000) / 1000, graves: defeitos.filter((d) => GRAVE.test(d)).length, ocupacao: Math.round(ocupacao * 1000) / 1000, defeitos };
+}
+
+/**
+ * A versão nova é melhor que a de referência? Nunca com mais defeitos graves (texto
+ * cortado na borda ou sobre outro não se troca por espaço ocupado); com menos, é; com
+ * os mesmos, só se a nota sobe de verdade.
+ */
+export function versaoMelhor(nova: NotaDaComposicao, referencia: NotaDaComposicao): boolean {
+  if (nova.graves !== referencia.graves) return nova.graves < referencia.graves;
+  return nova.nota > referencia.nota + 0.15;
+}
+
+/**
+ * Leva a informação medida para o centro da área útil (só a cena se move). As
+ * candidatas que aumentam a cena estimam o centro; depois de medidas, isto acerta.
+ * `null` quando já está a menos de 10 px.
+ */
+export function centralizarNaArea(camadaId: string, c: ComposicaoHtml, m: MedidasDaRevisao, modo: 'centro' | 'esquerda' = 'centro'): Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }> | null {
+  const util = gradeDaComposicao(c).util;
+  const pecas = m.pecas.filter((p) => area(p.r) > 40);
+  const folhas = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave) && !ehEnfeite(p, util));
+  const conteudo = juntar(folhas.map((p) => (p.letra !== null ? (p.rt ?? p.r) : p.r)));
+  if (!conteudo) return null;
+  const dx = Math.round(modo === 'esquerda' ? util.x + util.w * 0.02 - conteudo.x : util.x + util.w / 2 - (conteudo.x + conteudo.w / 2));
+  const dy = Math.round(util.y + util.h / 2 - (conteudo.y + conteudo.h / 2));
+  return Math.abs(dx) < 10 && Math.abs(dy) < 10 ? null : { tipo: 'ajuste', camadaId, chave: 'cena', dx, dy };
+}
+
+export interface CandidataDaComposicao {
+  nome: string;
+  /** Aumenta a cena: depois de medida, a informação vai para o centro da área útil (ou, num desenho alinhado à esquerda, fica na esquerda e só centraliza na altura). */
+  centralizar?: 'centro' | 'esquerda';
+  /** O que a versão faz, para a pessoa. */
+  mensagem: string;
+  correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>>;
+}
+
+/**
+ * As versões que valem testar numa animação, a partir das correções pontuais
+ * que a revisão achou (`pontuais`) e das medidas. Até ~7 versões.
+ */
+export function candidatasDaComposicao(camadaId: string, c: ComposicaoHtml, m: MedidasDaRevisao, pontuais: readonly AchadoDaRevisao[], pessoa: PessoaNoQuadro | null): CandidataDaComposicao[] {
+  const util = gradeDaComposicao(c).util;
+  const pecas = m.pecas.filter((p) => area(p.r) > 40);
+  const cena = pecas.find((p) => p.chave === 'cena');
+  const folhas = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave));
+  const caixaDe = (p: PecaMedida) => (p.letra !== null ? (p.rt ?? p.r) : p.r);
+  const conteudo = juntar(folhas.filter((p) => !ehEnfeite(p, util)).map(caixaDe));
+  const out: CandidataDaComposicao[] = [];
+  const ajustes = pontuais.flatMap((a) => (a.correcao?.tipo === 'ajuste' ? [a.correcao] : []));
+  if (ajustes.length) out.push({ nome: 'pontuais', mensagem: pontuais.map((a) => a.mensagem).join(' '), correcoes: ajustes });
+  // Sem as que mexem na cena (o rosto, o vazio): as pontuais nas peças sozinhas.
+  const soPecas = ajustes.filter((a) => a.chave !== 'cena');
+  if (soPecas.length && soPecas.length < ajustes.length) out.push({ nome: 'pontuais nas peças', mensagem: pontuais.filter((a) => a.correcao?.tipo === 'ajuste' && a.correcao.chave !== 'cena').map((a) => a.mensagem).join(' '), correcoes: soPecas });
+  if (!cena || !conteudo || c.layout === 'pip') return out;
+  const titulo = curto(c.titulo ?? 'animação');
+  const cobreRosto = !!pessoa && c.layout === 'cartao' && intersecao(conteudo, retanguloDaCabeca(pessoa)) > ROSTO_COBERTO_MAXIMO * area(retanguloDaCabeca(pessoa));
+  if (cobreRosto) return out;
+
+  // A cena maior, com a informação no centro da área útil. `estreitar` diminui a largura do
+  // bloco principal antes (o texto quebra em mais linhas e o conjunto fica mais alto).
+  const maior = (fator: number, extras: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>> = [], largura = conteudo.w, altura = conteudo.h): Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>> => {
+    const gx = cena.r.x + cena.r.w / 2;
+    const gy = cena.r.y + cena.r.h / 2;
+    // O centro do conteúdo depois de escalar em volta do centro da cena (o estreitar mantém a esquerda).
+    const cx = gx + (conteudo.x + largura / 2 - gx) * fator;
+    const cy = gy + (conteudo.y + altura / 2 - gy) * fator;
+    return [...extras, { tipo: 'ajuste', camadaId, chave: 'cena', dx: Math.round(util.x + util.w / 2 - cx), dy: Math.round(util.y + util.h / 2 - cy), fator }];
+  };
+  const cabeLargura = (util.w * 0.94) / conteudo.w;
+  const cabeAltura = (util.h * 0.94) / conteudo.h;
+  const uniforme = Math.min(AUMENTO_DA_CENA_MAXIMO, cabeLargura, cabeAltura);
+  if (uniforme >= 1.1) {
+    out.push({ nome: 'cena maior', centralizar: 'centro', mensagem: `"${titulo}" ficou ${Math.round((uniforme - 1) * 100)}% maior, ocupando o espaço que sobrava.`, correcoes: maior(uniforme) });
+    if (uniforme >= 1.3) out.push({ nome: 'cena um pouco maior', centralizar: 'centro', mensagem: `"${titulo}" ficou ${Math.round((uniforme * 0.85 - 1) * 100)}% maior, ocupando melhor o espaço.`, correcoes: maior(uniforme * 0.85) });
+  }
+  // Desenho alinhado à esquerda (o texto encostado na margem, um enfeite à direita): a versão
+  // maior fica à esquerda também -- centralizar empurraria o enfeite para fora.
+  const alinhadoAEsquerda = conteudo.x - util.x < util.w * 0.1 && conteudo.x + conteudo.w < util.x + util.w * 0.7;
+  if (alinhadoAEsquerda) {
+    const larguraLivre = (util.w * 0.7) / conteudo.w;
+    const fator = Math.min(AUMENTO_DA_CENA_MAXIMO, larguraLivre, cabeAltura);
+    if (fator >= 1.1)
+      out.push({ nome: 'maior à esquerda', centralizar: 'esquerda', mensagem: `"${titulo}" ficou ${Math.round((fator - 1) * 100)}% maior, no lado em que já estava.`, correcoes: maior(fator) });
+  }
+
+  // Só os textos maiores (os enfeites ficam onde estão): cada bloco de texto da cena cresce
+  // mantendo o alinhamento (esquerda, ou o centro), e cada um desce o que os de cima cresceram.
+  const blocos = pecas
+    .filter((p) => p.pai === 'cena' && p.letra !== null && p.letra <= 300 && p.texto.trim())
+    .sort((a, b) => caixaDe(a).y - caixaDe(b).y);
+  if (blocos.length && blocos.length <= 4) {
+    const altura = blocos.reduce((s, p) => s + caixaDe(p).h, 0);
+    const largura = Math.max(...blocos.map((p) => caixaDe(p).w));
+    const folga = Math.min(AUMENTO_DA_CENA_MAXIMO, (util.w * (alinhadoAEsquerda ? 0.7 : 0.92)) / largura, 1 + (util.y + util.h * 0.96 - (conteudo.y + conteudo.h)) / Math.max(1, altura));
+    for (const f of [folga, 1 + (folga - 1) * 0.6]) {
+      if (f < 1.15) continue;
+      let desce = 0;
+      const correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>> = [];
+      for (const p of blocos) {
+        const r = caixaDe(p);
+        // Cresce em volta do centro: na esquerda, volta o que avançou para a esquerda; desce o que os de cima cresceram e o que ele mesmo subiu.
+        const dx = alinhadoAEsquerda ? Math.round((r.w * (f - 1)) / 2) : 0;
+        const dy = Math.round(desce + (r.h * (f - 1)) / 2);
+        desce += r.h * (f - 1);
+        correcoes.push({ tipo: 'ajuste', camadaId, chave: p.chave, dx, dy, fator: Math.round(f * 100) / 100 });
+      }
+      out.push({ nome: `textos ${Math.round((f - 1) * 100)}% maiores`, mensagem: `Em "${titulo}", os textos ficaram ${Math.round((f - 1) * 100)}% maiores, ocupando o espaço vazio.`, correcoes });
+    }
+  }
+
+  // O bloco largo e baixo: estreitar e aumentar (só quando a altura tem folga e a largura não).
+  if (cabeAltura > cabeLargura * 1.35) {
+    const bloco = [...pecas]
+      .filter((p) => p.pai === 'cena' && (p.lw ?? 0) > 0 && !ehEnfeite(p, util))
+      .sort((a, b) => b.r.w * b.r.h - a.r.w * a.r.h)[0];
+    if (bloco && bloco.r.w > 0.55 * conteudo.w) {
+      for (const f of [0.75, 0.6]) {
+        const estreito = { tipo: 'ajuste' as const, camadaId, chave: bloco.chave, w: Math.round((bloco.lw ?? bloco.r.w) * f) };
+        // Depois de estreitar, a largura cai e a altura sobe (estimativa: o mesmo texto em menos largura).
+        const largura = conteudo.w - bloco.r.w * (1 - f);
+        const altura = conteudo.h * (1 / f) * 0.92;
+        const fator = Math.min(AUMENTO_DA_CENA_MAXIMO * 1.15, (util.w * 0.94) / largura, (util.h * 0.92) / altura);
+        if (fator < 1.1) continue;
+        out.push({
+          nome: `bloco a ${Math.round(f * 100)}% e maior`,
+          centralizar: 'centro',
+          mensagem: `"${titulo}": o texto foi rearranjado em mais linhas e ficou ${Math.round((fator - 1) * 100)}% maior, ocupando o espaço que sobrava.`,
+          correcoes: maior(fator, [estreito], largura, altura),
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** A animação com um conjunto de ajustes de peça aplicados (o que `aplicarCorrecoes` faz numa camada). */
+export function composicaoComAjustes(c: ComposicaoHtml, correcoes: ReadonlyArray<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>>): ComposicaoHtml {
+  let atual: AjusteDaCena = ajusteDaComposicao(c) ?? { x: 0, y: 0, escala: 1 };
+  for (const k of correcoes) {
+    const antes: AjusteDaPeca = k.chave === 'cena' ? { x: atual.x, y: atual.y, escala: atual.escala } : (atual.elementos?.[k.chave] ?? { x: 0, y: 0, escala: 1 });
+    const peca: AjusteDaPeca = {
+      ...antes,
+      x: Math.round(antes.x + (k.dx ?? 0)),
+      y: Math.round(antes.y + (k.dy ?? 0)),
+      escala: Math.round(Math.max(0.3, Math.min(4, antes.escala * (k.fator ?? 1))) * 100) / 100,
+      ...(k.w ? { w: k.w } : {}),
+    };
+    atual = k.chave === 'cena' ? { ...atual, x: peca.x, y: peca.y, escala: peca.escala } : { ...atual, elementos: { ...(atual.elementos ?? {}), [k.chave]: peca } };
+  }
+  return comAjuste(c, lerAjuste(atual));
 }
 
 function juntar(rs: readonly Retangulo[]): Retangulo | null {
@@ -562,16 +1016,28 @@ export function aplicarCorrecoes(plano: EditPlanV1, achados: readonly AchadoDaRe
       case 'legenda':
         p = { ...p, captions: { ...p.captions, wordsPerBlock: c.wordsPerBlock } };
         break;
+      case 'ganho-do-trecho':
+        if (p.clips.some((x) => x.id === c.clipId))
+          p = {
+            ...p,
+            clips: p.clips.map((x) => {
+              if (x.id !== c.clipId) return x;
+              const { gainDb: _antes, ...resto } = x.audio ?? {};
+              const audio = c.gainDb === null ? resto : { ...resto, gainDb: c.gainDb };
+              return Object.keys(audio).length ? { ...x, audio } : (({ audio: _a, ...sem }) => sem)(x);
+            }),
+          };
+        break;
+      case 'tirar-efeito':
+        if (p.screenEffects?.some((e) => e.id === c.efeitoId)) p = { ...p, screenEffects: p.screenEffects.filter((e) => e.id !== c.efeitoId) };
+        break;
       case 'duracao':
         if (p.overlays.some((o) => o.id === c.overlayId)) p = { ...p, overlays: p.overlays.map((o) => (o.id === c.overlayId ? { ...o, durationMs: Math.max(o.durationMs, c.durationMs) } : o)) };
         break;
       case 'ajuste': {
         const camada = (p.mediaLayers ?? []).find((m) => m.id === c.camadaId && m.composicao);
         if (!camada) break;
-        const atual: AjusteDaCena = ajusteDaComposicao(camada.composicao!) ?? { x: 0, y: 0, escala: 1 };
-        const novo: AjusteDaCena =
-          c.chave === 'cena' ? { ...atual, x: c.peca.x, y: c.peca.y, escala: c.peca.escala } : { ...atual, elementos: { ...(atual.elementos ?? {}), [c.chave]: c.peca } };
-        const composicao = comAjuste(camada.composicao!, lerAjuste(novo));
+        const composicao = composicaoComAjustes(camada.composicao!, [c]);
         p = { ...p, mediaLayers: (p.mediaLayers ?? []).map((m) => (m.id === c.camadaId ? { ...m, composicao } : m)) };
         break;
       }

@@ -13,6 +13,9 @@ import {
   resumoDaRevisao,
   revisarVideo,
   LETRA_MINIMA,
+  notaDaComposicao,
+  versaoMelhor,
+  candidatasDaComposicao,
 } from '../src';
 import type { EditPlanV1, MedidasDaRevisao, PalavraDaRevisao, PessoaNoQuadro } from '../src';
 
@@ -133,6 +136,42 @@ const lidas = lerRevisaoDaLegenda(
 t('a resposta da IA: corrige a grafia, recusa reescrever e id inventado', lidas.length === 1 && lidas[0]!.text === 'WhatsApp' && lidas[0]!.original === 'vuatsap');
 t('resposta ilegível: nada', lerRevisaoDaLegenda('não sei', palavras).length === 0);
 t('palavra curta com pouca certeza não vai para a IA', !revisarVideo(base, { palavras: [{ id: 'z', texto: 'não', inicioMs: 0, fimMs: 100, confianca: 0.2 }] }).some((a) => a.tipo === 'palavra-incerta'));
+
+// O áudio medido (LUFS): a trilha pelo que se ouve, não pelo número do plano.
+const comDucking = { ...base, music: { ...base.music!, gainDb: -14, duckUnderVoice: true } } as EditPlanV1;
+const alta = revisarVideo(comDucking, { palavras, audio: { voz: -24, musica: -9, trechos: {} } }).find((a) => a.id === 'audio|trilha-medida');
+t('medida: trilha masterizada sob fala baixa cobre a voz -> abaixa', alta?.tipo === 'trilha-alta' && (alta.correcao as { gainDb: number }).gainDb < -14);
+const certa = revisarVideo(comDucking, { palavras, audio: { voz: -15.5, musica: -16.2, trechos: {} } }).find((a) => a.id === 'audio|trilha-medida');
+t('medida: trilha ~27 dB abaixo da voz -> fica', !certa);
+const sumida = revisarVideo({ ...comDucking, music: { ...comDucking.music!, gainDb: -38 } } as EditPlanV1, { palavras, audio: { voz: -17.5, musica: -16.2, trechos: {} } }).find((a) => a.id === 'audio|trilha-medida');
+t('medida: trilha inaudível (-38 dB) sobe, mas com moderação (24 dB abaixo)', sumida?.tipo === 'trilha-baixa' && Math.abs((sumida.correcao as { gainDb: number }).gainDb - (-17.5 - 24 + 16.2 + 12)) < 0.6);
+const tresTrechos = { ...base, clips: ['a', 'b', 'c'].map((id, i) => ({ ...base.clips[0]!, id, sourceStartMs: i * 5000, sourceEndMs: i * 5000 + 5000, timelineStartMs: i * 5000 })) } as EditPlanV1;
+const desiguais = revisarVideo(tresTrechos, { palavras, audio: { voz: -16, musica: null, trechos: { a: -16, b: -16.5, c: -24 } } }).filter((a) => a.tipo === 'trecho-desigual');
+t('o trecho 8 dB mais baixo que os outros ganha volume; os iguais ficam', desiguais.length === 1 && desiguais[0]!.alvo === 'c');
+const igualado = aplicarCorrecoes(tresTrechos, desiguais).plano;
+t('o ganho entra só no trecho que destoava', igualado.clips.find((c) => c.id === 'c')!.audio?.gainDb === 7.5 && !igualado.clips.find((c) => c.id === 'a')!.audio);
+
+// O contorno de luz em volta da pessoa: sai sempre.
+const comContorno = { ...base, screenEffects: [{ id: 'e1', type: 'contorno_luz', timelineStartMs: 1000, durationMs: 3000, intensity: 0.8 }, { id: 'e2', type: 'vinheta', timelineStartMs: 5000, durationMs: 2000, intensity: 0.5 }] } as EditPlanV1;
+const semContorno = aplicarCorrecoes(comContorno, revisarVideo(comContorno, { palavras: [] })).plano;
+t('o contorno de luz sai; a vinheta fica', semContorno.screenEffects!.length === 1 && semContorno.screenEffects![0]!.type === 'vinheta');
+
+// A composição: a nota e a escolha da versão.
+const util = { x: 64, y: 1008, w: 856, h: 408 };
+const cenaMeia = { ...cena, layout: 'meio_a_meio' as const, lado: 'baixo' as const };
+const pequena: MedidasDaRevisao = { t: 1, pecas: [
+  { chave: 'cena', campo: '', pai: null, r: { x: 50, y: 1002, w: 884, h: 420 }, letra: 56, texto: '' },
+  { chave: 'mg-t.0', campo: 'titulo', pai: 'cena', r: { x: 100, y: 1100, w: 300, h: 60 }, rt: { x: 100, y: 1100, w: 300, h: 60 }, letra: 56, texto: 'VAI CULPAR' },
+] };
+const grande: MedidasDaRevisao = { t: 1, pecas: [pequena.pecas[0]!, { ...pequena.pecas[1]!, r: { x: 120, y: 1040, w: 700, h: 300 }, rt: { x: 120, y: 1040, w: 700, h: 300 } }] };
+const cortada: MedidasDaRevisao = { t: 1, pecas: [pequena.pecas[0]!, { ...pequena.pecas[1]!, r: { x: -60, y: 1040, w: 1200, h: 300 }, rt: { x: -60, y: 1040, w: 1200, h: 300 } }] };
+const n0 = notaDaComposicao(cenaMeia, pequena, null);
+const n1 = notaDaComposicao(cenaMeia, grande, null);
+const n2 = notaDaComposicao(cenaMeia, cortada, null);
+t('composição: informação pequena num painel grande ocupa pouco', n0.ocupacao < 0.1 && util.w > 0);
+t('composição: maior e dentro da área é melhor', versaoMelhor(n1, n0));
+t('composição: maior mas cortada na borda nunca ganha', !versaoMelhor(n2, n0) && n2.graves > n0.graves);
+t('composição: as candidatas incluem a cena maior para a informação pequena', candidatasDaComposicao('x', cenaMeia, pequena, [], null).some((c) => c.nome.startsWith('cena') || c.nome.startsWith('textos')));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

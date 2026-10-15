@@ -10,8 +10,9 @@
 // cada cena (o que um editor faz à mão):
 //
 //   - efeito de tela pela cena: flash na palavra grande, vinheta no número,
-//     fundo escuro atrás dos cards em volta, tremor na virada, contorno de
-//     luz nas linhas de perspectiva e no texto 3D;
+//     fundo escuro atrás dos cards e em volta da pessoa (nas linhas de perspectiva e
+//     no texto 3D também -- era o contorno de luz em volta dela, recusado nos vídeos),
+//     tremor na virada;
 //   - som pela cena: whoosh na entrada, ding no número, notificação na
 //     mensagem, digitação no comentário (a fala protegida);
 //   - abertura e fechamento pela energia (flash ou íris);
@@ -62,9 +63,9 @@ const EFEITO_DA_CENA: Record<string, { tipo: TipoDeEfeitoDeTela; k: number; trec
   mensagem: { tipo: 'fundo_escuro', k: 0.35, trecho: 'cena', precisaDeRosto: true },
   comentario: { tipo: 'fundo_escuro', k: 0.35, trecho: 'cena', precisaDeRosto: true },
   linha_do_tempo: { tipo: 'fundo_escuro', k: 0.35, trecho: 'cena', precisaDeRosto: true },
-  hud: { tipo: 'contorno_luz', k: 0.8, trecho: 'cena', precisaDeRosto: true },
-  profundidade: { tipo: 'contorno_luz', k: 0.8, trecho: 'cena', precisaDeRosto: true },
-  selecao: { tipo: 'contorno_luz', k: 0.7, trecho: 'cena', precisaDeRosto: true },
+  hud: { tipo: 'fundo_escuro', k: 0.4, trecho: 'cena', precisaDeRosto: true },
+  profundidade: { tipo: 'fundo_escuro', k: 0.4, trecho: 'cena', precisaDeRosto: true },
+  selecao: { tipo: 'fundo_escuro', k: 0.35, trecho: 'cena', precisaDeRosto: true },
   antes_depois: { tipo: 'tremor', k: 0.3, trecho: 'batida', energico: true },
   alerta: { tipo: 'tremor', k: 0.35, trecho: 'batida', energico: true },
   objeto: { tipo: 'vinheta', k: 0.35, trecho: 'cena' },

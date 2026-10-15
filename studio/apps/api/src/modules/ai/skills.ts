@@ -29,7 +29,8 @@ export const VERSAO_DA_SKILL = {
   'motion-graphics': 'motion-graphics-v3',
   // A revisão final do vídeo montado: o que um editor confere antes de
   // entregar e como corrige sem desfazer o trabalho (revisao.service.ts).
-  'revisao-final': 'revisao-final-v1',
+  // v2: a composição medida (versões testadas), o estilo × a fala, o áudio medido e o contorno.
+  'revisao-final': 'revisao-final-v2',
 } as const;
 
 export type NomeDeSkill = keyof typeof VERSAO_DA_SKILL;

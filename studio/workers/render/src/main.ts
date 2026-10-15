@@ -24,6 +24,8 @@ import {
   FILA_RENDER,
   JOB_DE_FOTOS,
   JOB_DE_PECAS,
+  JOB_DE_AUDIO,
+  type JobDeAudio,
   chaveDaAnimacao,
   camadasDaLegendaHyperFrames,
   legendaHyperFrames,
@@ -50,6 +52,7 @@ import {
 import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, JobDeConferencia, MarcaDoVideo } from '@makucho/studio-contracts';
 import { prepararAnimacao } from './animacoes';
 import { conferirAnimacao, fotografarAnimacao, medirPecasDaAnimacao } from './conferencia';
+import { medirAudio } from './loudness';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -675,6 +678,21 @@ workerDeAnimacoes.on('failed', (job, erro) => console.error(`[animacao] ${job?.i
 const workerDeConferencia = new Worker<JobDeConferencia, string[]>(
   FILA_CONFERENCIA_DE_LAYOUT,
   async (job) => {
+    // A revisão final também mede o som aqui: este worker tem o ffmpeg e o storage.
+    if (job.name === JOB_DE_AUDIO) {
+      const d = job.data as unknown as JobDeAudio;
+      const original = await prisma.mediaSource.findFirst({ where: { projectId: d.projectId, kind: 'ORIGINAL' }, orderBy: { createdAt: 'desc' }, select: { storageKey: true } });
+      const musica = d.musicaAssetId ? await prisma.asset.findFirst({ where: { id: d.musicaAssetId }, select: { storageKey: true } }) : null;
+      const caminho = (chave?: string | null) => {
+        try {
+          const c = chave ? caminhoDe(chave) : null;
+          return c && existsSync(c) ? c : null;
+        } catch {
+          return null;
+        }
+      };
+      return [JSON.stringify(await medirAudio(caminho(original?.storageKey), d.trechos ?? [], caminho(musica?.storageKey)))];
+    }
     const composicao = composicaoHtmlSchema.parse(job.data.composicao);
     // O mesmo Chrome serve à crítica: fotos dos quadros no lugar das medidas.
     if (job.name === JOB_DE_FOTOS) return fotografarAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });

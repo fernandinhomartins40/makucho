@@ -48,7 +48,7 @@ t('abertura com flash', efeitos.some((e) => e.type === 'flash' && e.timelineStar
 t('flash na batida da palavra grande', efeitos.some((e) => e.type === 'flash' && Math.abs(e.timelineStartMs - 2120) < 5));
 t('vinheta durante o número gigante', tipoEm(10_000).includes('vinheta'));
 t('fundo escuro atrás dos cards em volta', tipoEm(16_000).includes('fundo_escuro'));
-t('contorno de luz nas linhas de perspectiva', tipoEm(22_000).includes('contorno_luz'));
+t('linhas de perspectiva: fundo escuro em volta da pessoa, sem o contorno de luz (recusado)', tipoEm(22_000).includes('fundo_escuro') && !tipoEm(22_000).includes('contorno_luz'));
 t('tela cheia esconde o vídeo: sem efeito nela', tipoEm(27_000).length === 0);
 t('transições: uma sim, uma não', r.plan.transitions.filter((x) => x.type !== 'cut').length === 3);
 t('zoom alternado nos trechos à mostra', r.plan.clips.filter((c) => c.effect === 'punch_in').length >= 2);
