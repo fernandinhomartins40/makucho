@@ -37,6 +37,8 @@ export function PedirAIa({
   exemplos = EXEMPLOS,
   foco = null,
   onTirarFoco,
+  pedido,
+  onPedidoFeito,
 }: {
   onEnviar: Envio;
   titulo?: string;
@@ -48,6 +50,9 @@ export function PedirAIa({
   /** O item da timeline que é o assunto do pedido (chip acima do campo). */
   foco?: FocoDaIa | null;
   onTirarFoco?: () => void;
+  /** Um pedido que vem de fora (o "Revisar o vídeo" do menu): é enviado assim que chega. */
+  pedido?: string | null;
+  onPedidoFeito?: () => void;
 }) {
   const campoRef = useRef<HTMLInputElement>(null);
   // Chegou um item como assunto: o campo já fica pronto para escrever.
@@ -78,6 +83,14 @@ export function PedirAIa({
       setEnviando(false);
     }
   };
+
+  // O pedido de fora entra como se a pessoa tivesse escrito e enviado.
+  useEffect(() => {
+    if (!pedido || enviando) return;
+    onPedidoFeito?.();
+    void enviar(pedido);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido]);
 
   return (
     <div className="pedir-ia">

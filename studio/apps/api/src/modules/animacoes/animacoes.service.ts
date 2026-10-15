@@ -18,6 +18,7 @@ import {
   problemasDaComposicao,
   type ComposicaoHtml,
   type EstadoDaAnimacao,
+  type MedidasDaRevisao,
 } from '@makucho/studio-contracts';
 import { FilaService } from '../../common/fila.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -75,6 +76,15 @@ export class AnimacoesService {
   async fotografar(c: ComposicaoHtml, duracaoMs: number): Promise<string[] | null> {
     if (process.env.STUDIO_CRITICAR_ANIMACOES === 'off') return null;
     return this.filas.fotografar({ composicao: c, duracaoMs });
+  }
+
+  /**
+   * As peças da animação no instante de descanso (caixa, texto, altura da
+   * letra), medidas no Chrome do worker, para a revisão final. `null` = não deu.
+   */
+  async medirPecas(c: ComposicaoHtml, duracaoMs: number): Promise<MedidasDaRevisao | null> {
+    if (process.env.STUDIO_CONFERIR_LAYOUT === 'off') return null;
+    return this.filas.medirPecas({ composicao: c, duracaoMs });
   }
 
   async problemas(c: ComposicaoHtml, duracaoMs: number): Promise<string[]> {

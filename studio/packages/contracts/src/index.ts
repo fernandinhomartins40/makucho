@@ -45,6 +45,7 @@ export * from './animacao-html';
 export * from './estilos-de-animacao';
 export * from './grade-dos-layouts';
 export * from './conferencia-de-layout';
+export * from './revisao-final';
 export * from './tema-da-animacao';
 export * from './catalogo-de-componentes';
 export * from './legendas-hyperframes-catalogo';

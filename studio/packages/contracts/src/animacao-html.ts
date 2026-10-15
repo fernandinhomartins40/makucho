@@ -221,6 +221,47 @@ const MONTAR_COMPONENTES = `(function () {
 })();`;
 
 /**
+ * O instante de DESCANSO de uma animação: as entradas acabaram e nenhuma
+ * saída começou. É nele que a pessoa posiciona as peças no editor e que a
+ * revisão final as mede (o worker roda o mesmo texto no Chrome).
+ *
+ * O ajuste gravado vale para a
+ * animação toda, e posicionar no meio de uma entrada (a peça ainda
+ * subindo, ainda pequena) deixava a peça longe de onde foi solta.
+ * Saída = o que ESCONDE algo (to com autoAlpha/opacity 0) na segunda metade;
+ * o resto é entrada, mesmo tarde: a resposta que entra aos 3s de 5 também
+ * tem de estar na tela para ser editada (antes ela contava como saída, e o
+ * descanso caía antes dela -- a peça aparecia no vídeo e não no editor).
+ * Laços infinitos (pulsar, girar) não contam.
+ */
+export const REPOUSO_DA_ANIMACAO = `function (tl) {
+  var hfEsconde = function (f) {
+    var v = f.vars;
+    if (!v || v.startAt || v.runBackwards || typeof f.targets !== 'function') return false;
+    return v.autoAlpha === 0 || v.opacity === 0 || v.display === 'none';
+  };
+  var repouso = function () {
+    var dur = tl.duration();
+    if (!(dur > 0)) return 0;
+    var fimDasEntradas = 0, inicioDasSaidas = dur;
+    var filhos = tl.getChildren(false, true, true);
+    for (var i = 0; i < filhos.length; i++) {
+      var f = filhos[i];
+      if (f.repeat && f.repeat() < 0) continue;
+      var de = f.startTime(), ate = f.endTime();
+      // Movimento de fundo que dura quase a animação toda (zoom lento, deriva): nem entrada nem saída.
+      if (ate - de > dur * 0.6) continue;
+      if (de >= dur * 0.5 && hfEsconde(f)) inicioDasSaidas = Math.min(inicioDasSaidas, de);
+      else fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
+    }
+    var t = Math.min(fimDasEntradas + 0.05, inicioDasSaidas - 0.05);
+    if (!(t > 0)) t = dur * 0.6;
+    return Math.max(0, Math.min(dur - 0.05, t));
+  };
+  return repouso();
+}`;
+
+/**
  * As peças que o editor no palco pode mover, além das que o modelo da cena
  * marcou (data-ed): cada componente do catálogo inteiro, o que entra animado
  * (data-in) e as figuras (svg) fora dos textos, e -- numa animação livre, sem
@@ -466,38 +507,8 @@ export function documentoDaComposicao(original: ComposicaoHtml, o: OpcoesDoDocum
     if (typeof d.hfT === 'number' || typeof d.hfCss === 'string' || d.hfEditar !== undefined) hfRelatar();
     if (d.hfQualRepouso) window.parent.postMessage({ hfRepouso: hfRepouso() }, '*');
   });
-  // O instante de DESCANSO: as entradas acabaram e nenhuma saída começou.
-  // É nele que a pessoa posiciona as peças -- o ajuste gravado vale para a
-  // animação toda, e posicionar no meio de uma entrada (a peça ainda
-  // subindo, ainda pequena) deixava a peça longe de onde foi solta.
-  // Saída = o que ESCONDE algo (to com autoAlpha/opacity 0) na segunda metade;
-  // o resto é entrada, mesmo tarde: a resposta que entra aos 3s de 5 também
-  // tem de estar na tela para ser editada (antes ela contava como saída, e o
-  // descanso caía antes dela -- a peça aparecia no vídeo e não no editor).
-  // Laços infinitos (pulsar, girar) não contam.
-  var hfEsconde = function (f) {
-    var v = f.vars;
-    if (!v || v.startAt || v.runBackwards || typeof f.targets !== 'function') return false;
-    return v.autoAlpha === 0 || v.opacity === 0 || v.display === 'none';
-  };
-  var hfRepouso = function () {
-    var dur = tl.duration();
-    if (!(dur > 0)) return 0;
-    var fimDasEntradas = 0, inicioDasSaidas = dur;
-    var filhos = tl.getChildren(false, true, true);
-    for (var i = 0; i < filhos.length; i++) {
-      var f = filhos[i];
-      if (f.repeat && f.repeat() < 0) continue;
-      var de = f.startTime(), ate = f.endTime();
-      // Movimento de fundo que dura quase a animação toda (zoom lento, deriva): nem entrada nem saída.
-      if (ate - de > dur * 0.6) continue;
-      if (de >= dur * 0.5 && hfEsconde(f)) inicioDasSaidas = Math.min(inicioDasSaidas, de);
-      else fimDasEntradas = Math.max(fimDasEntradas, Math.min(ate, dur));
-    }
-    var t = Math.min(fimDasEntradas + 0.05, inicioDasSaidas - 0.05);
-    if (!(t > 0)) t = dur * 0.6;
-    return Math.max(0, Math.min(dur - 0.05, t));
-  };
+  // O instante de DESCANSO (REPOUSO_DA_ANIMACAO): onde a pessoa posiciona as peças.
+  var hfRepouso = function () { return (${REPOUSO_DA_ANIMACAO})(tl); };
   window.parent.postMessage({ hfRepouso: hfRepouso() }, '*');
   tl.seek(0, false);`
     : '';

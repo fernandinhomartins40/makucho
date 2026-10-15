@@ -835,11 +835,20 @@ export class AnimacoesDaFalaService {
   }
 
   /**
+   * Garante a olhada no vídeo enviado (onde está a pessoa em cada cena):
+   * medida local, sem token, guardada por seis horas. A revisão final chama
+   * antes de `pessoaNoTrecho` -- depois de um reinício da API ela não existe.
+   */
+  async carregarOlhar(workspaceId: string, projectId: string): Promise<void> {
+    await this.olharOVideo(workspaceId, projectId);
+  }
+
+  /**
    * A pessoa medida no segundo `s` do vídeo final: a do quadro guardado da
    * cena de origem daquele trecho. `null` sem medida (as cenas ficam no
    * lugar padrão). Lê o que `olharOVideo` já guardou.
    */
-  private pessoaNoTrecho(projectId: string, plano: EditPlanV1, s: number): PessoaNoQuadro | null {
+  pessoaNoTrecho(projectId: string, plano: EditPlanV1, s: number): PessoaNoQuadro | null {
     const olhar = this.olhares.get(projectId)?.olhar;
     if (!olhar) return null;
     const ms = s * 1000;

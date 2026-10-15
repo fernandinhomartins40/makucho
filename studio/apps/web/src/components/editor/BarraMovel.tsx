@@ -50,7 +50,7 @@ import {
 export type AcaoMovel =
   | 'imagens' | 'enfeites' | 'filtros' | 'estilos' | 'formato' | 'marca'
   | 'dividir' | 'cortar' | 'duplicar' | 'velocidade' | 'som' | 'cor' | 'preencher' | 'excluir' | 'ajustes'
-  | 'musica' | 'sons' | 'narrar' | 'silenciar' | 'silencios'
+  | 'musica' | 'sons' | 'narrar' | 'silenciar' | 'silencios' | 'revisar'
   | 'novo-texto' | 'modelos-texto'
   | 'legenda-estilo' | 'legenda-corrigir' | 'nova-legenda' | 'legenda-onoff'
   | 'efeitos' | 'transicoes' | 'animacoes';

@@ -21,6 +21,11 @@ import {
   REGRAS_DA_ANIMACAO_HTML,
   composicaoHtmlSchema,
   problemasDaComposicao,
+  ajusteDaComposicao,
+  comAjuste,
+  lerAjuste,
+  retanguloDaCabeca,
+  revisarVideo,
   CLIMAS_DE_MUSICA,
   CREDITO_DO_EMOJI_ANIMADO,
   ESTILOS_DA_IMAGEM_POR_IA,
@@ -78,6 +83,8 @@ import { PrismaService } from '../../common/prisma.service';
 import type { TenantContext } from '../../common/tenant';
 import { BancoDeMidiaService } from '../banco-de-midia/banco-de-midia.service';
 import { AnimacoesService } from '../animacoes/animacoes.service';
+import { RevisaoService } from './revisao.service';
+import { skill } from './skills';
 import { AnimacoesDaFalaService, estiloDoPlano, listaDeEstilos, listaDePaletas, modoDasAnimacoes, perfilParaMotion, type LayoutDaAnimacao } from './animacoes-da-fala.service';
 import { EditPlansService } from '../edit-plans/edit-plans.service';
 import { AcabamentoService } from './acabamento.service';
@@ -192,6 +199,7 @@ export class AgenteService {
     private readonly banco: BancoDeMidiaService,
     @Optional() private readonly animacoes?: AnimacoesService,
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
+    @Optional() private readonly revisao?: RevisaoService,
   ) {}
 
   /** Os passos do pedido em andamento (ou do último) e o resultado, para a tela. */
@@ -1121,6 +1129,71 @@ ${textoDosIcones()}`,
         },
       },
 
+      medir_animacao: {
+        rotulo: 'Medindo a animação',
+        descricao:
+          'Mede uma animação do vídeo no instante em que ela está parada na tela (no Chrome, como no vídeo final): cada peça com a caixa em px no quadro de 1080x1920, o texto, a altura da letra e a peça que a contém; e os problemas que a revisão vê nela (texto pequeno, sobre o rosto, fora do quadro, texto sobre texto). Use antes e depois de ajustar_peca_da_animacao.',
+        parametros: objeto({ id: { type: 'string' } }, ['id']),
+        executar: async (c, a) => {
+          const m = (c.plano.mediaLayers ?? []).find((x) => x.id === String(a.id) && x.kind === 'html');
+          if (!m?.composicao) return { erro: 'animação não encontrada' };
+          const medidas = await this.animacoes?.medirPecas(m.composicao, m.durationMs);
+          if (!medidas) return { erro: 'não deu para medir agora (o worker não respondeu)' };
+          const pessoa = this.animacoesDaFala?.pessoaNoTrecho(c.projectId, c.plano, m.timelineStartMs / 1000) ?? null;
+          const so = { ...c.plano, mediaLayers: [m] };
+          const problemas = revisarVideo(so, { palavras: [], medidas: { [m.id]: medidas }, pessoa: { [m.id]: pessoa } })
+            .filter((x) => x.alvo === m.id)
+            .map((x) => x.mensagem);
+          return {
+            descansoS: medidas.t,
+            layout: m.composicao.layout,
+            rosto: pessoa ? retanguloDaCabeca(pessoa) : null,
+            pecas: medidas.pecas.map((p) => ({
+              peca: p.chave,
+              dentroDe: p.pai,
+              campo: p.campo || undefined,
+              texto: p.texto || undefined,
+              caixa: { x: Math.round(p.r.x), y: Math.round(p.r.y), w: Math.round(p.r.w), h: Math.round(p.r.h) },
+              letraPx: p.letra === null ? undefined : Math.round(p.letra),
+            })),
+            problemas,
+          };
+        },
+      },
+
+      ajustar_peca_da_animacao: {
+        rotulo: 'Ajustando uma peça da animação',
+        descricao:
+          'Move e/ou redimensiona UMA peça de uma animação (ou a animação inteira, peca="cena"), como a pessoa faz arrastando no palco: dx/dy em px no quadro de 1080x1920 (somam ao que já está), escala multiplica o tamanho atual (1.2 = 20% maior). As peças e caixas vêm de medir_animacao. Não muda texto, tempo nem desenho.',
+        parametros: objeto(
+          { id: { type: 'string' }, peca: { type: 'string' }, dx: { type: 'number' }, dy: { type: 'number' }, escala: { type: 'number' } },
+          ['id', 'peca'],
+        ),
+        executar: async (c, a) => {
+          const m = (c.plano.mediaLayers ?? []).find((x) => x.id === String(a.id) && x.kind === 'html');
+          if (!m?.composicao) return { erro: 'animação não encontrada' };
+          const chave = String(a.peca);
+          if (chave !== 'cena' && !/^[a-z0-9-]{1,24}\.\d{1,2}$/.test(chave)) return { erro: 'peça inválida: use a "peca" que medir_animacao devolve' };
+          const ajuste = ajusteDaComposicao(m.composicao) ?? { x: 0, y: 0, escala: 1 };
+          const atual = chave === 'cena' ? { x: ajuste.x, y: ajuste.y, escala: ajuste.escala } : (ajuste.elementos?.[chave] ?? { x: 0, y: 0, escala: 1 });
+          const num = (v: unknown, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? v : padrao);
+          const peca = {
+            ...atual,
+            x: Math.round(atual.x + num(a.dx, 0)),
+            y: Math.round(atual.y + num(a.dy, 0)),
+            escala: Math.round(Math.max(0.3, Math.min(4, atual.escala * num(a.escala, 1))) * 100) / 100,
+          };
+          const novo = chave === 'cena' ? { ...ajuste, x: peca.x, y: peca.y, escala: peca.escala } : { ...ajuste, elementos: { ...(ajuste.elementos ?? {}), [chave]: peca } };
+          const composicao = comAjuste(m.composicao, lerAjuste(novo));
+          const res = aplicarComando(c.plano, [{ op: 'editar_midia', mediaId: m.id, composicao }], { biblioteca: c.biblioteca });
+          c.plano = res.plan;
+          if (res.aplicadas) c.mudancas += 1;
+          // O vídeo da animação que a exportação usa é refeito com o ajuste novo.
+          void this.animacoes?.preparar(c.tenant, c.projectId, composicao, m.durationMs).catch(() => undefined);
+          return { ok: res.aplicadas > 0, peca: chave, ajuste: peca, ignoradas: res.ignoradas };
+        },
+      },
+
       criar_cena_animada: {
         rotulo: 'Criando uma animação',
         descricao: `Cria uma CENA ANIMADA ("motion UI": cartões escuros, botões, ondas de áudio, barras e seletores que se montam no ritmo da fala) e põe no vídeo. Use para EXPLICAR o que é dito: termo técnico, lista, comparação, número, passo a passo, antes/depois, chamada final. layout: meio_a_meio (painel com a animação em cima e o vídeo com o rosto embaixo -- o melhor para explicar), cartao (cartão pequeno por cima do vídeo, SEM cobrir o rosto: y 0.08-0.15, largura 0.5-0.62), tela_cheia (só a animação; no máximo 1-2 por vídeo). TEMPOS: emMs de cada bloco = (instante da palavra no vídeo - inicioS) * 1000 -- leia antes com ler_fala palavras=true e faça cada coisa entrar quando é dita. Cenas seguidas continuam uma a outra (repita os blocos que ficam com entrada "nenhuma"). Textos curtos e fiéis à fala; um detalhe por vez. Se a cena vier inválida, a resposta diz o que corrigir. Blocos:\n${CATALOGO_DE_BLOCOS_DA_CENA}`,
@@ -1268,6 +1341,27 @@ ${textoDosIcones()}`,
       },
 
       // ---------- Conferir ----------
+      revisar_video: {
+        rotulo: 'Revisando o vídeo como um editor',
+        descricao:
+          'A revisão final do vídeo inteiro, como um editor faria antes de entregar: mede cada animação no Chrome (peças pequenas, sobre o rosto, fora do quadro, texto sobre texto), confere a legenda (palavras que a transcrição ouviu com pouca certeza, blocos longos, gagueira), a trilha e os sons sobre a fala e o tempo de leitura dos textos. Corrige SOZINHA o que é objetivo e devolve o que pede julgamento, com o que foi medido e como resolver. Use quando pedirem para revisar, conferir, finalizar ou "deixar impecável", e depois resolva cada pendente com as outras ferramentas.',
+        parametros: objeto(),
+        executar: async (c) => {
+          if (!this.revisao) return { erro: 'a revisão não está disponível neste servidor' };
+          const r = await this.revisao.revisar(c.tenant, c.projectId, c.plano);
+          if (r.plano !== c.plano) {
+            c.plano = r.plano;
+            c.mudancas += Math.max(1, r.feitos.length);
+            this.revisao.prepararAnimacoes(c.tenant, c.projectId, r.plano, r.animacoesMudadas);
+          }
+          return {
+            corrigido: r.feitos,
+            paraResolver: r.pendentes.map((a) => ({ tipo: a.tipo, alvo: a.alvo, inicioS: Math.round(a.inicioMs / 100) / 10, problema: a.mensagem })),
+            comoResolver: r.pendentes.length ? skill('revisao-final').texto : undefined,
+          };
+        },
+      },
+
       conferir_plano: {
         rotulo: 'Conferindo o resultado',
         descricao: 'Confere o vídeo como está agora: duração, trechos, se termina concluindo o assunto, e contagem de textos, mídias, efeitos e sons.',

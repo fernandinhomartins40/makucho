@@ -19,11 +19,13 @@ import {
   COR_DO_VIDEO_NAS_FOTOS,
   INSTANTES_DA_CONFERENCIA,
   INSTANTES_DAS_FOTOS,
+  REPOUSO_DA_ANIMACAO,
   documentoDaComposicao,
   fontesDoDocumento,
   problemasDeLayout,
   type JobDeConferencia,
   type MedidasDaAnimacao,
+  type MedidasDaRevisao,
 } from '@makucho/studio-contracts';
 
 interface Pagina {
@@ -130,6 +132,68 @@ export async function conferirAnimacao(job: JobDeConferencia, opcoes: { pastaDeF
       medidas.push({ t, textos });
     }
     return problemasDeLayout(job.composicao, medidas);
+  });
+}
+
+/**
+ * Roda NA PÁGINA: leva a linha do tempo ao instante de descanso (o mesmo do
+ * editor) e mede cada peça (data-ed) visível -- a caixa, a peça que a
+ * contém, o campo de texto e a altura da MENOR linha de texto dentro dela
+ * (pelos retângulos das linhas, não pelo bloco). "cena" é a raiz .mg.
+ */
+export const MEDIR_PECAS = `function (duracao) {
+  var tl = window.__timelines && window.__timelines.cena;
+  // A linha do tempo pode ir além do que a animação dura no vídeo: o descanso fica dentro dela.
+  var t = tl ? Math.min((${REPOUSO_DA_ANIMACAO})(tl), Math.max(0, duracao - 0.4)) : 0;
+  if (tl) tl.seek(t, false);
+  var area = document.getElementById('area');
+  var pecas = [];
+  if (!area) return { t: t, pecas: pecas };
+  function visivel(el) {
+    var o = 1;
+    for (var e = el; e && e !== document.body; e = e.parentElement) {
+      var cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return 0;
+      o *= parseFloat(cs.opacity || '1');
+    }
+    return o;
+  }
+  function medir(el, chave, pai) {
+    var r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || visivel(el) < 0.3) return;
+    var letra = null, textos = [], tx0 = Infinity, ty0 = Infinity, tx1 = -Infinity, ty1 = -Infinity;
+    var andar = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (var n = andar.nextNode(); n; n = andar.nextNode()) {
+      var tx = (n.textContent || '').trim();
+      if (!tx || !n.parentElement || visivel(n.parentElement) < 0.3) continue;
+      textos.push(tx);
+      var rg = document.createRange();
+      rg.selectNodeContents(n);
+      Array.prototype.forEach.call(rg.getClientRects(), function (lr) {
+        if (lr.width < 2 || lr.height < 2) return;
+        letra = letra === null ? lr.height : Math.min(letra, lr.height);
+        tx0 = Math.min(tx0, lr.left); ty0 = Math.min(ty0, lr.top); tx1 = Math.max(tx1, lr.right); ty1 = Math.max(ty1, lr.bottom);
+      });
+    }
+    pecas.push({ chave: chave, campo: el.getAttribute('data-campo') || '', pai: pai, r: { x: r.left, y: r.top, w: r.width, h: r.height }, rt: tx1 > tx0 ? { x: tx0, y: ty0, w: tx1 - tx0, h: ty1 - ty0 } : null, letra: letra, texto: textos.join(' ').slice(0, 60) });
+  }
+  var raiz = area.querySelector('.mg');
+  if (raiz) medir(raiz, 'cena', null);
+  area.querySelectorAll('[data-ed]').forEach(function (el) {
+    var acima = el.parentElement && el.parentElement.closest('[data-ed]');
+    medir(el, el.getAttribute('data-ed'), acima ? acima.getAttribute('data-ed') : raiz ? 'cena' : null);
+  });
+  return { t: t, pecas: pecas };
+}`;
+
+/**
+ * As peças da animação no instante de descanso, para a revisão final.
+ * Volta como JSON num texto (a fila do Chrome devolve uma lista de textos).
+ */
+export async function medirPecasDaAnimacao(job: JobDeConferencia, opcoes: { pastaDeFontes: string }): Promise<string[]> {
+  return comAPagina(job, opcoes, 1, async (pagina) => {
+    const medidas = (await pagina.evaluate(`(${MEDIR_PECAS})(${job.duracaoMs / 1000})`)) as MedidasDaRevisao;
+    return [JSON.stringify(medidas)];
   });
 }
 

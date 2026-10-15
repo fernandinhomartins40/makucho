@@ -52,7 +52,9 @@ const FAIXAS: Record<string, { de: number; ate: number; etapa: ProgressoDoPrepar
   // progresso publicado ('animando') que a revela.
   ANIMANDO: { de: 88, ate: 95, etapa: 'animando' },
   // A direção do vídeo inteiro, depois das animações: anda pelo tempo.
-  DIRIGINDO: { de: 95, ate: 99, etapa: 'dirigindo' },
+  DIRIGINDO: { de: 95, ate: 98, etapa: 'dirigindo' },
+  // A revisão final (o olhar do editor antes de entregar): anda pelo tempo e pelo progresso.
+  REVISANDO: { de: 98, ate: 99.5, etapa: 'revisando' },
 };
 
 const ETAPAS = [
@@ -62,6 +64,7 @@ const ETAPAS = [
   { chave: 'ANALYZING', titulo: 'Montando o vídeo', texto: 'A IA entende o conteúdo e escolhe os cortes que este vídeo pede.' },
   { chave: 'ANIMANDO', titulo: 'Criando as animações', texto: 'A IA analisa o vídeo, cria um design para ele e desenha as cenas no ritmo das palavras.' },
   { chave: 'DIRIGINDO', titulo: 'Dirigindo o vídeo', texto: 'Legenda, textos, imagens, cor e som decididos para este conteúdo.' },
+  { chave: 'REVISANDO', titulo: 'Revisando antes de entregar', texto: 'O olhar de um editor: animações, rosto, legenda e som conferidos e corrigidos.' },
 ];
 
 const MENSAGENS: Record<string, string[]> = {
@@ -88,6 +91,13 @@ const MENSAGENS: Record<string, string[]> = {
     'Tirando o que está sobrando…',
     'Conferindo o resultado antes de entregar…',
   ],
+  REVISANDO: [
+    'Medindo cada animação no quadro…',
+    'Conferindo se nada cobre o rosto…',
+    'Aumentando o que ficou pequeno para o celular…',
+    'Conferindo as palavras da legenda…',
+    'Equilibrando a trilha com a sua voz…',
+  ],
 };
 
 /** O que o vídeo vai ganhar -- acende conforme o preparo avança. */
@@ -102,7 +112,7 @@ const GANHOS = [
 
 export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUrl, duracaoDaGravacaoMs, comemorando }: Props) {
   // O fim da montagem (as animações) aparece como etapa própria.
-  const estado = estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'animando' ? 'ANIMANDO' : estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'dirigindo' ? 'DIRIGINDO' : estadoDoProjeto;
+  const estado = estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'animando' ? 'ANIMANDO' : estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'dirigindo' ? 'DIRIGINDO' : estadoDoProjeto === 'ANALYZING' && progresso?.etapa === 'revisando' ? 'REVISANDO' : estadoDoProjeto;
   const faixa = FAIXAS[estado];
 
   // ---------- Progresso geral ----------
@@ -117,6 +127,10 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
   useEffect(() => {
     if (estado === 'DIRIGINDO' && inicioDaDirecao === null) setInicioDaDirecao(Date.now());
   }, [estado, inicioDaDirecao]);
+  const [inicioDaRevisao, setInicioDaRevisao] = useState<number | null>(null);
+  useEffect(() => {
+    if (estado === 'REVISANDO' && inicioDaRevisao === null) setInicioDaRevisao(Date.now());
+  }, [estado, inicioDaRevisao]);
   useEffect(() => {
     const id = setInterval(() => setAgora(Date.now()), 500);
     return () => clearInterval(id);
@@ -130,6 +144,8 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
         ? Math.min(92, ((agora - (inicioDaMontagem ?? agora)) / 1000) * 5)
         : estado === 'DIRIGINDO'
           ? Math.min(95, ((agora - (inicioDaDirecao ?? agora)) / 1000) * 0.35)
+          : estado === 'REVISANDO'
+            ? Math.min(95, Math.max(progresso?.etapa === 'revisando' ? progresso.pct : 0, ((agora - (inicioDaRevisao ?? agora)) / 1000) * 0.6))
           : progresso?.etapa === faixa.etapa
           ? progresso.pct
           : 0;
@@ -172,7 +188,7 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
     };
   }, [geral, comemorando]);
 
-  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'ANIMANDO', 'DIRIGINDO'];
+  const ordem = ['recebido', 'INGESTING', 'TRANSCRIBING', 'ANALYZING', 'ANIMANDO', 'DIRIGINDO', 'REVISANDO'];
   const atual = comemorando ? ordem.length : Math.max(1, ordem.indexOf(estado));
 
   const titulo = comemorando
@@ -185,7 +201,9 @@ export function PreparoDoVideo({ estado: estadoDoProjeto, progresso, miniaturaUr
           ? 'A IA está animando seu vídeo'
           : estado === 'DIRIGINDO'
             ? 'A IA está dirigindo seu vídeo'
-            : 'Recebemos seu vídeo';
+            : estado === 'REVISANDO'
+              ? 'A IA está revisando seu vídeo'
+              : 'Recebemos seu vídeo';
 
   const subtitulo = comemorando
     ? 'Abrindo a edição…'

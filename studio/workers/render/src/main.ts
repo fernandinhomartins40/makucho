@@ -23,6 +23,7 @@ import {
   FILA_CONFERENCIA_DE_LAYOUT,
   FILA_RENDER,
   JOB_DE_FOTOS,
+  JOB_DE_PECAS,
   chaveDaAnimacao,
   camadasDaLegendaHyperFrames,
   legendaHyperFrames,
@@ -48,7 +49,7 @@ import {
 } from '@makucho/studio-contracts';
 import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, JobDeConferencia, MarcaDoVideo } from '@makucho/studio-contracts';
 import { prepararAnimacao } from './animacoes';
-import { conferirAnimacao, fotografarAnimacao } from './conferencia';
+import { conferirAnimacao, fotografarAnimacao, medirPecasDaAnimacao } from './conferencia';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
@@ -677,6 +678,8 @@ const workerDeConferencia = new Worker<JobDeConferencia, string[]>(
     const composicao = composicaoHtmlSchema.parse(job.data.composicao);
     // O mesmo Chrome serve à crítica: fotos dos quadros no lugar das medidas.
     if (job.name === JOB_DE_FOTOS) return fotografarAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
+    // E à revisão final: as peças medidas no instante de descanso.
+    if (job.name === JOB_DE_PECAS) return medirPecasDaAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
     return conferirAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
   },
   { connection: redis, prefix: PREFIXO_DAS_FILAS, concurrency: 1 },

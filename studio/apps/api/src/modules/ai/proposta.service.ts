@@ -30,6 +30,7 @@ import { MidiasService } from './midias.service';
 import { AgenteService } from './agente.service';
 import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { AnaliseService } from './analise.service';
+import { RevisaoService } from './revisao.service';
 
 export interface ResultadoDaProposta {
   ok: boolean;
@@ -81,6 +82,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     private readonly midias: MidiasService,
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
     @Optional() private readonly agente?: AgenteService,
+    @Optional() private readonly revisao?: RevisaoService,
   ) {}
 
   onModuleInit() {
@@ -320,6 +322,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
         // Só na montagem automática: no "Refazer a análise" a pessoa já está
         // no editor, e a direção salvaria por cima do que ela mexeu.
         await this.dirigirNaMontagem(sistema, projectId);
+        await this.revisarNaMontagem(sistema, projectId);
         await this.filas.publicarProgresso(projectId, 'montando', 100).catch(() => undefined);
         await this.ativar(projectId);
       }
@@ -343,6 +346,40 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
       this.log.log(`direção do projeto ${projectId}: ${r.aplicadas} mudança(s), US$ ${(r.custoCentavos / 100).toFixed(3)} -- ${r.resposta.slice(0, 200)}`);
     } catch (e) {
       this.log.warn(`direção do projeto ${projectId} não rodou: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  /**
+   * A revisão final, depois da direção: o que um editor confere antes de
+   * entregar (animação sobre o rosto ou pequena demais, texto sobre texto,
+   * legenda com palavra errada, trilha cobrindo a fala...). O objetivo se
+   * corrige sem IA; o que pede julgamento vai para o agente com a skill do
+   * revisor. Nunca derruba a montagem. Desliga com STUDIO_REVISAR_NA_MONTAGEM=off.
+   */
+  private async revisarNaMontagem(sistema: TenantContext, projectId: string): Promise<void> {
+    if (!this.revisao || process.env.STUDIO_REVISAR_NA_MONTAGEM === 'off') return;
+    await this.filas.publicarProgresso(projectId, 'revisando', 0).catch(() => undefined);
+    try {
+      const atual = await this.planos.atual(sistema, projectId);
+      const r = await this.revisao.revisar(sistema, projectId, atual.document as EditPlanV1);
+      if (r.plano !== atual.document) {
+        await this.planos.salvar(sistema, projectId, r.plano, 'ai');
+        this.revisao.prepararAnimacoes(sistema, projectId, r.plano, r.animacoesMudadas);
+      }
+      await this.filas.publicarProgresso(projectId, 'revisando', 40).catch(() => undefined);
+      let resposta = '';
+      if (r.pendentes.length && this.agente) {
+        const a = await this.agente.executar(sistema, projectId, this.revisao.pedidoDoRevisor(r.feitos, r.pendentes), undefined, undefined, {
+          maxPassos: 14,
+          // O revisor conserta; não remonta, não troca o tipo do vídeo, não recomeça e não revisa de novo.
+          sem: ['remontar_video', 'definir_tipo_do_video', 'desfazer_tudo', 'revisar_video', 'criar_animacao', 'criar_cena_animada'],
+          prazoMs: 4 * 60_000,
+        });
+        resposta = a.resposta;
+      }
+      this.log.log(`revisão do projeto ${projectId}: ${r.feitos.length} corrigido(s) sem IA, ${r.pendentes.length} para o revisor -- ${[...r.feitos, resposta].filter(Boolean).join(' | ').slice(0, 600)}`);
+    } catch (e) {
+      this.log.warn(`revisão do projeto ${projectId} não rodou: ${e instanceof Error ? e.message : e}`);
     }
   }
 

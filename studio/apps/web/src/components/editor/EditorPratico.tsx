@@ -214,6 +214,7 @@ export function EditorPratico({
       { id: 'legenda', rotulo: 'Legenda', Icone: IconeLegenda, fazer: escolher('nova-legenda') },
     ],
     mais: [
+      ...(onPedirIa ? [{ id: 'revisar', rotulo: 'Revisar o vídeo', Icone: IconeIA, fazer: escolher('revisar') }] : []),
       { id: 'legenda-estilo', rotulo: 'Estilo da legenda', Icone: IconeLegenda, fazer: escolher('legenda-estilo') },
       { id: 'legenda-corrigir', rotulo: 'Corrigir a legenda', Icone: IconeRenomear, fazer: escolher('legenda-corrigir') },
       { id: 'legenda-onoff', rotulo: legendasLigadas ? 'Esconder a legenda' : 'Mostrar a legenda', Icone: legendasLigadas ? IconeOlhoFechado : IconeOlho, fazer: escolher('legenda-onoff') },

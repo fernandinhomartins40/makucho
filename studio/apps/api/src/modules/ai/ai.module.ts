@@ -29,6 +29,7 @@ import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { StorageService } from '../../common/storage.service';
 import { PromptsService } from './prompts.service';
 import { PropostaService } from './proposta.service';
+import { RevisaoService } from './revisao.service';
 import { RefinoController } from './refino.controller';
 import { RefinoService } from './refino.service';
 import { RoteiroController } from './roteiro.controller';
@@ -50,6 +51,7 @@ import { UsoDeIaService } from './uso.service';
     AiService,
     AnaliseService,
     PropostaService,
+    RevisaoService,
     RoteiroService,
     RefinoService,
     UsoDeIaService,

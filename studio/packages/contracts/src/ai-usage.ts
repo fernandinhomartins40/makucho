@@ -55,6 +55,9 @@ export const CHAMADAS_DE_IA = [
   // a cena pronta de cada momento e os textos -- uma chamada pequena por
   // vídeo; o servidor monta as cenas sem a IA escrever código.
   'montar_motion',
+  // #19: a revisão final (revisao-final.ts): as palavras da legenda que o
+  // whisper ouviu com pouca certeza, conferidas com a frase em volta.
+  'revisar_legenda',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -80,6 +83,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   criticar_animacao: 'Crítica das animações',
   olhar_video: 'Análise da imagem do vídeo',
   montar_motion: 'Motion graphics (presets)',
+  revisar_legenda: 'Revisão da legenda',
 };
 
 // ---------- Modelos ----------
@@ -158,6 +162,8 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   // Escolher e preencher: sem raciocínio (o catálogo e a análise da fala já
   // trazem as opções; pensar só multiplicaria o custo e o tempo).
   montar_motion: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  // Poucas palavras com a frase em volta: conferir grafia não pede raciocínio.
+  revisar_legenda: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /**

@@ -819,6 +819,12 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     setPainelAberto(true);
     if (noCelular() || simples) setFolha('painel');
   };
+  // Um pedido para o "Peça à IA" vindo de um botão (o "Revisar o vídeo"): o painel abre e o envia.
+  const [pedidoParaIa, setPedidoParaIa] = useState<string | null>(null);
+  const revisarComIa = () => {
+    abrirPainel('ia');
+    setPedidoParaIa(PEDIDO_DE_REVISAO);
+  };
   /**
    * A biblioteca acabou de pôr algo no vídeo. No visual prático a gaveta
    * dela sai da frente: um texto novo abre para escrever, o resto fica
@@ -1232,6 +1238,8 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
         return setGravadorDe(Math.round(posicaoMs));
       case 'silenciar':
         return executarVarias(plano.clips.map((c) => ({ op: 'ajustar_audio_do_clipe' as const, clipId: c.id, muted: somOriginalMudo ? null : true })));
+      case 'revisar':
+        return revisarComIa();
       case 'silencios':
         return tirarAsPausas();
       case 'novo-texto': {
@@ -1703,7 +1711,20 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
                   </div>
                 </div>
               )}
-              {!semIa && <PedirAIa onEnviar={pedirAIa} passos={passosDaIa} foco={focoDaIa} onTirarFoco={() => setAlvoDaIa(null)} extras={midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]} />}
+              {!semIa && (
+                <PedirAIa
+                  onEnviar={pedirAIa}
+                  passos={passosDaIa}
+                  foco={focoDaIa}
+                  onTirarFoco={() => setAlvoDaIa(null)}
+                  pedido={pedidoParaIa}
+                  onPedidoFeito={() => setPedidoParaIa(null)}
+                  extras={[
+                    { rotulo: 'Revisar o vídeo inteiro', onClick: () => setPedidoParaIa(PEDIDO_DE_REVISAO) },
+                    ...(midiasSeparadas?.momentos.length || pelasCenas ? [] : [{ rotulo: 'Ilustrar a fala com imagens', onClick: abrirMidiasSeparadas }]),
+                  ]}
+                />
+              )}
               {midiasSeparadas?.momentos.length ? (
                 <div className="midias-separadas" role="status">
                   <div className="midias-separadas__topo">
@@ -2266,6 +2287,10 @@ const ROTULO_DA_ABA: Record<AbaDoEditor, string> = {
   ajustes: 'Ajustes',
   propriedades: 'Propriedades',
 };
+
+/** O pedido do "Revisar o vídeo": o agente usa a ferramenta revisar_video e resolve o que ela devolver. */
+const PEDIDO_DE_REVISAO =
+  'Revise o vídeo inteiro como um editor antes de entregar (use revisar_video) e corrija tudo o que estiver errado: animações sobre o rosto, pequenas ou sobrepostas, legenda com palavra errada, trilha alta sobre a fala. Mantenha o que está bom.';
 
 /** "Ajustes" abre já no formato e no enquadramento do vídeo. */
 const AJUSTES_DO_VIDEO = { aba: 'video', n: 0 } as const;

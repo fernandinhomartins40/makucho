@@ -72,6 +72,7 @@ Envio / gravação ──► Preparo (worker de mídia) ──► Transcrição 
 | Montagem pelas cenas | `montagem-visual.service`, `compilarMontagemVisual` | Vídeo sem narração: cenas, ordem, ritmo, textos | IA-M | **Conceito**: `montar_pelas_cenas` |
 | Acabamento da marca | `aplicarAcabamento` | Legenda, zoom alternado, transições nas viradas, título, CTA, logo, barra, sons, trilha, vinhetas, enquadramento, voz limpa | IA-M + Botão ("Refazer acabamento") | **Conceito**: `aplicar_acabamento_da_marca` |
 | Mídias que ilustram a fala | `midias.service.sugerir/separarNaMontagem`, prompt `midias-v2` | Momentos da fala que pedem imagem + opções (com visão) | IA-M + Botão | **Conceito**: `ilustrar_a_fala` |
+| Revisão final | `revisao.service`, `revisarVideo` (`revisao-final.ts`), skill `revisao-final-v1`, prompt `revisao-legenda-v1` | O olhar do editor no vídeo montado: mede cada animação no Chrome (job `medir-pecas`) com o rosto daquele trecho; corrige sem IA peça pequena, cartão sobre o rosto, trilha alta, som sobre a fala, legenda longa e texto rápido; a IA confere as palavras incertas da legenda; o agente resolve o que pede julgamento | Auto (última etapa da montagem, "Revisando") + Botão ("Revisar o vídeo") | **Conferir/Editar**: `revisar_video`, `medir_animacao`, `ajustar_peca_da_animacao` |
 
 ## 5. Edição (as 44 operações da timeline)
 
@@ -194,6 +195,7 @@ A IA decide **o que, como e quando**. Estas garantias ela não contorna:
 **Transições:** as receitas aceitam qualquer nativa do `xfade` como mistura (`MISTURAS_DE_RECEITA`), o que abriu 34 combinações novas (Impacto, Luz, Glitch, Formas e Desfoque). A prévia compila o shader de cada transição só quando ela aparece.
 
 **Conferir:** `conferir_plano` (fechamento, sobreposição, legenda),
+`revisar_video` (a revisão final do vídeo inteiro), `medir_animacao`,
 `resumir_mudancas`, `desfazer`.
 
 **Pedem confirmação:** `exportar_video`.

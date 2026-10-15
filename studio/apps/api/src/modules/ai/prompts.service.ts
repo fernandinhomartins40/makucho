@@ -75,6 +75,9 @@ export const VERSAO_DO_PROMPT = {
   // v4: motion graphics por cenas prontas (presets) e a coerência com o
   // visual das animações (legenda, título e chamada já seguem o visual).
   agente_de_edicao: 'agente-v4',
+  // A revisão final: as palavras da legenda que o whisper ouviu com pouca
+  // certeza, conferidas com a frase em volta (revisao.service.ts).
+  revisar_legenda: 'revisao-legenda-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

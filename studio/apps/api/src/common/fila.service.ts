@@ -20,6 +20,7 @@ import {
   FILA_CONFERENCIA_DE_LAYOUT,
   FILA_ANIMACOES_DA_MONTAGEM,
   JOB_DE_FOTOS,
+  JOB_DE_PECAS,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -29,7 +30,7 @@ import {
   VALIDADE_DO_PROGRESSO_S,
   chaveDoProgresso,
 } from '@makucho/studio-contracts';
-import type { EtapaDoPreparo, JobDeAnimacao, JobDeConferencia, ProgressoDoPreparo } from '@makucho/studio-contracts';
+import type { EtapaDoPreparo, JobDeAnimacao, JobDeConferencia, MedidasDaRevisao, ProgressoDoPreparo } from '@makucho/studio-contracts';
 
 export { FILA_MIDIA, FILA_TRANSCRICAO, FILA_RENDER };
 
@@ -305,6 +306,22 @@ export class FilaService implements OnModuleDestroy {
     // vale o que é mesmo um JPEG.
     const jpegs = (fotos ?? []).filter((f) => f.startsWith('/9j/'));
     return jpegs.length ? jpegs : null;
+  }
+
+  /**
+   * As peças de uma animação no instante de descanso (revisão final), medidas
+   * no mesmo Chrome. `null` quando não deu -- a revisão segue sem as regras
+   * que dependem da medida.
+   */
+  async medirPecas(dados: JobDeConferencia, tempoMs = 30_000): Promise<MedidasDaRevisao | null> {
+    const r = await this.pedirAoChrome(JOB_DE_PECAS, dados, tempoMs);
+    try {
+      // Um worker antigo trata o job como conferência e devolve frases: só vale o JSON das peças.
+      const m = r?.[0] ? (JSON.parse(r[0]) as MedidasDaRevisao) : null;
+      return m && Array.isArray(m.pecas) && typeof m.t === 'number' ? m : null;
+    } catch {
+      return null;
+    }
   }
 
   private async pedirAoChrome(nome: string, dados: JobDeConferencia, tempoMs: number): Promise<string[] | null> {

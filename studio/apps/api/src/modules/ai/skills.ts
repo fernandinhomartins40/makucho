@@ -27,6 +27,9 @@ export const VERSAO_DA_SKILL = {
   // v3: sem o esqueleto fixo de fundo (5 cenas saíam iguais), a série
   // diferente e os componentes do catálogo como ponto de partida.
   'motion-graphics': 'motion-graphics-v3',
+  // A revisão final do vídeo montado: o que um editor confere antes de
+  // entregar e como corrige sem desfazer o trabalho (revisao.service.ts).
+  'revisao-final': 'revisao-final-v1',
 } as const;
 
 export type NomeDeSkill = keyof typeof VERSAO_DA_SKILL;
