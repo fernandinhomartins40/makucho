@@ -25,6 +25,7 @@ import {
   JOB_DE_FOTOS,
   JOB_DE_PECAS,
   JOB_DE_AUDIO,
+  JOB_DE_FOTO_ROTULADA,
   type JobDeAudio,
   chaveDaAnimacao,
   camadasDaLegendaHyperFrames,
@@ -51,7 +52,7 @@ import {
 } from '@makucho/studio-contracts';
 import type { CaptionStyleInput, EditPlanV1, JobDeAnimacao, JobDeConferencia, MarcaDoVideo } from '@makucho/studio-contracts';
 import { prepararAnimacao } from './animacoes';
-import { conferirAnimacao, fotografarAnimacao, medirPecasDaAnimacao } from './conferencia';
+import { conferirAnimacao, fotografarAnimacao, fotografarPecasDaAnimacao, medirPecasDaAnimacao } from './conferencia';
 import { medirAudio } from './loudness';
 import {
   comEspacoDeTrabalho,
@@ -697,6 +698,7 @@ const workerDeConferencia = new Worker<JobDeConferencia, string[]>(
     // O mesmo Chrome serve à crítica: fotos dos quadros no lugar das medidas.
     if (job.name === JOB_DE_FOTOS) return fotografarAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
     // E à revisão final: as peças medidas no instante de descanso.
+    if (job.name === JOB_DE_FOTO_ROTULADA) return fotografarPecasDaAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
     if (job.name === JOB_DE_PECAS) return medirPecasDaAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
     return conferirAnimacao({ composicao, duracaoMs: job.data.duracaoMs }, { pastaDeFontes: PASTA_DE_FONTES });
   },

@@ -22,6 +22,7 @@ import {
   JOB_DE_FOTOS,
   JOB_DE_PECAS,
   JOB_DE_AUDIO,
+  JOB_DE_FOTO_ROTULADA,
   FILA_MIDIA,
   FILA_RENDER,
   FILA_TRANSCRICAO,
@@ -334,6 +335,21 @@ export class FilaService implements OnModuleDestroy {
     try {
       const m = r?.[0] ? (JSON.parse(r[0]) as MedidasDoAudio) : null;
       return m && typeof m.trechos === 'object' ? m : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A foto da animação com o contorno e o nome de cada peça (JPEG base64) e as medidas,
+   * para o diretor de arte da revisão. `null` quando não deu.
+   */
+  async fotografarPecas(dados: JobDeConferencia, tempoMs = 40_000): Promise<{ limpa: string; rotulada: string; medidas: MedidasDaRevisao } | null> {
+    const r = await this.pedirAoChrome(JOB_DE_FOTO_ROTULADA, dados, tempoMs);
+    try {
+      if (!r?.[0]?.startsWith('/9j/') || !r[1]?.startsWith('/9j/') || !r[2]) return null;
+      const medidas = JSON.parse(r[2]) as MedidasDaRevisao;
+      return Array.isArray(medidas.pecas) ? { limpa: r[0], rotulada: r[1], medidas } : null;
     } catch {
       return null;
     }

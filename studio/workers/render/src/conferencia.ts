@@ -202,6 +202,51 @@ export async function medirPecasDaAnimacao(job: JobDeConferencia, opcoes: { past
 }
 
 /**
+ * Roda NA PÁGINA, depois de MEDIR_PECAS (já no instante de descanso): desenha por cima de
+ * cada peça o contorno e o nome dela, para a IA apontar exatamente qual peça mexer.
+ */
+export const ROTULAR_PECAS = `function () {
+  var cores = ['#ff3b30', '#ffcc00', '#34c759', '#00c7ff', '#af52de', '#ff9500', '#ff2d55', '#5ac8fa'];
+  var n = 0, ocupados = [];
+  function bate(a) { return ocupados.some(function (b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }); }
+  document.querySelectorAll('[data-ed]').forEach(function (el) {
+    var r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    var cor = cores[n++ % cores.length];
+    var caixa = document.createElement('div');
+    caixa.style.cssText = 'position:fixed;z-index:99998;pointer-events:none;box-sizing:border-box;border:3px solid ' + cor + ';left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px';
+    document.body.appendChild(caixa);
+    // O nome num lugar livre: acima à esquerda, acima à direita, abaixo, ou ao lado.
+    var nome = el.getAttribute('data-ed');
+    var w = nome.length * 13 + 12, h = 28;
+    var lugares = [[r.left, r.top - h], [r.right - w, r.top - h], [r.left, r.bottom], [r.right - w, r.bottom], [r.right + 2, r.top], [r.left - w - 2, r.top]];
+    var lugar = lugares.find(function (l) { return !bate({ x: l[0], y: l[1], w: w, h: h }); }) || lugares[0];
+    ocupados.push({ x: lugar[0], y: lugar[1], w: w, h: h });
+    var rotulo = document.createElement('span');
+    rotulo.textContent = nome;
+    rotulo.style.cssText = 'position:fixed;z-index:99999;pointer-events:none;left:' + lugar[0] + 'px;top:' + lugar[1] + 'px;font:bold 22px/28px monospace;color:#000;background:' + cor + ';padding:0 6px;white-space:nowrap';
+    document.body.appendChild(rotulo);
+  });
+  return n;
+}`;
+
+/**
+ * A foto rotulada da animação (contorno e nome de cada peça, no instante de descanso) e as
+ * medidas das peças, para o olhar do diretor de arte da revisão final. [limpa, rotulada (JPEG base64), JSON].
+ */
+export async function fotografarPecasDaAnimacao(job: JobDeConferencia, opcoes: { pastaDeFontes: string }): Promise<string[]> {
+  return comAPagina(job, opcoes, 0.5, async (pagina) => {
+    await pagina.evaluate(`document.documentElement.style.background = '${COR_DO_VIDEO_NAS_FOTOS}'`);
+    const medidas = (await pagina.evaluate(`(${MEDIR_PECAS})(${job.duracaoMs / 1000})`)) as MedidasDaRevisao;
+    // A limpa (o desenho como é) e a rotulada (para dizer qual peça mexer).
+    const limpa = await pagina.screenshot({ type: 'jpeg', quality: 78, encoding: 'base64' });
+    await pagina.evaluate(`(${ROTULAR_PECAS})()`);
+    const rotulada = await pagina.screenshot({ type: 'jpeg', quality: 78, encoding: 'base64' });
+    return [limpa, rotulada, JSON.stringify(medidas)];
+  });
+}
+
+/**
  * Fotografa a animação para a crítica: um JPEG (base64) por instante, em
  * 540x960. O fundo da página fica cinza: é onde o vídeo da pessoa aparece.
  */

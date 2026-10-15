@@ -87,6 +87,12 @@ export class AnimacoesService {
     return this.filas.medirPecas({ composicao: c, duracaoMs });
   }
 
+  /** A foto rotulada da animação (cada peça com contorno e nome) e as medidas, para o diretor de arte da revisão. */
+  async fotografarPecas(c: ComposicaoHtml, duracaoMs: number): Promise<{ limpa: string; rotulada: string; medidas: MedidasDaRevisao } | null> {
+    if (process.env.STUDIO_CRITICAR_ANIMACOES === 'off') return null;
+    return this.filas.fotografarPecas({ composicao: c, duracaoMs });
+  }
+
   async problemas(c: ComposicaoHtml, duracaoMs: number): Promise<string[]> {
     const nossos = problemasDaComposicao(c);
     if (nossos.length) return nossos;

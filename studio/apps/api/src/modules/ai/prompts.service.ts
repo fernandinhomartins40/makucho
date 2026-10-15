@@ -81,6 +81,8 @@ export const VERSAO_DO_PROMPT = {
   revisar_legenda: 'revisao-legenda-v1',
   // A revisão final: o tipo de cena de cada animação combina com o que foi dito? (com visão)
   revisar_estilo_da_animacao: 'revisao-estilo-v1',
+  // A revisão final: o diretor de arte olha a foto com as peças rotuladas e ajusta cada uma.
+  revisar_composicao: 'revisao-composicao-v1',
 } as const;
 
 export type NomeDePrompt = keyof typeof VERSAO_DO_PROMPT;

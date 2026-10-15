@@ -778,6 +778,18 @@ export interface NotaDaComposicao {
 }
 
 const GRAVE = /^(sobreposição|fora do quadro|vaza do conjunto|rosto coberto)/;
+/** O peso de cada defeito leve na nota (os graves pesam 1 e vetam). */
+const PESO_LEVE: ReadonlyArray<readonly [string, number]> = [
+  ['ilegível', 0.35],
+  ['enfeite', 0.6],
+  ['fora da margem', 0.5],
+  ['fora da área útil', 1],
+  ['desalinhado', 0.2],
+  ['espaçamento irregular', 0.25],
+  ['hierarquia', 0.3],
+  ['colado na borda', 0.3],
+  ['fora do centro', 0.2],
+];
 /** A tinta que já enche a área útil, e a linha que a informação principal deve ter. */
 export const TINTA_CHEIA = 0.35;
 export const LETRA_PRINCIPAL = 90;
@@ -824,7 +836,8 @@ export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa:
     if (ehEnfeite(p, util)) continue;
     const r = caixaDe(p);
     if (r.x < -4 || r.y < -4 || r.x + r.w > W + 4 || r.y + r.h > H + 4) defeitos.push(`fora do quadro: ${p.chave}`);
-    const pai = p.pai && p.pai !== 'cena' ? pecas.find((q) => q.chave === p.pai) : null;
+    // Vazar só existe num conjunto que se vê (o cartão com fundo); um grupo sem fundo não tem borda.
+    const pai = p.pai && p.pai !== 'cena' ? pecas.find((q) => q.chave === p.pai && q.fundo !== false) : null;
     if (pai && (r.x < pai.r.x - 6 || r.x + r.w > pai.r.x + pai.r.w + 6 || r.y < pai.r.y - 6 || r.y + r.h > pai.r.y + pai.r.h + 6)) defeitos.push(`vaza do conjunto: ${p.chave}`);
     if (p.letra! < LETRA_MINIMA) defeitos.push(`ilegível: ${p.chave}`);
   }
@@ -858,10 +871,12 @@ export function notaDaComposicao(c: ComposicaoHtml, m: MedidasDaRevisao, pessoa:
   const ocupacao = Math.min(1, informacao.reduce((s, p) => s + area(caixaDe(p)), 0) / area(util));
   // A hierarquia: a informação principal precisa ser GRANDE (~90 px de linha no quadro de 1080).
   const letraPrincipal = Math.max(0, ...informacao.filter((p) => p.letra !== null).map((p) => p.letra!));
+  // O acabamento fino (alinhamento, ritmo, respiro, hierarquia, equilíbrio): defeitos leves.
+  defeitos.push(...acabamentoDaComposicao('nota', c, m).defeitos);
   const nota =
     2.2 * Math.min(1, ocupacao / TINTA_CHEIA) +
     1.6 * Math.min(1, letraPrincipal / LETRA_PRINCIPAL) -
-    defeitos.reduce((s, d) => s + (d.startsWith('ilegível') ? 0.35 : d.startsWith('enfeite') ? 0.6 : d.startsWith('fora da margem') ? 0.5 : 1), 0);
+    defeitos.reduce((s, d) => s + (PESO_LEVE.find(([k]) => d.startsWith(k))?.[1] ?? 1), 0);
   return { nota: Math.round(nota * 1000) / 1000, letraPrincipal: Math.round(letraPrincipal), graves: defeitos.filter((d) => GRAVE.test(d)).length, ocupacao: Math.round(ocupacao * 1000) / 1000, defeitos };
 }
 
@@ -1033,6 +1048,242 @@ export function composicaoComAjustes(c: ComposicaoHtml, correcoes: ReadonlyArray
     atual = k.chave === 'cena' ? { ...atual, x: peca.x, y: peca.y, escala: peca.escala } : { ...atual, elementos: { ...(atual.elementos ?? {}), [k.chave]: peca } };
   }
   return comAjuste(c, lerAjuste(atual));
+}
+
+// ============================================================
+// O acabamento fino, elemento por elemento (o olhar do diretor de arte)
+// ============================================================
+//
+// Depois de acertar o conjunto (tamanho, ocupação, nada cortado), o que
+// separa uma animação boa de uma impecável está nos detalhes de cada peça:
+//
+//   alinhamento -- peças empilhadas com a borda esquerda (ou o centro) quase
+//                  igual, mas não igual: 6 px fora salta aos olhos;
+//   ritmo       -- os vãos entre as peças empilhadas iguais, e nenhuma colada
+//                  na outra;
+//   respiro     -- o texto não encosta na borda do cartão;
+//   hierarquia  -- o título é a maior coisa do conjunto; detalhe e etiqueta
+//                  claramente menores;
+//   equilíbrio  -- conteúdo centralizado fica no centro da área.
+//
+// Cada pilha (as peças de um mesmo pai, uma embaixo da outra) é medida e,
+// quando há o que acertar, sai a correção de cada peça. O serviço aplica,
+// mede de novo e só fica se a nota subir.
+
+interface PilhaDeAcabamento {
+  pai: string | null;
+  itens: PecaMedida[];
+  caixas: Retangulo[];
+  modo: 'esquerda' | 'centro';
+}
+
+/** As pilhas: as peças de cada pai que ficam uma embaixo da outra (não lado a lado). */
+function pilhasDaComposicao(pecas: readonly PecaMedida[], util: Retangulo, visivel: (p: PecaMedida) => Retangulo): PilhaDeAcabamento[] {
+  const out: PilhaDeAcabamento[] = [];
+  const pais = [...new Set(pecas.map((p) => p.pai))];
+  for (const pai of pais) {
+    const filhos = pecas.filter((p) => p.pai === pai && p.chave !== 'cena' && !ehEnfeite(p, util)).sort((a, b) => visivel(a).y - visivel(b).y);
+    let corrida: PecaMedida[] = [];
+    const fechar = () => {
+      if (corrida.length >= 2) {
+        const caixas = corrida.map(visivel);
+        const esq = Math.max(...caixas.map((r) => r.x)) - Math.min(...caixas.map((r) => r.x));
+        const centros = caixas.map((r) => r.x + r.w / 2);
+        const cen = Math.max(...centros) - Math.min(...centros);
+        out.push({ pai, itens: corrida, caixas, modo: esq <= cen ? 'esquerda' : 'centro' });
+      }
+      corrida = [];
+    };
+    for (const p of filhos) {
+      const anterior = corrida[corrida.length - 1];
+      if (anterior) {
+        const a = visivel(anterior);
+        const b = visivel(p);
+        // Na mesma pilha: uma sob a outra, com boa parte da largura em comum.
+        const comum = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+        if (comum < 0.3 * Math.min(a.w, b.w) || b.y < a.y + a.h * 0.5) fechar();
+      }
+      corrida.push(p);
+    }
+    fechar();
+  }
+  return out;
+}
+
+/** Quanto o que está em volta da peça a amplia (o ajuste dela vale dentro disso). */
+function escalaDoPai(c: ComposicaoHtml, p: PecaMedida): number {
+  if (!p.lw) return 1;
+  const propria = p.chave === 'cena' ? (ajusteDaComposicao(c)?.escala ?? 1) : (ajusteDaComposicao(c)?.elementos?.[p.chave]?.escala ?? 1);
+  const k = p.r.w / (p.lw * propria);
+  return Number.isFinite(k) && k >= 0.3 && k <= 4 ? k : 1;
+}
+
+export interface AcabamentoDaComposicao {
+  /** O que está fora do lugar (leve: entra na nota, não veta). */
+  defeitos: string[];
+  /** As correções que acertam o que dá para acertar movendo e escalando peças. */
+  correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>>;
+}
+
+/** O acabamento fino de uma animação medida: alinhamento, ritmo, respiro, hierarquia e equilíbrio. */
+export function acabamentoDaComposicao(camadaId: string, c: ComposicaoHtml, m: MedidasDaRevisao): AcabamentoDaComposicao {
+  const util = gradeDaComposicao(c).util;
+  const pecas = m.pecas.filter((p) => area(p.r) > 40);
+  const visivel = caixaVisivel(pecas);
+  const defeitos: string[] = [];
+  // As correções por peça, somadas (uma peça pode precisar de alinhar e de espaçar).
+  const porPeca = new Map<string, { dx: number; dy: number; fator: number }>();
+  const mexer = (p: PecaMedida, dxQuadro: number, dyQuadro: number, fator = 1) => {
+    const k = escalaDoPai(c, p);
+    const atual = porPeca.get(p.chave) ?? { dx: 0, dy: 0, fator: 1 };
+    porPeca.set(p.chave, { dx: atual.dx + dxQuadro / k, dy: atual.dy + dyQuadro / k, fator: atual.fator * fator });
+  };
+
+  for (const pilha of pilhasDaComposicao(pecas, util, visivel)) {
+    const { itens, caixas } = pilha;
+    // A peça dominante (a de maior letra; sem texto, a maior): a referência do alinhamento.
+    const dominante = itens.reduce((a, b, k) => ((b.letra ?? 0) * 1000 + area(caixas[k]!) > (a.p.letra ?? 0) * 1000 + area(a.r) ? { p: b, r: caixas[k]! } : a), { p: itens[0]!, r: caixas[0]! });
+
+    // Alinhamento: quase igual vira igual (até 60 px; mais que isso é intenção do desenho).
+    for (let k = 0; k < itens.length; k += 1) {
+      const r = caixas[k]!;
+      const fora = pilha.modo === 'esquerda' ? dominante.r.x - r.x : dominante.r.x + dominante.r.w / 2 - (r.x + r.w / 2);
+      if (Math.abs(fora) > 3 && Math.abs(fora) <= 60 && itens[k] !== dominante.p) {
+        defeitos.push(`desalinhado: ${itens[k]!.chave} (${Math.round(fora)} px)`);
+        mexer(itens[k]!, fora, 0);
+      }
+    }
+
+    // Ritmo: os vãos iguais (a mediana, entre 14 e 64 px), nenhuma peça colada na outra.
+    const vaos = caixas.slice(1).map((r, k) => r.y - (caixas[k]!.y + caixas[k]!.h));
+    const ordenados = [...vaos].sort((a, b) => a - b);
+    const alvo = Math.max(14, Math.min(64, ordenados[Math.floor(ordenados.length / 2)]!));
+    const irregular = vaos.some((g) => g < 8) || (vaos.length >= 2 && Math.max(...vaos) - Math.min(...vaos) > Math.max(12, alvo * 0.5));
+    if (irregular) {
+      defeitos.push(`espaçamento irregular: ${itens.map((p) => p.chave).join(', ')}`);
+      // A pilha nova fica com o mesmo meio da antiga.
+      const alturaNova = caixas.reduce((s, r) => s + r.h, 0) + alvo * (caixas.length - 1);
+      const meio = (caixas[0]!.y + caixas[caixas.length - 1]!.y + caixas[caixas.length - 1]!.h) / 2;
+      let y = meio - alturaNova / 2;
+      caixas.forEach((r, k) => {
+        if (Math.abs(y - r.y) > 2) mexer(itens[k]!, 0, y - r.y);
+        y += r.h + alvo;
+      });
+    }
+
+    // Hierarquia: na pilha, nenhum texto do tamanho do título (a não ser o próprio).
+    const titulo = itens.find((p) => p.campo === 'titulo') ?? (dominante.p.letra !== null ? dominante.p : undefined);
+    for (const p of itens) {
+      if (!titulo || p === titulo || p.letra === null || titulo.letra === null || p.campo === 'titulo') continue;
+      if (p.letra >= titulo.letra * 0.92 && p.letra > LETRA_MINIMA) {
+        defeitos.push(`hierarquia: ${p.chave} do tamanho do título`);
+        const fator = Math.max(LETRA_MINIMA / p.letra, (titulo.letra * 0.72) / p.letra);
+        const r = visivel(p);
+        // Diminui sem sair do alinhamento: na esquerda, a borda esquerda fica.
+        mexer(p, pilha.modo === 'esquerda' ? -(r.w * (1 - fator)) / 2 : 0, 0, fator);
+      }
+    }
+
+    // Respiro: o conteúdo de um cartão não encosta na borda dele.
+    const pai = pecas.find((q) => q.chave === pilha.pai);
+    if (pai?.fundo) {
+      const u = juntar(caixas)!;
+      const folga = Math.min(u.x - pai.r.x, pai.r.x + pai.r.w - (u.x + u.w), u.y - pai.r.y, pai.r.y + pai.r.h - (u.y + u.h));
+      if (folga < Math.min(pai.r.w, pai.r.h) * 0.04) defeitos.push(`colado na borda: ${pai.chave}`);
+    }
+  }
+
+  // Equilíbrio: o conteúdo centralizado fica no centro da área útil.
+  const cena = pecas.find((p) => p.chave === 'cena');
+  const informacao = pecas.filter((p) => p.chave !== 'cena' && !pecas.some((q) => q.pai === p.chave) && !ehEnfeite(p, util));
+  const conteudo = juntar(informacao.map(visivel));
+  if (cena && conteudo) {
+    const desvio = conteudo.x + conteudo.w / 2 - (util.x + util.w / 2);
+    const quaseCentralizado = Math.abs(desvio) < util.w * 0.2 && conteudo.w < util.w * 0.95;
+    if (quaseCentralizado && Math.abs(desvio) > util.w * 0.04 && Math.abs(conteudo.x - util.x) > util.w * 0.08) {
+      defeitos.push(`fora do centro: ${Math.round(desvio)} px`);
+      mexer(cena, -desvio, 0);
+    }
+  }
+
+  const correcoes = [...porPeca].map(([chave, k]) => ({
+    tipo: 'ajuste' as const,
+    camadaId,
+    chave,
+    ...(Math.abs(k.dx) >= 1 ? { dx: Math.round(k.dx) } : {}),
+    ...(Math.abs(k.dy) >= 1 ? { dy: Math.round(k.dy) } : {}),
+    ...(Math.abs(k.fator - 1) > 0.01 ? { fator: Math.round(k.fator * 100) / 100 } : {}),
+  }));
+  return { defeitos, correcoes: correcoes.filter((k) => k.dx !== undefined || k.dy !== undefined || k.fator !== undefined) };
+}
+
+// ============================================================
+// O olhar do diretor de arte (IA com visão), peça por peça
+// ============================================================
+//
+// As regras acima medem o que dá para medir. O resto -- "o kicker está
+// grudado no título", "o ícone puxa o olho para fora do cartão", "o texto
+// não está centralizado no selo" -- um diretor de arte vê. Ele recebe a foto
+// da animação com o contorno e o NOME de cada peça desenhados e a tabela com
+// as medidas, e devolve ajustes concretos por peça. O serviço aplica, mede
+// e só fica se nada piorar.
+
+/** O job do worker: a foto rotulada (contorno e nome de cada peça) e as medidas. */
+export const JOB_DE_FOTO_ROTULADA = 'fotografar-pecas';
+
+/** As peças, a área útil e o que conta, em texto, para o diretor de arte. */
+export function pecasParaODiretor(c: ComposicaoHtml, m: MedidasDaRevisao): string {
+  const util = gradeDaComposicao(c).util;
+  const r = (x: Retangulo) => `x ${Math.round(x.x)}, y ${Math.round(x.y)}, ${Math.round(x.w)}x${Math.round(x.h)}`;
+  const linhas = m.pecas
+    .filter((p) => area(p.r) > 40)
+    .map((p) => `- ${p.chave}${p.pai ? ` (dentro de ${p.pai})` : ''}${p.campo ? ` [${p.campo}]` : ''}${p.fundo ? ' [com fundo]' : ''}: caixa ${r(p.r)}${p.rt ? `, texto em ${r(p.rt)}` : ''}${p.letra !== null ? `, linha de ${Math.round(p.letra)} px` : ''}${p.texto ? ` -- "${p.texto.slice(0, 40)}"` : ''}`);
+  return [
+    `Quadro de 1080x1920. Layout ${c.layout}. A área útil (onde a informação deve ficar): ${r(util)}.`,
+    `As peças (px do quadro):`,
+    ...linhas,
+  ].join('\n');
+}
+
+/**
+ * Os ajustes que o diretor de arte pediu (JSON), como correções de peça. Peça que não existe,
+ * deslocamento maior que 400 px e escala fora de 0,5-2 são descartados. O deslocamento vem
+ * em px do quadro e vira o do ajuste da peça (dentro da escala de quem a contém).
+ */
+export function ajustesDoDiretor(camadaId: string, c: ComposicaoHtml, m: MedidasDaRevisao, texto: string): { correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>>; motivos: string[] } {
+  const bruto = texto.match(/\{[\s\S]*\}/)?.[0];
+  if (!bruto) return { correcoes: [], motivos: [] };
+  let j: unknown;
+  try {
+    j = JSON.parse(bruto);
+  } catch {
+    return { correcoes: [], motivos: [] };
+  }
+  const lista = (j as { ajustes?: unknown }).ajustes;
+  if (!Array.isArray(lista)) return { correcoes: [], motivos: [] };
+  const correcoes: Array<Extract<CorrecaoDaRevisao, { tipo: 'ajuste' }>> = [];
+  const motivos: string[] = [];
+  for (const a of lista.slice(0, 12)) {
+    const chave = typeof a?.peca === 'string' ? a.peca : '';
+    const p = m.pecas.find((q) => q.chave === chave);
+    if (!p) continue;
+    const num = (v: unknown, min: number, max: number, padrao: number) => (typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : padrao);
+    const dx = num(a.dx, -400, 400, 0);
+    const dy = num(a.dy, -400, 400, 0);
+    const fator = num(a.escala, 0.5, 2, 1);
+    if (!dx && !dy && fator === 1) continue;
+    const k = escalaDoPai(c, p);
+    correcoes.push({
+      tipo: 'ajuste',
+      camadaId,
+      chave,
+      ...(dx ? { dx: Math.round(dx / k) } : {}),
+      ...(dy ? { dy: Math.round(dy / k) } : {}),
+      ...(fator !== 1 ? { fator: Math.round(fator * 100) / 100 } : {}),
+    });
+    if (typeof a.motivo === 'string') motivos.push(a.motivo.slice(0, 160));
+  }
+  return { correcoes, motivos };
 }
 
 function juntar(rs: readonly Retangulo[]): Retangulo | null {

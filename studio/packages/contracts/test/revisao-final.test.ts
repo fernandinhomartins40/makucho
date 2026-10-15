@@ -16,6 +16,9 @@ import {
   notaDaComposicao,
   versaoMelhor,
   candidatasDaComposicao,
+  acabamentoDaComposicao,
+  ajustesDoDiretor,
+  pecasParaODiretor,
 } from '../src';
 import type { EditPlanV1, MedidasDaRevisao, PalavraDaRevisao, PessoaNoQuadro } from '../src';
 
@@ -186,6 +189,26 @@ t('ícone e texto: o grupo sem fundo não conta como fora da margem pela caixa d
 t('ícone e texto: a letra principal pequena pesa na nota', nIcone.letraPrincipal === 54);
 const maiores = candidatasDaComposicao('x', cenaMeia, iconeETexto, [], null).filter((c) => c.nome.startsWith('textos'));
 t('ícone e texto: a candidata aumenta o texto ao lado do ícone, ancorado à esquerda', maiores.length > 0 && maiores[0]!.correcoes[0]!.chave === 'ico-txt.0' && (maiores[0]!.correcoes[0]!.dx ?? 0) > 0 && (maiores[0]!.correcoes[0]!.fator ?? 1) > 1.25);
+
+// O acabamento fino, peça por peça.
+const pilhaTorta: MedidasDaRevisao = { t: 1, pecas: [
+  { chave: 'cena', campo: '', pai: null, r: { x: 50, y: 1002, w: 884, h: 420 }, letra: 40, texto: '' },
+  { chave: 'mg-k.0', campo: 'kicker', pai: 'cena', r: { x: 108, y: 1040, w: 300, h: 44 }, rt: { x: 108, y: 1040, w: 300, h: 44 }, letra: 44, texto: 'A VERDADE' },
+  { chave: 'mg-t.0', campo: 'titulo', pai: 'cena', r: { x: 100, y: 1088, w: 600, h: 100 }, rt: { x: 100, y: 1088, w: 600, h: 100 }, letra: 96, texto: 'NINGUÉM VAI' },
+  { chave: 'mg-d.0', campo: 'detalhe', pai: 'cena', r: { x: 100, y: 1250, w: 500, h: 92 }, rt: { x: 100, y: 1250, w: 500, h: 92 }, letra: 92, texto: 'Nem governo' },
+] };
+const ac = acabamentoDaComposicao('x', cenaMeia, pilhaTorta);
+t('acabamento: o kicker 8 px fora do alinhamento do título volta para a borda dele', ac.defeitos.some((d) => d.startsWith('desalinhado: mg-k.0')) && ac.correcoes.find((k) => k.chave === 'mg-k.0')?.dx === -8);
+t('acabamento: vãos de 4 e 62 px entre as peças ficam iguais', ac.defeitos.some((d) => d.startsWith('espaçamento irregular')));
+t('acabamento: o detalhe do tamanho do título fica menor', ac.defeitos.some((d) => d.startsWith('hierarquia: mg-d.0')) && (ac.correcoes.find((k) => k.chave === 'mg-d.0')?.fator ?? 1) < 0.9);
+const nTorta = notaDaComposicao(cenaMeia, pilhaTorta, null);
+t('acabamento: os defeitos finos pesam na nota (leves, não vetam)', nTorta.graves === 0 && nTorta.defeitos.some((d) => d.startsWith('desalinhado')));
+
+// O diretor de arte: a resposta dele vira correções de peça; o que não existe ou é absurdo cai.
+const diretor = ajustesDoDiretor('x', cenaMeia, iconeETexto, 'ok {"ajustes": [{"peca": "ico-txt.0", "dx": 30, "escala": 1.3, "motivo": "texto pequeno ao lado do ícone"}, {"peca": "nao-existe", "dx": 10}, {"peca": "mg-t.0", "dy": 900}]}');
+t('diretor: aceita o ajuste da peça que existe', diretor.correcoes.length === 1 && diretor.correcoes[0]!.chave === 'ico-txt.0' && diretor.correcoes[0]!.fator === 1.3 && diretor.correcoes[0]!.dx === 30);
+t('diretor: guarda o motivo para a pessoa', diretor.motivos[0] === 'texto pequeno ao lado do ícone');
+t('diretor: a tabela das peças vai com as caixas e a área útil', pecasParaODiretor(cenaMeia, iconeETexto).includes('mg-t.0 (dentro de ico-txt.0) [titulo]') && pecasParaODiretor(cenaMeia, iconeETexto).includes('área útil'));
 
 console.log(`\n${ok} ok, ${fail} falha(s)`);
 if (fail) process.exit(1);

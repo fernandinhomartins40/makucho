@@ -25,8 +25,11 @@ import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/commo
 import { ModuleRef } from '@nestjs/core';
 import {
   aplicarCorrecoes,
+  acabamentoDaComposicao,
+  ajustesDoDiretor,
   candidatasDaComposicao,
   cenaDaComposicao,
+  pecasParaODiretor,
   LETRA_PRINCIPAL,
   TINTA_CHEIA,
   textoDosPresets,
@@ -58,6 +61,19 @@ import { skill } from './skills';
 
 /** Quantas animações a revisão mede por vídeo (o worker mede uma por vez, poucos segundos cada). */
 const MAXIMO_DE_ANIMACOES_MEDIDAS = 16;
+/** O nome curto de uma animação, para as mensagens. */
+const tituloDe = (c: ComposicaoHtml) => `"${(c.titulo ?? 'animação').slice(0, 40)}"`;
+/** Os defeitos de acabamento acertados, em português simples. */
+function descreverAcabamento(defeitos: readonly string[]): string {
+  const tipos = new Set(defeitos.map((d) => d.split(':')[0]));
+  const partes: string[] = [];
+  if (tipos.has('desalinhado')) partes.push('peças alinhadas');
+  if (tipos.has('espaçamento irregular')) partes.push('espaços entre as peças iguais');
+  if (tipos.has('hierarquia')) partes.push('o título destacado dos detalhes');
+  if (tipos.has('fora do centro')) partes.push('o conjunto centralizado');
+  return partes.length ? partes.join(', ') : 'acabamento fino';
+}
+
 /** Quantas versões de uma animação a revisão mede (cada uma, um ou dois segundos no worker). */
 const MAXIMO_DE_VERSOES = 7;
 
@@ -226,12 +242,14 @@ export class RevisaoService {
     let revisado = corrigido;
     const mensagens = feitos.map((a) => a.mensagem);
     const naoResolvidos: AchadoDaRevisao[] = [];
+    let custoDasAnimacoes = 0;
 
     // 3. A composição de cada animação: as versões candidatas, medidas, e fica a melhor.
     const comProblema = animacoes.filter((a) => medidas[a.id]);
     if (comProblema.length) aoAndar?.('Acertando a composição das animações');
     for (const a of comProblema) {
-      const r = await this.melhorComposicao(a.id, a.composicao!, a.durationMs, medidas[a.id]!, pessoa[a.id] ?? null, achados.filter((x) => x.alvo === a.id && deAnimacao(x)));
+      const r = await this.melhorComposicao(tenant.workspaceId, projectId, a.id, a.composicao!, a.durationMs, medidas[a.id]!, pessoa[a.id] ?? null, achados.filter((x) => x.alvo === a.id && deAnimacao(x)));
+      custoDasAnimacoes += r.custoCentavos;
       if (r.composicao !== a.composicao) {
         revisado = { ...revisado, mediaLayers: (revisado.mediaLayers ?? []).map((m) => (m.id === a.id ? { ...m, composicao: r.composicao } : m)) };
         mensagens.push(r.mensagem);
@@ -250,7 +268,7 @@ export class RevisaoService {
     }
 
     // 3. A legenda: as palavras incertas, com a frase em volta.
-    let custo = 0;
+    let custo = custoDasAnimacoes;
     const incertas = achados.filter((a) => a.tipo === 'palavra-incerta' && a.alvo).map((a) => a.alvo!);
     if (incertas.length) {
       aoAndar?.(`Conferindo ${incertas.length === 1 ? 'uma palavra' : `${incertas.length} palavras`} da legenda`);
@@ -315,35 +333,90 @@ export class RevisaoService {
    * defeitos graves. Devolve também o que continua errado na escolhida.
    */
   private async melhorComposicao(
+    workspaceId: string,
+    projectId: string,
     camadaId: string,
     original: ComposicaoHtml,
     duracaoMs: number,
     medida: MedidasDaRevisao,
     pessoa: PessoaNoQuadro | null,
     pontuais: readonly AchadoDaRevisao[],
-  ): Promise<{ composicao: ComposicaoHtml; mensagem: string; restam: string[] }> {
+  ): Promise<{ composicao: ComposicaoHtml; mensagem: string; restam: string[]; custoCentavos: number }> {
     const nota0 = notaDaComposicao(original, medida, pessoa);
-    let melhor = { composicao: original, nota: nota0, mensagem: '' };
-    // Animação sem defeito e bem ocupada: nada a testar.
-    if (!nota0.defeitos.length && nota0.ocupacao >= TINTA_CHEIA * 0.85 && nota0.letraPrincipal >= LETRA_PRINCIPAL * 0.9 && !pontuais.length) return { composicao: original, mensagem: '', restam: [] };
-    for (const c of candidatasDaComposicao(camadaId, original, medida, pontuais, pessoa).slice(0, MAXIMO_DE_VERSOES)) {
-      let composicao = composicaoComAjustes(original, c.correcoes);
-      let m = await this.animacoes?.medirPecas(composicao, duracaoMs).catch(() => null);
-      if (!m) continue;
-      if (c.centralizar) {
-        const centro = centralizarNaArea(camadaId, composicao, m, c.centralizar);
-        if (centro) {
-          const centrada = composicaoComAjustes(composicao, [centro]);
-          const mc = await this.animacoes?.medirPecas(centrada, duracaoMs).catch(() => null);
-          if (mc) {
-            composicao = centrada;
-            m = mc;
+    let melhor = { composicao: original, nota: nota0, medida, mensagens: [] as string[] };
+    let custo = 0;
+    const medir = (c: ComposicaoHtml) => this.animacoes?.medirPecas(c, duracaoMs).catch(() => null) ?? Promise.resolve(null);
+
+    // 1. O conjunto: as versões candidatas (só quando há o que melhorar no tamanho ou nos defeitos).
+    const temOQueMelhorar = nota0.defeitos.length > 0 || nota0.ocupacao < TINTA_CHEIA * 0.85 || nota0.letraPrincipal < LETRA_PRINCIPAL * 0.9 || pontuais.length > 0;
+    if (temOQueMelhorar) {
+      for (const c of candidatasDaComposicao(camadaId, original, medida, pontuais, pessoa).slice(0, MAXIMO_DE_VERSOES)) {
+        let composicao = composicaoComAjustes(original, c.correcoes);
+        let m = await medir(composicao);
+        if (!m) continue;
+        if (c.centralizar) {
+          const centro = centralizarNaArea(camadaId, composicao, m, c.centralizar);
+          if (centro) {
+            const centrada = composicaoComAjustes(composicao, [centro]);
+            const mc = await medir(centrada);
+            if (mc) {
+              composicao = centrada;
+              m = mc;
+            }
           }
         }
+        const nota = notaDaComposicao(composicao, m, pessoa);
+        if (versaoMelhor(nota, melhor.nota)) melhor = { composicao, nota, medida: m, mensagens: [c.mensagem] };
       }
-      const nota = notaDaComposicao(composicao, m, pessoa);
-      if (versaoMelhor(nota, melhor.nota)) melhor = { composicao, nota, mensagem: c.mensagem };
     }
+
+    // 2. O acabamento fino, peça por peça (alinhamento, ritmo, respiro, hierarquia, equilíbrio).
+    for (let rodada = 0; rodada < 2; rodada += 1) {
+      const ac = acabamentoDaComposicao(camadaId, melhor.composicao, melhor.medida);
+      if (!ac.correcoes.length) break;
+      const composicao = composicaoComAjustes(melhor.composicao, ac.correcoes);
+      const m = await medir(composicao);
+      if (!m) break;
+      const nota = notaDaComposicao(composicao, m, pessoa);
+      if (nota.graves > melhor.nota.graves || nota.nota <= melhor.nota.nota + 0.05) break;
+      melhor = { composicao, nota, medida: m, mensagens: [...melhor.mensagens, `${tituloDe(original)}: ${descreverAcabamento(ac.defeitos)}.`] };
+    }
+
+    // 3. O diretor de arte (IA com visão) olha a foto com as peças rotuladas e ajusta cada uma.
+    if (process.env.STUDIO_DIRETOR_DE_ARTE !== 'off') {
+      try {
+        const rotulada = await this.animacoes?.fotografarPecas(melhor.composicao, duracaoMs);
+        if (rotulada) {
+          const prompt = this.prompts.obter('revisar_composicao');
+          const r = await this.ai.chamar({
+            workspaceId,
+            projectId,
+            chamada: 'criticar_animacao',
+            sistema: prompt.texto,
+            usuario: `${pecasParaODiretor(melhor.composicao, rotulada.medidas)}\n\nO que as regras ainda veem: ${melhor.nota.defeitos.join('; ') || 'nada'}.`,
+            // A foto limpa (o desenho) e a rotulada (o nome de cada peça).
+            imagens: [rotulada.limpa, rotulada.rotulada],
+            maxTokens: 900,
+            promptVersion: prompt.versao,
+            semCache: true,
+            tempoMaximoMs: 90_000,
+          });
+          custo += r.custoCentavos;
+          const { correcoes, motivos } = ajustesDoDiretor(camadaId, melhor.composicao, rotulada.medidas, r.texto);
+          if (correcoes.length) {
+            const composicao = composicaoComAjustes(melhor.composicao, correcoes);
+            const m = await medir(composicao);
+            const nota = m ? notaDaComposicao(composicao, m, pessoa) : null;
+            // O olho vê o que a régua não mede: aceita se nada grave piorou e a nota não caiu.
+            if (m && nota && nota.graves <= melhor.nota.graves && nota.nota >= melhor.nota.nota - 0.1)
+              melhor = { composicao, nota, medida: m, mensagens: [...melhor.mensagens, `${tituloDe(original)}: ${motivos.slice(0, 3).join('; ') || 'ajustes finos de posição e tamanho'}.`] };
+          }
+        }
+      } catch (e) {
+        this.log.warn(`diretor de arte indisponível (animação ${camadaId}): ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
     const legivel = (d: string) =>
       d
         .replace(/^sobreposição: (.+) e (.+)$/, 'as peças $1 e $2 se sobrepõem')
@@ -351,7 +424,7 @@ export class RevisaoService {
         .replace(/^vaza do conjunto: (.+)$/, 'a peça $1 vaza do cartão')
         .replace(/^rosto coberto$/, 'cobre o rosto de quem fala');
     const restam = melhor.nota.defeitos.filter((d) => /^(sobreposição|fora do quadro|vaza do conjunto|rosto coberto)/.test(d)).map(legivel);
-    return { composicao: melhor.composicao, mensagem: melhor.mensagem, restam };
+    return { composicao: melhor.composicao, mensagem: melhor.mensagens.join(' '), restam, custoCentavos: custo };
   }
 
   /**
