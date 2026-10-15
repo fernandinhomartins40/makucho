@@ -57,4 +57,23 @@ export class HealthController {
     }
     this.logger.log(texto.slice(0, 3000));
   }
+
+  private readonly loggerDeErros = new Logger('ErroNoAparelho');
+
+  /**
+   * Os erros de JavaScript no aparelho de quem usa o Studio (o relator inline
+   * do layout manda sozinho, com a sessão, no máximo 15 por página): o iPhone
+   * com iOS mais antigo, a gaveta que não abre. Só vai para o log do container.
+   */
+  @Post('erro')
+  @HttpCode(204)
+  erro(@Body() corpo: unknown): void {
+    let texto = '';
+    try {
+      texto = JSON.stringify(corpo ?? {});
+    } catch {
+      texto = '"(ilegível)"';
+    }
+    this.loggerDeErros.warn(texto.slice(0, 3000));
+  }
 }
