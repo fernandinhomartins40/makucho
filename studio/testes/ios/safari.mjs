@@ -105,69 +105,89 @@ try {
   anotar('editando, na animação', await estado());
   await foto('2-na-animacao');
 
-  // O jeito 1: o chip "Animação" da bandeja.
+  // O dedo de verdade: toque (W3C actions, pointer "touch") no meio do elemento.
+  const dedo = async (sel) => {
+    const el = await b.$(sel);
+    if (!(await el.isExisting())) return 'não existe';
+    try {
+      await b.action('pointer', { parameters: { pointerType: 'touch' } }).move({ origin: el }).down().pause(80).up().perform();
+      return 'dedo';
+    } catch (e) {
+      anotar(`dedo em ${sel} falhou`, { erro: String(e).slice(0, 300) });
+      return 'falhou';
+    }
+  };
   const folhaAberta = async () => (await b.execute(() => document.querySelector('.editor')?.getAttribute('data-folha'))) != null;
-  const chip = await b.$('.pratico__chip[data-animacao]');
-  if (await chip.isExisting()) {
+  const fecharGaveta = async () => {
+    await b.execute(() => [...document.querySelectorAll('.editor__folha-cabecalho button')].find((x) => /✕|Fechar/.test(x.textContent + (x.getAttribute('aria-label') ?? '')))?.click());
+    await espera(1500);
+  };
+  const temEtiqueta = async () => b.execute(() => !!document.querySelector('.palco__etiqueta-da-selecao'));
+  // As peças, com a gaveta fechada (aberta, ela cobre o vídeo).
+  const pecas = async (prefixo) => {
+    await fecharGaveta();
+    anotar(`${prefixo}: gaveta fechada`, await estado());
+    await foto(`${prefixo}-a-sem-gaveta`);
+    if (!(await b.$('.palco__peca').isExisting())) return anotar(`${prefixo}: a animação não mostrou peças`);
+    let como = await dedo('.palco__peca:last-of-type');
+    await espera(1500);
+    if (!(await temEtiqueta())) {
+      await b.execute(() => {
+        const todas = document.querySelectorAll('.palco__peca');
+        const el = todas[todas.length - 1];
+        const r = el.getBoundingClientRect();
+        const o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
+        el.dispatchEvent(new PointerEvent('pointerdown', o));
+        el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
+        el.dispatchEvent(new MouseEvent('click', o));
+      });
+      await espera(1500);
+      como += (await temEtiqueta()) ? ' + pointer do JavaScript' : ' + nada reagiu';
+    }
+    anotar(`${prefixo}: tocou numa peça`, { como, ...(await estado()) });
+    await foto(`${prefixo}-b-peca`);
+    for (const rotulo of ['Aumentar', 'Selecionar o conjunto', 'Aumentar']) {
+      if (!(await b.$(`button[aria-label="${rotulo}"]`).isExisting())) continue;
+      const c = await dedo(`button[aria-label="${rotulo}"]`);
+      await espera(1800);
+      anotar(`${prefixo}: apertou ${rotulo}`, { como: c, ...(await estado()) });
+    }
+    await foto(`${prefixo}-c-ajustada`);
+  };
+
+  // O jeito 1: o chip "Animação" da bandeja.
+  if (await b.$('.pratico__chip[data-animacao]').isExisting()) {
     const como = await tocar('.pratico__chip[data-animacao]', folhaAberta);
     await espera(2500);
     anotar('tocou no chip da animação', { como, ...(await estado()) });
     await foto('3-chip-animacao');
-
-    // Uma peça da animação: o toque do dedo (pointer) e depois a etiqueta.
-    const peca = await b.$('.palco__peca');
-    if (await peca.isExisting()) {
-      const temEtiqueta = async () => (await b.execute(() => !!document.querySelector('.palco__etiqueta-da-selecao, .palco__barra-da-peca')));
-      let como = await tocar('.palco__peca', temEtiqueta);
-      if (como === 'nada reagiu') {
-        // A seleção é por pointer (pointerdown/pointerup), não por click: o toque do dedo, em JavaScript.
-        await b.execute(() => {
-          const el = document.querySelector('.palco__peca');
-          const r = el.getBoundingClientRect();
-          const o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
-          el.dispatchEvent(new PointerEvent('pointerdown', o));
-          el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
-          el.dispatchEvent(new MouseEvent('click', o));
-        });
-        await espera(1500);
-        como = (await temEtiqueta()) ? 'pointer do JavaScript' : 'nada reagiu';
-      }
-      anotar('tocou numa peça', { como, ...(await estado()) });
-      await foto('4-peca');
-      for (const rotulo of ['Aumentar', 'Selecionar o conjunto']) {
-        const bt = await b.$(`button[aria-label="${rotulo}"]`);
-        if (!(await bt.isExisting())) continue;
-        await b.execute((r) => document.querySelector(`button[aria-label="${r}"]`)?.click(), rotulo);
-        await espera(2000);
-        anotar(`apertou ${rotulo}`, await estado());
-      }
-      await foto('5-ajustada');
-    } else anotar('a animação não mostrou peças');
+    await pecas('3');
   } else anotar('sem chip da animação');
 
-  // O jeito 2: tocar na animação no vídeo (fecha a gaveta antes, se abriu).
-  await b.execute(() => [...document.querySelectorAll('.editor__folha-cabecalho button')].find((x) => /✕|Fechar/.test(x.textContent + (x.getAttribute('aria-label') ?? '')))?.click());
-  await espera(1500);
-  await b.execute(() => document.querySelector('.editor__folha-cabecalho button')?.click());
-  await espera(1500);
-  anotar('fechou a gaveta', await estado());
-  const toque = await b.$('.palco__toque-na-animacao');
-  if (await toque.isExisting()) {
-    const como = await tocar('.palco__toque-na-animacao', async () => (await folhaAberta()) || (await b.$('.palco__toque-na-animacao').isExisting()) === false);
-    await espera(1500);
+  // O jeito 2 (o do cliente): o editor de novo, e o dedo na animação no vídeo.
+  await b.url(`${BASE}/editor?projeto=projeto-teste-ios&v=2`);
+  await b.$('.palco__quadro').waitForExist({ timeout: 240_000 });
+  await espera(4000);
+  await tocar('.pratico__editar', editando);
+  await b.execute(() => {
+    const el = document.querySelector('.pratico__tempo input');
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(el, '2500');
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await espera(2500);
+  if (await b.$('.palco__toque-na-animacao').isExisting()) {
+    let como = await dedo('.palco__toque-na-animacao');
+    await espera(2500);
+    if (!(await folhaAberta()) && (await b.$('.palco__toque-na-animacao').isExisting())) {
+      await b.execute(() => document.querySelector('.palco__toque-na-animacao')?.click());
+      await espera(2500);
+      como += ' + clique do JavaScript';
+    }
     anotar('tocou na animação no vídeo', { como, ...(await estado()) });
     await foto('6-toque-no-video');
-    // A etiqueta do item escolhido: o botão que abre os ajustes.
-    const botoes = await b.execute(() => [...document.querySelectorAll('.pratico button, .etiqueta button')].map((x) => x.textContent.trim()).filter(Boolean).slice(0, 30));
-    anotar('botões visíveis', { botoes });
-    const ajustes = await b.$('button*=Ajustes');
-    if (await ajustes.isExisting()) {
-      await ajustes.click();
-      await espera(3500);
-      anotar('abriu os ajustes da animação', await estado());
-      await foto('7-ajustes');
-    }
-  } else anotar('sem a camada de toque na animação');
+    await pecas('6');
+  } else anotar('sem a camada de toque na animação', await estado());
 } catch (e) {
   anotar('o roteiro falhou', { erro: String(e?.stack ?? e).slice(0, 1500) });
   await foto('x-falhou');
