@@ -336,7 +336,7 @@ export const TUTORIAIS: Tutorial[] = [
       {
         alvo: ['.palco__barra-da-peca'],
         titulo: 'Maior ou menor',
-        texto: 'Use − e + para mudar o tamanho, ou arraste os cantinhos da peça. Com dois dedos, você amplia a vista para ajustar com precisão. No fim, toque em Aplicar para gravar o ajuste (Desfazer volta como estava).',
+        texto: 'Use A− e A+ para mudar o tamanho, ou arraste os cantinhos da peça. Com dois dedos, você amplia a vista para ajustar com precisão. No fim, toque em Aplicar para gravar o ajuste (Desfazer volta como estava).',
         lado: 'bottom',
       },
     ],

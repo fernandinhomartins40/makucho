@@ -2771,3 +2771,12 @@ body > .exportar .exportar__caixa {
 :where([data-tema='escuro']) .exportar__caixa {
   background: #1c1c1e;
 }
+
+/* O convite para instalar o app fica por cima dos cartões de vídeo: o vidro deixava a
+   etiqueta e a imagem deles aparecerem através do texto. Opaco, como o menu do cartão. */
+.banner-instalacao {
+  background: rgb(250 250 252);
+}
+:where([data-tema='escuro']) .banner-instalacao {
+  background: rgb(30 30 34);
+}
