@@ -74,6 +74,9 @@ const estado = () =>
       })(),
       tempo: document.querySelector('.pratico__tempo input')?.value ?? null,
       pecas: document.querySelectorAll('.palco__peca').length,
+      // As páginas dentro da página (a animação no vídeo, as miniaturas dos modelos): cada uma pesa na memória do iPhone.
+      iframes: document.querySelectorAll('iframe').length,
+      miniaturas: document.querySelectorAll('.modelos-da-cena iframe').length,
       edicaoNoPalco: !!document.querySelector('.palco__edicao-animacao'),
       etiqueta: !!document.querySelector('.palco__etiqueta-da-selecao'),
       telaDeErro: document.body.innerText.match(/Application error|client-side exception|Algo deu errado|Unhandled|erro[^\n]{0,80}/i)?.[0] ?? null,
@@ -180,6 +183,15 @@ try {
     await espera(2500);
     anotar('tocou no chip da animação', { como, ...(await estado()) });
     await foto('3-chip-animacao');
+    // A faixa de modelos rolada até o fim: as miniaturas que saem de vista têm de sair da memória.
+    for (const ate of [0.5, 1]) {
+      await b.execute((f) => {
+        const el = document.querySelector('.modelos-da-cena');
+        if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) * f;
+      }, ate);
+      await espera(2000);
+      anotar(`modelos rolados ${ate * 100}%`, await b.execute(() => ({ iframes: document.querySelectorAll('iframe').length, miniaturas: document.querySelectorAll('.modelos-da-cena iframe').length })));
+    }
     await pecas('3');
   } else anotar('sem chip da animação');
 

@@ -347,11 +347,14 @@ function Modelos({ cena, atual, composicao, desabilitado, aplicando, onEscolher 
 function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, aplicando, onEscolher }: { cena: CenaDeMotion; preset: string; nome: string; marcada: boolean; composicao: ComposicaoHtml; desabilitado: boolean; aplicando: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const quadro = useRef<HTMLIFrameElement>(null);
+  // Cada miniatura é uma página de 1080x1920 com a animação: só existe enquanto está à vista
+  // na faixa, e sai quando a faixa rola. Carregadas e nunca descarregadas, elas somavam
+  // dezenas de páginas, e o iPhone derrubava a aba por memória (a gaveta abria e fechava).
   const [visivel, setVisivel] = useState(false);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const obs = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && setVisivel(true), { rootMargin: '120px' });
+    const obs = new IntersectionObserver((es) => setVisivel(es[es.length - 1]!.isIntersecting), { root: el.closest('.modelos-da-cena'), rootMargin: '0px 24px' });
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
