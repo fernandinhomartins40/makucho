@@ -129,23 +129,42 @@ try {
     anotar(`${prefixo}: gaveta fechada`, await estado());
     await foto(`${prefixo}-a-sem-gaveta`);
     if (!(await b.$('.palco__peca').isExisting())) return anotar(`${prefixo}: a animação não mostrou peças`);
-    let como = await dedo('.palco__peca:last-of-type');
-    await espera(1500);
-    if (!(await temEtiqueta())) {
-      await b.execute(() => {
-        const todas = document.querySelectorAll('.palco__peca');
-        const el = todas[todas.length - 1];
-        const r = el.getBoundingClientRect();
-        const o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
-        el.dispatchEvent(new PointerEvent('pointerdown', o));
-        el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
-        el.dispatchEvent(new MouseEvent('click', o));
-      });
+    const viva = async () => {
+      try {
+        return (await b.execute(() => document.readyState)) === 'complete';
+      } catch {
+        return false;
+      }
+    };
+    // Controle: o dedo de verdade num botão que não mexe nas peças (a lista de camadas, liga e desliga).
+    for (let i = 0; i < 2; i++) {
+      const c = await dedo('.palco__ver-camadas');
       await espera(1500);
-      como += (await temEtiqueta()) ? ' + pointer do JavaScript' : ' + nada reagiu';
+      anotar(`${prefixo}: controle, dedo nas camadas ${i + 1}`, { como: c, viva: await viva() });
     }
-    anotar(`${prefixo}: tocou numa peça`, { como, ...(await estado()) });
+    // A prova: o toque na peça só pelo código da página (pointerdown/up em JavaScript, sem o safaridriver).
+    const t0 = Date.now();
+    await b.execute(() => {
+      const todas = document.querySelectorAll('.palco__peca');
+      const el = todas[todas.length - 1];
+      const r = el.getBoundingClientRect();
+      const o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
+      el.dispatchEvent(new PointerEvent('pointerdown', o));
+      window.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
+    });
+    await espera(2500);
+    const vivaDepoisDoJs = await viva();
+    anotar(`${prefixo}: peça tocada por JavaScript`, { ms: Date.now() - t0, viva: vivaDepoisDoJs, ...(vivaDepoisDoJs ? await estado() : {}) });
+    await foto(`${prefixo}-b-peca-js`);
+    if (!vivaDepoisDoJs) return;
+    // O dedo de verdade numa peça (outra, a primeira).
+    const t1 = Date.now();
+    let como = await dedo('.palco__peca');
+    await espera(1500);
+    const vivaDepoisDoDedo = await viva();
+    anotar(`${prefixo}: dedo numa peça`, { como, ms: Date.now() - t1, viva: vivaDepoisDoDedo, ...(vivaDepoisDoDedo ? await estado() : {}) });
     await foto(`${prefixo}-b-peca`);
+    if (!vivaDepoisDoDedo) return;
     for (const rotulo of ['Aumentar', 'Selecionar o conjunto', 'Aumentar']) {
       if (!(await b.$(`button[aria-label="${rotulo}"]`).isExisting())) continue;
       const c = await dedo(`button[aria-label="${rotulo}"]`);

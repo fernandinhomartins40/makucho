@@ -87,6 +87,9 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           open -a Simulator
+          # O Safari aberto antes: sem isso a sessão às vezes não acha o Safari do simulador.
+          xcrun simctl launch "$UDID" com.apple.mobilesafari || true
+          sleep 5
           sudo safaridriver --enable
           (nohup safaridriver -p 4444 > "$GITHUB_WORKSPACE/safaridriver.log" 2>&1 &)
           sleep 3
@@ -104,6 +107,18 @@ jobs:
         if: always()
         working-directory: studio/testes/ios
         run: node publicar.mjs fotos
+
+      - name: Travamentos da página (WebContent) no simulador
+        if: always()
+        run: |
+          mkdir -p studio/testes/ios/resultados/travamentos
+          # Relatórios de crash do processo da página (o Safari do simulador grava no Mac).
+          find ~/Library/Logs/DiagnosticReports -newer studio/testes/ios/package.json \( -iname '*WebContent*' -o -iname '*Safari*' -o -iname '*WebKit*' \) -exec cp {} studio/testes/ios/resultados/travamentos/ \; 2>/dev/null || true
+          ls -la studio/testes/ios/resultados/travamentos || true
+          # O log do simulador: o processo da página encerrado (memória, watchdog, crash).
+          xcrun simctl spawn booted log show --last 20m --style compact --predicate 'process CONTAINS "WebContent" OR process == "MobileSafari" OR process CONTAINS "runningboard" OR process == "SpringBoard"' 2>/dev/null | grep -iE 'crash|jetsam|terminat|exceeded|memory limit|watchdog|killed|exit reason|WebContent.*(exit|died)|unresponsive|hang' | tail -300 > studio/testes/ios/resultados/travamentos/log-do-simulador.txt || true
+          wc -l studio/testes/ios/resultados/travamentos/log-do-simulador.txt || true
+          tail -60 studio/testes/ios/resultados/travamentos/log-do-simulador.txt || true
 
       - name: Registros (web, API simulada, safaridriver)
         if: always()
