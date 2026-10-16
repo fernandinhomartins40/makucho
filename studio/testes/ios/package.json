@@ -1,0 +1,9 @@
+{
+  "name": "teste-ios-safari",
+  "private": true,
+  "type": "module",
+  "description": "O editor do Studio no Safari do iPhone (simulador do Xcode), pelo GitHub Actions. Ver .github/workflows/ios-safari.yml.",
+  "dependencies": {
+    "webdriverio": "9.20.0"
+  }
+}
