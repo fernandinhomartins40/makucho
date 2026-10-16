@@ -4,6 +4,7 @@
 
 import { Body, Controller, Get, HttpCode, Logger, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import IORedis from 'ioredis';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../common/prisma.service';
 
@@ -56,6 +57,38 @@ export class HealthController {
       texto = '"(ilegível)"';
     }
     this.logger.log(texto.slice(0, 3000));
+  }
+
+  private readonly loggerDoRastro = new Logger('RastroNoAparelho');
+  private redis: IORedis | null = null;
+
+  /**
+   * O diagnóstico ligado num aparelho (?diagnostico=1): o que a pessoa
+   * tocou, as gavetas, as quedas da página e o pulso de memória, em lotes.
+   * Vai para o log e para o Redis (14 dias, por código), para sobreviver a
+   * um deploy entre o teste e a leitura. Nada vai para o banco.
+   */
+  @Post('rastro')
+  @HttpCode(204)
+  async rastro(@Body() corpo: unknown): Promise<void> {
+    const c = (corpo ?? {}) as { codigo?: unknown; eventos?: unknown };
+    const codigo = typeof c.codigo === 'string' && /^DX-[A-Z0-9]{4}$/.test(c.codigo) ? c.codigo : null;
+    if (!codigo || !Array.isArray(c.eventos)) return;
+    const linhas = c.eventos.slice(0, 60).map((e) => {
+      try {
+        return JSON.stringify(e).slice(0, 2000);
+      } catch {
+        return '"(ilegível)"';
+      }
+    });
+    for (const l of linhas) this.loggerDoRastro.log(`${codigo} ${l}`);
+    try {
+      this.redis ??= new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: 2 });
+      const chave = `studio:rastro:${codigo}`;
+      await this.redis.multi().rpush(chave, ...linhas).ltrim(chave, -5000, -1).expire(chave, 14 * 86400).zadd('studio:rastros', Date.now(), codigo).exec();
+    } catch {
+      // Sem Redis, fica só o log.
+    }
   }
 
   private readonly loggerDeErros = new Logger('ErroNoAparelho');

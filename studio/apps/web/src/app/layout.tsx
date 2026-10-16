@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Moldura } from '../components/shell/Moldura';
 import { RegistrarServiceWorker } from '../components/pwa/RegistrarServiceWorker';
 import { GuiaDosTutoriais } from '../components/shell/Tutoriais';
+import { Diagnostico } from '../components/shell/Diagnostico';
 import { SCRIPT_DO_TEMA } from '../lib/tema';
 import { SCRIPT_DO_RELATOR_DE_ERROS } from '../lib/erroNoAparelho';
 import './globals.css';
@@ -113,6 +114,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <RegistrarServiceWorker />
         <GuiaDosTutoriais />
+        <Diagnostico />
         <Moldura>{children}</Moldura>
       </body>
     </html>

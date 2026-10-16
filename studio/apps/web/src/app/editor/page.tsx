@@ -23,6 +23,7 @@ import { estiloDeAnimacao } from '@makucho/studio-contracts';
 import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
 import { ouvirRepouso, repousoDasAnimacoes } from '../../components/editor/AnimacoesAoVivo';
 import { BotaoDoTutorial } from '../../components/shell/Tutoriais';
+import { rastro } from '../../lib/diagnostico';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -160,6 +161,13 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
   const [folha, setFolha] = useState<'painel' | 'inspector' | null>(null);
   // Legenda, corte, elemento ou som selecionado na timeline.
   const [itemSelecionado, setItemSelecionado] = useState<ItemDaTimeline | null>(null);
+  // Diagnóstico remoto (só com ?diagnostico=1): a gaveta e o item escolhido, a cada mudança.
+  useEffect(() => {
+    rastro('gaveta', { para: folha });
+  }, [folha]);
+  useEffect(() => {
+    rastro('item', itemSelecionado ? { tipo: itemSelecionado.tipo, id: 'id' in itemSelecionado ? String(itemSelecionado.id) : null } : { tipo: null });
+  }, [itemSelecionado]);
   // Preparo: progresso ao vivo e a comemoração antes de abrir o editor.
   const [progresso, setProgresso] = useState<ProgressoDoPreparo | null>(null);
   const [comemorando, setComemorando] = useState(false);
@@ -740,6 +748,9 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
   }, []);
   // No prático: assistindo (falso) ou editando o quadro parado.
   const [editandoNoPratico, setEditandoNoPratico] = useState(false);
+  useEffect(() => {
+    rastro('editando', { ligado: editandoNoPratico });
+  }, [editandoNoPratico]);
   const trocarVisual = (novo: 'pratico' | 'completo') => {
     setVisual(novo);
     setFolha(null);
@@ -1155,6 +1166,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
     [plano, planoVisivel, simples, tocandoNaPrevia, posicaoMs, palavrasDaTranscricao, desligados],
   );
   const escolherNaCena = (i: ItemNaCena) => {
+    rastro('chip', { rotulo: i.rotulo, animacao: !!i.animacao });
     if (i.alvo.tipo === 'clipe') {
       setItemSelecionado(null);
       setSelecionado(i.alvo.id);
@@ -1993,6 +2005,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
             {...(simples && editandoNoPratico
               ? {
                   onTocarNaAnimacao: (id: string) => {
+                    rastro('toque-na-animacao', { id });
                     setSelecionado(null);
                     setItemSelecionado({ tipo: 'midia', id });
                   },

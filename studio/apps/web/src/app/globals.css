@@ -14857,3 +14857,23 @@ button.midia-cartao__previa:disabled {
 body:has(.driver-popover) .banner-instalacao {
   display: none;
 }
+
+/* O selo do diagnóstico remoto (?diagnostico=1): pequeno, no alto, fora do caminho. */
+.diagnostico {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 4px);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2147483000;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffc31a;
+  color: #111;
+  font: 700 11px/1.4 Inter, system-ui, sans-serif;
+  opacity: 0.92;
+}
+.diagnostico[data-recolhido] {
+  padding: 2px 6px;
+  opacity: 0.7;
+}

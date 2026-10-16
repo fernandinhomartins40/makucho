@@ -34,6 +34,7 @@ import { createPortal } from 'react-dom';
 import type { AjusteDaCena, AjusteDaPeca, ComposicaoHtml } from '@makucho/studio-contracts';
 import { ajusteDaComposicao, cenaDaComposicao, comAjuste, cssDoAjuste, lerAjuste } from '@makucho/studio-contracts';
 import { IconeCamadas, IconeConjunto, IconeMover, IconeRenomear, IconeVarios } from '../icones';
+import { rastro } from '../../lib/diagnostico';
 
 export interface PecaDaAnimacao {
   /** data-ed da peça; "cena" é a animação inteira. */
@@ -151,6 +152,14 @@ export function EdicaoNoPalco({
   const pinca = useRef<{ inicio: ZoomDoPalco; mx: number; my: number; d: number } | null>(null);
   const [barras, setBarras] = useState<HTMLElement | null>(null);
   useEffect(() => setBarras(quadro.current), [quadro]);
+  // Diagnóstico remoto: a edição da animação abriu e fechou, e quantas peças ela tem.
+  useEffect(() => {
+    rastro('edicao-da-animacao', { aberta: true });
+    return () => rastro('edicao-da-animacao', { aberta: false });
+  }, []);
+  useEffect(() => {
+    rastro('pecas-da-animacao', { n: pecas.length });
+  }, [pecas.length]);
   // A pinça do trackpad chega como Ctrl+roda: ouvinte nativo (não passivo) para não dar zoom na página.
   const aoRodar = useRef<(e: WheelEvent) => void>(() => undefined);
   useEffect(() => {
