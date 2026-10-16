@@ -8,6 +8,7 @@
 
 import { remote } from 'webdriverio';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const BASE = 'http://localhost:8080';
 const SAIDA = 'resultados';
@@ -27,12 +28,28 @@ const b = await remote({
   connectionRetryTimeout: 300_000,
   capabilities: { browserName: 'safari', platformName: 'iOS', 'safari:useSimulator': true, 'safari:deviceType': 'iPhone' },
 });
+// O print vem do simulador inteiro (simctl): o do safaridriver saía vazio.
 const foto = async (nome) => {
   try {
-    await b.saveScreenshot(`${SAIDA}/${nome}.png`);
+    execFileSync('xcrun', ['simctl', 'io', 'booted', 'screenshot', `${SAIDA}/${nome}.png`], { stdio: 'ignore' });
   } catch (e) {
     anotar(`foto ${nome} falhou`, { erro: String(e).slice(0, 200) });
   }
+};
+// Toca como o dedo (o clique do WebDriver); se a página não reagir, o clique do JavaScript.
+const tocar = async (sel, reagiu) => {
+  const el = await b.$(sel);
+  if (!(await el.isExisting())) return 'não existe';
+  try {
+    await el.click();
+  } catch (e) {
+    anotar(`clique em ${sel} falhou`, { erro: String(e).slice(0, 300) });
+  }
+  await espera(1500);
+  if (await reagiu()) return 'toque';
+  await b.execute((s) => document.querySelector(s)?.click(), sel);
+  await espera(1500);
+  return (await reagiu()) ? 'clique do JavaScript' : 'nada reagiu';
 };
 const estado = () =>
   b.execute(() => {
@@ -48,6 +65,14 @@ const estado = () =>
         return `${g.className.split(' ')[0]} ${Math.round(r.width)}x${Math.round(r.height)} display=${getComputedStyle(g).display}`;
       }),
       chips: textos('.pratico__chip'),
+      modo: ed?.getAttribute('data-modo') ?? null,
+      pratico: document.querySelector('.pratico')?.getAttribute('data-estado') ?? null,
+      botoes: [...document.querySelectorAll('button')].filter((x) => x.getBoundingClientRect().width > 0).map((x) => (x.className.split(' ')[0] || '') + ':' + (x.textContent.trim() || x.getAttribute('aria-label') || '').slice(0, 30)).slice(0, 40),
+      noMeio: (() => {
+        const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+        return e ? `${e.tagName}.${String(e.className).split(' ')[0]}` : null;
+      })(),
+      tempo: document.querySelector('.pratico__tempo input')?.value ?? null,
       tela: `${innerWidth}x${innerHeight}`,
       ua: navigator.userAgent,
     };
@@ -63,8 +88,8 @@ try {
   anotar('editor aberto', await estado());
   await foto('1-aberto');
 
-  await b.$('.pratico__editar').click();
-  await espera(1500);
+  const editando = async () => (await b.execute(() => document.querySelector('.editor')?.hasAttribute('data-editando'))) === true;
+  anotar('tocou em Editar', { como: await tocar('.pratico__editar', editando) });
   // O vídeo até o meio da primeira animação (1 s a 5 s da timeline).
   await b.execute(() => {
     const el = document.querySelector('.pratico__tempo input');
@@ -77,11 +102,12 @@ try {
   await foto('2-na-animacao');
 
   // O jeito 1: o chip "Animação" da bandeja.
+  const folhaAberta = async () => (await b.execute(() => document.querySelector('.editor')?.getAttribute('data-folha'))) != null;
   const chip = await b.$('.pratico__chip[data-animacao]');
   if (await chip.isExisting()) {
-    await chip.click();
-    await espera(4000);
-    anotar('tocou no chip da animação', await estado());
+    const como = await tocar('.pratico__chip[data-animacao]', folhaAberta);
+    await espera(2500);
+    anotar('tocou no chip da animação', { como, ...(await estado()) });
     await foto('3-chip-animacao');
   } else anotar('sem chip da animação');
 
@@ -90,9 +116,9 @@ try {
   await espera(1500);
   const toque = await b.$('.palco__toque-na-animacao');
   if (await toque.isExisting()) {
-    await toque.click();
-    await espera(3000);
-    anotar('tocou na animação no vídeo', await estado());
+    const como = await tocar('.palco__toque-na-animacao', async () => (await folhaAberta()) || (await b.$('.palco__toque-na-animacao').isExisting()) === false);
+    await espera(1500);
+    anotar('tocou na animação no vídeo', { como, ...(await estado()) });
     await foto('4-toque-no-video');
     // A etiqueta do item escolhido: o botão que abre os ajustes.
     const botoes = await b.execute(() => [...document.querySelectorAll('.pratico button, .etiqueta button')].map((x) => x.textContent.trim()).filter(Boolean).slice(0, 30));

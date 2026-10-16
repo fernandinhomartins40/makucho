@@ -21,8 +21,8 @@ if (modo === 'fotos') {
   const fotos = existsSync('resultados') ? readdirSync('resultados').filter((f) => f.endsWith('.png')).sort() : [];
   for (const f of fotos.slice(0, 10)) {
     const jpg = `resultados/${f.replace('.png', '.jpg')}`;
-    // sips (macOS): o print do iPhone reduzido a 380 px de altura, JPEG leve.
-    execFileSync('sips', ['-Z', '380', '-s', 'format', 'jpeg', '-s', 'formatOptions', '45', `resultados/${f}`, '--out', jpg], { stdio: 'ignore' });
+    // sips (macOS): o print do iPhone reduzido a 560 px de altura, JPEG leve.
+    execFileSync('sips', ['-Z', '560', '-s', 'format', 'jpeg', '-s', 'formatOptions', '40', `resultados/${f}`, '--out', jpg], { stdio: 'ignore' });
     anotar(`${process.env.RUNNER_LABEL ?? ''} foto ${f}`, `data:image/jpeg;base64,${readFileSync(jpg).toString('base64')}`);
   }
 }
