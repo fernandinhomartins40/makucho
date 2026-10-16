@@ -62,6 +62,7 @@ import {
   CornersOut,
   Microphone,
   Gear,
+  GraduationCap,
   SignOut,
   Bell,
   Copy,
@@ -115,6 +116,7 @@ export const IconeGravar = Record;
 export const IconeEditor = Scissors;
 export const IconeMarca = Diamond;
 export const IconeAjuda = Question;
+export const IconeTutorial = GraduationCap;
 export const IconeInfo = Info;
 export const IconeTemaClaro = Sun;
 export const IconeTemaEscuro = Moon;

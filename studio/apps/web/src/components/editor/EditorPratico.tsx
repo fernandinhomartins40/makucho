@@ -67,7 +67,9 @@ import {
   IconeSalvando,
   IconeAviso,
   IconeMenu,
+  IconeTutorial,
 } from '../icones';
+import { abrirTutorial } from '../shell/Tutoriais';
 
 interface Props {
   titulo: string;
@@ -234,6 +236,15 @@ export function EditorPratico({
         fazer: () => {
           setMenu(null);
           onTrechos();
+        },
+      },
+      {
+        id: 'tutorial',
+        rotulo: 'Tutorial',
+        Icone: IconeTutorial,
+        fazer: () => {
+          setMenu(null);
+          abrirTutorial('editor-pratico');
         },
       },
       {

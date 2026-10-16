@@ -10,8 +10,13 @@
 // ============================================================
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import type { ProjectState } from '@makucho/studio-contracts';
+import { podeEditar } from '@makucho/studio-contracts';
 import { Topbar } from '../../components/shell/Topbar';
-import { IconeAjuda, IconeAvancar } from '../../components/icones';
+import { IconeAjuda, IconeAvancar, IconeTutorial } from '../../components/icones';
+import { projetos as apiProjetos } from '../../lib/api';
+import { TUTORIAIS } from '../../lib/tutoriais';
 
 const PERGUNTAS = [
   {
@@ -52,6 +57,9 @@ export default function AjudaPage() {
           As dúvidas que mais aparecem, respondidas sem rodeio.
         </p>
 
+        <TutoriaisGuiados />
+
+        <h2 style={{ fontSize: 18, marginBottom: 'var(--e3)' }}>Perguntas frequentes</h2>
         <div className="pilha" style={{ maxWidth: 760, marginBottom: 'var(--e6)' }}>
           {PERGUNTAS.map((item) => (
             <details key={item.titulo} className="cartao">
@@ -93,5 +101,75 @@ export default function AjudaPage() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * A lista dos tutoriais guiados: cada um abre a tela dele e começa ali.
+ * Os do editor abrem o vídeo mais recente (o tutorial precisa de um vídeo
+ * na tela), no visual que ele ensina.
+ */
+function TutoriaisGuiados() {
+  const [projetoId, setProjetoId] = useState<string | null>(null);
+  useEffect(() => {
+    void apiProjetos
+      .listar()
+      .then((l) => setProjetoId(l.find((p) => podeEditar(p.state as ProjectState))?.id ?? null))
+      .catch(() => undefined);
+  }, []);
+  const comecarDeNovo = () => {
+    try {
+      for (const t of TUTORIAIS) window.localStorage.removeItem(`studio:tutorial:${t.id}`);
+    } catch {
+      // Sem armazenamento: nada a limpar.
+    }
+  };
+  const lista = TUTORIAIS.filter((t) => !t.gatilho);
+  return (
+    <section style={{ maxWidth: 760, marginBottom: 'var(--e6)' }} aria-labelledby="tutoriais-titulo">
+      <div className="linha entre" style={{ marginBottom: 'var(--e3)', gap: 'var(--e3)', flexWrap: 'wrap' }}>
+        <h2 id="tutoriais-titulo" className="linha" style={{ fontSize: 18, gap: 'var(--e2)' }}>
+          <IconeTutorial size={20} /> Tutoriais guiados
+        </h2>
+        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={comecarDeNovo} title="Cada tela volta a mostrar o tutorial dela na próxima visita">
+          Mostrar todos de novo
+        </button>
+      </div>
+      <p className="texto-secundario" style={{ marginBottom: 'var(--e4)' }}>
+        A própria tela mostra, passo a passo, onde tocar. Escolha um assunto:
+      </p>
+      <div className="pilha">
+        {lista.map((t) => {
+          const doEditor = t.pagina === '/editor';
+          if (doEditor && !projetoId) return null;
+          const href = doEditor ? `/editor?projeto=${projetoId}&tutorial=${t.id}` : `${t.pagina}?tutorial=${t.id}`;
+          const visual = t.id === 'editor-completo' ? 'completo' : t.id === 'editor-pratico' ? 'pratico' : null;
+          return (
+            <Link
+              key={t.id}
+              href={href}
+              className="cartao linha entre"
+              style={{ gap: 'var(--e3)', textDecoration: 'none', color: 'inherit' }}
+              onClick={() => {
+                if (!visual) return;
+                try {
+                  window.localStorage.setItem('studio:visual-do-editor', visual);
+                } catch {
+                  // O editor abre no visual padrão da tela.
+                }
+              }}
+            >
+              <span style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: 15 }}>{t.titulo}</strong>
+                <span className="texto-secundario" style={{ fontSize: 14 }}>
+                  {t.resumo}
+                </span>
+              </span>
+              <IconeAvancar size={16} />
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }

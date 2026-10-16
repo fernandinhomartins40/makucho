@@ -322,7 +322,7 @@ function Roteiros() {
       >
         {/* A lista de roteiros salvos abre daqui, em qualquer tela: fixa ao
             lado, ela disputava a atenção com o pedido. */}
-        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setListaAberta(true)}>
+        <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setListaAberta(true)} data-meus-roteiros>
           <IconeRoteiro size={15} /> Meus roteiros
         </button>
         {estado && (

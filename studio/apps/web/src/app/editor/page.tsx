@@ -22,6 +22,7 @@ import { EscolhaDoEstilo } from '../../components/novo-video/EscolhaDoEstilo';
 import { estiloDeAnimacao } from '@makucho/studio-contracts';
 import { AnimacoesDaIaContexto, type OpcoesDeRefazerAnimacao } from '../../components/editor/animacoesDaIa';
 import { ouvirRepouso, repousoDasAnimacoes } from '../../components/editor/AnimacoesAoVivo';
+import { BotaoDoTutorial } from '../../components/shell/Tutoriais';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1378,6 +1379,7 @@ function Editor({ projectId, publicar = false }: { projectId: string; publicar?:
 
           {/* Claro ou escuro, como nas outras telas (o editor não usa a Topbar comum). */}
           <BotaoDeTema />
+          <BotaoDoTutorial />
 
           {/* O outro visual do mesmo editor: o vídeo na tela toda, sem timeline. */}
           <button type="button" className="botao-icone" onClick={() => trocarVisual('pratico')} aria-label="Modo prático" title="Modo prático: o vídeo na tela toda, e você edita tocando nele">
