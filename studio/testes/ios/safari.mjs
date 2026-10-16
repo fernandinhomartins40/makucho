@@ -73,6 +73,10 @@ const estado = () =>
         return e ? `${e.tagName}.${String(e.className).split(' ')[0]}` : null;
       })(),
       tempo: document.querySelector('.pratico__tempo input')?.value ?? null,
+      pecas: document.querySelectorAll('.palco__peca').length,
+      edicaoNoPalco: !!document.querySelector('.palco__edicao-animacao'),
+      etiqueta: !!document.querySelector('.palco__etiqueta-da-selecao'),
+      telaDeErro: document.body.innerText.match(/Application error|client-side exception|Algo deu errado|Unhandled|erro[^\n]{0,80}/i)?.[0] ?? null,
       tela: `${innerWidth}x${innerHeight}`,
       ua: navigator.userAgent,
     };
@@ -109,17 +113,50 @@ try {
     await espera(2500);
     anotar('tocou no chip da animação', { como, ...(await estado()) });
     await foto('3-chip-animacao');
+
+    // Uma peça da animação: o toque do dedo (pointer) e depois a etiqueta.
+    const peca = await b.$('.palco__peca');
+    if (await peca.isExisting()) {
+      const temEtiqueta = async () => (await b.execute(() => !!document.querySelector('.palco__etiqueta-da-selecao, .palco__barra-da-peca')));
+      let como = await tocar('.palco__peca', temEtiqueta);
+      if (como === 'nada reagiu') {
+        // A seleção é por pointer (pointerdown/pointerup), não por click: o toque do dedo, em JavaScript.
+        await b.execute(() => {
+          const el = document.querySelector('.palco__peca');
+          const r = el.getBoundingClientRect();
+          const o = { bubbles: true, cancelable: true, composed: true, pointerId: 7, pointerType: 'touch', isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1 };
+          el.dispatchEvent(new PointerEvent('pointerdown', o));
+          el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 }));
+          el.dispatchEvent(new MouseEvent('click', o));
+        });
+        await espera(1500);
+        como = (await temEtiqueta()) ? 'pointer do JavaScript' : 'nada reagiu';
+      }
+      anotar('tocou numa peça', { como, ...(await estado()) });
+      await foto('4-peca');
+      for (const rotulo of ['Aumentar', 'Selecionar o conjunto']) {
+        const bt = await b.$(`button[aria-label="${rotulo}"]`);
+        if (!(await bt.isExisting())) continue;
+        await b.execute((r) => document.querySelector(`button[aria-label="${r}"]`)?.click(), rotulo);
+        await espera(2000);
+        anotar(`apertou ${rotulo}`, await estado());
+      }
+      await foto('5-ajustada');
+    } else anotar('a animação não mostrou peças');
   } else anotar('sem chip da animação');
 
   // O jeito 2: tocar na animação no vídeo (fecha a gaveta antes, se abriu).
-  await b.execute(() => document.querySelector('.editor__folha-cabecalho button:not([hidden])')?.click());
+  await b.execute(() => [...document.querySelectorAll('.editor__folha-cabecalho button')].find((x) => /✕|Fechar/.test(x.textContent + (x.getAttribute('aria-label') ?? '')))?.click());
   await espera(1500);
+  await b.execute(() => document.querySelector('.editor__folha-cabecalho button')?.click());
+  await espera(1500);
+  anotar('fechou a gaveta', await estado());
   const toque = await b.$('.palco__toque-na-animacao');
   if (await toque.isExisting()) {
     const como = await tocar('.palco__toque-na-animacao', async () => (await folhaAberta()) || (await b.$('.palco__toque-na-animacao').isExisting()) === false);
     await espera(1500);
     anotar('tocou na animação no vídeo', { como, ...(await estado()) });
-    await foto('4-toque-no-video');
+    await foto('6-toque-no-video');
     // A etiqueta do item escolhido: o botão que abre os ajustes.
     const botoes = await b.execute(() => [...document.querySelectorAll('.pratico button, .etiqueta button')].map((x) => x.textContent.trim()).filter(Boolean).slice(0, 30));
     anotar('botões visíveis', { botoes });
@@ -128,7 +165,7 @@ try {
       await ajustes.click();
       await espera(3500);
       anotar('abriu os ajustes da animação', await estado());
-      await foto('5-ajustes');
+      await foto('7-ajustes');
     }
   } else anotar('sem a camada de toque na animação');
 } catch (e) {
