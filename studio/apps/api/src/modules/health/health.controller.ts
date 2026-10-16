@@ -47,6 +47,9 @@ export class HealthController {
    * log do container, para entender defeitos de um celular que a gente não
    * tem na mão. Nada é gravado no banco.
    */
+  // Públicas: um relato não pode se perder porque a sessão expirou (o erro do iPhone
+  // às 22:43 voltou 401 e sumiu). Só escrevem no log, com tamanho limitado.
+  @Public()
   @Post('previa')
   @HttpCode(204)
   previa(@Body() corpo: unknown): void {
@@ -68,6 +71,7 @@ export class HealthController {
    * Vai para o log e para o Redis (14 dias, por código), para sobreviver a
    * um deploy entre o teste e a leitura. Nada vai para o banco.
    */
+  @Public()
   @Post('rastro')
   @HttpCode(204)
   async rastro(@Body() corpo: unknown): Promise<void> {
@@ -98,6 +102,7 @@ export class HealthController {
    * do layout manda sozinho, com a sessão, no máximo 15 por página): o iPhone
    * com iOS mais antigo, a gaveta que não abre. Só vai para o log do container.
    */
+  @Public()
   @Post('erro')
   @HttpCode(204)
   erro(@Body() corpo: unknown): void {

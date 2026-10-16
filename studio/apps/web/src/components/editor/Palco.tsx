@@ -70,7 +70,7 @@ import { MoldurasDasMidias } from '../../lib/molduraDaMidia';
 import { MotorDecodificado, estadoDoMotor, relatarPrevia } from './motorDecodificado';
 import { INDICE_DA_TRANSICAO } from './gl/transicoesGlsl';
 import { tabelaDaPrevia } from './gl/cores';
-import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte } from './recorteDaPessoa';
+import { carregarModeloDaPessoa, desenharQuadro, mascaraDoQuadro, melhorAlturaAtras, pintarRecorte, recorteNoAparelho } from './recorteDaPessoa';
 import { tempo } from './funcoes';
 import { publicarPosicao } from '../../lib/relogioAoVivo';
 import {
@@ -1272,7 +1272,9 @@ export function Palco({
   const temAtras = planoDaPrevia.overlays.some(ehTextoAtras);
   // Animações (título, chamada) atrás da pessoa: o mesmo recorte, por cima do iframe delas.
   const temAnimacaoAtras = (planoDaPrevia.mediaLayers ?? []).some(ehAnimacaoAtras);
-  const temRecorte = temAtras || temAnimacaoAtras;
+  // No iPhone o recorte não roda na prévia (memória: ver recorteNoAparelho); o texto "atrás" aparece na frente.
+  const recortaAqui = useMemo(() => recorteNoAparelho(), []);
+  const temRecorte = (temAtras || temAnimacaoAtras) && recortaAqui;
   const [ass, assAtras] = useMemo(() => {
     const plan = planoDaPrevia;
     if (!planoPrecisaDeAss(plan)) return [null, null];
@@ -1376,7 +1378,7 @@ export function Palco({
   const temEfeitoDePessoa =
     (plan.screenEffects ?? []).some((e) => efeitoUsaPessoa(e.type)) || (plan.mediaLayers ?? []).some((m) => m.followPerson);
   useEffect(() => {
-    if (!temEfeitoDePessoa || !glAoVivo) return;
+    if (!temEfeitoDePessoa || !glAoVivo || !recortaAqui) return;
     let vivo = true;
     let quadro = 0;
     let ocupado = false;
@@ -1843,7 +1845,7 @@ export function Palco({
           {!tocando &&
             (() => {
               const o = textosVisiveis.find(({ o }) => o.id === destaqueSelecionado && ehTextoAtras(o))?.o;
-              if (!o || !onMoverDestaque) return null;
+              if (!o || !onMoverDestaque || !recortaAqui) return null;
               const caixa = caixaDoTexto(planoDaPrevia, o, marcaDoVideo);
               return (
                 <button

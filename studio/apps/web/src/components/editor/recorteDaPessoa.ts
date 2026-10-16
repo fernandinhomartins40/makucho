@@ -9,7 +9,23 @@
 // tem texto atrás da pessoa -- o runtime tem 14 MB.
 // ============================================================
 
+import { rastro } from '../../lib/diagnostico';
+
 const LADO = 256;
+
+/**
+ * O recorte roda neste aparelho? No iPhone e no iPad, não: o runtime do
+ * modelo (14 MB) e o worker dele somados ao vídeo e às animações passam do
+ * teto de memória que o iOS dá a cada aba, e o Safari derruba e recarrega a
+ * página (a gaveta "abre e fecha"). Lá, a prévia mostra o texto "atrás"
+ * na frente -- como já fazia tocando no celular -- e o vídeo exportado no
+ * servidor sai com a pessoa recortada.
+ */
+export function recorteNoAparelho(): boolean {
+  if (typeof navigator === 'undefined') return true;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return !ios;
+}
 
 interface Sessao {
   run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
@@ -28,6 +44,7 @@ let carregando: Promise<{ ort: Ort; sessao: Sessao }> | null = null;
 /** Carrega o modelo uma vez por página. */
 export function carregarModeloDaPessoa(): Promise<{ ort: Ort; sessao: Sessao }> {
   if (!carregando) {
+    rastro('modelo-da-pessoa', { estado: 'carregando' });
     carregando = (async () => {
       const ort = (await import('onnxruntime-web/wasm')) as unknown as Ort;
       ort.env.wasm.wasmPaths = '/ort/';
@@ -47,9 +64,13 @@ export function carregarModeloDaPessoa(): Promise<{ ort: Ort; sessao: Sessao }> 
       const sessao = await ort.InferenceSession.create('/modelos/pessoa.onnx');
       return { ort, sessao };
     })();
-    carregando.catch(() => {
-      carregando = null;
-    });
+    carregando.then(
+      () => rastro('modelo-da-pessoa', { estado: 'pronto' }),
+      (e) => {
+        rastro('modelo-da-pessoa', { estado: 'falhou', msg: String((e as Error)?.message ?? e).slice(0, 200) });
+        carregando = null;
+      },
+    );
   }
   return carregando;
 }
