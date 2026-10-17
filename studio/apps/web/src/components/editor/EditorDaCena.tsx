@@ -344,6 +344,9 @@ function Modelos({ cena, atual, composicao, desabilitado, aplicando, onEscolher 
   );
 }
 
+/** 88 px de largura na faixa (.modelos-da-cena__quadro) para uma cena de 1080. */
+const ESCALA_DA_MINIATURA = 88 / 1080;
+
 function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, aplicando, onEscolher }: { cena: CenaDeMotion; preset: string; nome: string; marcada: boolean; composicao: ComposicaoHtml; desabilitado: boolean; aplicando: boolean; onEscolher: (preset: string, faltam: string | null) => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const quadro = useRef<HTMLIFrameElement>(null);
@@ -364,7 +367,12 @@ function Miniatura({ cena, preset, nome, marcada, composicao, desabilitado, apli
     const origem = window.location.origin;
     // A cena como ficaria: o modelo no visual e nas cores deste vídeo (o ajuste da cena atual não entra).
     const c = composicaoDoPreset(amostra.cena, composicao.estilo ?? 'mg-keynote', 4, [], composicao.paleta ? { paleta: composicao.paleta } : {});
-    return documentoDaComposicao(c, { duracaoMs: 4000, gsap: `${origem}/hyperframes/gsap.min.js`, fontes: `${origem}/fonts/`, origens: origem, previa: true });
+    const pagina = documentoDaComposicao(c, { duracaoMs: 4000, gsap: `${origem}/hyperframes/gsap.min.js`, fontes: `${origem}/fonts/`, origens: origem, previa: true });
+    // A página tem o tamanho da miniatura e a cena encolhe lá dentro (o layout segue o de
+    // 1080x1920). Antes era uma página 1080x1920 encolhida por fora: cada miniatura era uma
+    // tela cheia para o iPhone pintar, e quatro ou cinco à vista somavam com o palco e o vídeo.
+    // (O zoom do CSS não serve: as cenas que medem o texto para caber saíam quebradas.)
+    return pagina.replace('</head>', `<style>#cena { width: 1080px !important; height: 1920px !important; transform: scale(${ESCALA_DA_MINIATURA}); transform-origin: 0 0; }</style></head>`);
   }, [visivel, amostra, composicao.estilo, composicao.paleta]);
   return (
     <button
