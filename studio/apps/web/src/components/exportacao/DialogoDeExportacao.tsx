@@ -105,7 +105,9 @@ export function DialogoDeExportacao({ aberto, aoFechar, projectId, titulo, plano
       vivo = false;
     };
   }, [aberto]);
-  const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (escolheuOnde ?? (formatoDasRedes === false ? 'servidor' : (opcoes.onde ?? (apple ? 'servidor' : 'aparelho'))));
+  // No iPhone o servidor é o padrão a cada exportação, mesmo com "neste aparelho" lembrado de
+  // antes: lá a montagem no aparelho cai por memória. Escolher o aparelho continua possível.
+  const onde: 'aparelho' | 'servidor' = falta ? 'servidor' : (escolheuOnde ?? (formatoDasRedes === false || apple ? 'servidor' : (opcoes.onde ?? 'aparelho')));
 
   const mudar = (m: Partial<OpcoesDeExportacao>) => setOpcoes((o) => ({ ...o, ...m }));
   const exportar = () => {

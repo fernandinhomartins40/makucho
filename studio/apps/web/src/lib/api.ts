@@ -68,7 +68,7 @@ interface Opcoes {
  */
 let renovacaoEmCurso: Promise<boolean> | null = null;
 
-function renovarSessao(): Promise<boolean> {
+export function renovarSessao(): Promise<boolean> {
   renovacaoEmCurso ??= fetch('/api/auth/refresh', {
     method: 'POST',
     credentials: 'include',

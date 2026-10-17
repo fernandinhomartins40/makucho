@@ -178,6 +178,13 @@ export const useExportacoes = create<Loja>((set, get) => {
       }));
       vigiarSaida(true);
 
+      // O token da sessão dura 15 min, e a exportação baixa o original e os
+      // arquivos direto (sem o cliente da API, que renova sozinho): uma
+      // exportação longa recebia 401 no meio. Renova enquanto exporta.
+      const renovar = () => void import('../api').then(({ renovarSessao }) => renovarSessao()).catch(() => undefined);
+      renovar();
+      const manterSessao = window.setInterval(renovar, 10 * 60_000);
+
       let ultimo = 0;
       void import('./exportador')
         .then(({ exportarNoNavegador }) =>
@@ -222,12 +229,16 @@ export const useExportacoes = create<Loja>((set, get) => {
         .catch((e: unknown) => {
           const foiCancelada = e instanceof DOMException && e.name === 'AbortError';
           if (!foiCancelada) console.error('[exportação]', e);
+          // No iPhone a montagem no aparelho cai por memória: segue sozinha pelo servidor.
+          const peloServidor = !foiCancelada && ehAparelhoApple();
           atualizar(id, {
             estado: foiCancelada ? 'cancelada' : 'erro',
-            erro: foiCancelada ? undefined : e instanceof Error ? e.message : 'a exportação falhou.',
+            erro: foiCancelada ? undefined : `${e instanceof Error ? e.message : 'a exportação falhou.'}${peloServidor ? ' Seguindo pelo servidor…' : ''}`,
           });
+          if (peloServidor) get().iniciarNoServidor(projectId, pedido.titulo, pedido.desligados);
         })
         .finally(() => {
+          window.clearInterval(manterSessao);
           controladores.delete(id);
           vigiarSaida(get().tarefas.some((t) => t.estado === 'rodando'));
         });

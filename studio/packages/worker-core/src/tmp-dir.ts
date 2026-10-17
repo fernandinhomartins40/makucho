@@ -109,7 +109,7 @@ function criarEspacoExistente(caminho: string): Pick<EspacoDeTrabalho, 'tamanho'
 /**
  * Teto de disco por job.
  *
- * O tmpfs do worker de render tem 3 GB (ver compose). Estourar nao
+ * A pasta de trabalho do render fica em disco (ver compose). Estourar nao
  * e erro de disco cheio: e sinal de video grande demais ou de um
  * loop gerando frames sem parar.
  */
@@ -162,3 +162,21 @@ export async function verificarLimite(
 }
 
 export { nomeSeguro };
+
+/**
+ * As sobras de um processo que morreu no meio de um job (morto por
+ * memória, contêiner reiniciado): o `finally` não rodou. No tmpfs elas
+ * sumiam com o contêiner; em disco ficam, e só este contêiner usa a
+ * pasta -- na subida não há job nenhum rodando. Fica o que é cache
+ * (`manter`), como as fontes do HyperFrames.
+ */
+export async function limparSobrasDoTrabalho(base: string, manter: readonly string[] = []): Promise<number> {
+  const entradas = await readdir(base).catch(() => [] as string[]);
+  let removidas = 0;
+  for (const nome of entradas) {
+    if (manter.includes(nome)) continue;
+    await rm(join(base, nome), { recursive: true, force: true }).catch(() => undefined);
+    removidas += 1;
+  }
+  return removidas;
+}

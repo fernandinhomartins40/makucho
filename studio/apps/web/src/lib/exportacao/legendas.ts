@@ -102,8 +102,28 @@ export class RenderizadorDeLegendas {
     return r;
   }
 
-  /** Um JASSUB novo no mesmo canvas (no começo e sempre que o anterior travar ou envelhecer). */
+  /**
+   * Um JASSUB novo, com até três tentativas: no iPhone o worker dele cai
+   * (memória, WebGL perdido) e a falha chega como "Unserializable return
+   * value" -- recriar uma vez sem proteção derrubava a exportação inteira.
+   */
   private async iniciar(): Promise<void> {
+    let ultimo: unknown = null;
+    for (let tentativa = 1; tentativa <= 3; tentativa += 1) {
+      try {
+        await this.iniciarUmaVez();
+        return;
+      } catch (e) {
+        ultimo = e;
+        await new Promise((ok) => setTimeout(ok, 500 * tentativa));
+      }
+    }
+    const motivo = ultimo instanceof Error ? ultimo.message : String(ultimo);
+    throw new Error(`as legendas não puderam ser desenhadas neste aparelho (${motivo}). Exporte pelo servidor.`);
+  }
+
+  /** Um JASSUB novo no mesmo canvas (no começo e sempre que o anterior travar ou envelhecer). */
+  private async iniciarUmaVez(): Promise<void> {
     const anterior = this.j;
     this.j = null;
     if (anterior) await comPrazo(anterior.destroy().catch(() => undefined), 2000);
