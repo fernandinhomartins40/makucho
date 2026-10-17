@@ -737,6 +737,17 @@ function lerBriefing(c: ComposicaoHtml): { tipo: string; ideia: string; conteudo
   }
 }
 
+/**
+ * Os vídeos de apoio que a pessoa gravou (vídeo em tela cheia por cima da
+ * fala, videos-de-apoio.ts) entram antes das animações: uma animação no
+ * mesmo instante cobriria o que ela quis mostrar, e sai.
+ */
+export function sobreVideoDeApoio(plano: EditPlanV1, inicioMs: number, fimMs: number): boolean {
+  return (plano.mediaLayers ?? []).some(
+    (m) => m.kind === 'video' && m.layout === 'tela_cheia' && inicioMs < m.timelineStartMs + m.durationMs && fimMs > m.timelineStartMs,
+  );
+}
+
 /** A paleta mais usada nas animações do vídeo (se alguma usa). */
 export function paletaDoPlano(plano: EditPlanV1): string | undefined {
   const conta = new Map<string, number>();
@@ -1710,7 +1721,8 @@ ${fala}${
         aoDirigir([]);
         throw e;
       }
-      const { momentos } = direcao;
+      const momentos = direcao.momentos.filter((m) => !sobreVideoDeApoio(plano, m.inicioS * 1000, m.fimS * 1000));
+      if (momentos.length < direcao.momentos.length) this.log.log(`projeto ${projectId}: ${direcao.momentos.length - momentos.length} animação(ões) no instante de um vídeo de apoio, fora`);
       const visual: Visual = direcao.design ? { design: direcao.design } : { estilo: direcao.estilo! };
       const { estilo, design } = visual;
       const nomeDoVisual = estilo ? `no estilo ${estilo.nome}` : 'com direção própria';
@@ -1862,6 +1874,11 @@ ${fala}${
     } catch (e) {
       aoDirigir([]);
       throw e;
+    }
+    const livresDoApoio = direcao.cenas.filter((c) => !sobreVideoDeApoio(plano, c.inicioS * 1000, c.fimS * 1000));
+    if (livresDoApoio.length < direcao.cenas.length) {
+      this.log.log(`projeto ${projectId}: ${direcao.cenas.length - livresDoApoio.length} cena(s) de motion no instante de um vídeo de apoio, fora`);
+      direcao = { ...direcao, cenas: livresDoApoio };
     }
     const visual = visualDeMotion(direcao.visual)!;
     Object.assign(relatorio, {

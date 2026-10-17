@@ -136,7 +136,7 @@ function prazoDaDirecaoMs(): number {
  * O pedido da direção: a montagem entrega o vídeo com o acabamento por
  * regra (o mesmo de todo vídeo) e o agente o dirige como este vídeo pede.
  */
-const PEDIDO_DE_DIRECAO = `Dirija este vídeo. Ele acabou de ser montado: os cortes foram escolhidos e o acabamento foi posto por regra, igual ao de qualquer outro vídeo. Seu trabalho é fazer dele um vídeo com direção -- olhe o projeto, a fala e a marca, decida o que ESTE conteúdo pede e refaça o acabamento com as suas escolhas: legenda, textos na tela, imagens, cor, ritmo, som. As animações da fala já foram criadas pela direção de animação: mantenha, a não ser que estejam sobrando ou faltando num momento-chave.
+const PEDIDO_DE_DIRECAO = `Dirija este vídeo. Ele acabou de ser montado: os cortes foram escolhidos e o acabamento foi posto por regra, igual ao de qualquer outro vídeo. Seu trabalho é fazer dele um vídeo com direção -- olhe o projeto, a fala e a marca, decida o que ESTE conteúdo pede e refaça o acabamento com as suas escolhas: legenda, textos na tela, imagens, cor, ritmo, som. As animações da fala já foram criadas pela direção de animação: mantenha, a não ser que estejam sobrando ou faltando num momento-chave. Os vídeos de apoio que a pessoa gravou (vídeo em tela cheia, mudo, com o nome "Apoio - ...") são o que ela quis mostrar enquanto fala: ficam e continuam mudos; pode ajustar o instante ou o trecho deles, não tirar.
 Os cortes ficam (pode ajustar bordas e silêncios; não refaça a montagem). O que o Kit de marca fixou continua valendo. Menos é mais quando o vídeo pede: tirar o que está sobrando também é dirigir. Confira o resultado antes de terminar.`;
 
 /** Fora da direção: refazer a montagem do zero desfaria o que ela acabou de receber. */

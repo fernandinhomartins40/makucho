@@ -342,6 +342,49 @@ export async function gerarProxy(opcoes: OpcoesDoProxy): Promise<void> {
   );
 }
 
+/**
+ * O vídeo de apoio (videos-de-apoio.ts) como asset: H.264 em MP4, no
+ * máximo 1920 no lado maior. O celular grava em HEVC/MOV, que o Chrome
+ * não toca e que pesaria na prévia do iPhone; e o asset entra no render
+ * como b-roll por cima do original, então a qualidade fica alta (CRF 21).
+ * Um quadro-chave por segundo: o editor busca o trecho escolhido.
+ */
+export async function converterApoio(opcoes: {
+  entrada: string;
+  saida: string;
+  duracaoTotalMs?: number;
+  aoProgredir?: (fracao: number) => void;
+}): Promise<void> {
+  await executar(
+    'ffmpeg',
+    [
+      '-y',
+      '-i', opcoes.entrada,
+      // Cabe num quadrado de 1920 (o lado maior em até 1920, sem ampliar),
+      // a proporção mantida e as medidas pares (o libx264 recusa ímpar).
+      '-vf', "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2",
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '21',
+      '-g', '30',
+      '-keyint_min', '30',
+      '-sc_threshold', '0',
+      '-r', '30',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      // O som fica (mudo por padrão na camada, mas a pessoa pode ligar).
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      opcoes.saida,
+    ],
+    {
+      duracaoTotalMs: opcoes.duracaoTotalMs,
+      aoProgredir: opcoes.aoProgredir,
+      timeoutMs: 20 * 60 * 1000,
+    },
+  );
+}
+
 // ---------- Áudio ----------
 
 /**

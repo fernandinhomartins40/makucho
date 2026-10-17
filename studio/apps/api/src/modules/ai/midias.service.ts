@@ -105,7 +105,9 @@ export class MidiasService {
     }
 
     // Um instante, um recurso: momento sob uma animação sai (e nem é buscado).
-    const livres = lido.momentos.filter((m) => !ocupados.some((o) => m.inicioMs < o.fimMs + 500 && m.fimMs > o.inicioMs - 500));
+    // Nem sob um vídeo de apoio da pessoa (vídeo em tela cheia já no plano): é o que ela quis mostrar.
+    const tomados = [...ocupados, ...(plano.mediaLayers ?? []).filter((c) => c.kind === 'video' && c.layout === 'tela_cheia').map((c) => ({ inicioMs: c.timelineStartMs, fimMs: c.timelineStartMs + c.durationMs }))];
+    const livres = lido.momentos.filter((m) => !tomados.some((o) => m.inicioMs < o.fimMs + 500 && m.fimMs > o.inicioMs - 500));
     if (livres.length < lido.momentos.length) this.log.log(`projeto ${projectId}: ${lido.momentos.length - livres.length} momento(s) de mídia sob animações, fora`);
     lido.momentos = livres;
 

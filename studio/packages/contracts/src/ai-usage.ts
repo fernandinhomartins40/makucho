@@ -58,6 +58,8 @@ export const CHAMADAS_DE_IA = [
   // #19: a revisão final (revisao-final.ts): as palavras da legenda que o
   // whisper ouviu com pouca certeza, conferidas com a frase em volta.
   'revisar_legenda',
+  // #20: onde os vídeos de apoio da pessoa entram por cima da fala (videos-de-apoio.ts).
+  'colocar_apoios',
 ] as const;
 
 export const chamadaDeIaSchema = z.enum(CHAMADAS_DE_IA);
@@ -84,6 +86,7 @@ export const ROTULO_DA_CHAMADA: Record<ChamadaDeIa, string> = {
   olhar_video: 'Análise da imagem do vídeo',
   montar_motion: 'Motion graphics (presets)',
   revisar_legenda: 'Revisão da legenda',
+  colocar_apoios: 'Vídeos de apoio',
 };
 
 // ---------- Modelos ----------
@@ -164,6 +167,7 @@ export const CONFIG_POR_CHAMADA: Record<ChamadaDeIa, ConfigDaChamada> = {
   montar_motion: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
   // Poucas palavras com a frase em volta: conferir grafia não pede raciocínio.
   revisar_legenda: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
+  colocar_apoios: { modelo: 'deepseek-flash', raciocinio: 'desligado' },
 };
 
 /**

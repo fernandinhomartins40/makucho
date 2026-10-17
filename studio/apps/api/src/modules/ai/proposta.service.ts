@@ -30,6 +30,7 @@ import { MidiasService } from './midias.service';
 import { AgenteService } from './agente.service';
 import { AnimacoesDaFalaService } from './animacoes-da-fala.service';
 import { AnaliseService } from './analise.service';
+import { ApoiosService } from './apoios.service';
 import { RevisaoService } from './revisao.service';
 
 export interface ResultadoDaProposta {
@@ -83,6 +84,7 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly animacoesDaFala?: AnimacoesDaFalaService,
     @Optional() private readonly agente?: AgenteService,
     @Optional() private readonly revisao?: RevisaoService,
+    @Optional() private readonly apoios?: ApoiosService,
   ) {}
 
   onModuleInit() {
@@ -244,6 +246,13 @@ export class PropostaService implements OnModuleInit, OnModuleDestroy {
         .update({ where: { id: projectId }, data: { animationNote: 'Sem animações: o vídeo foi montado pelas cenas (sem fala para explicar).', animationReport: Prisma.DbNull } })
         .catch(() => undefined);
     } else {
+      // Os vídeos de apoio que a pessoa gravou entram antes de tudo: são o
+      // que ela quis mostrar. As animações e as mídias evitam os instantes deles.
+      if (this.apoios) {
+        await this.filas.publicarProgresso(projectId, 'montando', 60).catch(() => undefined);
+        const entradas = await this.apoios.colocarNaMontagem(sistema, projectId);
+        if (entradas) resposta.avisos = [...resposta.avisos, `Os vídeos de apoio entraram ${entradas} ${entradas === 1 ? 'vez' : 'vezes'} por cima da fala, sem o som deles.`];
+      }
       // A direção visual decide as animações; as mídias vêm DEPOIS dela,
       // fora dos instantes das animações (um instante, um recurso). Tudo
       // num job da fila: a montagem automática espera por ele (o vídeo já

@@ -20,12 +20,17 @@ import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
 import {
   FILA_ANALISE,
+  FILA_MIDIA,
   FILA_TRANSCRICAO,
   JOB_DE_DITADO,
   PREFIXO_DAS_FILAS,
   SILENCIO_MINIMO_MS,
   classificarAudio,
   ehAlucinacaoDoWhisper,
+  papeisDasPartes,
+  partesDoVideoSchema,
+  segmentosSoDaFala,
+  type ParteDoVideo,
   transcriptionResultSchema,
 } from '@makucho/studio-contracts';
 import { comLockGlobal, publicarProgresso } from '@makucho/studio-worker-core';
@@ -67,6 +72,8 @@ const redis = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 // o teto de gasto). O jobId é o projeto e o job some ao terminar, para
 // não bloquear uma análise futura do mesmo projeto.
 const filaDeAnalise = new Queue(FILA_ANALISE, { connection: redis, prefix: PREFIXO_DAS_FILAS });
+// Os vídeos de apoio viram assets no worker de mídia (é lá que está o FFmpeg) antes da análise.
+const filaDeMidia = new Queue(FILA_MIDIA, { connection: redis, prefix: PREFIXO_DAS_FILAS });
 
 function caminhoDe(chave: string): string {
   const completo = resolve(RAIZ_DO_STORAGE, chave);
@@ -234,8 +241,35 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   const descartados = resultado.segments.length - comFala.length + Number((bruto as { discarded?: number } | null)?.discarded ?? 0);
   const original = await prisma.mediaSource.findFirst({ where: { projectId, kind: 'ORIGINAL' }, orderBy: { createdAt: 'desc' } });
   const duracaoMs = original?.durationMs ?? audio.durationMs ?? Math.max(1, ...resultado.segments.map((s) => s.endMs));
-  const perfil = classificarAudio({ duracaoMs, segmentos: comFala, silencios, descartados });
-  const segmentosFinais = (perfil.tipo === 'fala' || perfil.tipo === 'fala_parcial' ? comFala : []).map((s, i) => ({ ...s, position: i }));
+
+  // ---------- Vídeo falado e vídeos de apoio ----------
+  //
+  // Com várias partes, a fala medida em cada uma diz qual é o vídeo
+  // falado e quais são de apoio (videos-de-apoio.ts). A fala do apoio
+  // (o som da loja, alguém ao fundo) sai da linha principal, e o tipo do
+  // áudio é medido só nas partes faladas -- o apoio com música não pode
+  // levar um vídeo falado para a montagem pelas cenas.
+  const lidas = partesDoVideoSchema.safeParse(projeto.videoParts ?? []);
+  let partes: ParteDoVideo[] = lidas.success ? lidas.data : [];
+  if (partes.length > 1) {
+    const papeis = papeisDasPartes(partes, comFala, silencios);
+    partes = partes.map((p, i) => ({ ...p, papel: papeis[i]!.papel, coberturaDeFala: papeis[i]!.perfil.coberturaDeFala }));
+  }
+  const apoios = partes.filter((p) => p.papel === 'apoio');
+  const daFala = segmentosSoDaFala(comFala, partes);
+  const naFala = (ms: number) => !apoios.some((p) => ms >= p.inicioMs && ms < p.fimMs);
+  const perfil = apoios.length
+    ? classificarAudio({
+        duracaoMs: Math.max(1, partes.filter((p) => p.papel !== 'apoio').reduce((t, p) => t + (p.fimMs - p.inicioMs), 0)),
+        segmentos: daFala,
+        silencios: silencios.filter((x) => naFala((x.inicioMs + x.fimMs) / 2)),
+        descartados,
+      })
+    : classificarAudio({ duracaoMs, segmentos: comFala, silencios, descartados });
+  if (apoios.length) {
+    console.log(`[transcricao] projeto ${projectId}: ${apoios.length} de ${partes.length} partes são vídeos de apoio (${apoios.map((p) => `"${p.nome}"`).join(', ')})`);
+  }
+  const segmentosFinais = (perfil.tipo === 'fala' || perfil.tipo === 'fala_parcial' ? daFala : []).map((s, i) => ({ ...s, position: i }));
   console.log(`[transcricao] projeto ${projectId}: áudio "${perfil.tipo}" (fala em ${Math.round(perfil.coberturaDeFala * 100)}% do vídeo, ${descartados} descartados)`);
   const cenas = await lerCenas(dirname(audio.storageKey));
 
@@ -308,11 +342,30 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
 
     // ANALYZING é o próximo estado; a Fase 5b pega daqui. O perfil do
     // áudio decide o caminho da montagem: pela fala ou pelas cenas.
+    //
+    // Com vídeo de apoio, o projeto segue em "transcrevendo" até o worker
+    // de mídia converter os apoios: é ele que leva à análise.
     await tx.project.update({
       where: { id: projectId },
-      data: { state: 'ANALYZING', publicError: null, audioProfile: perfil },
+      data: apoios.length
+        ? { publicError: null, audioProfile: perfil, videoParts: partes }
+        : { state: 'ANALYZING', publicError: null, audioProfile: perfil, ...(partes.length ? { videoParts: partes.map(({ arquivo: _arquivo, ...p }) => p) } : {}) },
     });
   });
+
+  if (apoios.length) {
+    try {
+      await filaDeMidia.add('apoio', { projectId }, { jobId: `apoio-${projectId}-${Date.now()}`, attempts: 2, removeOnComplete: 100, removeOnFail: 500 });
+      await job.updateProgress(100);
+      return;
+    } catch (e) {
+      // Sem a fila de mídia, o vídeo segue sem os apoios (a fala já está separada).
+      console.error(`[transcricao] falha ao enfileirar os apoios do projeto ${projectId}; seguindo sem eles:`, e);
+      await prisma.project.update({ where: { id: projectId }, data: { state: 'ANALYZING' } });
+    }
+  }
+  // Sem apoio, os arquivos das partes já não servem: o original juntado tem tudo.
+  for (const p of partes) if (p.arquivo) await rm(caminhoDe(p.arquivo), { force: true }).catch(() => undefined);
 
   try {
     await filaDeAnalise.add(
@@ -465,6 +518,7 @@ for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     void worker
       .close()
       .then(() => filaDeAnalise.close())
+      .then(() => filaDeMidia.close())
       .then(() => prisma.$disconnect())
       .then(() => redis.quit())
       .then(() => process.exit(0));

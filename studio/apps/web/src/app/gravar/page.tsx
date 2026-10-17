@@ -16,7 +16,9 @@
 //
 // Nada é processado enquanto a pessoa monta a lista: só "Ir para a
 // edição com IA" junta os vídeos num só, na ordem da lista, e começa o
-// preparo. O destino é o editor, que acompanha tudo.
+// preparo. Depois de ouvir, a IA separa o vídeo falado dos vídeos de
+// apoio (videos-de-apoio.ts): esses entram por cima da fala, sem som.
+// O destino é o editor, que acompanha tudo.
 // ============================================================
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -820,7 +822,7 @@ function Composicao({
               <div className="linha entre" style={{ flexWrap: 'wrap', gap: 'var(--e3)' }}>
                 <h2 id="titulo-dos-videos" style={{ fontSize: 16 }}>
                   {itens.length === 1 ? '1 vídeo' : `${itens.length} vídeos`}
-                  {itens.length > 1 && <span className="texto-secundario" style={{ fontWeight: 400, fontSize: 13 }}> · viram um só, nesta ordem</span>}
+                  {itens.length > 1 && <span className="texto-secundario" style={{ fontWeight: 400, fontSize: 13 }}> · as falas viram um vídeo só, nesta ordem; os vídeos de apoio entram por cima delas, sem som</span>}
                 </h2>
                 <ResumoDoEnvio itens={itens} />
               </div>

@@ -79,6 +79,8 @@ export const VERSAO_DO_PROMPT = {
   // A revisão final: as palavras da legenda que o whisper ouviu com pouca
   // certeza, conferidas com a frase em volta (revisao.service.ts).
   revisar_legenda: 'revisao-legenda-v1',
+  // Onde os vídeos de apoio da pessoa entram por cima da fala, mudos (videos-de-apoio.ts).
+  colocar_apoios: 'apoios-v1',
   // A revisão final: o tipo de cena de cada animação combina com o que foi dito? (com visão)
   revisar_estilo_da_animacao: 'revisao-estilo-v1',
   // A revisão final: o diretor de arte olha a foto com as peças rotuladas e ajusta cada uma.

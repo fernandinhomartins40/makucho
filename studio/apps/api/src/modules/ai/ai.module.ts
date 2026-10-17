@@ -22,6 +22,7 @@ import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
 import { AnaliseController } from './analise.controller';
 import { AnaliseService } from './analise.service';
+import { ApoiosService } from './apoios.service';
 import { MidiasService } from './midias.service';
 import { MontagemVisualService } from './montagem-visual.service';
 import { AgenteService } from './agente.service';
@@ -43,6 +44,7 @@ import { UsoDeIaService } from './uso.service';
   controllers: [AiController, AnaliseController, RoteiroController, RefinoController, AcabamentoController],
   providers: [
     AcabamentoService,
+    ApoiosService,
     MidiasService,
     MontagemVisualService,
     AgenteService,

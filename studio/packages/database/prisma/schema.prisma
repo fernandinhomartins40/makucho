@@ -472,6 +472,9 @@ model Project {
   animationStyle String?
   /// A paleta das animações ("clima:indice", PALETAS_DE_ANIMACAO); nula = as cores do estilo.
   animationPalette String?
+  /// As partes enviadas, no tempo do vídeo juntado, e o papel de cada uma (videos-de-apoio.ts):
+  /// a fala é a linha principal; o apoio entra mudo por cima dela. Nulo com um vídeo só.
+  videoParts Json?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 

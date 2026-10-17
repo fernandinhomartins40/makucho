@@ -18,10 +18,21 @@
 import { Queue, UnrecoverableError, Worker, type Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { PrismaClient } from '@makucho/studio-database';
-import { FILA_MIDIA, FILA_TRANSCRICAO, PREFIXO_DAS_FILAS, cenasDosCortes, descricaoDaPelicula } from '@makucho/studio-contracts';
+import {
+  FILA_ANALISE,
+  FILA_MIDIA,
+  FILA_TRANSCRICAO,
+  PREFIXO_DAS_FILAS,
+  cenasDosCortes,
+  descricaoDaPelicula,
+  partesDoVideoSchema,
+  storageKeySeguro,
+  type ParteDoVideo,
+} from '@makucho/studio-contracts';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
+  converterApoio,
   detectarCortesDeCena,
   detectarSilencios,
   extrairAudio,
@@ -37,7 +48,8 @@ import {
   verificarLimite,
 } from '@makucho/studio-worker-core';
 import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
+import { createReadStream, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, resolve, sep } from 'node:path';
 
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
@@ -92,16 +104,27 @@ async function juntarPartes(job: Job<DadosDoJob>): Promise<string> {
   const prefixo = dirname(dirname(partes[0]!.storageKey));
   const chave = `${prefixo}/original-${Date.now().toString(36)}.mp4`;
   let original: { id: string } | null = null;
+  let limites: ParteDoVideo[] = [];
 
   await comLockGlobal(redis, async (renovar) => {
     await comEspacoDeTrabalho(async (espaco) => {
-      const lidas = [];
+      const lidas: Array<{ caminho: string; probe: Awaited<ReturnType<typeof lerMetadados>> }> = [];
       for (const parte of partes) {
         const caminho = caminhoDe(parte.storageKey);
         lidas.push({ caminho, probe: await lerMetadados(caminho) });
       }
 
       const total = lidas.reduce((t, l) => t + (l.probe.durationMs || 0), 0);
+      // Onde cada parte fica no vídeo juntado: depois da transcrição, a
+      // fala medida em cada uma diz qual é o vídeo falado e quais são de
+      // apoio (videos-de-apoio.ts).
+      let inicio = 0;
+      limites = partes.map((parte, i) => {
+        const fim = inicio + (lidas[i]!.probe.durationMs || 0);
+        const p: ParteDoVideo = { nome: (parte.originalName ?? `vídeo ${i + 1}`).slice(0, 255), inicioMs: inicio, fimMs: fim, arquivo: parte.storageKey };
+        inicio = fim;
+        return p;
+      });
       if (total > DURACAO_MAXIMA_MS) {
         throw new ErroParaAPessoa(
           `Os vídeos somam ${Math.round(total / 60_000)} min, e o limite é 30 min. Remova alguma parte.`,
@@ -139,12 +162,11 @@ async function juntarPartes(job: Job<DadosDoJob>): Promise<string> {
       },
     });
     await tx.mediaSource.deleteMany({ where: { projectId, kind: 'PART' } });
+    // Os arquivos das partes ficam até a transcrição dizer quais são de
+    // apoio: esses viram assets (prepararApoios), e os demais saem lá.
+    await tx.project.update({ where: { id: projectId }, data: { videoParts: limites } });
     return criado;
   });
-
-  for (const parte of partes) {
-    await rm(caminhoDe(parte.storageKey), { force: true }).catch(() => undefined);
-  }
 
   return original.id;
 }
@@ -162,6 +184,8 @@ const redis = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 // Este worker também PRODUZ: ao terminar, passa o bastão para a
 // transcrição. O prefixo tem de ser o mesmo da API e do consumidor —
 // divergir aqui manda o job para uma fila que ninguém escuta.
+const filaDeAnalise = new Queue(FILA_ANALISE, { connection: redis, prefix: PREFIXO_DAS_FILAS });
+
 const filaDeTranscricao = new Queue(FILA_TRANSCRICAO, {
   connection: redis,
   prefix: PREFIXO_DAS_FILAS,
@@ -213,6 +237,7 @@ function avancar(job: Job<DadosDoJob>, pct: number) {
 }
 
 async function processar(job: Job<DadosDoJob>): Promise<void> {
+  if (job.name === 'apoio') return prepararApoios(job);
   const { projectId } = job.data;
   // Projeto excluído: tentar de novo não traz ele de volta.
   if (!(await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } }))) {
@@ -459,6 +484,95 @@ async function processar(job: Job<DadosDoJob>): Promise<void> {
   await avancar(job, 100);
 }
 
+/**
+ * Os vídeos de apoio (videos-de-apoio.ts) viram assets de vídeo do
+ * workspace, e a análise começa. A transcrição chama este passo quando
+ * o projeto tem várias partes: ela já disse qual é o vídeo falado e
+ * quais são de apoio.
+ *
+ * Nunca segura o projeto: um apoio que não converte fica de fora (o
+ * vídeo sai sem ele), e no fim os arquivos das partes saem do disco e a
+ * análise é enfileirada de qualquer jeito.
+ */
+async function prepararApoios(job: Job<DadosDoJob>): Promise<void> {
+  const { projectId } = job.data;
+  const projeto = await prisma.project.findUnique({ where: { id: projectId }, select: { workspaceId: true, videoParts: true } });
+  if (!projeto) throw new UnrecoverableError(`projeto ${projectId} foi excluído`);
+  const lidas = partesDoVideoSchema.safeParse(projeto.videoParts ?? []);
+  const partes: ParteDoVideo[] = lidas.success ? lidas.data : [];
+  try {
+    if (partes.some((p) => p.papel === 'apoio' && !p.assetId && p.arquivo)) {
+      await publicarProgresso(redis, projectId, 'preparando', 0).catch(() => undefined);
+      await comLockGlobal(redis, async (renovar) => {
+        await comEspacoDeTrabalho(async (espaco) => {
+          for (const [i, p] of partes.entries()) {
+            if (p.papel !== 'apoio' || p.assetId || !p.arquivo) continue;
+            try {
+              const saida = espaco.arquivo(`apoio-${i}.mp4`);
+              await converterApoio({
+                entrada: caminhoDe(p.arquivo),
+                saida,
+                duracaoTotalMs: p.fimMs - p.inicioMs || undefined,
+                aoProgredir: () => void renovar(),
+              });
+              const medida = await lerMetadados(saida);
+              const hash = await hashDoArquivo(saida);
+              const chave = storageKeySeguro(projeto.workspaceId, 'VIDEO', hash.slice(0, 32), 'mp4');
+              let asset = await prisma.asset.findUnique({ where: { storageKey: chave }, select: { id: true } });
+              if (!asset) {
+                await publicar(saida, chave);
+                asset = await prisma.asset.create({
+                  data: {
+                    workspaceId: projeto.workspaceId,
+                    kind: 'VIDEO',
+                    mimeType: 'video/mp4',
+                    storageKey: chave,
+                    originalName: `Apoio - ${p.nome}`.slice(0, 255),
+                    sizeBytes: await tamanhoDe(chave),
+                    widthPx: medida.widthPx || null,
+                    heightPx: medida.heightPx || null,
+                    durationMs: medida.durationMs || null,
+                  },
+                  select: { id: true },
+                });
+              }
+              partes[i] = { ...p, assetId: asset.id };
+              console.log(`[midia] apoio "${p.nome}" do projeto ${projectId} virou o asset ${asset.id}`);
+            } catch (e) {
+              console.warn(`[midia] apoio "${p.nome}" do projeto ${projectId} não converteu; fica de fora: ${(e as Error).message.slice(0, 200)}`);
+            }
+            await avancar(job, Math.round((100 * (i + 1)) / partes.length));
+          }
+        }, `apoio-${projectId}`);
+      });
+    }
+  } finally {
+    for (const p of partes) {
+      if (p.arquivo) await rm(caminhoDe(p.arquivo), { force: true }).catch(() => undefined);
+    }
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { videoParts: partes.map(({ arquivo: _arquivo, ...p }) => p), state: 'ANALYZING', publicError: null },
+    });
+    try {
+      await filaDeAnalise.add('analisar', { projectId }, { jobId: `analise-${projectId}`, attempts: 2, removeOnComplete: true, removeOnFail: true });
+    } catch (e) {
+      // A varredura da API acha o projeto parado em "analisando" e enfileira de novo.
+      console.error(`[midia] falha ao enfileirar a análise do projeto ${projectId}:`, e);
+    }
+  }
+}
+
+function hashDoArquivo(caminho: string): Promise<string> {
+  return new Promise((ok, falha) => {
+    const h = createHash('sha256');
+    createReadStream(caminho)
+      .on('data', (d) => h.update(d))
+      .on('end', () => ok(h.digest('hex')))
+      .on('error', falha);
+  });
+}
+
 /** Move o arquivo do temporário para o storage, com fallback de cópia. */
 async function publicar(origem: string, chave: string): Promise<void> {
   const destino = caminhoDe(chave);
@@ -563,6 +677,7 @@ for (const sinal of ['SIGTERM', 'SIGINT'] as const) {
     void worker
       .close()
       .then(() => filaDeTranscricao.close())
+      .then(() => filaDeAnalise.close())
       .then(() => prisma.$disconnect())
       .then(() => redis.quit())
       .then(() => process.exit(0));
