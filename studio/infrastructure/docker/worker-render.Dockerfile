@@ -83,8 +83,8 @@ ENV NODE_ENV=production
 ENV STUDIO_FONTS_DIR=/app/fonts
 # O Chrome das animacoes em HTML (HyperFrames).
 ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium
-ENV HYPERFRAMES_FONT_CACHE_DIR=/tmp/studio/hf-fontes
-ENV PRODUCER_RENDERS_DIR=/tmp/studio/hf-renders/renders
+ENV HYPERFRAMES_FONT_CACHE_DIR=/var/tmp/studio/hf-fontes
+ENV PRODUCER_RENDERS_DIR=/var/tmp/studio/hf-renders/renders
 
 RUN groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m worker
 
@@ -108,8 +108,10 @@ COPY --chown=worker:nodejs studio/assets/stickers /app/stickers
 # poe um texto ATRAS de quem fala. 600 KB; roda em WebAssembly.
 COPY --chown=worker:nodejs studio/assets/modelos /app/modelos
 
-RUN mkdir -p /app/storage/media /tmp/studio \
-  && chown -R worker:nodejs /app/storage /tmp/studio
+# /var/tmp/studio: a pasta de trabalho em disco (volume no compose). O volume
+# novo nasce com o dono desta pasta, e o processo roda como "worker".
+RUN mkdir -p /app/storage/media /tmp/studio /var/tmp/studio \
+  && chown -R worker:nodejs /app/storage /tmp/studio /var/tmp/studio
 
 USER worker
 

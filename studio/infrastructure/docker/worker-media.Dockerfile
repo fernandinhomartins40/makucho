@@ -82,7 +82,8 @@ COPY --from=builder --chown=worker:nodejs /app/studio/packages/worker-core/dist 
 # consegue nomear os tipos em quem o consome.
 COPY --from=builder --chown=worker:nodejs /app/studio/packages/database/src/generated ./studio/packages/database/src/generated
 
-RUN mkdir -p /app/storage/media /tmp/studio && chown -R worker:nodejs /app/storage /tmp/studio
+# /var/tmp/studio: a pasta de trabalho em disco (volume no compose), do "worker".
+RUN mkdir -p /app/storage/media /tmp/studio /var/tmp/studio && chown -R worker:nodejs /app/storage /tmp/studio /var/tmp/studio
 
 USER worker
 

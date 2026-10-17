@@ -10,6 +10,7 @@
 // ============================================================
 
 import { mkdtemp, rm, stat, readdir } from 'node:fs/promises';
+import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -166,17 +167,26 @@ export { nomeSeguro };
 /**
  * As sobras de um processo que morreu no meio de um job (morto por
  * memória, contêiner reiniciado): o `finally` não rodou. No tmpfs elas
- * sumiam com o contêiner; em disco ficam, e só este contêiner usa a
- * pasta -- na subida não há job nenhum rodando. Fica o que é cache
- * (`manter`), como as fontes do HyperFrames.
+ * sumiam com o contêiner; em disco ficam. Síncrona e chamada na subida,
+ * ANTES de o worker ouvir as filas: nenhum job está rodando, e só este
+ * contêiner usa a pasta. Fica o que é cache (`manter`), como as fontes.
  */
-export async function limparSobrasDoTrabalho(base: string, manter: readonly string[] = []): Promise<number> {
-  const entradas = await readdir(base).catch(() => [] as string[]);
+export function limparSobrasDoTrabalho(base: string, manter: readonly string[] = []): number {
+  let entradas: string[] = [];
+  try {
+    entradas = readdirSync(base);
+  } catch {
+    return 0;
+  }
   let removidas = 0;
   for (const nome of entradas) {
     if (manter.includes(nome)) continue;
-    await rm(join(base, nome), { recursive: true, force: true }).catch(() => undefined);
-    removidas += 1;
+    try {
+      rmSync(join(base, nome), { recursive: true, force: true });
+      removidas += 1;
+    } catch {
+      // Uma sobra que não sai não impede o worker de subir.
+    }
   }
   return removidas;
 }

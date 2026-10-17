@@ -57,6 +57,7 @@ import { medirAudio } from './loudness';
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
+  limparSobrasDoTrabalho,
   duracaoDoResultado,
   duracaoComVinhetas,
   gerarMascaraDaPessoa,
@@ -83,6 +84,14 @@ const PASTA_DE_FONTES = resolve(process.env.STUDIO_FONTS_DIR ?? '/app/fonts');
 /** Stickers embutidos (PNG 512x512), copiados de studio/assets/stickers. */
 const PASTA_DE_STICKERS = resolve(process.env.STUDIO_STICKERS_DIR ?? '/app/stickers');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+// A pasta de trabalho fica em disco (compose): as sobras de um job que morreu
+// no meio não somem sozinhas como no tmpfs. Antes de ouvir as filas, e só a
+// pasta do compose -- nunca o temporário do sistema. O cache de fontes fica.
+if (process.env.TMP_DIR === '/var/tmp/studio') {
+  const sobras = limparSobrasDoTrabalho(process.env.TMP_DIR, ['hf-fontes']);
+  if (sobras) console.log(`[render] ${sobras} sobra(s) de trabalho removida(s) da pasta temporária`);
+}
 
 /**
  * Modelo da pessoa (MediaPipe Selfie Segmentation, Apache 2.0, em

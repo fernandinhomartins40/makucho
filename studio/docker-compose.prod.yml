@@ -241,20 +241,22 @@ services:
       # UM job pesado por vez em todo o stack (ADR 0003). Tres workers
       # com concorrencia 1 cada ainda dariam tres jobs simultaneos.
       GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
-      TMP_DIR: /tmp/studio
+      # Temporarios em DISCO (volume proprio), nao em tmpfs: arquivo em
+      # tmpfs conta na memoria do container, e juntar videos grandes ali
+      # disputava o mem_limit com o FFmpeg. O teto por job continua
+      # (LIMITE_TEMPORARIO_BYTES) e a subida do worker limpa as sobras.
+      TMP_DIR: /var/tmp/studio
     depends_on:
       studio-redis:
         condition: service_healthy
     volumes:
       - studio_media:/app/storage/media
-      # Temporarios em tmpfs: morrem com o container e nunca enchem o
-      # disco da VPS, que e o recurso mais escasso aqui. O teto e
-      # deliberado — um video que nao caiba falha de forma explicita,
-      # em vez de travar o servidor inteiro.
+      - studio_trabalho_midia:/var/tmp/studio
+      # So o heartbeat fica em tmpfs.
       - type: tmpfs
         target: /tmp/studio
         tmpfs:
-          size: 2g
+          size: 64m
           # 1001 e o uid do usuario "worker" na imagem. A montagem
           # apaga o mkdir do Dockerfile, entao sem isto o processo nao
           # escreve nem o heartbeat nem os temporarios de FFmpeg.
@@ -364,20 +366,31 @@ services:
       STUDIO_FONTS_DIR: /app/fonts
       STUDIO_STICKERS_DIR: /app/stickers
       GLOBAL_JOB_LOCK_KEY: studio:heavy-job-lock
-      TMP_DIR: /tmp/studio
+      # Temporarios em DISCO (volume proprio). Em tmpfs eles contavam na
+      # memoria do container: o video montado, os quadros PNG das animacoes
+      # e as fontes somavam com o FFmpeg, e o kernel matava o FFmpeg no
+      # meio da exportacao ("ffmpeg falhou (codigo null)", 2026-10-15).
+      TMP_DIR: /var/tmp/studio
+      HYPERFRAMES_FONT_CACHE_DIR: /var/tmp/studio/hf-fontes
+      PRODUCER_RENDERS_DIR: /var/tmp/studio/hf-renders/renders
     depends_on:
       studio-redis:
         condition: service_healthy
     volumes:
       - studio_media:/app/storage/media
+      - studio_trabalho_render:/var/tmp/studio
+      # So o heartbeat fica em tmpfs.
       - type: tmpfs
         target: /tmp/studio
         tmpfs:
-          size: 3g
+          size: 64m
           # Mesmo motivo do worker de midia: sem o mode, o tmpfs nasce
           # root e o processo uid 1001 nao escreve o heartbeat.
           mode: 0o1777
-    mem_limit: 1024m
+    # 2 GB: o FFmpeg da exportacao (centenas de filtros: legenda, camadas,
+    # animacoes) e o Chrome das animacoes podem rodar juntos (filas
+    # separadas). Com 1 GB o container batia no teto o tempo todo.
+    mem_limit: 2048m
     # O render e o job mais pesado e o que mais se beneficia de CPU.
     # 2 de 4 vCPUs deixa metade da maquina para o resto.
     cpus: 2.0
@@ -407,6 +420,11 @@ volumes:
   # Originais, proxies, audio, thumbnails e renders.
   studio_media:
     name: makucho-studio-media
+  # As pastas de trabalho dos workers (temporarios de cada job), em disco.
+  studio_trabalho_midia:
+    name: makucho-studio-trabalho-midia
+  studio_trabalho_render:
+    name: makucho-studio-trabalho-render
   studio_whisper_models:
     name: makucho-studio-whisper-models
   studio_next_image_cache:

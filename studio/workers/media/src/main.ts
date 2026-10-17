@@ -32,6 +32,7 @@ import {
 import {
   comEspacoDeTrabalho,
   comLockGlobal,
+  limparSobrasDoTrabalho,
   converterApoio,
   detectarCortesDeCena,
   detectarSilencios,
@@ -54,6 +55,14 @@ import { dirname, resolve, sep } from 'node:path';
 
 const RAIZ_DO_STORAGE = resolve(process.env.STORAGE_DISK_PATH ?? '/app/storage/media');
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379';
+
+// A pasta de trabalho fica em disco (compose): as sobras de um job que morreu
+// no meio não somem sozinhas como no tmpfs. Antes de ouvir a fila, e só a
+// pasta do compose -- nunca o temporário do sistema.
+if (process.env.TMP_DIR === '/var/tmp/studio') {
+  const sobras = limparSobrasDoTrabalho(process.env.TMP_DIR);
+  if (sobras) console.log(`[midia] ${sobras} sobra(s) de trabalho removida(s) da pasta temporária`);
+}
 
 /**
  * Altura do proxy: 720p, leve para assistir e nítido o bastante para
