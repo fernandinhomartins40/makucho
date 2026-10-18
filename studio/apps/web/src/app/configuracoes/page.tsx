@@ -333,7 +333,10 @@ function SecaoDeIa() {
         <header className="config__cabeca">
           <div>
             <h3 id="titulo-consumo">Gasto da IA neste mês</h3>
-            <p className="dica">Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
+            <p className="dica">
+              Quanto a IA gastou na conta da DeepSeek e o limite que a trava (não é saldo nem crédito). Ao chegar no limite, o Studio segue funcionando sem
+              IA até o mês virar.
+            </p>
             {uso?.cotacao && (
               <p className="dica" style={{ fontSize: 12.5, marginTop: 4 }}>
                 Em reais pela cotação do dólar {uso.cotacao.fonte === 'padrao' ? 'aproximada' : `de ${uso.cotacao.data ? new Date(`${uso.cotacao.data}T12:00:00`).toLocaleDateString('pt-BR') : 'hoje'}`}{' '}
@@ -348,8 +351,9 @@ function SecaoDeIa() {
           <>
             <div className="config__gasto">
               <strong>{emReais(uso.gastoCentavos)}</strong>
+              {/* "de R$ X" parecia saldo: é o teto que trava a IA, não crédito. */}
               <span className="texto-secundario">
-                de {emReais(uso.limiteCentavos)} · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
+                gastos · limite de {emReais(uso.limiteCentavos)} por mês · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
               </span>
             </div>
             <div className="barra" role="progressbar" aria-valuenow={uso.gastoCentavos} aria-valuemin={0} aria-valuemax={uso.limiteCentavos} aria-label="Gasto de IA no mês">
