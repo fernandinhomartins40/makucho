@@ -259,7 +259,7 @@ services:
           size: 64m
           # 1001 e o uid do usuario "worker" na imagem. A montagem
           # apaga o mkdir do Dockerfile, entao sem isto o processo nao
-          # escreve nem o heartbeat nem os temporarios de FFmpeg.
+          # escreve o heartbeat.
           mode: 0o1777
     # 1 GB: o Chromium das animacoes em HTML (HyperFrames) usa ~300-500 MB
     # durante uma animacao; o FFmpeg do render usa o resto. Um de cada vez
