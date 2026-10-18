@@ -25,6 +25,7 @@ import {
 import type { ChamadaDeIa, SituacaoDeUso } from '@makucho/studio-contracts';
 import { PrismaService } from '../../common/prisma.service';
 import type { ModeloDeIa } from '@makucho/studio-contracts';
+import { cotacaoDoDolar } from './cotacao';
 
 type Modelo = ModeloDeIa;
 
@@ -90,8 +91,10 @@ export class UsoDeIaService {
     if (!cabeNoLimite(uso, estimativa)) {
       // 403 e não 402: o limite é uma decisão do próprio workspace,
       // não uma cobrança pendente com a MAKUCHO.
+      // Em reais, como a tela mostra o limite.
+      const { reaisPorDolar } = await cotacaoDoDolar();
       throw new ForbiddenException(
-        avisoDeUso({ ...uso, gastoCentavos: uso.limiteCentavos }) ??
+        avisoDeUso({ ...uso, gastoCentavos: uso.limiteCentavos }, reaisPorDolar) ??
           'O limite de IA deste mês foi atingido.',
       );
     }
@@ -179,7 +182,7 @@ export class UsoDeIaService {
 
   /** O aviso que a tela mostra, quando há um. */
   async aviso(workspaceId: string): Promise<{ texto: string | null; estado: string }> {
-    const uso = await this.situacao(workspaceId);
-    return { texto: avisoDeUso(uso), estado: estadoDoLimite(uso) };
+    const [uso, { reaisPorDolar }] = await Promise.all([this.situacao(workspaceId), cotacaoDoDolar()]);
+    return { texto: avisoDeUso(uso, reaisPorDolar), estado: estadoDoLimite(uso) };
   }
 }

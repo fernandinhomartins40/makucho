@@ -16,6 +16,7 @@ import { assertIsOwner } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 import { AiService } from './ai.service';
 import { CreditosDeIaService } from './creditos-de-ia.service';
+import { cotacaoDoDolar } from './cotacao';
 import { UsoDeIaService } from './uso.service';
 
 const limiteSchema = z.object({
@@ -60,7 +61,8 @@ export class AiController {
 
   @Get('ai-usage')
   async consumo(@CurrentTenant() tenant: TenantContext) {
-    const situacao = await this.uso.situacao(tenant.workspaceId);
+    // O gasto fica em dólar (a moeda da DeepSeek); a tela mostra em reais pela cotação.
+    const [situacao, cotacao] = await Promise.all([this.uso.situacao(tenant.workspaceId), cotacaoDoDolar()]);
 
     // Qualidade da selecao: media do aproveitamento dos videos
     // exportados nos ultimos 90 dias.
@@ -78,7 +80,8 @@ export class AiController {
         videos: medidos._count.aiKeptRatio,
       },
       estado: estadoDoLimite(situacao),
-      aviso: avisoDeUso(situacao),
+      aviso: avisoDeUso(situacao, cotacao.reaisPorDolar),
+      cotacao,
       // O detalhe por chamada com o rótulo pronto: "a IA custou X"
       // não ajuda a decidir nada; "a seleção de trechos custou X"
       // ajuda a escolher o que usar menos.

@@ -379,23 +379,25 @@ export function cabeNoLimite(uso: SituacaoDeUso, estimativaCentavos: number): bo
 }
 
 /** Frase pronta para a tela, quando o gasto merece uma. */
-export function avisoDeUso(uso: SituacaoDeUso): string | null {
+/**
+ * `reaisPorDolar`: com a cotação, os valores saem em reais (o gasto é
+ * guardado em dólar, a moeda do provedor; a pessoa lê em reais).
+ */
+export function avisoDeUso(uso: SituacaoDeUso, reaisPorDolar?: number): string | null {
   const estado = estadoDoLimite(uso);
   if (estado === 'ok') return null;
 
-  const reais = (c: number) => (c / 100).toFixed(2);
+  const valor = (c: number) =>
+    reaisPorDolar ? `R$ ${((c / 100) * reaisPorDolar).toFixed(2).replace('.', ',')}` : `US$ ${(c / 100).toFixed(2)}`;
 
   if (estado === 'bloqueado') {
     return (
-      `O limite de IA deste mês (US$ ${reais(uso.limiteCentavos)}) foi atingido. ` +
+      `O limite de IA deste mês (${valor(uso.limiteCentavos)}) foi atingido. ` +
       'As funções com IA voltam no dia 1º, ou quando o limite for aumentado nas configurações.'
     );
   }
 
-  return (
-    `Você já usou US$ ${reais(uso.gastoCentavos)} dos US$ ${reais(uso.limiteCentavos)} ` +
-    'de IA deste mês.'
-  );
+  return `Você já usou ${valor(uso.gastoCentavos)} dos ${valor(uso.limiteCentavos)} de IA deste mês.`;
 }
 
 /** O periodo de apuracao de uma data: sempre o mes corrente em UTC. */

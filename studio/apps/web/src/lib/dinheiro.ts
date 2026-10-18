@@ -6,6 +6,18 @@
 // (arredondado) o exageraria — abaixo de um centavo, quatro casas.
 // ============================================================
 
+/**
+ * Reais a partir de centavos de DÓLAR (o gasto da DeepSeek, guardado na
+ * moeda dela), pela cotação do dia. Abaixo de um centavo, quatro casas:
+ * o gasto pequeno não some nem é exagerado.
+ */
+export function reaisDeDolares(centavosDeDolar: number, reaisPorDolar: number): string {
+  const valor = (centavosDeDolar / 100) * reaisPorDolar;
+  if (valor > 0 && valor < 0.01) return `R$ ${valor.toFixed(4).replace('.', ',')}`;
+  const [inteiro, resto] = valor.toFixed(2).split('.');
+  return `R$ ${inteiro!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')},${resto}`;
+}
+
 export function dolares(centavos: number): string {
   const valor = centavos / 100;
   if (valor > 0 && valor < 0.01) return `US$ ${valor.toFixed(4).replace('.', ',')}`;

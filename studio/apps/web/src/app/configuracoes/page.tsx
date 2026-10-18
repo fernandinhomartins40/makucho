@@ -14,7 +14,7 @@
 // A aba aberta fica no endereço (#ia, #midia...), para voltar direto.
 // ============================================================
 
-import { dolares, reaisDeCentavos, reaisDeMicros } from '../../lib/dinheiro';
+import { reaisDeCentavos, reaisDeDolares, reaisDeMicros } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
 import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
@@ -179,15 +179,20 @@ function SecaoDeIa() {
     }
   };
 
+  // O gasto e o limite ficam guardados em dólar (a moeda da DeepSeek): a tela mostra e recebe em reais.
+  const cotacao = consumo.dados?.cotacao?.reaisPorDolar ?? 5.5;
+  const emReais = (centavosDeDolar: number) => reaisDeDolares(centavosDeDolar, cotacao);
+
   const salvarLimite = async () => {
-    const valor = Number(limite.replace(',', '.'));
-    if (!Number.isFinite(valor) || valor < 1 || valor > 500) {
-      setMensagemDoLimite({ tom: 'erro', texto: 'o limite precisa ficar entre US$ 1 e US$ 500 por mês.' });
+    const reais = Number(limite.trim().split('.').join('').replace(',', '.'));
+    const centavosDeDolar = Math.round((reais / cotacao) * 100);
+    if (!Number.isFinite(reais) || centavosDeDolar < 100 || centavosDeDolar > 50_000) {
+      setMensagemDoLimite({ tom: 'erro', texto: `o limite precisa ficar entre ${emReais(100)} e ${emReais(50_000)} por mês.` });
       return;
     }
     setSalvandoLimite(true);
     try {
-      const r = await apiIa.definirLimite(Math.round(valor * 100));
+      const r = await apiIa.definirLimite(centavosDeDolar);
       if (!r.ok) setMensagemDoLimite({ tom: 'erro', texto: r.motivo ?? 'não foi possível salvar o limite.' });
       else {
         setMensagemDoLimite({ tom: 'sucesso', texto: 'Limite mensal atualizado.' });
@@ -329,6 +334,12 @@ function SecaoDeIa() {
           <div>
             <h3 id="titulo-consumo">Gasto da IA neste mês</h3>
             <p className="dica">Quanto a IA gastou e o limite que a trava. Ao chegar no limite, o Studio segue funcionando sem IA até o mês virar.</p>
+            {uso?.cotacao && (
+              <p className="dica" style={{ fontSize: 12.5, marginTop: 4 }}>
+                Em reais pela cotação do dólar {uso.cotacao.fonte === 'padrao' ? 'aproximada' : `de ${uso.cotacao.data ? new Date(`${uso.cotacao.data}T12:00:00`).toLocaleDateString('pt-BR') : 'hoje'}`}{' '}
+                (US$ 1 = {reaisDeDolares(100, uso.cotacao.reaisPorDolar)}): a DeepSeek cobra em dólar. Com a FusAI, o gasto já sai em reais.
+              </p>
+            )}
           </div>
         </header>
         {consumo.carregando ? (
@@ -336,9 +347,9 @@ function SecaoDeIa() {
         ) : uso ? (
           <>
             <div className="config__gasto">
-              <strong>{dolares(uso.gastoCentavos)}</strong>
+              <strong>{emReais(uso.gastoCentavos)}</strong>
               <span className="texto-secundario">
-                de {dolares(uso.limiteCentavos)} · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
+                de {emReais(uso.limiteCentavos)} · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
               </span>
             </div>
             <div className="barra" role="progressbar" aria-valuenow={uso.gastoCentavos} aria-valuemin={0} aria-valuemax={uso.limiteCentavos} aria-label="Gasto de IA no mês">
@@ -358,7 +369,7 @@ function SecaoDeIa() {
             )}
             {(uso.economiaCentavos ?? 0) > 0 && (
               <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
-                Economia no mês: <strong>{dolares(uso.economiaCentavos ?? 0)}</strong>
+                Economia no mês: <strong>{emReais(uso.economiaCentavos ?? 0)}</strong>
                 {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''} (cache e horário fora do pico).
               </p>
             )}
@@ -377,7 +388,7 @@ function SecaoDeIa() {
                   {uso.detalhe.map((d) => (
                     <li key={d.chamada}>
                       <span>{d.rotulo}</span>
-                      <span>{dolares(d.centavos)}</span>
+                      <span>{emReais(d.centavos)}</span>
                     </li>
                   ))}
                 </ul>
@@ -397,11 +408,11 @@ function SecaoDeIa() {
             }}
           >
             <label className="campo" style={{ margin: 0 }}>
-              <span className="campo__rotulo">Limite mensal (US$)</span>
+              <span className="campo__rotulo">Limite mensal (R$)</span>
               <input
                 className="campo__entrada"
                 inputMode="decimal"
-                placeholder={uso ? (uso.limiteCentavos / 100).toFixed(2) : '20.00'}
+                placeholder={emReais(uso?.limiteCentavos ?? 2000).replace('R$ ', '')}
                 value={limite}
                 onChange={(e) => setLimite(e.target.value)}
               />
@@ -520,13 +531,21 @@ function CartaoDeCreditos() {
       ) : creditos.erro || dados?.erro ? (
         <Aviso mensagem={{ tom: 'erro', texto: creditos.erro ?? dados?.erro ?? 'não foi possível ler o saldo.' }} />
       ) : (
-        <div className="config__gasto">
-          <strong>{reaisDeMicros(dados?.saldoMicros)}</strong>
-          <span className="texto-secundario">disponível na FusAI</span>
-          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => creditos.recarregar()}>
-            Atualizar
-          </button>
-        </div>
+        <>
+          <div className="config__gasto">
+            <strong>{reaisDeMicros(dados?.saldoMicros)}</strong>
+            <span className="texto-secundario">disponível na FusAI</span>
+            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => creditos.recarregar()}>
+              Atualizar
+            </button>
+          </div>
+          {dados?.gastoDoMesMicros !== undefined && (
+            <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
+              Gasto neste mês: <strong>{reaisDeMicros(dados.gastoDoMesMicros)}</strong>
+              {dados.chamadasDoMes !== undefined && ` · ${dados.chamadasDoMes} ${dados.chamadasDoMes === 1 ? 'chamada' : 'chamadas'} à IA`}
+            </p>
+          )}
+        </>
       )}
 
       {esperando ? (

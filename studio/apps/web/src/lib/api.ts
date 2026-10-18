@@ -676,6 +676,8 @@ export interface ConsumoDeIa {
   acertosDoCache?: number;
   /** Quanto da seleção da IA ficou nos vídeos exportados (90 dias). */
   qualidade?: { aproveitamentoMedio: number | null; videos: number };
+  /** A cotação do dólar do dia: os centavos acima são de dólar (a moeda da DeepSeek); a tela mostra em reais. */
+  cotacao?: { reaisPorDolar: number; data: string | null; fonte: 'frankfurter' | 'awesomeapi' | 'padrao' };
 }
 
 // ============================================================
@@ -886,6 +888,9 @@ export interface CreditosDeIa {
   maximoCentavos?: number;
   taxaPct?: number;
   recargaDisponivel?: boolean;
+  /** O gasto deste mês na FusAI, em micro-reais (o cobrado, exato). */
+  gastoDoMesMicros?: string;
+  chamadasDoMes?: number;
   erro?: string;
 }
 

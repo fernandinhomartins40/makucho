@@ -98,6 +98,9 @@ t('gasto normal não gera aviso', avisoDeUso(uso(100)) === null);
 const emAviso = avisoDeUso(uso(1700));
 t('o aviso de 80% menciona os dois valores', !!emAviso && emAviso.includes('17.00') && emAviso.includes('20.00'));
 
+const emReais = avisoDeUso(uso(1700), 5);
+t('com a cotação, o aviso sai em reais', !!emReais && emReais.includes('R$ 85,00') && emReais.includes('R$ 100,00') && !emReais.includes('US$'));
+
 const bloqueado = avisoDeUso(uso(2000));
 // A mensagem precisa dizer o que fazer: um bloqueio sem saída é pior
 // que nenhum, porque o usuário não sabe se esperou ou se quebrou.

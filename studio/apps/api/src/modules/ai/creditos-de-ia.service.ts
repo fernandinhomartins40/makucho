@@ -29,6 +29,9 @@ export interface SituacaoDosCreditos {
   taxaPct?: number;
   /** A recarga está liberada (a organização tem CPF/CNPJ cadastrado). */
   recargaDisponivel?: boolean;
+  /** O que a IA gastou neste mês, em micro-reais (o cobrado pela FusAI, exato). */
+  gastoDoMesMicros?: string;
+  chamadasDoMes?: number;
   erro?: string;
 }
 
@@ -56,13 +59,17 @@ export class CreditosDeIaService {
     const chave = await this.chaveDaFusai(workspaceId);
     if (!chave) return { usaFusai: false };
     try {
-      const [saldo, opcoes] = await Promise.all([
+      // O mês corrente (UTC, como o período do Studio), do dia 1º até agora.
+      const inicioDoMes = `${new Date().toISOString().slice(0, 7)}-01`;
+      const [saldo, opcoes, uso] = await Promise.all([
         this.pedir<{ available_micros?: string }>(chave, '/balance'),
         this.pedir<{ minAmountCents?: number; maxAmountCents?: number; feePct?: number | string; available?: boolean }>(chave, '/topup-options').catch(() => null),
+        this.pedir<{ total?: { requests?: number; charged_micros?: string } }>(chave, `/usage?from=${inicioDoMes}`).catch(() => null),
       ]);
       return {
         usaFusai: true,
         saldoMicros: String(saldo.available_micros ?? '0'),
+        ...(uso?.total ? { gastoDoMesMicros: String(uso.total.charged_micros ?? '0'), chamadasDoMes: Number(uso.total.requests ?? 0) } : {}),
         minimoCentavos: opcoes?.minAmountCents ?? 500,
         maximoCentavos: opcoes?.maxAmountCents ?? 1_000_000,
         taxaPct: Number(opcoes?.feePct ?? 0) || 0,
