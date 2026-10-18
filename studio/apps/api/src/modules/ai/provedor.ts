@@ -81,6 +81,8 @@ export interface PedidoAoProvedor {
  */
 export interface ProvedorDeIa {
   readonly nome: string;
+  /** O modelo recebe imagens? (ausente = sim). A FusAI não: as etapas de visão ficam de fora. */
+  readonly enxerga?: boolean;
   conversar(pedido: PedidoAoProvedor): Promise<RespostaDoProvedor>;
   /** Conversa em que a IA pode chamar ferramentas (function calling). */
   conversarComFerramentas(pedido: PedidoComFerramentas): Promise<RespostaComFerramentas>;

@@ -139,7 +139,7 @@ export class ApoiosService {
           'Fala:',
           fala,
         ].join('\n'),
-        ...(imagens.length ? { imagens: [...imagens] } : {}),
+        ...(imagens.length ? { imagens: [...imagens], imagensOpcionais: true } : {}),
         maxTokens: 2000,
         promptVersion: versao,
         semCache: true,

@@ -6,7 +6,7 @@
 // defeito, do ponto de vista de quem está usando.
 // ============================================================
 
-import { Body, Controller, Get, Put, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ROTULO_DA_CHAMADA, avisoDeUso, estadoDoLimite } from '@makucho/studio-contracts';
@@ -15,6 +15,7 @@ import { PrismaService } from '../../common/prisma.service';
 import { assertIsOwner } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 import { AiService } from './ai.service';
+import { CreditosDeIaService } from './creditos-de-ia.service';
 import { UsoDeIaService } from './uso.service';
 
 const limiteSchema = z.object({
@@ -31,7 +32,31 @@ export class AiController {
     private readonly uso: UsoDeIaService,
     private readonly prisma: PrismaService,
     private readonly ai: AiService,
+    private readonly creditos: CreditosDeIaService,
   ) {}
+
+  // ---------- Créditos de IA (FusAI) ----------
+
+  /** O saldo da FusAI e as opções de recarga (só quando a IA usa a FusAI). */
+  @Get('ai-credits')
+  creditosDeIa(@CurrentTenant() tenant: TenantContext) {
+    return this.creditos.situacao(tenant.workspaceId);
+  }
+
+  /** Gera o Pix de uma recarga. Quem paga a conta decide: só o dono. */
+  @Post('ai-credits/topups')
+  recarregar(@CurrentTenant() tenant: TenantContext, @Body() body: unknown) {
+    assertIsOwner(tenant);
+    const { valorCentavos } = z.object({ valorCentavos: z.number().int().min(500).max(1_000_000) }).parse(body);
+    return this.creditos.recarregar(tenant.workspaceId, valorCentavos);
+  }
+
+  /** O status de uma recarga (a tela consulta até virar RECEIVED). */
+  @Get('ai-credits/topups/:id')
+  recarga(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
+    assertIsOwner(tenant);
+    return this.creditos.recarga(tenant.workspaceId, id);
+  }
 
   @Get('ai-usage')
   async consumo(@CurrentTenant() tenant: TenantContext) {

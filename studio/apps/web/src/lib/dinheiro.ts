@@ -11,3 +11,27 @@ export function dolares(centavos: number): string {
   if (valor > 0 && valor < 0.01) return `US$ ${valor.toFixed(4).replace('.', ',')}`;
   return `US$ ${valor.toFixed(2).replace('.', ',')}`;
 }
+
+/**
+ * Reais na tela a partir de micro-reais em texto (a FusAI: 1 real =
+ * 1.000.000), com aritmética inteira -- sem o erro do ponto flutuante.
+ * Os centavos são truncados: o saldo nunca aparece maior do que é.
+ */
+export function reaisDeMicros(micros: string | undefined): string {
+  let m: bigint;
+  try {
+    m = BigInt(micros ?? '0');
+  } catch {
+    m = 0n;
+  }
+  const negativo = m < 0n;
+  const centavos = (negativo ? -m : m) / 10_000n;
+  const inteiro = (centavos / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const resto = (centavos % 100n).toString().padStart(2, '0');
+  return `${negativo ? '-' : ''}R$ ${inteiro},${resto}`;
+}
+
+/** Reais a partir de centavos inteiros (R$ 1.234,56). */
+export function reaisDeCentavos(centavos: number): string {
+  return reaisDeMicros(String(BigInt(Math.round(centavos)) * 10_000n));
+}

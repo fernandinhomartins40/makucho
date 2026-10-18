@@ -26,6 +26,7 @@ import { ProjetoExcluido, projetoFoiExcluido, sinalDoProjeto } from '../../commo
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DeepseekProvedor } from './deepseek.provedor';
+import { FusaiProvedor } from './fusai.provedor';
 import { FalsoProvedor } from './falso.provedor';
 import { ErroDoProvedor } from './provedor';
 import type { ChamadaDeFerramenta, DefinicaoDeFerramenta, MensagemDoAgente, ProvedorDeIa } from './provedor';
@@ -86,6 +87,12 @@ export interface PedidoDeIa {
   modelo?: ModeloDeIa;
   /** Imagens para a IA olhar (JPEG em base64): a chamada vai para o modelo com visão. */
   imagens?: string[];
+  /**
+   * As imagens ajudam, mas a chamada vale sem elas (o pedido também
+   * descreve em texto): com um provedor que não enxerga (FusAI), vão só
+   * o texto. Sem isto, a chamada com imagem é recusada lá.
+   */
+  imagensOpcionais?: boolean;
 }
 
 /**
@@ -210,11 +217,23 @@ export class AiService {
 
     const provedor = await this.provedorDe(pedido.workspaceId, modelo);
 
+    // Um provedor que não enxerga (FusAI): as imagens opcionais ficam de
+    // fora; numa etapa que só existe para olhar, a chamada é recusada aqui
+    // (quem chama já trata a falha e segue sem a etapa).
+    let imagens = pedido.imagens?.length ? pedido.imagens : undefined;
+    if (imagens && provedor.enxerga === false) {
+      if (!pedido.imagensOpcionais) {
+        throw new ErroDoProvedor(`${provedor.nome} não enxerga imagens`, 'A IA configurada não enxerga imagens: esta etapa ficou de fora.', false);
+      }
+      imagens = undefined;
+    }
+
     // A estimativa usa o MÁXIMO que o pedido autoriza, não a média:
     // estimar pela média deixaria passar justamente a chamada grande,
-    // que é a que estoura o teto.
-    const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4) + (pedido.imagens?.length ?? 0) * TOKENS_POR_IMAGEM;
-    await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
+    // que é a que estoura o teto. Na FusAI o teto é o saldo pré-pago da
+    // carteira (sem saldo, 402): o limite mensal em dólar não se aplica.
+    const entradaEstimada = Math.ceil((pedido.sistema.length + pedido.usuario.length) / 4) + (imagens?.length ?? 0) * TOKENS_POR_IMAGEM;
+    if (provedor.nome !== 'fusai') await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
 
     // Projeto excluído no meio do caminho: a chamada é abortada na hora (e a
     // próxima, recusada sem custo) -- ver common/cancelamento.ts.
@@ -224,7 +243,7 @@ export class AiService {
         chamada: pedido.chamada,
         sistema: pedido.sistema,
         usuario: pedido.usuario,
-        ...(pedido.imagens?.length ? { imagens: pedido.imagens } : {}),
+        ...(imagens ? { imagens } : {}),
         maxTokens: pedido.maxTokens,
         raciocinio,
         ...(doProjeto ? { sinal: doProjeto.sinal } : pedido.sinal ? { sinal: pedido.sinal } : {}),
@@ -269,7 +288,7 @@ export class AiService {
       .catch(() => undefined);
 
     if (pedido.projectId) {
-      await this.registrarAnalise(pedido, resposta.texto, custo, resposta.consumo);
+      await this.registrarAnalise(pedido, resposta.texto, custo, resposta.consumo, provedor.nome);
     }
 
     const resultado: ResultadoDeIa = {
@@ -306,7 +325,7 @@ export class AiService {
     try {
       const provedor = await this.provedorDe(pedido.workspaceId, modelo);
       const entradaEstimada = Math.ceil((JSON.stringify(pedido.mensagens).length + JSON.stringify(pedido.ferramentas).length) / 4);
-      await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
+      if (provedor.nome !== 'fusai') await this.uso.conferirAntes(pedido.workspaceId, modelo, entradaEstimada, pedido.maxTokens);
       const sinal = doProjeto?.sinal ?? pedido.sinal;
       resposta = await provedor.conversarComFerramentas({
         chamada: pedido.chamada,
@@ -346,12 +365,13 @@ export class AiService {
     texto: string,
     custo: number,
     consumo: { inputTokens: number; outputTokens: number; modelo: string },
+    provedor: string,
   ) {
     await this.prisma.aiAnalysis
       .create({
         data: {
           projectId: pedido.projectId!,
-          provider: USAR_FALSO ? 'falso' : 'deepseek',
+          provider: provedor,
           model: consumo.modelo,
           promptVersion: pedido.promptVersion,
           rawOutput: { texto },
@@ -403,11 +423,11 @@ export class AiService {
       );
     }
 
-    if (credencial.provider !== 'deepseek') {
+    if (credencial.provider !== 'deepseek' && credencial.provider !== 'fusai') {
       // Honesto em vez de tentar: um provedor sem implementação
       // falharia com erro de rede confuso três camadas adiante.
       throw new BadRequestException(
-        `O provedor ${credencial.provider} ainda não está implementado; use DeepSeek.`,
+        `O provedor ${credencial.provider} ainda não está implementado; use a FusAI ou a DeepSeek.`,
       );
     }
 
@@ -416,6 +436,10 @@ export class AiService {
       iv: credencial.iv,
       authTag: credencial.authTag,
     });
+
+    // FusAI: os modelos são os do projeto lá (o provedor escolhe pelo
+    // raciocínio pedido) e o gasto sai da carteira em reais.
+    if (credencial.provider === 'fusai') return new FusaiProvedor(chave);
 
     // O modelo da tabela por chamada tem precedência sobre o
     // cadastrado: a escolha entre chat e reasoner é técnica (seção
@@ -443,7 +467,8 @@ export class AiService {
       await this.prisma.aiCredential
         .updateMany({ where: { workspaceId }, data: { lastUsedAt: new Date() } })
         .catch(() => undefined);
-      return { ok: true, modelo, ms: Date.now() - inicio, mensagem: `A DeepSeek respondeu em ${((Date.now() - inicio) / 1000).toFixed(1)} s com o modelo ${modelo}.` };
+      const quem = provedor.nome === 'fusai' ? 'A FusAI' : 'A DeepSeek';
+      return { ok: true, modelo, ms: Date.now() - inicio, mensagem: `${quem} respondeu em ${((Date.now() - inicio) / 1000).toFixed(1)} s.` };
     } catch (e) {
       const publico =
         e instanceof ErroDoProvedor ? e.publico : e instanceof Error ? e.message : 'o teste falhou';

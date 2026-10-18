@@ -3,8 +3,9 @@
 // ============================================================
 // Configurações, em abas: cada assunto numa tela, com uma ação clara.
 //
-//   Inteligência artificial  a chave da DeepSeek (o campo só aparece
-//                            para colocar ou trocar) e o consumo do mês;
+//   Inteligência artificial  a chave da IA -- a da FusAI (créditos em
+//                            reais, recarga com Pix aqui mesmo) ou a da
+//                            DeepSeek -- e o saldo ou o consumo do mês;
 //   Banco de mídia           a chave do Pexels (B-roll no editor);
 //   Armazenamento            o espaço usado;
 //   Aplicativo               ícone (com o editor de recorte), nome,
@@ -13,7 +14,7 @@
 // A aba aberta fica no endereço (#ia, #midia...), para voltar direto.
 // ============================================================
 
-import { dolares } from '../../lib/dinheiro';
+import { dolares, reaisDeCentavos, reaisDeMicros } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
 import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
@@ -23,10 +24,13 @@ import {
   type ChaveDoBanco,
   armazenamento as apiArmazenamento,
   credencialDeIa,
+  creditosDeIa,
   ia as apiIa,
   type Armazenamento,
   type ConsumoDeIa,
   type CredencialDeIa,
+  type CreditosDeIa,
+  type RecargaDeIa,
 } from '../../lib/api';
 import { formatarBytes } from '../../lib/upload';
 import { IconeAviso, IconeCelular, IconeCheck, IconeIA, IconeMidia, IconeNuvem, IconeOlho, IconeOlhoFechado } from '../../components/icones';
@@ -140,14 +144,19 @@ function SecaoDeIa() {
   const [mensagemDoLimite, setMensagemDoLimite] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
 
   const atual = credencial.dados;
-  const chaveValida = chave.trim().length >= 16;
+  const usaFusai = atual?.configured === true && atual.provider === 'fusai';
+  // A FusAI se reconhece pela chave (fai_live_ / fai_test_); o resto é a DeepSeek.
+  const chaveDaFusai = /^fai_(live|test)_/.test(chave.trim());
+  // A chave de agente (MCP) não serve para a IA do Studio.
+  const chaveDeAgente = /^fai_agent_/.test(chave.trim());
+  const chaveValida = chave.trim().length >= 16 && !chaveDeAgente;
   const mostrarFormulario = !atual?.configured || trocando;
 
   const salvar = async () => {
     setSalvando(true);
     setMensagem(null);
     try {
-      const salvo = await credencialDeIa.salvar({ provider: 'deepseek', apiKey: chave.trim() });
+      const salvo = await credencialDeIa.salvar({ provider: chaveDaFusai ? 'fusai' : 'deepseek', apiKey: chave.trim() });
       credencial.definir(salvo);
       setChave('');
       setTrocando(false);
@@ -219,6 +228,10 @@ function SecaoDeIa() {
           <div className="config__chave">
             <dl>
               <div>
+                <dt>Provedor</dt>
+                <dd>{atual.provider === 'fusai' ? 'FusAI (créditos em reais)' : 'DeepSeek'}</dd>
+              </div>
+              <div>
                 <dt>Chave</dt>
                 <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
               </div>
@@ -255,14 +268,14 @@ function SecaoDeIa() {
             }}
           >
             <label className="campo" style={{ margin: 0 }}>
-              <span className="campo__rotulo">{atual?.configured ? 'Nova chave da DeepSeek' : 'Cole a chave da DeepSeek'}</span>
+              <span className="campo__rotulo">{atual?.configured ? 'Nova chave de IA' : 'Cole a chave da FusAI'}</span>
               <span className="linha" style={{ gap: 'var(--e2)' }}>
                 <input
                   className="campo__entrada crescer"
                   type={mostrar ? 'text' : 'password'}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="sk-…"
+                  placeholder="fai_live_…"
                   value={chave}
                   onChange={(e) => setChave(e.target.value)}
                   aria-describedby="ajuda-chave"
@@ -272,8 +285,10 @@ function SecaoDeIa() {
                 </button>
               </span>
               <span id="ajuda-chave" className="campo__ajuda">
-                Crie em platform.deepseek.com → API keys. A chave é guardada cifrada e nunca volta para a tela.
-                {chave && !chaveValida && ' A chave tem pelo menos 16 caracteres.'}
+                Crie em fusai.com.br → Projetos → Studio Makucho → Chaves de API (começa com fai_live_). Também serve a chave da DeepSeek (sk-…). A chave
+                é guardada cifrada e nunca volta para a tela.
+                {chaveDeAgente && ' Esta é a chave de agente (MCP), que não serve aqui: use a chave do projeto, fai_live_.'}
+                {chave && !chaveDeAgente && !chaveValida && ' A chave tem pelo menos 16 caracteres.'}
               </span>
             </label>
             <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
@@ -299,11 +314,16 @@ function SecaoDeIa() {
         {/* Sem campo de modelo: o Studio escolhe o modelo e o nível de
             raciocínio de cada função (o mais barato que dá conta dela). */}
         <p className="dica" style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-          O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no acabamento dos cortes.
+          {usaFusai
+            ? 'Pela FusAI, o Studio usa o DeepSeek Chat e o DeepSeek Reasoner (no raciocínio), e o gasto sai do saldo em reais. As etapas que olham imagens (a crítica visual das animações) ficam de fora: esses modelos não enxergam.'
+            : 'O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no acabamento dos cortes.'}
         </p>
       </section>
 
-      {/* ---------- Consumo ---------- */}
+      {usaFusai && <CartaoDeCreditos />}
+
+      {/* ---------- Consumo (na FusAI o teto é o saldo: o cartão de créditos ocupa o lugar) ---------- */}
+      {!usaFusai && (
       <section className="cartao config__cartao" aria-labelledby="titulo-consumo">
         <header className="config__cabeca">
           <div>
@@ -393,7 +413,210 @@ function SecaoDeIa() {
         )}
         <Aviso mensagem={mensagemDoLimite} />
       </section>
+      )}
     </div>
+  );
+}
+
+// ============================================================
+// Créditos de IA (FusAI): saldo e recarga com Pix sem sair do Studio
+// ============================================================
+
+const VALORES_DA_RECARGA = [2000, 5000, 10000, 20000] as const;
+const PAGO = ['RECEIVED', 'CONFIRMED'];
+const ENCERRADO = ['EXPIRED', 'CANCELED', 'CANCELLED', 'FAILED'];
+
+function CartaoDeCreditos() {
+  const creditos = useDados<CreditosDeIa>(() => creditosDeIa.obter());
+  const [valor, setValor] = useState<number>(5000);
+  const [outro, setOutro] = useState('');
+  const [gerando, setGerando] = useState(false);
+  const [recarga, setRecarga] = useState<RecargaDeIa | null>(null);
+  const [mensagem, setMensagem] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const dados = creditos.dados;
+  const minimo = dados?.minimoCentavos ?? 500;
+  const maximo = dados?.maximoCentavos ?? 1_000_000;
+  // "1.234,56" ou "50": milhar com ponto, centavos com vírgula.
+  const valorDeOutro = Math.round(Number(outro.trim().split('.').join('').replace(',', '.')) * 100);
+  const escolhido = outro ? valorDeOutro : valor;
+  const valorValido = Number.isInteger(escolhido) && escolhido >= minimo && escolhido <= maximo;
+  const esperando = recarga !== null && !PAGO.includes(recarga.status) && !ENCERRADO.includes(recarga.status);
+
+  // Acompanha o Pix até o saldo entrar (a cada 3 s, como a FusAI orienta; o Pix vale 60 min).
+  const pendente = esperando ? recarga.id : null;
+  const recarregarSaldo = creditos.recarregar;
+  useEffect(() => {
+    if (!pendente) return;
+    let vivo = true;
+    let relogio = 0;
+    const limite = Date.now() + 61 * 60_000;
+    const consultar = async () => {
+      if (!vivo || Date.now() > limite) return;
+      try {
+        const r = await creditosDeIa.recarga(pendente);
+        if (!vivo) return;
+        setRecarga((atual) => (atual ? { ...atual, ...r, copiaECola: r.copiaECola ?? atual.copiaECola, qrBase64: r.qrBase64 ?? atual.qrBase64 } : r));
+        if (PAGO.includes(r.status)) {
+          setMensagem({ tom: 'sucesso', texto: 'Pagamento recebido: os créditos já estão no saldo.' });
+          recarregarSaldo();
+          return;
+        }
+        if (ENCERRADO.includes(r.status)) {
+          setMensagem({ tom: 'erro', texto: 'O Pix expirou sem pagamento. Gere outro quando quiser.' });
+          return;
+        }
+      } catch {
+        // Uma consulta que falha não encerra o acompanhamento.
+      }
+      if (vivo) relogio = window.setTimeout(() => void consultar(), 3000);
+    };
+    relogio = window.setTimeout(() => void consultar(), 3000);
+    return () => {
+      vivo = false;
+      window.clearTimeout(relogio);
+    };
+  }, [pendente, recarregarSaldo]);
+
+  const gerar = async () => {
+    setGerando(true);
+    setMensagem(null);
+    setCopiado(false);
+    try {
+      setRecarga(await creditosDeIa.recarregar(escolhido));
+    } catch (e) {
+      setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível gerar o Pix.' });
+    } finally {
+      setGerando(false);
+    }
+  };
+
+  const copiar = async () => {
+    if (!recarga?.copiaECola) return;
+    try {
+      await navigator.clipboard.writeText(recarga.copiaECola);
+      setCopiado(true);
+    } catch {
+      setCopiado(false);
+    }
+  };
+
+  return (
+    <section className="cartao config__cartao" aria-labelledby="titulo-creditos">
+      <header className="config__cabeca">
+        <div>
+          <h3 id="titulo-creditos">Créditos de IA</h3>
+          <p className="dica">
+            A IA do Studio sai deste saldo, em reais. Coloque créditos com Pix: o saldo cai em segundos. Sem saldo, as funções com IA param e voltam assim
+            que você recarrega.
+          </p>
+        </div>
+      </header>
+      <Aviso mensagem={mensagem} />
+
+      {creditos.carregando ? (
+        <span className="esqueleto" style={{ height: 48 }} />
+      ) : creditos.erro || dados?.erro ? (
+        <Aviso mensagem={{ tom: 'erro', texto: creditos.erro ?? dados?.erro ?? 'não foi possível ler o saldo.' }} />
+      ) : (
+        <div className="config__gasto">
+          <strong>{reaisDeMicros(dados?.saldoMicros)}</strong>
+          <span className="texto-secundario">disponível na FusAI</span>
+          <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => creditos.recarregar()}>
+            Atualizar
+          </button>
+        </div>
+      )}
+
+      {esperando ? (
+        <div style={{ display: 'grid', gap: 'var(--e2)', justifyItems: 'start' }}>
+          <p style={{ margin: 0 }}>
+            Pague o Pix de <strong>{reaisDeCentavos(recarga.valorCentavos)}</strong> no app do seu banco. Esperando o pagamento…
+          </p>
+          {recarga.qrBase64 && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`data:image/png;base64,${recarga.qrBase64}`} alt="QR Code do Pix" width={220} height={220} style={{ borderRadius: 8, background: '#fff', padding: 8 }} />
+          )}
+          {recarga.copiaECola && (
+            <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap', width: '100%' }}>
+              <input className="campo__entrada crescer" readOnly value={recarga.copiaECola} aria-label="Pix copia e cola" onFocus={(e) => e.currentTarget.select()} />
+              <button type="button" className="botao botao--secundario botao--pequeno" onClick={() => void copiar()}>
+                {copiado ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
+          )}
+          <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
+            {recarga.urlDePagamento && (
+              <a className="botao botao--fantasma botao--pequeno" href={recarga.urlDePagamento} target="_blank" rel="noopener noreferrer">
+                Abrir a página do Pix
+              </a>
+            )}
+            <button type="button" className="botao botao--fantasma botao--pequeno" onClick={() => setRecarga(null)}>
+              Fechar
+            </button>
+          </div>
+          {recarga.expiraEm && (
+            <span className="texto-secundario" style={{ fontSize: 12.5 }}>
+              Vale até {new Date(recarga.expiraEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.
+            </span>
+          )}
+        </div>
+      ) : (
+        dados?.usaFusai &&
+        !dados.erro && (
+          <form
+            className="config__formulario"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (valorValido) void gerar();
+            }}
+          >
+            <span className="campo__rotulo">Adicionar créditos</span>
+            <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }} role="radiogroup" aria-label="Valor da recarga">
+              {VALORES_DA_RECARGA.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={!outro && valor === v}
+                  className={`botao botao--pequeno ${!outro && valor === v ? 'botao--primario' : 'botao--secundario'}`}
+                  onClick={() => {
+                    setValor(v);
+                    setOutro('');
+                  }}
+                >
+                  {reaisDeCentavos(v)}
+                </button>
+              ))}
+              <input
+                className="campo__entrada"
+                style={{ width: 130 }}
+                inputMode="decimal"
+                placeholder="Outro valor"
+                aria-label="Outro valor, em reais"
+                value={outro}
+                onChange={(e) => setOutro(e.target.value)}
+              />
+            </div>
+            {outro && !valorValido && (
+              <span className="campo__ajuda">
+                De {reaisDeCentavos(minimo)} a {reaisDeCentavos(maximo)}.
+              </span>
+            )}
+            {(dados.taxaPct ?? 0) > 0 && <span className="campo__ajuda">A recarga tem taxa de {dados.taxaPct}% (o Pix): o crédito é o valor menos a taxa.</span>}
+            {dados.recargaDisponivel === false && (
+              <span className="campo__ajuda">A recarga pede o CPF ou CNPJ da organização no painel da FusAI (Configurações).</span>
+            )}
+            <div>
+              <button type="submit" className="botao botao--primario" disabled={!valorValido || gerando || dados.recargaDisponivel === false}>
+                {gerando ? 'Gerando o Pix…' : `Gerar Pix de ${valorValido ? reaisDeCentavos(escolhido) : '…'}`}
+              </button>
+            </div>
+          </form>
+        )
+      )}
+    </section>
   );
 }
 

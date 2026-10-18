@@ -863,7 +863,7 @@ export interface CredencialDeIa {
 
 export const credencialDeIa = {
   obter: () => api<CredencialDeIa>('/settings/ai-credential'),
-  salvar: (dados: { provider: 'deepseek'; apiKey: string; model?: string }) =>
+  salvar: (dados: { provider: 'fusai' | 'deepseek'; apiKey: string; model?: string }) =>
     api<CredencialDeIa>('/settings/ai-credential', { metodo: 'PUT', corpo: dados }),
   remover: () => api<CredencialDeIa>('/settings/ai-credential', { metodo: 'DELETE' }),
   /** Uma chamada mínima à DeepSeek, com o resultado exato. */
@@ -871,6 +871,40 @@ export const credencialDeIa = {
     api<{ ok: boolean; mensagem: string; modelo?: string; ms?: number }>('/settings/ai-credential/test', {
       metodo: 'POST',
     }),
+};
+
+// ============================================================
+// Créditos de IA (FusAI): saldo e recarga com Pix, de dentro do Studio
+// ============================================================
+
+export interface CreditosDeIa {
+  /** A IA do workspace usa a FusAI (sem ela, não há créditos para mostrar). */
+  usaFusai: boolean;
+  /** Saldo em micro-reais (texto; 1 real = 1.000.000). */
+  saldoMicros?: string;
+  minimoCentavos?: number;
+  maximoCentavos?: number;
+  taxaPct?: number;
+  recargaDisponivel?: boolean;
+  erro?: string;
+}
+
+export interface RecargaDeIa {
+  id: string;
+  /** PENDING até pagar; RECEIVED quando o saldo já entrou. */
+  status: string;
+  valorCentavos: number;
+  creditoMicros?: string;
+  copiaECola?: string;
+  qrBase64?: string;
+  urlDePagamento?: string;
+  expiraEm?: string;
+}
+
+export const creditosDeIa = {
+  obter: () => api<CreditosDeIa>('/settings/ai-credits'),
+  recarregar: (valorCentavos: number) => api<RecargaDeIa>('/settings/ai-credits/topups', { metodo: 'POST', corpo: { valorCentavos } }),
+  recarga: (id: string) => api<RecargaDeIa>(`/settings/ai-credits/topups/${encodeURIComponent(id)}`),
 };
 
 // ============================================================

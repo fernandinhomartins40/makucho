@@ -11,17 +11,26 @@ import { z } from 'zod';
 import { RAMOS_DE_NEGOCIO, resumoDeArmazenamento } from '@makucho/studio-contracts';
 import { CurrentTenant } from '../../common/decorators/tenant.decorator';
 import { CryptoService } from '../../common/crypto.service';
+import { ehChaveDaFusai } from '../ai/fusai.provedor';
 import { PrismaService } from '../../common/prisma.service';
 import { assertIsOwner, scopedWhere } from '../../common/tenant';
 import type { TenantContext } from '../../common/tenant';
 
-const credencialSchema = z.object({
-  provider: z.enum(['deepseek', 'anthropic', 'openai']),
-  // O tamanho minimo evita salvar um campo preenchido pela metade;
-  // a validade real so se confirma na primeira chamada ao provedor.
-  apiKey: z.string().min(16).max(200),
-  model: z.string().max(80).optional(),
-});
+const credencialSchema = z
+  .object({
+    // fusai: gateway em reais, pago com Pix (fusai.provedor.ts); deepseek: direto.
+    provider: z.enum(['fusai', 'deepseek', 'anthropic', 'openai']),
+    // O tamanho minimo evita salvar um campo preenchido pela metade;
+    // a validade real so se confirma na primeira chamada ao provedor.
+    apiKey: z.string().trim().min(16).max(200),
+    model: z.string().max(80).optional(),
+  })
+  // A chave da FusAI tem formato proprio: a do agente (fai_agent_) ou um
+  // session token nao servem aqui, e falhariam so na primeira chamada.
+  .refine((c) => c.provider !== 'fusai' || ehChaveDaFusai(c.apiKey), {
+    message: 'a chave da FusAI começa com fai_live_ (ou fai_test_). Crie em fusai.com.br → Projetos → Chaves de API.',
+    path: ['apiKey'],
+  });
 
 @ApiTags('settings')
 @Controller('settings')
