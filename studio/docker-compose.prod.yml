@@ -252,7 +252,7 @@ services:
     volumes:
       - studio_media:/app/storage/media
       - studio_trabalho_midia:/var/tmp/studio
-      # So o heartbeat fica em tmpfs.
+      # So o heartbeat fica em tmpfs (os temporarios estao no volume acima).
       - type: tmpfs
         target: /tmp/studio
         tmpfs:
