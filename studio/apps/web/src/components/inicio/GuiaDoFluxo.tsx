@@ -8,7 +8,7 @@
 // logo abaixo do hero, com os seis passos do Studio de hoje, e cada um é
 // marcado pelo que a pessoa REALMENTE fez:
 //
-//   1. Ligar a IA          a chave da DeepSeek está salva;
+//   1. Ligar a IA          a chave da FusAI está salva;
 //   2. Kit da marca        o perfil de marca existe;
 //   3. Roteiro com IA      há ao menos um roteiro;
 //   4. Gravar ou enviar    há ao menos um projeto;

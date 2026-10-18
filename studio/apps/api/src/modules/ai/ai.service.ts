@@ -25,7 +25,6 @@ import type { ChamadaDeIa, ConfigDaChamada, ModeloDeIa, Raciocinio } from '@maku
 import { ProjetoExcluido, projetoFoiExcluido, sinalDoProjeto } from '../../common/cancelamento';
 import { CryptoService } from '../../common/crypto.service';
 import { PrismaService } from '../../common/prisma.service';
-import { DeepseekProvedor } from './deepseek.provedor';
 import { FusaiProvedor } from './fusai.provedor';
 import { FalsoProvedor } from './falso.provedor';
 import { ErroDoProvedor } from './provedor';
@@ -412,22 +411,23 @@ export class AiService {
    * cache de chave em claro transformaria um vazamento de heap em
    * vazamento de credencial de todos os workspaces de uma vez.
    */
-  private async provedorDe(workspaceId: string, modelo: ModeloDeIa): Promise<ProvedorDeIa> {
+  private async provedorDe(workspaceId: string, _modelo: ModeloDeIa): Promise<ProvedorDeIa> {
     if (USAR_FALSO) return new FalsoProvedor('valido');
 
     const credencial = await this.prisma.aiCredential.findUnique({ where: { workspaceId } });
 
     if (!credencial || !credencial.isActive) {
       throw new BadRequestException(
-        'Cadastre a chave de IA nas configurações para usar as funções com IA.',
+        'Cadastre a chave da FusAI em Configurações → IA para usar as funções com IA.',
       );
     }
 
-    if (credencial.provider !== 'deepseek' && credencial.provider !== 'fusai') {
-      // Honesto em vez de tentar: um provedor sem implementação
-      // falharia com erro de rede confuso três camadas adiante.
+    // A IA do Studio roda SÓ com os créditos da FusAI (a plataforma que
+    // vende os créditos ao cliente). Uma chave de outro provedor que tenha
+    // ficado no banco -- a conta pessoal de alguém -- nunca é usada.
+    if (credencial.provider !== 'fusai') {
       throw new BadRequestException(
-        `O provedor ${credencial.provider} ainda não está implementado; use a FusAI ou a DeepSeek.`,
+        'A IA do Studio usa os créditos da FusAI: cadastre a chave da FusAI em Configurações → IA.',
       );
     }
 
@@ -437,14 +437,9 @@ export class AiService {
       authTag: credencial.authTag,
     });
 
-    // FusAI: os modelos são os do projeto lá (o provedor escolhe pelo
+    // Os modelos são os do projeto na FusAI (o provedor escolhe pelo
     // raciocínio pedido) e o gasto sai da carteira em reais.
-    if (credencial.provider === 'fusai') return new FusaiProvedor(chave);
-
-    // O modelo da tabela por chamada tem precedência sobre o
-    // cadastrado: a escolha entre chat e reasoner é técnica (seção
-    // 26.6), não preferência do usuário.
-    return new DeepseekProvedor(chave, modelo);
+    return new FusaiProvedor(chave);
   }
 
   /**
@@ -467,8 +462,7 @@ export class AiService {
       await this.prisma.aiCredential
         .updateMany({ where: { workspaceId }, data: { lastUsedAt: new Date() } })
         .catch(() => undefined);
-      const quem = provedor.nome === 'fusai' ? 'A FusAI' : 'A DeepSeek';
-      return { ok: true, modelo, ms: Date.now() - inicio, mensagem: `${quem} respondeu em ${((Date.now() - inicio) / 1000).toFixed(1)} s.` };
+      return { ok: true, modelo, ms: Date.now() - inicio, mensagem: `A FusAI respondeu em ${((Date.now() - inicio) / 1000).toFixed(1)} s.` };
     } catch (e) {
       const publico =
         e instanceof ErroDoProvedor ? e.publico : e instanceof Error ? e.message : 'o teste falhou';

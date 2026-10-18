@@ -1,8 +1,9 @@
 // ============================================================
 // Configuracoes do workspace: credencial de IA e armazenamento.
 //
-// A chave da IA e cadastrada aqui, no painel, e nao por variavel de
-// ambiente: cada workspace usa a propria conta e o proprio credito.
+// A chave da IA (a da FusAI) e cadastrada aqui, no painel, e nao por
+// variavel de ambiente: cada workspace usa a propria conta e o proprio
+// credito na FusAI.
 // ============================================================
 
 import { Body, Controller, Delete, Get, Put, Query } from '@nestjs/common';
@@ -18,8 +19,9 @@ import type { TenantContext } from '../../common/tenant';
 
 const credencialSchema = z
   .object({
-    // fusai: gateway em reais, pago com Pix (fusai.provedor.ts); deepseek: direto.
-    provider: z.enum(['fusai', 'deepseek', 'anthropic', 'openai']),
+    // Só a FusAI (fusai.provedor.ts): a IA do Studio roda com os créditos
+    // em reais que o cliente compra lá, nunca com a conta de outra pessoa.
+    provider: z.literal('fusai'),
     // O tamanho minimo evita salvar um campo preenchido pela metade;
     // a validade real so se confirma na primeira chamada ao provedor.
     apiKey: z.string().trim().min(16).max(200),
@@ -27,7 +29,7 @@ const credencialSchema = z
   })
   // A chave da FusAI tem formato proprio: a do agente (fai_agent_) ou um
   // session token nao servem aqui, e falhariam so na primeira chamada.
-  .refine((c) => c.provider !== 'fusai' || ehChaveDaFusai(c.apiKey), {
+  .refine((c) => ehChaveDaFusai(c.apiKey), {
     message: 'a chave da FusAI começa com fai_live_ (ou fai_test_). Crie em fusai.com.br → Projetos → Chaves de API.',
     path: ['apiKey'],
   });

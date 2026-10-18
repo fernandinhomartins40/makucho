@@ -382,7 +382,7 @@ export const TUTORIAIS: Tutorial[] = [
       {
         alvo: ['.conteudo .cartao:first-of-type'],
         titulo: 'Conexão com a IA',
-        texto: 'A IA do Studio usa uma chave da DeepSeek. Com ela salva e "Ativa", tudo funciona. Use "Testar a chave" se algo parecer errado.',
+        texto: 'A IA do Studio usa os créditos da FusAI, em reais. Com a chave da FusAI salva e "Ativa", e saldo nos Créditos de IA, tudo funciona. Use "Testar a chave" se algo parecer errado.',
         lado: 'bottom',
       },
       {

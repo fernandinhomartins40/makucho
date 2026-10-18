@@ -865,10 +865,10 @@ export interface CredencialDeIa {
 
 export const credencialDeIa = {
   obter: () => api<CredencialDeIa>('/settings/ai-credential'),
-  salvar: (dados: { provider: 'fusai' | 'deepseek'; apiKey: string; model?: string }) =>
+  salvar: (dados: { provider: 'fusai'; apiKey: string; model?: string }) =>
     api<CredencialDeIa>('/settings/ai-credential', { metodo: 'PUT', corpo: dados }),
   remover: () => api<CredencialDeIa>('/settings/ai-credential', { metodo: 'DELETE' }),
-  /** Uma chamada mínima à DeepSeek, com o resultado exato. */
+  /** Uma chamada mínima à FusAI, com o resultado exato. */
   testar: () =>
     api<{ ok: boolean; mensagem: string; modelo?: string; ms?: number }>('/settings/ai-credential/test', {
       metodo: 'POST',

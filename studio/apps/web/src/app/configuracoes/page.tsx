@@ -3,9 +3,9 @@
 // ============================================================
 // Configurações, em abas: cada assunto numa tela, com uma ação clara.
 //
-//   Inteligência artificial  a chave da IA -- a da FusAI (créditos em
-//                            reais, recarga com Pix aqui mesmo) ou a da
-//                            DeepSeek -- e o saldo ou o consumo do mês;
+//   Inteligência artificial  a chave da FusAI (a IA roda só com os
+//                            créditos de lá, em reais), o saldo, o gasto
+//                            do mês e a recarga com Pix aqui mesmo;
 //   Banco de mídia           a chave do Pexels (B-roll no editor);
 //   Armazenamento            o espaço usado;
 //   Aplicativo               ícone (com o editor de recorte), nome,
@@ -14,7 +14,7 @@
 // A aba aberta fica no endereço (#ia, #midia...), para voltar direto.
 // ============================================================
 
-import { reaisDeCentavos, reaisDeDolares, reaisDeMicros } from '../../lib/dinheiro';
+import { reaisDeCentavos, reaisDeMicros } from '../../lib/dinheiro';
 import { useEffect, useState } from 'react';
 import { Topbar } from '../../components/shell/Topbar';
 import { SecaoDoApp } from '../../components/pwa/SecaoDoApp';
@@ -25,9 +25,7 @@ import {
   armazenamento as apiArmazenamento,
   credencialDeIa,
   creditosDeIa,
-  ia as apiIa,
   type Armazenamento,
-  type ConsumoDeIa,
   type CredencialDeIa,
   type CreditosDeIa,
   type RecargaDeIa,
@@ -115,7 +113,6 @@ function Selo({ ativo, sim, nao }: { ativo: boolean; sim: string; nao: string })
 
 function SecaoDeIa() {
   const credencial = useDados<CredencialDeIa>(() => credencialDeIa.obter());
-  const consumo = useDados<ConsumoDeIa>(() => apiIa.consumo());
 
   const [chave, setChave] = useState('');
   const [mostrar, setMostrar] = useState(false);
@@ -139,29 +136,25 @@ function SecaoDeIa() {
     }
   };
 
-  const [limite, setLimite] = useState('');
-  const [salvandoLimite, setSalvandoLimite] = useState(false);
-  const [mensagemDoLimite, setMensagemDoLimite] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null);
-
   const atual = credencial.dados;
+  // A IA do Studio roda só com os créditos da FusAI: uma chave de outro
+  // provedor (uma conta pessoal) cadastrada antes não vale mais.
   const usaFusai = atual?.configured === true && atual.provider === 'fusai';
-  // A FusAI se reconhece pela chave (fai_live_ / fai_test_); o resto é a DeepSeek.
-  const chaveDaFusai = /^fai_(live|test)_/.test(chave.trim());
-  // A chave de agente (MCP) não serve para a IA do Studio.
+  const chaveAntiga = atual?.configured === true && atual.provider !== 'fusai';
+  // A chave do projeto: fai_live_ (ou fai_test_). A de agente (MCP) não serve.
   const chaveDeAgente = /^fai_agent_/.test(chave.trim());
-  const chaveValida = chave.trim().length >= 16 && !chaveDeAgente;
-  const mostrarFormulario = !atual?.configured || trocando;
+  const chaveValida = /^fai_(live|test)_[A-Za-z0-9]{8,}$/.test(chave.trim());
+  const mostrarFormulario = !usaFusai || trocando;
 
   const salvar = async () => {
     setSalvando(true);
     setMensagem(null);
     try {
-      const salvo = await credencialDeIa.salvar({ provider: chaveDaFusai ? 'fusai' : 'deepseek', apiKey: chave.trim() });
+      const salvo = await credencialDeIa.salvar({ provider: 'fusai', apiKey: chave.trim() });
       credencial.definir(salvo);
       setChave('');
       setTrocando(false);
-      setMensagem({ tom: 'sucesso', texto: 'Chave salva. As próximas análises já usam a IA; vídeos montados sem IA podem ser analisados de novo no editor.' });
-      consumo.recarregar();
+      setMensagem({ tom: 'sucesso', texto: 'Chave salva. A IA do Studio já usa os créditos da FusAI.' });
     } catch (e) {
       setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar a chave.' });
     } finally {
@@ -170,7 +163,7 @@ function SecaoDeIa() {
   };
 
   const remover = async () => {
-    if (!window.confirm('Remover a chave de IA? Os próximos vídeos serão montados sem IA.')) return;
+    if (!window.confirm('Remover a chave da FusAI? As funções com IA param até uma chave nova ser cadastrada.')) return;
     try {
       credencial.definir(await credencialDeIa.remover());
       setMensagem({ tom: 'sucesso', texto: 'Chave removida.' });
@@ -178,36 +171,6 @@ function SecaoDeIa() {
       setMensagem({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível remover.' });
     }
   };
-
-  // O gasto e o limite ficam guardados em dólar (a moeda da DeepSeek): a tela mostra e recebe em reais.
-  const cotacao = consumo.dados?.cotacao?.reaisPorDolar ?? 5.5;
-  const emReais = (centavosDeDolar: number) => reaisDeDolares(centavosDeDolar, cotacao);
-
-  const salvarLimite = async () => {
-    const reais = Number(limite.trim().split('.').join('').replace(',', '.'));
-    const centavosDeDolar = Math.round((reais / cotacao) * 100);
-    if (!Number.isFinite(reais) || centavosDeDolar < 100 || centavosDeDolar > 50_000) {
-      setMensagemDoLimite({ tom: 'erro', texto: `o limite precisa ficar entre ${emReais(100)} e ${emReais(50_000)} por mês.` });
-      return;
-    }
-    setSalvandoLimite(true);
-    try {
-      const r = await apiIa.definirLimite(centavosDeDolar);
-      if (!r.ok) setMensagemDoLimite({ tom: 'erro', texto: r.motivo ?? 'não foi possível salvar o limite.' });
-      else {
-        setMensagemDoLimite({ tom: 'sucesso', texto: 'Limite mensal atualizado.' });
-        setLimite('');
-        consumo.recarregar();
-      }
-    } catch (e) {
-      setMensagemDoLimite({ tom: 'erro', texto: e instanceof Error ? e.message : 'não foi possível salvar o limite.' });
-    } finally {
-      setSalvandoLimite(false);
-    }
-  };
-
-  const uso = consumo.dados;
-  const pct = uso ? Math.min(100, (uso.gastoCentavos / Math.max(1, uso.limiteCentavos)) * 100) : 0;
 
   return (
     <div className="config__pilha">
@@ -217,27 +180,26 @@ function SecaoDeIa() {
           <div>
             <h3 id="titulo-ia">Conexão com a IA</h3>
             <p className="dica">
-              A IA escolhe os melhores trechos, sugere cortes e escreve roteiros. Sem chave, o Studio monta o vídeo com toda a fala, sem as pausas
-              longas, e você corta na timeline.
+              A IA escolhe os melhores trechos, sugere cortes, cria as animações e escreve roteiros. Ela roda com os créditos da FusAI, em reais: coloque
+              créditos com Pix logo abaixo.
             </p>
           </div>
-          {atual && <Selo ativo={atual.configured} sim="Ativa" nao="Sem chave" />}
+          {atual && <Selo ativo={usaFusai} sim="Ativa" nao="Sem chave" />}
         </header>
         <Aviso mensagem={mensagem} />
+        {chaveAntiga && (
+          <Aviso mensagem={{ tom: 'erro', texto: 'A chave cadastrada não é da FusAI e não vale mais: cadastre a chave da FusAI para usar a IA.' }} />
+        )}
 
         {credencial.carregando ? (
           <span className="esqueleto" style={{ height: 48 }} />
         ) : credencial.erro ? (
           <Aviso mensagem={{ tom: 'erro', texto: credencial.erro }} />
-        ) : atual?.configured ? (
+        ) : usaFusai ? (
           <div className="config__chave">
             <dl>
               <div>
-                <dt>Provedor</dt>
-                <dd>{atual.provider === 'fusai' ? 'FusAI (créditos em reais)' : 'DeepSeek'}</dd>
-              </div>
-              <div>
-                <dt>Chave</dt>
+                <dt>Chave da FusAI</dt>
                 <dd style={{ fontFamily: 'ui-monospace, monospace' }}>{atual.keyPrefix}••••••••</dd>
               </div>
               <div>
@@ -247,7 +209,7 @@ function SecaoDeIa() {
             </dl>
             <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
               {/* O teste separa "a chave não funciona" de "a IA ainda não foi
-                  chamada": uma chamada mínima, e o resultado exato da DeepSeek. */}
+                  chamada": uma chamada mínima, e o resultado exato da FusAI. */}
               <button type="button" className="botao botao--secundario botao--pequeno" disabled={testando} onClick={() => void testar()}>
                 {testando ? 'Testando…' : 'Testar a chave'}
               </button>
@@ -273,7 +235,7 @@ function SecaoDeIa() {
             }}
           >
             <label className="campo" style={{ margin: 0 }}>
-              <span className="campo__rotulo">{atual?.configured ? 'Nova chave de IA' : 'Cole a chave da FusAI'}</span>
+              <span className="campo__rotulo">{usaFusai ? 'Nova chave da FusAI' : 'Cole a chave da FusAI'}</span>
               <span className="linha" style={{ gap: 'var(--e2)' }}>
                 <input
                   className="campo__entrada crescer"
@@ -290,10 +252,9 @@ function SecaoDeIa() {
                 </button>
               </span>
               <span id="ajuda-chave" className="campo__ajuda">
-                Crie em fusai.com.br → Projetos → Studio Makucho → Chaves de API (começa com fai_live_). Também serve a chave da DeepSeek (sk-…). A chave
-                é guardada cifrada e nunca volta para a tela.
+                Crie em fusai.com.br → Projetos → Chaves de API (começa com fai_live_). A chave é guardada cifrada e nunca volta para a tela.
                 {chaveDeAgente && ' Esta é a chave de agente (MCP), que não serve aqui: use a chave do projeto, fai_live_.'}
-                {chave && !chaveDeAgente && !chaveValida && ' A chave tem pelo menos 16 caracteres.'}
+                {chave && !chaveDeAgente && !chaveValida && ' A chave da FusAI começa com fai_live_.'}
               </span>
             </label>
             <div className="linha" style={{ gap: 'var(--e2)', flexWrap: 'wrap' }}>
@@ -316,119 +277,14 @@ function SecaoDeIa() {
           </form>
         )}
 
-        {/* Sem campo de modelo: o Studio escolhe o modelo e o nível de
-            raciocínio de cada função (o mais barato que dá conta dela). */}
+        {/* Sem campo de modelo: o Studio escolhe o modelo de cada função. */}
         <p className="dica" style={{ margin: 0, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-          {usaFusai
-            ? 'Pela FusAI, o Studio usa o DeepSeek Chat e o DeepSeek Reasoner (no raciocínio), e o gasto sai do saldo em reais. As etapas que olham imagens (a crítica visual das animações) ficam de fora: esses modelos não enxergam.'
-            : 'O Studio usa o DeepSeek V4.1 Flash e só liga o raciocínio (mais caro) na escolha dos trechos e no acabamento dos cortes.'}
+          O Studio usa o DeepSeek Chat e o DeepSeek Reasoner (no raciocínio) pela FusAI, e o gasto sai do saldo em reais. As etapas que olham imagens (a
+          crítica visual das animações) ficam de fora: esses modelos não enxergam.
         </p>
       </section>
 
       {usaFusai && <CartaoDeCreditos />}
-
-      {/* ---------- Consumo (na FusAI o teto é o saldo: o cartão de créditos ocupa o lugar) ---------- */}
-      {!usaFusai && (
-      <section className="cartao config__cartao" aria-labelledby="titulo-consumo">
-        <header className="config__cabeca">
-          <div>
-            <h3 id="titulo-consumo">Gasto da IA neste mês</h3>
-            <p className="dica">
-              Quanto a IA gastou na conta da DeepSeek e o limite que a trava (não é saldo nem crédito). Ao chegar no limite, o Studio segue funcionando sem
-              IA até o mês virar.
-            </p>
-            {uso?.cotacao && (
-              <p className="dica" style={{ fontSize: 12.5, marginTop: 4 }}>
-                Em reais pela cotação do dólar {uso.cotacao.fonte === 'padrao' ? 'aproximada' : `de ${uso.cotacao.data ? new Date(`${uso.cotacao.data}T12:00:00`).toLocaleDateString('pt-BR') : 'hoje'}`}{' '}
-                (US$ 1 = {reaisDeDolares(100, uso.cotacao.reaisPorDolar)}): a DeepSeek cobra em dólar. Com a FusAI, o gasto já sai em reais.
-              </p>
-            )}
-          </div>
-        </header>
-        {consumo.carregando ? (
-          <span className="esqueleto" style={{ height: 32 }} />
-        ) : uso ? (
-          <>
-            <div className="config__gasto">
-              <strong>{emReais(uso.gastoCentavos)}</strong>
-              {/* "de R$ X" parecia saldo: é o teto que trava a IA, não crédito. */}
-              <span className="texto-secundario">
-                gastos · limite de {emReais(uso.limiteCentavos)} por mês · {uso.chamadas} {uso.chamadas === 1 ? 'chamada' : 'chamadas'}
-              </span>
-            </div>
-            <div className="barra" role="progressbar" aria-valuenow={uso.gastoCentavos} aria-valuemin={0} aria-valuemax={uso.limiteCentavos} aria-label="Gasto de IA no mês">
-              <div
-                className="barra__preenchida"
-                style={{
-                  width: `${pct}%`,
-                  background: uso.estado === 'bloqueado' ? 'var(--danger)' : uso.estado === 'aviso' ? 'var(--warning)' : undefined,
-                }}
-              />
-            </div>
-            {uso.aviso && (
-              <div className="aviso aviso--atencao">
-                <IconeAviso size={16} />
-                <span>{uso.aviso}</span>
-              </div>
-            )}
-            {(uso.economiaCentavos ?? 0) > 0 && (
-              <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
-                Economia no mês: <strong>{emReais(uso.economiaCentavos ?? 0)}</strong>
-                {uso.acertosDoCache ? ` · ${uso.acertosDoCache} respostas reaproveitadas sem custo` : ''} (cache e horário fora do pico).
-              </p>
-            )}
-            {uso.qualidade && uso.qualidade.videos > 0 && uso.qualidade.aproveitamentoMedio !== null && (
-              <p className="texto-secundario" style={{ fontSize: 13, margin: 0 }}>
-                A seleção da IA foi mantida em <strong>{Math.round(uso.qualidade.aproveitamentoMedio * 100)}%</strong> nos {uso.qualidade.videos}{' '}
-                {uso.qualidade.videos === 1 ? 'vídeo exportado' : 'vídeos exportados'} dos últimos 90 dias.
-                {uso.qualidade.aproveitamentoMedio < 0.6 &&
-                  ' Abaixo de 60%: você está refazendo muito do que a IA escolhe; vale ajustar o roteiro ou o perfil de comunicação.'}
-              </p>
-            )}
-            {uso.detalhe.length > 0 && (
-              <details className="config__detalhe">
-                <summary>Gasto por função</summary>
-                <ul>
-                  {uso.detalhe.map((d) => (
-                    <li key={d.chamada}>
-                      <span>{d.rotulo}</span>
-                      <span>{emReais(d.centavos)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </>
-        ) : (
-          <p className="texto-secundario">Sem dados de consumo.</p>
-        )}
-
-        {atual?.configured && (
-          <form
-            className="config__limite"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void salvarLimite();
-            }}
-          >
-            <label className="campo" style={{ margin: 0 }}>
-              <span className="campo__rotulo">Limite mensal (R$)</span>
-              <input
-                className="campo__entrada"
-                inputMode="decimal"
-                placeholder={emReais(uso?.limiteCentavos ?? 2000).replace('R$ ', '')}
-                value={limite}
-                onChange={(e) => setLimite(e.target.value)}
-              />
-            </label>
-            <button type="submit" className="botao botao--secundario" disabled={!limite || salvandoLimite}>
-              {salvandoLimite ? 'Salvando…' : 'Mudar o limite'}
-            </button>
-          </form>
-        )}
-        <Aviso mensagem={mensagemDoLimite} />
-      </section>
-      )}
     </div>
   );
 }
