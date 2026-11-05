@@ -74,10 +74,11 @@ services:
       # para ::1 e nao tenta IPv4 depois, enquanto este nginx escuta so
       # em IPv4. Mesma armadilha ja enfrentada no stack do portal.
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/nginx-health']
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 120s
     mem_limit: 32m
     networks:
       - studio-net
@@ -113,10 +114,11 @@ services:
         - node
         - -e
         - "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s
     mem_limit: 256m
     networks:
       - studio-net
@@ -172,7 +174,8 @@ services:
         - node
         - -e
         - "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 10s
       retries: 5
       # 120s, nao 60s: o entrypoint espera o Postgres e aplica as
@@ -208,10 +211,11 @@ services:
       --maxmemory-policy noeviction
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
-      interval: 15s
+      interval: 60s
+      start_interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 120s
     mem_limit: 96m
     networks:
       - studio-net

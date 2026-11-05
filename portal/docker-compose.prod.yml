@@ -64,10 +64,11 @@ services:
       # O resultado era "Connection refused" em um servico saudavel, que
       # abortava o deploy no bloco de espera por healthchecks.
       test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/nginx-health']
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 120s
     mem_limit: 48m
     networks:
       - makucho-net
@@ -113,10 +114,11 @@ services:
         - node
         - -e
         - "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s
     mem_limit: 256m
     networks:
       - makucho-net
@@ -166,10 +168,11 @@ services:
         - node
         - -e
         - "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
-      interval: 30s
+      interval: 60s
+      start_interval: 5s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
     volumes:
       - media_data:/app/storage/media
     mem_limit: 192m
@@ -192,10 +195,11 @@ services:
       - ./infrastructure/docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
-      interval: 15s
+      interval: 60s
+      start_interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 5
+      start_period: 120s
     mem_limit: 256m
     networks:
       - makucho-net
